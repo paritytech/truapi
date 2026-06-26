@@ -13,7 +13,6 @@ import {
   type WireProvider,
 } from "./transport.js";
 import {
-  CallError,
   indexedTaggedUnion,
   Result,
   _void,
@@ -52,30 +51,21 @@ function protocolVersionTag(version: number): `V${number}` {
   return `V${version}` as `V${number}`;
 }
 
-type VersionedHandshakeResponse = { tag: `V${number}`; value: undefined };
-type VersionedHandshakeError = { tag: `V${number}`; value: T.HostHandshakeError };
-type HandshakeResponse = ResultPayload<
-  VersionedHandshakeResponse,
-  VersionedHandshakeError
->;
+type HandshakeResponse = ResultPayload<undefined, T.HostHandshakeError>;
 const HANDSHAKE_WIRE_VERSION = 1;
 
 /**
- * Build the dispatcher response codec for the selected wire version.
+ * Build the versioned handshake response codec for the selected wire version.
  */
 function handshakeResponseCodec(
   version: number,
-): Codec<HandshakeResponse> {
-  const versionedOk = indexedTaggedUnion({
-    [protocolVersionTag(version)]: [version - 1, _void] as const,
-  }) as Codec<VersionedHandshakeResponse>;
-  const versionedErr = indexedTaggedUnion({
+): Codec<{ tag: `V${number}`; value: HandshakeResponse }> {
+  return indexedTaggedUnion({
     [protocolVersionTag(version)]: [
       version - 1,
-      T.HostHandshakeError,
+      Result(_void, T.HostHandshakeError),
     ] as const,
-  }) as Codec<VersionedHandshakeError>;
-  return Result(versionedOk, CallError(versionedErr));
+  }) as Codec<{ tag: `V${number}`; value: HandshakeResponse }>;
 }
 
 /**
@@ -83,8 +73,11 @@ function handshakeResponseCodec(
  */
 function encodeSuccessfulHandshakeResponse(version: number): Uint8Array {
   return encodeHandshakeResponse(version, {
-    success: true,
-    value: { tag: protocolVersionTag(version), value: undefined },
+    tag: protocolVersionTag(version),
+    value: {
+      success: true,
+      value: undefined,
+    },
   });
 }
 
@@ -93,9 +86,9 @@ function encodeSuccessfulHandshakeResponse(version: number): Uint8Array {
  */
 function encodeUnsupportedHandshakeResponse(version: number): Uint8Array {
   return encodeHandshakeResponse(version, {
-    success: false,
+    tag: protocolVersionTag(version),
     value: {
-      tag: protocolVersionTag(version),
+      success: false,
       value: {
         tag: "UnsupportedProtocolVersion",
         value: undefined,
@@ -109,7 +102,7 @@ function encodeUnsupportedHandshakeResponse(version: number): Uint8Array {
  */
 function encodeHandshakeResponse(
   version: number,
-  response: HandshakeResponse,
+  response: { tag: `V${number}`; value: HandshakeResponse },
 ): Uint8Array {
   return handshakeResponseCodec(version).enc(response);
 }

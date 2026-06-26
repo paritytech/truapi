@@ -1118,15 +1118,14 @@ fn emit_payload(
 }
 
 /// Response shape after the versioned wrapper is stripped. TS callers see the
-/// inner type. Request responses use the dispatcher wire shape
-/// `Result<VersionedOk, CallError<VersionedErr>>`; subscription items decode
-/// the full versioned item wrapper.
+/// inner type; request responses decode `Versioned<Result<Ok, Err>>`, while
+/// subscription items still decode the full versioned item wrapper.
 #[derive(Clone)]
 struct ResponseEmission {
     inner_type_ts: String,
     wire_type_ts: String,
     wire_codec_expr: String,
-    is_versioned_wrapper: bool,
+    inner_codec_expr: String,
 }
 
 fn versioned_value_cast(wire_type: &str, inner_type: &str, version: u32) -> String {
@@ -1164,13 +1163,13 @@ fn emit_response(
                 inner_type_ts: "undefined".to_string(),
                 wire_type_ts: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
                 wire_codec_expr: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
-                is_versioned_wrapper: true,
+                inner_codec_expr: "S._void".to_string(),
             }),
             VersionedKind::Tuple(inner) => Ok(ResponseEmission {
                 inner_type_ts: ts_type_qualified(inner)?,
                 wire_type_ts: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
                 wire_codec_expr: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
-                is_versioned_wrapper: true,
+                inner_codec_expr: codec_expr(inner, true, ctx)?,
             }),
         };
     }
@@ -1179,7 +1178,7 @@ fn emit_response(
         inner_type_ts: ts_type_qualified(ty)?,
         wire_type_ts: ts_type_qualified(ty)?,
         wire_codec_expr: codec_expr(ty, true, ctx)?,
-        is_versioned_wrapper: false,
+        inner_codec_expr: codec_expr(ty, true, ctx)?,
     })
 }
 
@@ -1236,6 +1235,10 @@ fn indexed_versioned_codec_expr(
     ))
 }
 
+fn versioned_result_codec_expr(version: u32, ok_codec: &str, err_codec: &str) -> Result<String> {
+    indexed_versioned_codec_expr([(version, format!("S.Result({ok_codec}, {err_codec})"))])
+}
+
 fn emit_method(
     out: &mut String,
     trait_def: &TraitDef,
@@ -1255,10 +1258,17 @@ fn emit_method(
             let is_handshake = trait_def.name == "System" && method.name == "handshake";
             let response = emit_response(ok, wrappers, ctx, wire_version)?;
             let error = emit_error_response(err, wrappers, ctx, wire_version)?;
-            let response_codec = format!(
-                "S.Result({}, S.CallError({}))",
-                response.wire_codec_expr, error.wire_codec_expr
-            );
+            let response_codec = match wire_version {
+                Some(version) => versioned_result_codec_expr(
+                    version,
+                    &response.inner_codec_expr,
+                    &error.inner_codec_expr,
+                )?,
+                None => format!(
+                    "S.Result({}, {})",
+                    response.wire_codec_expr, error.wire_codec_expr
+                ),
+            };
 
             let arg_decl = if is_handshake || payload.param_list.is_empty() {
                 String::new()
@@ -1289,46 +1299,12 @@ fn emit_method(
                 payload.wire_version,
                 request_expr,
             );
-            if let Some(version) = wire_version {
-                let ok_value = if response.is_versioned_wrapper {
-                    versioned_value_expr(
-                        "result.value",
-                        &response.wire_type_ts,
-                        &response.inner_type_ts,
-                        version,
-                    )
-                } else {
-                    "result.value".to_string()
-                };
-                let err_value = if error.is_versioned_wrapper {
-                    versioned_value_expr(
-                        "result.value",
-                        &error.wire_type_ts,
-                        &error.inner_type_ts,
-                        version,
-                    )
-                } else {
-                    "result.value".to_string()
-                };
-                writedoc!(
-                    out,
-                    "
-                          decodeResponse: (payload) => {{
-                            const result = {response_codec}.dec(payload);
-                            return result.success
-                              ? {{ success: true, value: {ok_value} }}
-                              : {{ success: false, value: {err_value} }};
-                          }},
-                    "
-                )
-                .unwrap();
-            } else {
-                writeln!(
-                    out,
-                    "      decodeResponse: (payload) => {response_codec}.dec(payload),"
-                )
-                .unwrap();
-            }
+            let value_suffix = if wire_version.is_some() { ".value" } else { "" };
+            writeln!(
+                out,
+                "      decodeResponse: (payload) => {response_codec}.dec(payload){value_suffix},"
+            )
+            .unwrap();
             writedoc!(
                 out,
                 "
@@ -1437,16 +1413,15 @@ fn emit_subscribe_method(
     };
     writeln!(out, "      decodeItem: (payload) => {item_value},").unwrap();
     if let Some(err) = err {
-        let decoded_error = format!("S.CallError({}).dec(payload)", err.wire_codec_expr);
         let err_value = if let Some(version) = wire_version {
             versioned_value_expr(
-                &decoded_error,
+                &format!("{}.dec(payload)", err.wire_codec_expr),
                 &err.wire_type_ts,
                 &err.inner_type_ts,
                 version,
             )
         } else {
-            decoded_error
+            format!("{}.dec(payload)", err.wire_codec_expr)
         };
         writeln!(out, "      decodeInterrupt: (payload) => {err_value},").unwrap();
     }

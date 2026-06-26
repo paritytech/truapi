@@ -22,16 +22,12 @@ use crate::transport::Transport;
 /// auto-Send-ness is not guaranteed. The `request_id` is the per-frame
 /// identifier; handlers thread it into the `CallContext` so trait methods
 /// can correlate logs/cancellation with the originating request. On the
-/// error path handlers return the SCALE-encoded `CallError` payload bytes
-/// (typically via [`crate::frame::encode_decode_error`] or
-/// [`crate::frame::encode_call_error_payload`]); the dispatcher wraps them
-/// into the response envelope.
+/// error path handlers return the complete SCALE-encoded response payload.
 pub type RequestHandler =
     Arc<dyn Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<Vec<u8>, Vec<u8>>> + Send + Sync>;
 
-/// A handler for a subscription method. On the error path the handler
-/// returns the SCALE-encoded `CallError` payload bytes; the dispatcher
-/// wraps them into an `_interrupt` envelope.
+/// A handler for a subscription method. On the error path the handler returns
+/// the complete SCALE-encoded `_interrupt` payload.
 pub type SubscriptionHandler = Arc<
     dyn Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<SubscriptionStream, Vec<u8>>>
         + Send
@@ -122,15 +118,10 @@ impl Dispatcher {
         let id = message.payload.id;
 
         if let Some(entry) = self.by_request.get(&id) {
-            // On the wire, every response is `Result<Ok, Err>`-shaped: the
-            // handler returns `Ok(bytes)` already prefixed with a `0x00`
-            // discriminant for success, and `Err(bytes)` whose bytes are the
-            // SCALE-encoded `CallError`. The error path prepends `0x01` so the
-            // wire payload is always `[disc][value...]`.
             let request_id = message.request_id.clone();
             let value = match (entry.handler)(request_id, message.payload.value).await {
                 Ok(value) => value,
-                Err(err_bytes) => prefix_err(err_bytes),
+                Err(value) => value,
             };
             transport.send(ProtocolMessage {
                 request_id: message.request_id,
@@ -174,22 +165,10 @@ impl Dispatcher {
     }
 }
 
-/// Prepend the `0x01` Err discriminant to SCALE-encoded `CallError` bytes,
-/// producing the `[disc][value...]` Result wire shape the response envelope
-/// expects.
-fn prefix_err(err_bytes: Vec<u8>) -> Vec<u8> {
-    let mut value = Vec::with_capacity(1 + err_bytes.len());
-    value.push(1u8);
-    value.extend_from_slice(&err_bytes);
-    value
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parity_scale_codec::Encode;
     use std::sync::Mutex;
-    use truapi::CallError;
 
     fn test_spawner() -> Spawner {
         #[cfg(not(target_arch = "wasm32"))]
@@ -248,21 +227,17 @@ mod tests {
         );
     }
 
-    /// A handler that returns `Err(CallError::Denied)` must produce a response
-    /// frame on the registered `response_id` whose payload begins with the
-    /// `0x01` Err discriminant byte (the Result wire shape).
+    /// A handler error already owns the complete response payload. The
+    /// dispatcher only routes it to the registered response id.
     #[test]
-    fn dispatch_request_handler_error_emits_response_with_err_discriminant() {
+    fn dispatch_request_handler_error_emits_response_payload() {
         let mut dispatcher = Dispatcher::new(test_spawner());
         let ids = RequestFrameIds {
             request_id: 200,
             response_id: 201,
         };
         dispatcher.on_request(ids, |_request_id, _bytes| {
-            Box::pin(async move {
-                let err: CallError<()> = CallError::Denied;
-                Err(crate::frame::encode_call_error_payload(err))
-            })
+            Box::pin(async move { Err(vec![9, 8, 7]) })
         });
         let transport = Arc::new(RecordingTransport::default());
         let frame = make_frame(200, Vec::new());
@@ -270,19 +245,7 @@ mod tests {
         let sent = transport.sent();
         assert_eq!(sent.len(), 1, "exactly one response expected");
         assert_eq!(sent[0].payload.id, 201);
-        let payload = &sent[0].payload.value;
-        assert_eq!(payload.first(), Some(&1u8), "first byte must be Err disc");
-        // After the Err disc comes the SCALE-encoded CallError; `Denied` is
-        // variant 1, so the full payload is `[0x01 disc][0x01 variant]`.
-        let err: CallError<()> = CallError::Denied;
-        let mut expected_inner = Vec::new();
-        match &err {
-            CallError::Denied => 1u8.encode_to(&mut expected_inner),
-            _ => unreachable!(),
-        }
-        let mut expected = vec![1u8];
-        expected.extend_from_slice(&expected_inner);
-        assert_eq!(payload, &expected);
+        assert_eq!(sent[0].payload.value, vec![9, 8, 7]);
     }
 
     /// Registering two handlers under the same key must not silently

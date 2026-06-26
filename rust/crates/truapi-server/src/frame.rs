@@ -17,8 +17,6 @@
 
 use parity_scale_codec::{Decode, Encode, Error as CodecError, Input, Output};
 
-use truapi::CallError;
-
 use crate::generated::wire_table::{RequestFrameIds, SubscriptionFrameIds, WIRE_TABLE, WireKind};
 
 /// Top-level wire message. Encoded as `[requestId][discriminant][bytes]`.
@@ -30,30 +28,19 @@ pub struct ProtocolMessage {
     pub payload: Payload,
 }
 
-/// Encode `CallError::MalformedFrame { reason }` as the SCALE-encoded payload
-/// bytes a handler returns on a decode failure. The dispatcher wraps these
-/// bytes into a response frame with the matching `request_id` and response
-/// tag.
-pub fn encode_decode_error(reason: String) -> Vec<u8> {
-    let err: CallError<()> = CallError::MalformedFrame { reason };
-    encode_call_error(&err)
+/// Encode `Versioned<Result<Ok, _>>` from a versioned success wrapper.
+pub fn encode_versioned_ok_payload<T: Encode>(value: T) -> Vec<u8> {
+    encode_versioned_result_payload(value, 0)
 }
 
-/// Encode a `CallError<E>` as the SCALE-encoded payload bytes a handler
-/// returns on the error path. The dispatcher wraps these bytes into a
-/// response frame with the matching `request_id` and response tag.
-pub fn encode_call_error_payload<E: Encode>(err: CallError<E>) -> Vec<u8> {
-    encode_call_error(&err)
+/// Encode `Versioned<Result<(), _>>` for methods whose success type is unit.
+pub fn encode_versioned_unit_ok_payload(version: u8) -> Vec<u8> {
+    vec![version_index(version), 0]
 }
 
-/// Encode a successful `Result` payload. The leading `0u8` is the SCALE
-/// discriminant for `Ok`, followed by the encoded success value. For `()`,
-/// this returns just the discriminant because unit encodes to zero bytes.
-pub fn encode_ok_payload<T: Encode>(value: T) -> Vec<u8> {
-    let mut out = Vec::with_capacity(1 + value.size_hint());
-    0u8.encode_to(&mut out);
-    value.encode_to(&mut out);
-    out
+/// Encode `Versioned<Result<_, Err>>` from a versioned domain-error wrapper.
+pub fn encode_versioned_err_payload<T: Encode>(value: T) -> Vec<u8> {
+    encode_versioned_result_payload(value, 1)
 }
 
 impl Encode for ProtocolMessage {
@@ -150,36 +137,33 @@ impl IdFactory {
     }
 }
 
-/// Encode a `CallError<E>` as SCALE bytes. `CallError` does not derive
-/// `Encode` directly so the variants are emitted manually.
-fn encode_call_error<E: Encode>(err: &CallError<E>) -> Vec<u8> {
-    let mut out = Vec::new();
-    match err {
-        CallError::Domain(value) => {
-            0u8.encode_to(&mut out);
-            value.encode_to(&mut out);
-        }
-        CallError::Denied => {
-            1u8.encode_to(&mut out);
-        }
-        CallError::Unsupported => {
-            2u8.encode_to(&mut out);
-        }
-        CallError::MalformedFrame { reason } => {
-            3u8.encode_to(&mut out);
-            reason.encode_to(&mut out);
-        }
-        CallError::HostFailure { reason } => {
-            4u8.encode_to(&mut out);
-            reason.encode_to(&mut out);
-        }
-    }
+fn encode_versioned_result_payload<T: Encode>(value: T, result_index: u8) -> Vec<u8> {
+    let encoded = value.encode();
+    let Some((&version_index, inner)) = encoded.split_first() else {
+        return vec![result_index];
+    };
+    let mut out = Vec::with_capacity(encoded.len() + 1);
+    out.push(version_index);
+    out.push(result_index);
+    out.extend_from_slice(inner);
     out
+}
+
+fn version_index(version: u8) -> u8 {
+    match version.checked_sub(1) {
+        Some(index) => index,
+        None => 0,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Encode)]
+    enum TestVersioned<T> {
+        V1(T),
+    }
 
     fn build(id: u8, value: Vec<u8>) -> ProtocolMessage {
         ProtocolMessage {
@@ -371,45 +355,29 @@ mod tests {
     }
 
     #[test]
-    fn encode_decode_error_matches_malformed_frame_variant() {
-        let bytes = encode_decode_error("bad input".to_string());
-        let mut expected = Vec::new();
-        let err: CallError<()> = CallError::MalformedFrame {
-            reason: "bad input".to_string(),
-        };
-        match &err {
-            CallError::MalformedFrame { reason } => {
-                3u8.encode_to(&mut expected);
-                reason.encode_to(&mut expected);
-            }
-            _ => unreachable!(),
-        }
-        assert_eq!(bytes, expected);
+    fn encode_versioned_unit_ok_payload_wraps_unit_success() {
+        assert_eq!(encode_versioned_unit_ok_payload(1), vec![0u8, 0u8]);
+        assert_eq!(encode_versioned_unit_ok_payload(0), vec![0u8, 0u8]);
     }
 
     #[test]
-    fn encode_call_error_payload_matches_call_error_variants() {
-        let denied: CallError<()> = CallError::Denied;
-        assert_eq!(encode_call_error_payload(denied), vec![1u8]);
-
-        let unsupported: CallError<()> = CallError::Unsupported;
-        assert_eq!(encode_call_error_payload(unsupported), vec![2u8]);
-
-        let host: CallError<()> = CallError::HostFailure {
-            reason: "x".to_string(),
-        };
-        let mut expected = vec![4u8];
-        "x".to_string().encode_to(&mut expected);
-        assert_eq!(encode_call_error_payload(host), expected);
-    }
-
-    #[test]
-    fn encode_ok_payload_wraps_success_values() {
-        assert_eq!(encode_ok_payload(()), vec![0u8]);
-
-        let mut expected = vec![0u8];
+    fn encode_versioned_ok_payload_wraps_success_values() {
+        let mut expected = vec![0u8, 0u8];
         7u32.encode_to(&mut expected);
-        assert_eq!(encode_ok_payload(7u32), expected);
+        assert_eq!(
+            encode_versioned_ok_payload(TestVersioned::V1(7u32)),
+            expected
+        );
+    }
+
+    #[test]
+    fn encode_versioned_err_payload_wraps_error_values() {
+        let mut expected = vec![0u8, 1u8];
+        9u32.encode_to(&mut expected);
+        assert_eq!(
+            encode_versioned_err_payload(TestVersioned::V1(9u32)),
+            expected
+        );
     }
 
     /// IdFactory mints monotonically increasing ids prefixed with the
