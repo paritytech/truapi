@@ -127,7 +127,7 @@ npm run build
 npm test
 ```
 
-On a clean checkout, the first build or test run will generate the ignored TypeScript outputs from the Rust sources, so Rust stable + nightly must be installed locally. `npm test` runs the package's smoke tests under [bun](https://bun.sh/), so bun must also be installed (`curl -fsSL https://bun.sh/install | bash`). The tests load the source `.ts` files directly without a build step.
+On a clean checkout, the first build or test run will generate the ignored TypeScript outputs from the Rust sources, so Rust stable + nightly must be installed locally. `npm test` runs the package's [`bun test`](https://bun.sh/docs/cli/test) suite (`src/**/*.test.ts`) directly against the source `.ts` files (no build step), so [bun](https://bun.sh/) must also be installed.
 
 ## License
 
