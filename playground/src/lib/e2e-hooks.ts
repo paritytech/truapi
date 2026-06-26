@@ -2,7 +2,11 @@ import type {
   HostAccountConnectionStatusSubscribeItem,
   Subscription,
 } from "@parity/truapi";
-import { getClientSync } from "@parity/truapi/sandbox";
+import {
+  getClientSync,
+  subscribeConnectionStatus,
+  type ConnectionStatus,
+} from "@parity/truapi/sandbox";
 
 type AccountStatus = HostAccountConnectionStatusSubscribeItem;
 
@@ -14,6 +18,11 @@ type StatusWaiter = {
 };
 
 export interface TruapiPlaygroundE2E {
+  connectionStatus(): ConnectionStatus;
+  waitForConnectionStatus(
+    status: ConnectionStatus,
+    timeoutMs?: number,
+  ): Promise<ConnectionStatus>;
   startAccountConnectionStatusProbe(): AccountStatus[];
   accountConnectionStatuses(): AccountStatus[];
   waitForAccountConnectionStatus(
@@ -32,6 +41,7 @@ declare global {
 
 let accountStatusSub: Subscription | null = null;
 let accountStatuses: AccountStatus[] = [];
+let hostStatus: ConnectionStatus = "connecting";
 const waiters = new Set<StatusWaiter>();
 
 function e2eEnabled(): boolean {
@@ -88,6 +98,68 @@ function accountConnectionStatuses(): AccountStatus[] {
   return [...accountStatuses];
 }
 
+function connectionStatus(): ConnectionStatus {
+  return hostStatus;
+}
+
+function waitForConnectionStatus(
+  status: ConnectionStatus,
+  timeoutMs = 30_000,
+): Promise<ConnectionStatus> {
+  if (hostStatus === status) {
+    return Promise.resolve(hostStatus);
+  }
+
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let unsubscribe: (() => void) | null = null;
+    let unsubscribeAfterSubscribe = false;
+    const finish = (
+      next: ConnectionStatus,
+      error?: Error,
+    ): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (unsubscribe) {
+        unsubscribe();
+      } else {
+        unsubscribeAfterSubscribe = true;
+      }
+      if (error) {
+        reject(error);
+      } else {
+        resolve(next);
+      }
+    };
+    const timer = setTimeout(() => {
+      finish(
+        hostStatus,
+        new Error(
+          `timed out waiting for host connection status ${status}; current status is ${hostStatus}`,
+        ),
+      );
+    }, timeoutMs);
+
+    try {
+      unsubscribe = subscribeConnectionStatus((next) => {
+        hostStatus = next;
+        if (next === status) {
+          finish(next);
+        }
+      });
+      if (unsubscribeAfterSubscribe) {
+        unsubscribe();
+      }
+    } catch (error) {
+      finish(
+        hostStatus,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+  });
+}
+
 function waitForAccountConnectionStatus(
   status: AccountStatus,
   timeoutMs = 30_000,
@@ -116,6 +188,8 @@ function waitForAccountConnectionStatus(
 export function installE2EHooks(): void {
   if (!e2eEnabled()) return;
   window.__truapiPlaygroundE2E = {
+    connectionStatus,
+    waitForConnectionStatus,
     startAccountConnectionStatusProbe,
     accountConnectionStatuses,
     waitForAccountConnectionStatus,
