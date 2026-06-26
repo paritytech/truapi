@@ -72,22 +72,14 @@ function encodePermissionAuthorizationRequest(
 /** localStorage key the dev log level is persisted under, so it survives reloads. */
 const DEV_LOG_LEVEL_KEY = "truapi:logLevel";
 
-/** Read the persisted dev log level. Returns null when unset or unavailable. */
+/** Read the persisted dev log level. Returns null when unset. */
 function readPersistedLogLevel(): LogLevel | null {
-  try {
-    return globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
-  } catch {
-    return null;
-  }
+  return localStorage.getItem(DEV_LOG_LEVEL_KEY);
 }
 
 /** Persist the dev log level so it re-applies on the next reload. */
 function persistLogLevel(level: LogLevel): void {
-  try {
-    globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
-  } catch {
-    // ignore storage access errors
-  }
+  localStorage.setItem(DEV_LOG_LEVEL_KEY, level);
 }
 
 let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();

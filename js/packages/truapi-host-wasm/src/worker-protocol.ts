@@ -16,6 +16,10 @@ import type {
   OptionalCallbackName,
   SubscriptionName,
 } from "./generated/worker-callbacks.js";
+/**
+ * Generated callback-name unions used by the worker transport. They keep the
+ * hand-written protocol aligned with the Rust platform callback catalog.
+ */
 export type {
   CallbackName,
   OptionalCallbackName,
@@ -28,6 +32,11 @@ export type {
  */
 export type CallbackArgs = readonly unknown[];
 
+/**
+ * Messages posted by the main window to the WASM worker. These either control
+ * worker/core lifecycle, forward encoded TrUAPI frames into the core, or return
+ * host callback/subscription/chain responses requested by the worker.
+ */
 export type MainToWorker =
   | {
       kind: "init";
@@ -61,6 +70,11 @@ export type MainToWorker =
   | { kind: "chainResponse"; connId: number; json: string }
   | { kind: "dispose" };
 
+/**
+ * Messages posted by the WASM worker back to the main window. These either
+ * report worker lifecycle/errors, emit encoded TrUAPI frames from the core, or
+ * request host callbacks, subscriptions, and chain-provider operations.
+ */
 export type WorkerToMain =
   | { kind: "loaded" }
   | { kind: "ready" }
