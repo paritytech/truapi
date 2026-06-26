@@ -5,7 +5,7 @@
 // `DataType` in the same version. That cross-reference is the load-bearing
 // invariant the explorer site relies on for type navigation.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 import { packageVersion, versions } from "./versions.js";
 

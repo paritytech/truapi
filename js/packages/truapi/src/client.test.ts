@@ -1,5 +1,5 @@
 import type { Result } from "neverthrow";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 import { createTransport } from "./client.js";
 import { indexedTaggedUnion, Result as ScaleResult, str, _void } from "./scale.js";

@@ -6,7 +6,7 @@
 // independently and compare.
 
 import type { Result } from "neverthrow";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 import { str } from "./scale.js";
 import { decodeWireMessage, encodeWireMessage } from "./transport.js";

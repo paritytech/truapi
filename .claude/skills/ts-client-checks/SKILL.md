@@ -1,6 +1,6 @@
 ---
 name: ts-client-checks
-description: Build and smoke-test the @parity/truapi TypeScript package (tsc + Vitest). Use after regenerating the client or after touching js/packages/truapi/.
+description: Build and smoke-test the @parity/truapi TypeScript package (tsc + bun test). Use after regenerating the client or after touching js/packages/truapi/.
 ---
 
 # `@parity/truapi` build + smoke tests
@@ -13,13 +13,14 @@ npm run build
 npm test
 ```
 
-`npm test` runs the [Vitest](https://vitest.dev/) suite (`src/**/*.test.ts`),
-which loads the source `.ts` files directly (no build step required).
+`npm test` runs the [`bun test`](https://bun.sh/docs/cli/test) suite
+(`src/**/*.test.ts`) directly against the source `.ts` files (no build step
+required), so bun must be installed.
 
 Expected:
 
 - `tsc` (the `build` step) exits cleanly with no diagnostics.
-- Vitest reports `Test Files  N passed` / `Tests  M passed` with no failures.
+- `bun test` reports `N pass` / `0 fail` across the `src/**/*.test.ts` files.
 - `src/wire-table.test.ts` emits one `round-trips <method>.<kind>` case per
   generated frame id. The case count tracks `WIRE_TABLE`: adding a method
   grows it by 2 (request + response) or 4 (subscribe).

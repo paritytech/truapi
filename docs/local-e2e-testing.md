@@ -105,7 +105,7 @@ npm test
 Expected:
 
 - `tsc` (the `build` step) exits cleanly with no diagnostics.
-- Vitest reports `Test Files  N passed` / `Tests  M passed` with no failures.
+- `bun test` reports `N pass` / `0 fail` across the `src/**/*.test.ts` files.
 - `src/wire-table.test.ts` emits one `round-trips <method>.<kind>` case per
   generated frame id; the count tracks `WIRE_TABLE`. When you add a method,
   it grows by 2 (request + response) or 4 (subscribe).

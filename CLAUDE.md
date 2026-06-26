@@ -80,7 +80,7 @@ cargo test --workspace
 ```bash
 cd js/packages/truapi
 npm run build
-npm test                # Vitest suite (src/**/*.test.ts)
+npm test                # bun test suite (src/**/*.test.ts)
 ```
 
 ### Explorer
