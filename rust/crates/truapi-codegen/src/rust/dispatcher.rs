@@ -101,6 +101,9 @@ impl ModuleEmission {
         let fn_name = format!("register_{module}");
         let trait_name = &trait_def.name;
         let mut code = String::new();
+        if trait_name == "Testing" {
+            writeln!(code, "#[cfg(debug_assertions)]").unwrap();
+        }
         writedoc!(
             code,
             r#"
@@ -246,11 +249,12 @@ impl MethodEmission {
                     let request: versioned::{module}::{request} = match Decode::decode(&mut &bytes[..]) {{
                         Ok(request) => request,
                         Err(err) => {{
-                            let error = versioned::call_error_to_versioned::<versioned::{module}::{error}>(
-                                truapi::CallError::MalformedFrame {{ reason: err.to_string() }},
+                            let error: truapi::CallError<versioned::{module}::{error}> =
+                                truapi::CallError::MalformedFrame {{ reason: err.to_string() }};
+                            return Ok(encode_versioned_err_payload(
+                                error,
                                 <versioned::{module}::{error} as Versioned>::LATEST,
-                            );
-                            return Ok(encode_versioned_err_payload(error));
+                            ));
                         }}
                     }};
                     let target_version = request.version();
@@ -271,37 +275,39 @@ impl MethodEmission {
         )
         .unwrap();
         match &self.response_wrapper {
-            Some(response) => write_indented(
-                out,
-                16,
-                &formatdoc! {
-                    r#"
-                    let response: versioned::{module}::{response} = match host.{method}({call_args}).await {{
-                        Ok(value) => value,
-                        Err(err) => {{
-                            let error = versioned::call_error_to_versioned::<versioned::{module}::{error}>(err, {target_version_expr});
-                            return Ok(encode_versioned_err_payload(error));
+            Some(response) => {
+                write_indented(
+                    out,
+                    16,
+                    &formatdoc! {
+                        r#"
+                        let response: versioned::{module}::{response} = match host.{method}({call_args}).await {{
+                            Ok(value) => value,
+                            Err(err) => {{
+                                return Ok(encode_versioned_err_payload(err, {target_version_expr}));
+                            }}
+                        }};
+                        Ok(encode_versioned_ok_payload(response))
+                        "#
+                    },
+                );
+            }
+            None => {
+                write_indented(
+                    out,
+                    16,
+                    &formatdoc! {
+                        r#"
+                        match host.{method}({call_args}).await {{
+                            Ok(()) => Ok(encode_versioned_unit_ok_payload({target_version_expr})),
+                            Err(err) => {{
+                                Ok(encode_versioned_err_payload(err, {target_version_expr}))
+                            }}
                         }}
-                    }};
-                    Ok(encode_versioned_ok_payload(response))
-                    "#
-                },
-            ),
-            None => write_indented(
-                out,
-                16,
-                &formatdoc! {
-                    r#"
-                    match host.{method}({call_args}).await {{
-                        Ok(()) => Ok(encode_versioned_unit_ok_payload({target_version_expr})),
-                        Err(err) => {{
-                            let error = versioned::call_error_to_versioned::<versioned::{module}::{error}>(err, {target_version_expr});
-                            Ok(encode_versioned_err_payload(error))
-                        }}
-                    }}
-                    "#
-                },
-            ),
+                        "#
+                    },
+                );
+            }
         }
         write_indented(
             out,
@@ -341,7 +347,6 @@ impl MethodEmission {
                 "#
             },
         );
-        let needs_target_version = error.is_some();
         let (call_args, target_version_expr) = if let Some(request) = &self.request_wrapper {
             write_indented(
                 out,
@@ -355,7 +360,7 @@ impl MethodEmission {
                     "#
                 },
             );
-            if needs_target_version {
+            if is_result_sub {
                 writeln!(
                     out,
                     "                let target_version = request.version();"
@@ -376,7 +381,7 @@ impl MethodEmission {
         )
         .unwrap();
         if is_result_sub {
-            let error = error.expect("result subscription methods must have an error wrapper");
+            let _ = error.expect("result subscription methods must have an error wrapper");
             write_indented(
                 out,
                 16,
@@ -385,8 +390,7 @@ impl MethodEmission {
                     let stream = match host.{method}({call_args}).await {{
                         Ok(sub) => sub,
                         Err(err) => {{
-                            let error = versioned::call_error_to_versioned::<versioned::{module}::{error}>(err, {target_version_expr});
-                            return Err(error.encode());
+                            return Err(encode_versioned_interrupt_payload(err, {target_version_expr}));
                         }}
                     }};
                     "#
@@ -465,6 +469,7 @@ fn write_header(out: &mut String) {
 }
 
 fn write_imports(out: &mut String, traits: &[&TraitDef]) {
+    let has_testing = traits.iter().any(|trait_def| trait_def.name == "Testing");
     writedoc!(
         out,
         r#"
@@ -478,17 +483,20 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
     )
     .unwrap();
     for trait_def in traits {
+        if trait_def.name == "Testing" {
+            continue;
+        }
         writeln!(out, "    {},", trait_def.name).unwrap();
     }
     writedoc!(
         out,
         r#"
         }};
-        use parity_scale_codec::Encode;
         use truapi::versioned::{{self, Versioned}};
 
         use crate::dispatcher::Dispatcher;
         use crate::frame::encode_versioned_err_payload;
+        use crate::frame::encode_versioned_interrupt_payload;
         use crate::frame::encode_versioned_ok_payload;
         use crate::frame::encode_versioned_unit_ok_payload;
         use crate::generated::wire_table;
@@ -496,18 +504,20 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
         "#
     )
     .unwrap();
+    if has_testing {
+        writeln!(out, "#[cfg(debug_assertions)]").unwrap();
+        writeln!(out, "use truapi::api::Testing;").unwrap();
+    }
 }
 
 fn write_top_register(out: &mut String, traits: &[&TraitDef]) {
-    let trait_names: Vec<&str> = traits.iter().map(|t| t.name.as_str()).collect();
-    let bounds = trait_names.join(" + ");
     writedoc!(
         out,
         r#"
         /// Register every TrUAPI method with the dispatcher.
         pub fn register<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
         where
-            P: {bounds} + Send + Sync + 'static,
+            P: truapi::api::TrUApi + 'static,
         {{
         "#
     )
@@ -516,6 +526,9 @@ fn write_top_register(out: &mut String, traits: &[&TraitDef]) {
     for (idx, trait_def) in traits.iter().enumerate() {
         let host_expr = if idx == last { "host" } else { "host.clone()" };
         let module = module_for_trait(&trait_def.name);
+        if trait_def.name == "Testing" {
+            writeln!(out, "    #[cfg(debug_assertions)]").unwrap();
+        }
         writeln!(out, "    register_{module}(dispatcher, {host_expr});").unwrap();
     }
     writeln!(out, "}}").unwrap();

@@ -460,6 +460,20 @@ pub const COIN_PAYMENT_LISTEN_FOR_PAYMENT: SubscriptionFrameIds = SubscriptionFr
     receive_id: 163,
 };
 
+#[cfg(debug_assertions)]
+/// Wire discriminants for `testing_probe`.
+pub const TESTING_PROBE: RequestFrameIds = RequestFrameIds {
+    request_id: 164,
+    response_id: 165,
+};
+
+#[cfg(debug_assertions)]
+/// Wire discriminants for `testing_framework_error`.
+pub const TESTING_FRAMEWORK_ERROR: RequestFrameIds = RequestFrameIds {
+    request_id: 166,
+    response_id: 167,
+};
+
 /// The full wire table. Ordering is part of the wire protocol;
 /// only ever append. Removed methods leave their slot empty.
 pub const WIRE_TABLE: &[WireEntry] = &[
@@ -718,5 +732,15 @@ pub const WIRE_TABLE: &[WireEntry] = &[
     WireEntry {
         method: "coin_payment_listen_for_payment",
         kind: WireKind::Subscription(COIN_PAYMENT_LISTEN_FOR_PAYMENT),
+    },
+    #[cfg(debug_assertions)]
+    WireEntry {
+        method: "testing_probe",
+        kind: WireKind::Request(TESTING_PROBE),
+    },
+    #[cfg(debug_assertions)]
+    WireEntry {
+        method: "testing_framework_error",
+        kind: WireKind::Request(TESTING_FRAMEWORK_ERROR),
     },
 ];

@@ -29,6 +29,10 @@ pub struct ProtocolMessage {
 }
 
 /// Encode `Versioned<Result<Ok, _>>` from a versioned success wrapper.
+///
+/// TODO(shared-core-wire): once all hosts use the shared Rust core/generated
+/// client stack, remove this dispatcher compatibility rewrite and encode the
+/// trait return shape directly: `Result<VersionedOk, CallError<VersionedErr>>`.
 pub fn encode_versioned_ok_payload<T: Encode>(value: T) -> Vec<u8> {
     encode_versioned_result_payload(value, 0)
 }
@@ -38,9 +42,23 @@ pub fn encode_versioned_unit_ok_payload(version: u8) -> Vec<u8> {
     vec![version_index(version), 0]
 }
 
-/// Encode `Versioned<Result<_, Err>>` from a versioned domain-error wrapper.
-pub fn encode_versioned_err_payload<T: Encode>(value: T) -> Vec<u8> {
-    encode_versioned_result_payload(value, 1)
+/// Encode `Versioned<Result<_, Err>>` from an ordinary error value.
+pub fn encode_versioned_err_payload<T: Encode>(value: T, version: u8) -> Vec<u8> {
+    let encoded = value.encode();
+    let mut out = Vec::with_capacity(encoded.len() + 2);
+    out.push(version_index(version));
+    out.push(1);
+    out.extend_from_slice(&encoded);
+    out
+}
+
+/// Encode a versioned subscription interrupt payload from an ordinary error.
+pub fn encode_versioned_interrupt_payload<T: Encode>(value: T, version: u8) -> Vec<u8> {
+    let encoded = value.encode();
+    let mut out = Vec::with_capacity(encoded.len() + 1);
+    out.push(version_index(version));
+    out.extend_from_slice(&encoded);
+    out
 }
 
 impl Encode for ProtocolMessage {
@@ -150,10 +168,7 @@ fn encode_versioned_result_payload<T: Encode>(value: T, result_index: u8) -> Vec
 }
 
 fn version_index(version: u8) -> u8 {
-    match version.checked_sub(1) {
-        Some(index) => index,
-        None => 0,
-    }
+    version.saturating_sub(1)
 }
 
 #[cfg(test)]
@@ -374,10 +389,14 @@ mod tests {
     fn encode_versioned_err_payload_wraps_error_values() {
         let mut expected = vec![0u8, 1u8];
         9u32.encode_to(&mut expected);
-        assert_eq!(
-            encode_versioned_err_payload(TestVersioned::V1(9u32)),
-            expected
-        );
+        assert_eq!(encode_versioned_err_payload(9u32, 1), expected);
+    }
+
+    #[test]
+    fn encode_versioned_interrupt_payload_wraps_error_values() {
+        let mut expected = vec![1u8];
+        9u32.encode_to(&mut expected);
+        assert_eq!(encode_versioned_interrupt_payload(9u32, 2), expected);
     }
 
     /// IdFactory mints monotonically increasing ids prefixed with the

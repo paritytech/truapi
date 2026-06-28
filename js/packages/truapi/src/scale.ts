@@ -9,12 +9,12 @@ import {
   Bytes,
   Enum,
   Struct,
-  _void,
   createCodec,
   createDecoder,
   enhanceCodec,
-  str as scaleStr,
+  str,
   u8,
+  _void,
   type Codec,
 } from "scale-ts";
 import {
@@ -123,49 +123,23 @@ export function TaggedUnion<O extends TaggedUnionCodecs>(
   return Enum(inner) as unknown as Codec<TaggedUnionValue<O>>;
 }
 
-/**
- * Wire codec for Rust `CallError<D>`, projected to the public domain error `D`.
- *
- * Generated TypeScript APIs expose only the domain error union in
- * `ResultAsync<Ok, D>`. The Rust host still wraps that value in
- * `CallError::Domain` on the wire so framework errors can share the response
- * channel. Encoding always emits `Domain`; decoding returns the inner domain
- * value and throws for framework-level failures that have no public `D` shape.
- */
-export function CallError<D>(domain: Codec<D>): Codec<D> {
-  type WireCallError =
-    | { tag: "Domain"; value: D }
-    | { tag: "Denied"; value?: undefined }
-    | { tag: "Unsupported"; value?: undefined }
-    | { tag: "MalformedFrame"; value: { reason: string } }
-    | { tag: "HostFailure"; value: { reason: string } };
+/** Public TS value for Rust's derived `CallError<D>` enum. */
+export type CallErrorValue<D> =
+  | { tag: "Domain"; value: D }
+  | { tag: "Denied"; value?: undefined }
+  | { tag: "Unsupported"; value?: undefined }
+  | { tag: "MalformedFrame"; value: { reason: string } }
+  | { tag: "HostFailure"; value: { reason: string } };
 
-  const wire = Enum({
+/** SCALE codec for Rust's derived `CallError<D>` enum. */
+export function CallError<D>(domain: Codec<D>): Codec<CallErrorValue<D>> {
+  return TaggedUnion({
     Domain: domain,
     Denied: _void,
     Unsupported: _void,
-    MalformedFrame: Struct({ reason: scaleStr }),
-    HostFailure: Struct({ reason: scaleStr }),
-  }) as unknown as Codec<WireCallError>;
-
-  return enhanceCodec(
-    wire,
-    (value: D): WireCallError => ({ tag: "Domain", value }),
-    (value: WireCallError): D => {
-      switch (value.tag) {
-        case "Domain":
-          return value.value;
-        case "Denied":
-          throw new Error("Host denied the request");
-        case "Unsupported":
-          throw new Error("Host does not support this request");
-        case "MalformedFrame":
-          throw new Error(`Malformed request frame: ${value.value.reason}`);
-        case "HostFailure":
-          throw new Error(`Host failure: ${value.value.reason}`);
-      }
-    },
-  );
+    MalformedFrame: Struct({ reason: str }),
+    HostFailure: Struct({ reason: str }),
+  }) as Codec<CallErrorValue<D>>;
 }
 
 type TaggedUnionCodecs = {

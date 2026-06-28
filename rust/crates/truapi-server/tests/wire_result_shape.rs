@@ -21,9 +21,13 @@ use std::sync::Arc;
 
 use parity_scale_codec::{Decode, Encode};
 
-use truapi::v01;
+#[cfg(debug_assertions)]
+use truapi::v02;
 use truapi::versioned::system::HostFeatureSupportedRequest;
-use truapi::versioned::{account, payment, statement_store};
+#[cfg(debug_assertions)]
+use truapi::versioned::testing;
+use truapi::versioned::{Versioned, account, payment, statement_store};
+use truapi::{CallError, v01};
 
 use truapi_server::core::TrUApiCore;
 use truapi_server::frame::{Payload, ProtocolMessage, request_ids, subscription_ids};
@@ -63,8 +67,92 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
     let mut expected = vec![0x00u8, 0x00u8];
     v01::HostFeatureSupportedResponse { supported: true }.encode_to(&mut expected);
     assert_eq!(response.payload.value, expected);
-    assert_eq!(response.payload.value.get(0), Some(&0x00));
+    assert_eq!(response.payload.value.first(), Some(&0x00));
     assert_eq!(response.payload.value.get(1), Some(&0x00));
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn testing_probe_v1_request_gets_v1_response() {
+    let core = make_core();
+    let request = testing::TestingProbeRequest::V1(v01::TestingProbeRequest {
+        message: "hello V1".to_string(),
+    });
+    let ids = request_ids("testing_probe").expect("known request method");
+    let response = dispatch(
+        &core,
+        ProtocolMessage {
+            request_id: "p:testing-v1".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        },
+    );
+
+    let mut expected = vec![0x00u8, 0x00u8];
+    v01::TestingProbeResponse {
+        received_version: 1,
+        message: "hello V1".to_string(),
+    }
+    .encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn testing_probe_v2_request_gets_v2_response() {
+    let core = make_core();
+    let request = testing::TestingProbeRequest::V2(v02::TestingProbeRequest {
+        message: "hello V2".to_string(),
+        marker: 42,
+    });
+    let ids = request_ids("testing_probe").expect("known request method");
+    let response = dispatch(
+        &core,
+        ProtocolMessage {
+            request_id: "p:testing-v2".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        },
+    );
+
+    let mut expected = vec![0x01u8, 0x00u8];
+    v02::TestingProbeResponse {
+        received_version: 2,
+        message: "hello V2".to_string(),
+        marker: 42,
+    }
+    .encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn testing_framework_error_uses_framework_error_slot() {
+    let core = make_core();
+    let request = testing::TestingFrameworkErrorRequest::V1(v01::TestingFrameworkErrorRequest {
+        error: v01::TestingFrameworkError::HostFailure,
+    });
+    let ids = request_ids("testing_framework_error").expect("known request method");
+    let response = dispatch(
+        &core,
+        ProtocolMessage {
+            request_id: "p:testing-framework".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        },
+    );
+
+    let mut expected = vec![0x00u8, 0x01u8, 0x04u8];
+    "forced by testing.framework_error"
+        .to_string()
+        .encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
 }
 
 #[test]
@@ -87,58 +175,47 @@ fn local_storage_read_err_response_uses_err_discriminant() {
     assert_eq!(response.request_id, "p:2");
     assert_eq!(response.payload.id, ids.response_id);
 
-    // Wire payload: [V1 disc=0x00][Err disc=0x01][encoded error body].
+    // Wire payload:
+    // [V1 disc=0x00][Err disc=0x01][CallError::Domain][V1 error][encoded error body].
     let mut expected = vec![0x00u8, 0x01u8];
-    v01::HostLocalStorageReadError::Full.encode_to(&mut expected);
+    CallError::Domain(
+        truapi::versioned::local_storage::HostLocalStorageReadError::V1(
+            v01::HostLocalStorageReadError::Full,
+        ),
+    )
+    .encode_to(&mut expected);
     assert_eq!(response.payload.value, expected);
-    assert_eq!(response.payload.value.get(0), Some(&0x00));
+    assert_eq!(response.payload.value.first(), Some(&0x00));
     assert_eq!(response.payload.value.get(1), Some(&0x01));
 }
 
-fn versioned_result_err_payload<E: Encode>(error: E) -> Vec<u8> {
-    let encoded = error.encode();
-    let (version, body) = encoded
-        .split_first()
-        .expect("versioned errors always encode a version byte");
-    let mut expected = vec![*version, 0x01u8];
-    expected.extend_from_slice(body);
+fn versioned_result_err_payload<E>(error: E) -> Vec<u8>
+where
+    E: Clone + Encode + Versioned,
+{
+    let mut expected = vec![version_index(error.version()), 0x01u8];
+    CallError::Domain(error).encode_to(&mut expected);
     expected
 }
 
-fn assert_request_returns_versioned_error<E: Encode>(
-    core: &TrUApiCore,
-    request_id: &str,
-    method: &str,
-    value: Vec<u8>,
-    error: E,
-) {
-    let ids = request_ids(method).expect("known request method");
-    let response = dispatch(
-        core,
-        ProtocolMessage {
-            request_id: request_id.into(),
-            payload: Payload {
-                id: ids.request_id,
-                value,
-            },
-        },
-    );
-    assert_eq!(response.request_id, request_id);
-    assert_eq!(response.payload.id, ids.response_id);
-    assert_eq!(
-        response.payload.value,
-        versioned_result_err_payload(error),
-        "{method} must remain explicitly unavailable for current dotli parity"
-    );
+fn versioned_interrupt_err_payload<E>(error: E) -> Vec<u8>
+where
+    E: Clone + Encode + Versioned,
+{
+    let mut expected = vec![version_index(error.version())];
+    CallError::Domain(error).encode_to(&mut expected);
+    expected
 }
 
-fn assert_request_returns_domain_error<E: Encode>(
+fn assert_request_returns_domain_error<E>(
     core: &TrUApiCore,
     request_id: &str,
     method: &str,
     value: Vec<u8>,
     error: E,
-) {
+) where
+    E: Clone + Encode + Versioned,
+{
     let ids = request_ids(method).expect("known request method");
     let response = dispatch(
         core,
@@ -155,13 +232,15 @@ fn assert_request_returns_domain_error<E: Encode>(
     assert_eq!(response.payload.value, versioned_result_err_payload(error));
 }
 
-fn assert_subscription_start_interrupts_error<E: Encode>(
+fn assert_subscription_start_interrupts_error<E>(
     core: &TrUApiCore,
     request_id: &str,
     method: &str,
     value: Vec<u8>,
     error: E,
-) {
+) where
+    E: Clone + Encode + Versioned,
+{
     use std::sync::Mutex;
     use truapi_server::transport::Transport;
 
@@ -198,11 +277,18 @@ fn assert_subscription_start_interrupts_error<E: Encode>(
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].request_id, request_id);
     assert_eq!(sent[0].payload.id, ids.interrupt_id);
-    assert_eq!(sent[0].payload.value, error.encode());
+    assert_eq!(
+        sent[0].payload.value,
+        versioned_interrupt_err_payload(error)
+    );
+}
+
+fn version_index(version: u8) -> u8 {
+    version.saturating_sub(1)
 }
 
 #[test]
-fn deferred_account_proof_returns_unsupported() {
+fn deferred_account_proof_returns_framework_unsupported() {
     let core = make_core();
     let request = account::HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
         product_account_id: v01::ProductAccountId {
@@ -217,15 +303,20 @@ fn deferred_account_proof_returns_unsupported() {
         context: Vec::new(),
     });
 
-    assert_request_returns_versioned_error(
+    let ids = request_ids("account_create_account_proof").expect("known request method");
+    let response = dispatch(
         &core,
-        "p:account-proof",
-        "account_create_account_proof",
-        request.encode(),
-        account::HostAccountCreateProofError::V1(v01::HostAccountCreateProofError::Unknown {
-            reason: "unsupported".to_string(),
-        }),
+        ProtocolMessage {
+            request_id: "p:account-proof".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        },
     );
+    assert_eq!(response.request_id, "p:account-proof");
+    assert_eq!(response.payload.id, ids.response_id);
+    assert_eq!(response.payload.value, vec![0x00u8, 0x01u8, 0x02u8]);
 }
 
 #[test]

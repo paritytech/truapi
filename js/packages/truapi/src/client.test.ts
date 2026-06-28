@@ -2,7 +2,7 @@ import type { Result } from "neverthrow";
 import { describe, expect, it } from "bun:test";
 
 import { createTransport } from "./client.js";
-import { indexedTaggedUnion, Result as ScaleResult, str, _void } from "./scale.js";
+import { CallError, indexedTaggedUnion, Result as ScaleResult, str, _void } from "./scale.js";
 import { createClient, SubscriptionError } from "./generated/client.js";
 import * as T from "./generated/types.js";
 import * as W from "./generated/wire-table.js";
@@ -57,7 +57,7 @@ function providerFixture() {
 /** Encode a V1 host-handshake response result payload. */
 function handshakeResponsePayload(value: { success: true; value: undefined }): Uint8Array {
     return indexedTaggedUnion({
-        V1: [0, ScaleResult(_void, T.HostHandshakeError)],
+        V1: [0, ScaleResult(_void, CallError(T.VersionedHostHandshakeError))],
     }).enc({ tag: "V1", value });
 }
 
@@ -69,12 +69,25 @@ function accountGetResponsePayload(
           }
         | {
               success: false;
-              value: T.HostAccountGetError;
+              value: { tag: "Domain"; value: T.VersionedHostAccountGetError };
           },
 ): Uint8Array {
     return indexedTaggedUnion({
-        V1: [0, ScaleResult(T.HostAccountGetResponse, T.HostAccountGetError)],
+        V1: [0, ScaleResult(T.HostAccountGetResponse, CallError(T.VersionedHostAccountGetError))],
     }).enc({ tag: "V1", value });
+}
+
+/** Encode a V1 testing framework error response payload. */
+function testingFrameworkErrorPayload(reason: string): Uint8Array {
+    return indexedTaggedUnion({
+        V1: [0, ScaleResult(_void, CallError(T.VersionedTestingProbeError))],
+    }).enc({
+        tag: "V1",
+        value: {
+            success: false,
+            value: { tag: "HostFailure", value: { reason } },
+        },
+    });
 }
 
 describe("generated client transport", () => {
@@ -102,8 +115,29 @@ describe("generated client transport", () => {
         expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
 
         expect(toHex(fixture.sent[0])).toBe(toHex(expectedFrame));
-        expect(transport.truapiVersion).toBe(1);
-        expect(transport.codecVersion).toBe(1);
+    });
+
+    it("uses the latest generated request version for testing probes", () => {
+        const fixture = providerFixture();
+        const transport = createTransport(fixture.provider);
+        const client = createClient(transport);
+
+        const request = {
+            message: "hello from test",
+            marker: 42,
+        };
+        void client.testing.probe(request);
+
+        const expectedPayload = T.VersionedTestingProbeRequest.enc({
+            tag: "V2",
+            value: request,
+        });
+        const expectedFrame = new Uint8Array(str.enc("p:1").length + 1 + expectedPayload.length);
+        expectedFrame.set(str.enc("p:1"), 0);
+        expectedFrame[str.enc("p:1").length] = W.TESTING_PROBE.request;
+        expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
+
+        expect(toHex(fixture.sent[0])).toBe(toHex(expectedFrame));
     });
 
     it("uses the transport codec version for generated handshake calls", () => {
@@ -155,7 +189,7 @@ describe("generated client transport", () => {
         const response = client.account.getAccount({
             productAccountId: { dotNsIdentifier: "foo", derivationIndex: 0 },
         });
-        const reason = { tag: "NotConnected", value: undefined } as const;
+        const reason = { tag: "V1", value: { tag: "NotConnected", value: undefined } } as const;
         const frame = unwrap(
             encodeWireMessage({
                 requestId: "p:1",
@@ -163,7 +197,7 @@ describe("generated client transport", () => {
                     id: W.ACCOUNT_GET_ACCOUNT.response,
                     value: accountGetResponsePayload({
                         success: false,
-                        value: reason,
+                        value: { tag: "Domain", value: reason },
                     }),
                 },
             }),
@@ -173,7 +207,33 @@ describe("generated client transport", () => {
 
         const result = await response;
         expect(result.isErr()).toBe(true);
-        expect(result._unsafeUnwrapErr()).toEqual(reason);
+        expect(result._unsafeUnwrapErr()).toEqual({ tag: "Domain", value: reason });
+    });
+
+    it("returns framework call errors as typed Err values", async () => {
+        const fixture = providerFixture();
+        const transport = createTransport(fixture.provider);
+        const client = createClient(transport);
+
+        const response = client.testing.frameworkError({ error: "HostFailure" });
+        const frame = unwrap(
+            encodeWireMessage({
+                requestId: "p:1",
+                payload: {
+                    id: W.TESTING_FRAMEWORK_ERROR.response,
+                    value: testingFrameworkErrorPayload("forced by test"),
+                },
+            }),
+            "encode testing framework error response",
+        );
+        fixture.receive(frame);
+
+        const result = await response;
+        expect(result.isErr()).toBe(true);
+        expect(result._unsafeUnwrapErr()).toEqual({
+            tag: "HostFailure",
+            value: { reason: "forced by test" },
+        });
     });
 
     it("auto-responds to an inbound handshake with the versioned-result shape", () => {
@@ -272,15 +332,18 @@ describe("generated client transport", () => {
         });
 
         const reason = { tag: "PermissionDenied", value: undefined } as const;
+        const callError = {
+            tag: "Domain",
+            value: { tag: "V1", value: reason },
+        } as const;
         const frame = unwrap(
             encodeWireMessage({
                 requestId: sub.subscriptionId,
                 payload: {
                     id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
-                    value: T.VersionedHostPaymentBalanceSubscribeError.enc({
-                        tag: "V1",
-                        value: reason,
-                    }),
+                    value: indexedTaggedUnion({
+                        V1: [0, CallError(T.VersionedHostPaymentBalanceSubscribeError)],
+                    }).enc({ tag: "V1", value: callError }),
                 },
             }),
             "encode typed payment interrupt",
@@ -290,7 +353,7 @@ describe("generated client transport", () => {
         expect(completions).toEqual([]);
         expect(errors).toHaveLength(1);
         expect(errors[0]).toBeInstanceOf(SubscriptionError);
-        expect((errors[0] as SubscriptionError).reason).toEqual(reason);
+        expect((errors[0] as SubscriptionError).reason).toEqual(callError);
         expect(fixture.sent).toHaveLength(1);
     });
 
@@ -305,15 +368,18 @@ describe("generated client transport", () => {
             .subscribe({ error: (error) => errors.push(error) });
 
         const reason = "Denied";
+        const callError = {
+            tag: "Domain",
+            value: { tag: "V1", value: reason },
+        } as const;
         const frame = unwrap(
             encodeWireMessage({
                 requestId: sub.subscriptionId,
                 payload: {
                     id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
-                    value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
-                        tag: "V1",
-                        value: reason,
-                    }),
+                    value: indexedTaggedUnion({
+                        V1: [0, CallError(T.VersionedHostCoinPaymentRebalancePurseError)],
+                    }).enc({ tag: "V1", value: callError }),
                 },
             }),
             "encode typed coin payment interrupt",
@@ -322,7 +388,7 @@ describe("generated client transport", () => {
 
         expect(errors).toHaveLength(1);
         expect(errors[0]).toBeInstanceOf(SubscriptionError);
-        expect((errors[0] as SubscriptionError).reason).toEqual(reason);
+        expect((errors[0] as SubscriptionError).reason).toEqual(callError);
     });
 
     it("treats a malformed receive payload as terminal and sends _stop", () => {
