@@ -10,6 +10,48 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+fn quoted_strings_in_const_array(src: &str, const_name: &str) -> Vec<String> {
+    let marker = format!("export const {const_name} = [");
+    let start = src
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing {const_name}"));
+    let rest = &src[start + marker.len()..];
+    let end = rest
+        .find("] as const")
+        .unwrap_or_else(|| panic!("unterminated {const_name}"));
+    rest[..end]
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim().trim_end_matches(',');
+            trimmed
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+fn wasm_optional_callback_names(workspace: &Path) -> Vec<String> {
+    let src = fs::read_to_string(workspace.join("rust/crates/truapi-server/src/wasm/mod.rs"))
+        .expect("read wasm/mod.rs");
+    let mut names = src
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let start = line.find("get_optional_function(callbacks, \"")?;
+            let quoted = &line[start + "get_optional_function(callbacks, \"".len()..];
+            let end = quoted.find('"')?;
+            let name = &quoted[..end];
+            match name {
+                "chainConnect" | "dispose" => None,
+                _ => Some(name.to_string()),
+            }
+        })
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
 /// Run `cargo +nightly rustdoc -p truapi --output-format json` into the
 /// given `target_dir` and return the path to the produced JSON file.
 /// Panics with a clear message if nightly is unavailable so CI cannot
@@ -169,7 +211,9 @@ fn golden_host_callbacks_ts() {
             "--platform-input",
             platform_json.to_str().unwrap(),
             "--platform-ts-output",
-            tempdir.path().join("platform").to_str().unwrap(),
+            tempdir.path().join("host").to_str().unwrap(),
+            "--platform-wasm-adapter-output",
+            tempdir.path().join("wasm").to_str().unwrap(),
         ])
         .output()
         .expect("run truapi-codegen");
@@ -183,7 +227,7 @@ fn golden_host_callbacks_ts() {
     let golden_path = manifest_dir.join("tests/golden/host-callbacks.ts");
     let golden =
         fs::read_to_string(&golden_path).unwrap_or_else(|e| panic!("read host-callbacks.ts: {e}"));
-    let actual = fs::read_to_string(tempdir.path().join("platform/host-callbacks.ts"))
+    let actual = fs::read_to_string(tempdir.path().join("host/host-callbacks.ts"))
         .expect("read generated host-callbacks.ts");
     if golden != actual {
         let dump = manifest_dir.join("tests/golden/host-callbacks.ts.actual");
@@ -195,9 +239,8 @@ fn golden_host_callbacks_ts() {
     }
 
     let adapter_golden_path = manifest_dir.join("tests/golden/host-callbacks-adapter.ts");
-    let adapter_actual =
-        fs::read_to_string(tempdir.path().join("platform/host-callbacks-adapter.ts"))
-            .expect("read generated host-callbacks-adapter.ts");
+    let adapter_actual = fs::read_to_string(tempdir.path().join("wasm/host-callbacks-adapter.ts"))
+        .expect("read generated host-callbacks-adapter.ts");
     let adapter_golden = fs::read_to_string(&adapter_golden_path).unwrap_or_default();
     if adapter_golden != adapter_actual {
         let dump = manifest_dir.join("tests/golden/host-callbacks-adapter.ts.actual");
@@ -207,4 +250,30 @@ fn golden_host_callbacks_ts() {
             dump.display()
         );
     }
+
+    let worker_golden_path = manifest_dir.join("tests/golden/worker-callbacks.ts");
+    let worker_actual = fs::read_to_string(tempdir.path().join("wasm/worker-callbacks.ts"))
+        .expect("read generated worker-callbacks.ts");
+    let worker_golden = fs::read_to_string(&worker_golden_path).unwrap_or_default();
+    if worker_golden != worker_actual {
+        let dump = manifest_dir.join("tests/golden/worker-callbacks.ts.actual");
+        let _ = fs::write(&dump, &worker_actual);
+        panic!(
+            "golden mismatch for worker-callbacks.ts; wrote actual to {}",
+            dump.display()
+        );
+    }
+
+    let mut generated_optional =
+        quoted_strings_in_const_array(&worker_actual, "OPTIONAL_CALLBACK_NAMES");
+    generated_optional.extend(quoted_strings_in_const_array(
+        &worker_actual,
+        "SUBSCRIPTION_NAMES",
+    ));
+    generated_optional.sort();
+    assert_eq!(
+        generated_optional,
+        wasm_optional_callback_names(&workspace),
+        "generated worker optional/subscription callbacks must match JsBridge optional callbacks"
+    );
 }

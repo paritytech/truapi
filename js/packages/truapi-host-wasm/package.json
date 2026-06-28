@@ -36,14 +36,14 @@
   "scripts": {
     "build": "tsc -b",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "prepare": "npm run build",
-    "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && node --test \"$f\" || exit 1; done"
+    "test": "bun test"
   },
   "dependencies": {
-    "@parity/truapi": "file:../truapi",
-    "@parity/truapi-host": "file:../truapi-host"
+    "@parity/truapi": "file:../truapi"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "neverthrow": "^8.2.0",
     "typescript": "^5.7"
   }
 }

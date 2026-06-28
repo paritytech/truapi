@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 use futures::stream::BoxStream;
+use parity_scale_codec::{Decode, Encode};
 
 use truapi::v01::{
     GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
@@ -46,8 +47,8 @@ pub struct RuntimeConfig {
     pub platform_version: Option<String>,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
-    /// Deeplink scheme used in pairing QR payloads.
-    pub pairing_deeplink_scheme: PairingDeeplinkScheme,
+    /// Deeplink URI scheme used in pairing QR payloads, without `://`.
+    pub pairing_deeplink_scheme: String,
 }
 
 impl RuntimeConfig {
@@ -62,7 +63,7 @@ impl RuntimeConfig {
         platform_type: Option<String>,
         platform_version: Option<String>,
         people_chain_genesis_hash: [u8; 32],
-        pairing_deeplink_scheme: PairingDeeplinkScheme,
+        pairing_deeplink_scheme: String,
     ) -> Result<Self, RuntimeConfigValidationError> {
         let config = Self {
             product_id,
@@ -81,6 +82,12 @@ impl RuntimeConfig {
     fn validate(&self) -> Result<(), RuntimeConfigValidationError> {
         require_non_empty("product_id", &self.product_id)?;
         require_non_empty("host_name", &self.host_name)?;
+        require_non_empty("pairing_deeplink_scheme", &self.pairing_deeplink_scheme)?;
+        if self.pairing_deeplink_scheme.contains("://") {
+            return Err(RuntimeConfigValidationError::InvalidDeeplinkScheme {
+                scheme: self.pairing_deeplink_scheme.clone(),
+            });
+        }
         if let Some(icon) = &self.host_icon {
             let parsed =
                 Url::parse(icon).map_err(|err| RuntimeConfigValidationError::InvalidHostIcon {
@@ -121,6 +128,11 @@ pub enum RuntimeConfigValidationError {
         /// Actual URL scheme.
         scheme: String,
     },
+    /// Pairing deeplink scheme included a URL separator.
+    InvalidDeeplinkScheme {
+        /// Actual deeplink scheme value.
+        scheme: String,
+    },
 }
 
 impl std::fmt::Display for RuntimeConfigValidationError {
@@ -135,24 +147,21 @@ impl std::fmt::Display for RuntimeConfigValidationError {
             RuntimeConfigValidationError::InsecureHostIcon { scheme } => {
                 write!(f, "host_icon must use https scheme, got {scheme:?}")
             }
+            RuntimeConfigValidationError::InvalidDeeplinkScheme { scheme } => {
+                write!(
+                    f,
+                    "pairing_deeplink_scheme must not include ://, got {scheme:?}"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for RuntimeConfigValidationError {}
 
-/// SSO wallet deeplink scheme.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PairingDeeplinkScheme {
-    /// Production Polkadot app.
-    PolkadotApp,
-    /// Development Polkadot app.
-    PolkadotAppDev,
-}
-
-/// Scoped key-value storage. The platform namespaces keys so different products
-/// cannot read each other's data.
-pub trait Storage: Send + Sync {
+/// Product-scoped key-value storage. The platform namespaces keys so different
+/// products cannot read each other's data.
+pub trait ProductStorage: Send + Sync {
     /// Read a value by key.
     fn read(
         &self,
@@ -198,7 +207,10 @@ pub trait Notifications: Send + Sync {
     fn cancel_notification(
         &self,
         id: NotificationId,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+    ) -> impl Future<Output = Result<(), GenericError>> + Send {
+        let _ = id;
+        async { Ok(()) }
+    }
 }
 
 /// Permission prompts. v0.1 keeps device permissions (camera, mic, NFC, ...)
@@ -216,6 +228,61 @@ pub trait Permissions: Send + Sync {
         &self,
         request: RemotePermissionRequest,
     ) -> impl Future<Output = Result<RemotePermissionResponse, GenericError>> + Send;
+}
+
+/// Permission request whose authorization status can be inspected or updated
+/// by host administration UI.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum PermissionAuthorizationRequest {
+    /// Device-level permission such as camera, microphone, or location.
+    Device(HostDevicePermissionRequest),
+    /// Remote/product-scoped permission such as chain submit or HTTP access.
+    Remote(RemotePermissionRequest),
+}
+
+/// Authorization status for a permission request.
+///
+/// `NotDetermined` means the core has no persisted answer and will prompt the
+/// host the next time the product requests this permission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum PermissionAuthorizationStatus {
+    /// No persisted authorization exists.
+    NotDetermined,
+    /// Access is denied.
+    Denied,
+    /// Access is authorized.
+    Authorized,
+}
+
+/// Core-owned administration API exposed to host UI.
+///
+/// Hosts call this surface to drive global runtime actions or inspect/update
+/// core-owned state without going through a product-scoped TrUAPI request.
+pub trait CoreAdmin: Send + Sync {
+    /// Best-effort logout/disconnect. Clears the active session and emits the
+    /// resulting auth state transition.
+    fn disconnect_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
+
+    /// Cancel any in-flight pairing request.
+    fn cancel_pairing(&self);
+
+    /// Notify the core that the host-global auth session slot may have
+    /// changed. The core re-reads storage and emits any resulting auth state.
+    fn notify_session_store_changed(&self);
+
+    /// Read a stored permission authorization status without prompting.
+    fn get_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+    ) -> impl Future<Output = Result<PermissionAuthorizationStatus, GenericError>> + Send;
+
+    /// Update a stored permission authorization status. `NotDetermined` clears
+    /// the stored value so the next product request prompts again.
+    fn set_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+        status: PermissionAuthorizationStatus,
+    ) -> impl Future<Output = Result<(), GenericError>> + Send;
 }
 
 /// Feature-support probing. The host answers whether it can service a given
@@ -250,8 +317,45 @@ pub trait JsonRpcConnection: Send + Sync {
     fn responses(&self) -> BoxStream<'static, String>;
 }
 
+/// Core-owned host-private storage slots. Products never address these slots;
+/// the host chooses the backing store for each slot.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum CoreStorageKey {
+    /// Opaque SSO/auth session blob.
+    AuthSession,
+    /// Pairing device identity used during SSO flows.
+    PairingDeviceIdentity,
+    /// Persisted authorization for a canonical core permission key.
+    PermissionAuthorization {
+        /// Core-generated permission storage key.
+        storage_key: String,
+    },
+}
+
+/// Host-private persistence for core-owned state.
+pub trait CoreStorage: Send + Sync {
+    /// Read a core-owned value by typed slot.
+    fn read_core_storage(
+        &self,
+        key: CoreStorageKey,
+    ) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;
+
+    /// Write a core-owned value by typed slot.
+    fn write_core_storage(
+        &self,
+        key: CoreStorageKey,
+        value: Vec<u8>,
+    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+
+    /// Clear a core-owned value by typed slot.
+    fn clear_core_storage(
+        &self,
+        key: CoreStorageKey,
+    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+}
+
 /// Decoded session fields a host shell needs to render account UI without
-/// parsing the opaque session blob the core persists through [`SessionStore`].
+/// parsing the opaque session blob the core persists through [`CoreStorage`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionUiInfo {
     /// 32-byte sr25519 root public key of the active session.
@@ -298,56 +402,77 @@ pub trait AuthPresenter: Send + Sync {
     }
 }
 
-/// Host-global opaque session persistence for core-owned SSO state.
-pub trait SessionStore: Send + Sync {
-    /// Read the currently persisted core session blob.
-    fn read_session(&self) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;
+/// Review shown before a sign-payload request is sent to the paired wallet.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum SignPayloadReview {
+    /// Product-account signing request.
+    Product(v01::HostSignPayloadRequest),
+    /// Legacy-account signing request.
+    LegacyAccount(v01::HostSignPayloadWithLegacyAccountRequest),
+}
 
-    /// Persist the core session blob.
-    fn write_session(
-        &self,
-        value: Vec<u8>,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+/// Review shown before a sign-raw request is sent to the paired wallet.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum SignRawReview {
+    /// Product-account raw signing request.
+    Product(v01::HostSignRawRequest),
+    /// Legacy-account raw signing request.
+    LegacyAccount(v01::HostSignRawWithLegacyAccountRequest),
+}
 
-    /// Clear the persisted core session blob.
-    fn clear_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
+/// Review shown before a transaction-creation request is sent to the paired wallet.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum CreateTransactionReview {
+    /// Product-account transaction request.
+    Product(v01::ProductAccountTxPayload),
+    /// Legacy-account transaction request.
+    LegacyAccount(v01::LegacyAccountTxPayload),
+}
 
-    /// Emit once immediately, then on future local/cross-runtime changes.
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), GenericError>>;
+/// Review shown before a product asks to alias another product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct AccountAliasReview {
+    /// Product currently handling the request.
+    pub requesting_product_id: String,
+    /// Product whose account is being requested.
+    pub target_product_id: String,
+}
+
+/// Review shown before a preimage is submitted.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct PreimageSubmitReview {
+    /// Size of the preimage in bytes.
+    pub size: u64,
+}
+
+/// Review shown before a user-confirmed core action continues.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum UserConfirmationReview {
+    /// Sign a SCALE payload with a product or legacy account.
+    SignPayload(SignPayloadReview),
+    /// Sign raw bytes with a product or legacy account.
+    SignRaw(SignRawReview),
+    /// Create a transaction with a product or legacy account.
+    CreateTransaction(CreateTransactionReview),
+    /// Allow a product to request another product account alias.
+    AccountAlias(AccountAliasReview),
+    /// Allocate resources for the requesting product.
+    ResourceAllocation(v01::HostRequestResourceAllocationRequest),
+    /// Submit a preimage to the host-selected backend.
+    PreimageSubmit(PreimageSubmitReview),
 }
 
 /// Local user confirmation UI for session-channel operations.
 pub trait UserConfirmation: Send + Sync {
-    /// Confirm a sign-payload request before the core asks the SSO peer.
-    fn confirm_sign_payload(
+    /// Confirm a reviewed action before the core asks the SSO peer.
+    fn confirm_user_action(
         &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
-
-    /// Confirm a sign-raw request before the core asks the SSO peer.
-    fn confirm_sign_raw(
-        &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
-
-    /// Confirm a create-transaction request before the core asks the SSO peer.
-    fn confirm_create_transaction(
-        &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
-
-    /// Confirm a cross-domain account-alias request before the core asks the
-    /// SSO peer.
-    fn confirm_account_alias(
-        &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
-
-    /// Confirm resource allocation before the core asks the SSO peer.
-    fn confirm_resource_allocation(
-        &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
+        review: UserConfirmationReview,
+    ) -> impl Future<Output = Result<bool, GenericError>> + Send {
+        let _ = review;
+        async { Ok(false) }
+    }
 }
 
 /// Host theme source.
@@ -359,17 +484,18 @@ pub trait ThemeHost: Send + Sync {
 /// Host preimage backend. The core owns wire mapping and subscription
 /// lifecycle; the host owns the selected backend.
 pub trait PreimageHost: Send + Sync {
-    /// Prompt before submitting a preimage.
-    fn confirm_preimage_submit(
-        &self,
-        size: u64,
-    ) -> impl Future<Output = Result<(), PreimageSubmitError>> + Send;
-
     /// Submit the preimage and return its key.
     fn submit_preimage(
         &self,
         value: Vec<u8>,
-    ) -> impl Future<Output = Result<Vec<u8>, PreimageSubmitError>> + Send;
+    ) -> impl Future<Output = Result<Vec<u8>, PreimageSubmitError>> + Send {
+        let _ = value;
+        async {
+            Err(PreimageSubmitError::Unknown {
+                reason: "submitPreimage callback not provided by host".to_string(),
+            })
+        }
+    }
 
     /// Emits current value/miss immediately, then future updates.
     fn lookup_preimage(
@@ -384,10 +510,10 @@ pub trait Platform:
     + Notifications
     + Permissions
     + Features
-    + Storage
+    + ProductStorage
+    + CoreStorage
     + ChainProvider
     + AuthPresenter
-    + SessionStore
     + UserConfirmation
     + ThemeHost
     + PreimageHost
@@ -399,10 +525,10 @@ impl<T> Platform for T where
         + Notifications
         + Permissions
         + Features
-        + Storage
+        + ProductStorage
+        + CoreStorage
         + ChainProvider
         + AuthPresenter
-        + SessionStore
         + UserConfirmation
         + ThemeHost
         + PreimageHost

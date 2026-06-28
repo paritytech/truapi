@@ -25,10 +25,7 @@ struct Cli {
     /// TrUAPI protocol version the **client** package is built against.
     ///
     /// Only affects the `@parity/truapi` client surface (and the playground
-    /// and client-examples derived from it). The `@parity/truapi-host`
-    /// output always covers every wire version a wrapper has shipped: a
-    /// host must be able to dispatch frames from any client version it has
-    /// shipped to.
+    /// and client-examples derived from it).
     ///
     /// Defaults to the highest version any versioned wrapper in the Rust
     /// trait surface exposes, so an unconfigured run produces a client
@@ -49,10 +46,6 @@ struct Cli {
     #[arg(long)]
     client_examples_output: Option<String>,
 
-    /// Output directory for the generated `@parity/truapi-host` TypeScript surface (optional).
-    #[arg(long)]
-    host_output: Option<String>,
-
     /// Output directory for the generated Rust dispatcher / wire-table (optional).
     ///
     /// When set, emits `dispatcher.rs` and `wire_table.rs` for the
@@ -64,8 +57,7 @@ struct Cli {
     ///
     /// When provided together with `--platform-ts-output`, walks the
     /// platform crate's capability traits and emits the typed TS
-    /// `HostCallbacks` surface so all host implementations (TS, Kotlin via
-    /// UniFFI, Swift via UniFFI) track the same Rust source.
+    /// `HostCallbacks` surface plus the WASM raw callback adapter.
     #[arg(long)]
     platform_input: Option<String>,
 
@@ -73,6 +65,12 @@ struct Cli {
     /// surface (optional). Only honored when `--platform-input` is also set.
     #[arg(long)]
     platform_ts_output: Option<String>,
+
+    /// Output directory for the generated WASM host-callback adapter
+    /// (optional). Only honored when `--platform-input` and
+    /// `--platform-ts-output` are also set. Defaults to `--platform-ts-output`.
+    #[arg(long)]
+    platform_wasm_adapter_output: Option<String>,
 
     /// Output directory for generated explorer metadata (optional). When set,
     /// writes `codegen/types.ts` with the DataType list consumed by the
@@ -142,10 +140,6 @@ fn main() -> Result<()> {
             .with_context(|| format!("writing client examples to {path}"))?;
         println!("Generated client examples in {path}");
     }
-    if let Some(path) = &cli.host_output {
-        ts::generate_host(&api, path).with_context(|| format!("writing host package to {path}"))?;
-        println!("Generated host package in {path}");
-    }
     if let Some(path) = &cli.rust_output {
         rust::generate(&api, path)
             .with_context(|| format!("writing Rust dispatcher to {}", path.display()))?;
@@ -158,19 +152,27 @@ fn main() -> Result<()> {
             rustdoc::parse(&json).with_context(|| format!("parsing platform rustdoc {input}"))?;
         let definition = platform::extract(&krate)
             .with_context(|| format!("extracting platform definition from {input}"))?;
-        // Types that carry a SCALE codec on the TS client (structs and enums);
-        // primitive aliases like `NotificationId` do not and pass through.
         let codec_types = api
             .types
             .iter()
             .filter(|t| !matches!(t.kind, rustdoc::TypeDefKind::Alias(_)))
             .map(|t| t.name.clone())
             .collect();
-        ts::generate_host_callbacks(&definition, &codec_types, output)
+        let adapter_output = cli
+            .platform_wasm_adapter_output
+            .as_deref()
+            .unwrap_or(output.as_str());
+        ts::generate_host_callbacks(&definition, &codec_types, output, adapter_output)
             .with_context(|| format!("writing host callbacks TS to {output}"))?;
         println!("Generated typed HostCallbacks TS surface in {output}");
-    } else if cli.platform_input.is_some() != cli.platform_ts_output.is_some() {
-        anyhow::bail!("--platform-input and --platform-ts-output must be provided together");
+        println!("Generated WASM HostCallbacks adapter in {adapter_output}");
+    } else if cli.platform_input.is_some() != cli.platform_ts_output.is_some()
+        || cli.platform_wasm_adapter_output.is_some()
+    {
+        anyhow::bail!(
+            "--platform-input and --platform-ts-output must be provided together; \
+             --platform-wasm-adapter-output additionally requires both"
+        );
     }
     if let Some(path) = &cli.explorer_output {
         ts::generate_explorer(&api, path, client_version)

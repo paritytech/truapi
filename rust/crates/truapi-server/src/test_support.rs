@@ -17,7 +17,6 @@ use crate::subscription::Spawner;
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
-use futures::StreamExt;
 use futures::stream::{self, BoxStream};
 use hkdf::Hkdf;
 use p256::PublicKey as P256PublicKey;
@@ -32,10 +31,11 @@ use truapi::versioned::account::HostAccountGetAliasRequest;
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    AuthPresenter, AuthState, ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
-    Navigation as PlatformNavigation, Notifications as PlatformNotifications,
-    Permissions as PlatformPermissions, PreimageHost, RuntimeConfig, SessionStore,
-    Storage as PlatformStorage, ThemeHost, UserConfirmation,
+    AuthPresenter, AuthState, ChainProvider, CoreStorage as PlatformCoreStorage, CoreStorageKey,
+    Features as PlatformFeatures, JsonRpcConnection, Navigation as PlatformNavigation,
+    Notifications as PlatformNotifications, Permissions as PlatformPermissions, PreimageHost,
+    ProductStorage as PlatformProductStorage, RuntimeConfig, ThemeHost, UserConfirmation,
+    UserConfirmationReview,
 };
 
 pub(crate) fn test_spawner() -> Spawner {
@@ -49,6 +49,7 @@ pub(crate) fn test_spawner() -> Spawner {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn immediate_spawner() -> Spawner {
     Arc::new(futures::executor::block_on)
 }
@@ -99,19 +100,9 @@ pub(crate) struct StubPlatform {
     pub(crate) chain_connect_error: Option<&'static str>,
     pub(crate) chain_connect_pending: bool,
     pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
-    /// When set, `Storage::read` fails with this reason.
+    /// When set, product/core storage reads fail with this reason.
     pub(crate) local_storage_error: Option<&'static str>,
-    /// When set, `clear_session` notifies the session-store subscription
-    /// through this sender, mimicking native hosts.
-    pub(crate) session_store_tick_tx:
-        Option<futures::channel::mpsc::UnboundedSender<SessionStoreTick>>,
-    /// When set, `subscribe_session_store` yields this channel instead of
-    /// the default single tick.
-    pub(crate) session_store_ticks:
-        Arc<Mutex<Option<futures::channel::mpsc::UnboundedReceiver<SessionStoreTick>>>>,
 }
-
-pub(crate) type SessionStoreTick = Result<(), v01::GenericError>;
 
 impl Default for StubPlatform {
     fn default() -> Self {
@@ -145,8 +136,6 @@ impl Default for StubPlatform {
             chain_connect_pending: false,
             local_storage: Arc::new(Mutex::new(std::collections::HashMap::new())),
             local_storage_error: None,
-            session_store_tick_tx: None,
-            session_store_ticks: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -184,7 +173,7 @@ pub(crate) fn runtime_config(product_id: &str) -> RuntimeConfig {
         platform_type: None,
         platform_version: None,
         people_chain_genesis_hash: [0; 32],
-        pairing_deeplink_scheme: truapi_platform::PairingDeeplinkScheme::PolkadotApp,
+        pairing_deeplink_scheme: "polkadotapp".to_string(),
     }
 }
 
@@ -369,6 +358,34 @@ pub(crate) fn sso_peer_disconnect_responses(
                     ],
                 },
                 2,
+            )],
+        ),
+    ]
+}
+
+pub(crate) fn sso_peer_disconnect_monitor_responses(
+    session: &crate::host_logic::session::SessionInfo,
+) -> Vec<String> {
+    let subscription_id = "peer-disconnect-monitor-sub";
+    vec![
+        subscribe_ack_frame("truapi:sso-peer-disconnect-monitor", subscription_id),
+        new_statements_frame(
+            subscription_id,
+            vec![sso_statement(
+                session,
+                crate::host_logic::sso_pairing::SsoStatementData::Request {
+                    request_id: "wallet-disconnect-monitor".to_string(),
+                    data: vec![
+                        crate::host_logic::sso_messages::RemoteMessage {
+                            message_id: "wallet-disconnect-monitor".to_string(),
+                            data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                                crate::host_logic::sso_messages::RemoteMessageV1::Disconnected,
+                            ),
+                        }
+                        .encode(),
+                    ],
+                },
+                1,
             )],
         ),
     ]
@@ -598,7 +615,7 @@ pub(crate) fn signed_statement(topic: [u8; 32]) -> v01::SignedStatement {
     }
 }
 
-impl PlatformStorage for StubPlatform {
+impl PlatformProductStorage for StubPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         if let Some(reason) = self.local_storage_error {
             return Err(v01::HostLocalStorageReadError::Unknown {
@@ -617,6 +634,11 @@ impl PlatformStorage for StubPlatform {
         key: String,
         value: Vec<u8>,
     ) -> Result<(), v01::HostLocalStorageReadError> {
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::HostLocalStorageReadError::Unknown {
+                reason: reason.to_string(),
+            });
+        }
         self.local_storage
             .lock()
             .expect("local storage mutex poisoned")
@@ -624,11 +646,97 @@ impl PlatformStorage for StubPlatform {
         Ok(())
     }
     async fn clear(&self, key: String) -> Result<(), v01::HostLocalStorageReadError> {
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::HostLocalStorageReadError::Unknown {
+                reason: reason.to_string(),
+            });
+        }
         self.local_storage
             .lock()
             .expect("local storage mutex poisoned")
             .remove(&key);
         Ok(())
+    }
+}
+
+impl PlatformCoreStorage for StubPlatform {
+    async fn read_core_storage(
+        &self,
+        key: CoreStorageKey,
+    ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        if let CoreStorageKey::AuthSession = key {
+            if let Some(reason) = self.session_error {
+                return Err(v01::GenericError {
+                    reason: reason.to_string(),
+                });
+            }
+            return Ok(self.session_blob.clone());
+        }
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::GenericError {
+                reason: reason.to_string(),
+            });
+        }
+        Ok(self
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .get(&core_storage_test_key(key))
+            .cloned())
+    }
+
+    async fn write_core_storage(
+        &self,
+        key: CoreStorageKey,
+        value: Vec<u8>,
+    ) -> Result<(), v01::GenericError> {
+        if let CoreStorageKey::AuthSession = key {
+            self.session_writes
+                .lock()
+                .expect("session write list mutex poisoned")
+                .push(value);
+            return Ok(());
+        }
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::GenericError {
+                reason: reason.to_string(),
+            });
+        }
+        self.local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(core_storage_test_key(key), value);
+        Ok(())
+    }
+
+    async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), v01::GenericError> {
+        if let CoreStorageKey::AuthSession = key {
+            *self
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned") += 1;
+            return Ok(());
+        }
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::GenericError {
+                reason: reason.to_string(),
+            });
+        }
+        self.local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .remove(&core_storage_test_key(key));
+        Ok(())
+    }
+}
+
+pub(crate) fn core_storage_test_key(key: CoreStorageKey) -> String {
+    match key {
+        CoreStorageKey::AuthSession => "core:auth-session".to_string(),
+        CoreStorageKey::PairingDeviceIdentity => "core:pairing-device-identity".to_string(),
+        CoreStorageKey::PermissionAuthorization { storage_key } => {
+            format!("core:permission:{storage_key}")
+        }
     }
 }
 
@@ -837,97 +945,35 @@ impl AuthPresenter for StubPlatform {
     }
 }
 
-impl SessionStore for StubPlatform {
-    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-        if let Some(reason) = self.session_error {
-            Err(v01::GenericError {
-                reason: reason.to_string(),
-            })
-        } else {
-            Ok(self.session_blob.clone())
-        }
-    }
-    async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
-        self.session_writes
-            .lock()
-            .expect("session write list mutex poisoned")
-            .push(value);
-        Ok(())
-    }
-    async fn clear_session(&self) -> Result<(), v01::GenericError> {
-        *self
-            .session_clears
-            .lock()
-            .expect("session clear counter mutex poisoned") += 1;
-        if let Some(sender) = &self.session_store_tick_tx {
-            let _ = sender.unbounded_send(Ok(()));
-        }
-        Ok(())
-    }
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-        if let Some(ticks) = self
-            .session_store_ticks
-            .lock()
-            .expect("session tick receiver mutex poisoned")
-            .take()
-        {
-            return ticks.boxed();
-        }
-        Box::pin(stream::once(async { Ok(()) }))
-    }
-}
-
 impl UserConfirmation for StubPlatform {
-    async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        if let Some(reason) = self.sign_payload_error {
-            Err(v01::GenericError {
-                reason: reason.to_string(),
-            })
-        } else {
-            Ok(self.sign_payload_confirmed)
-        }
-    }
-    async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        if let Some(reason) = self.sign_raw_error {
-            Err(v01::GenericError {
-                reason: reason.to_string(),
-            })
-        } else {
-            Ok(self.sign_raw_confirmed)
-        }
-    }
-    async fn confirm_create_transaction(
+    async fn confirm_user_action(
         &self,
-        _review: Vec<u8>,
+        review: UserConfirmationReview,
     ) -> Result<bool, v01::GenericError> {
-        if let Some(reason) = self.create_transaction_error {
-            Err(v01::GenericError {
+        let (error, confirmed) = match review {
+            UserConfirmationReview::SignPayload(_) => {
+                (self.sign_payload_error, self.sign_payload_confirmed)
+            }
+            UserConfirmationReview::SignRaw(_) => (self.sign_raw_error, self.sign_raw_confirmed),
+            UserConfirmationReview::CreateTransaction(_) => (
+                self.create_transaction_error,
+                self.create_transaction_confirmed,
+            ),
+            UserConfirmationReview::AccountAlias(_) => {
+                (self.account_alias_error, self.account_alias_confirmed)
+            }
+            UserConfirmationReview::ResourceAllocation(_) => (
+                self.resource_allocation_error,
+                self.resource_allocation_confirmed,
+            ),
+            UserConfirmationReview::PreimageSubmit(_) => (None, true),
+        };
+        if let Some(reason) = error {
+            return Err(v01::GenericError {
                 reason: reason.to_string(),
-            })
-        } else {
-            Ok(self.create_transaction_confirmed)
+            });
         }
-    }
-    async fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        if let Some(reason) = self.account_alias_error {
-            Err(v01::GenericError {
-                reason: reason.to_string(),
-            })
-        } else {
-            Ok(self.account_alias_confirmed)
-        }
-    }
-    async fn confirm_resource_allocation(
-        &self,
-        _review: Vec<u8>,
-    ) -> Result<bool, v01::GenericError> {
-        if let Some(reason) = self.resource_allocation_error {
-            Err(v01::GenericError {
-                reason: reason.to_string(),
-            })
-        } else {
-            Ok(self.resource_allocation_confirmed)
-        }
+        Ok(confirmed)
     }
 }
 
@@ -938,9 +984,6 @@ impl ThemeHost for StubPlatform {
 }
 
 impl PreimageHost for StubPlatform {
-    async fn confirm_preimage_submit(&self, _size: u64) -> Result<(), v01::PreimageSubmitError> {
-        Ok(())
-    }
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         Ok(value)
     }

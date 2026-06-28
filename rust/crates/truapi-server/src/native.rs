@@ -16,17 +16,17 @@ use futures::executor::ThreadPool;
 use futures::future::BoxFuture;
 use futures::stream::{self, BoxStream, StreamExt};
 use futures::task::SpawnExt;
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
-use truapi_platform::PairingDeeplinkScheme as PlatformPairingDeeplinkScheme;
 use truapi_platform::{
-    AuthPresenter, ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
-    Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError, SessionStore, Storage,
-    ThemeHost, UserConfirmation,
+    AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, JsonRpcConnection,
+    Navigation, Notifications, PermissionAuthorizationRequest, PermissionAuthorizationStatus,
+    Permissions, PreimageHost, ProductStorage, RuntimeConfig, RuntimeConfigValidationError,
+    ThemeHost, UserConfirmation, UserConfirmationReview,
 };
 
-use crate::TrUApiCore;
+use crate::core::TrUApiCore;
 use crate::subscription::Spawner;
 #[cfg(feature = "ws-bridge")]
 use crate::ws_bridge::{BridgeLogger, WsBridge, WsBridgeEndpoint, WsBridgeStartError};
@@ -73,6 +73,12 @@ impl From<HostRejection> for v01::GenericError {
     fn from(err: HostRejection) -> Self {
         let HostRejection::Rejected { reason } = err;
         v01::GenericError { reason }
+    }
+}
+
+impl From<v01::GenericError> for HostRejection {
+    fn from(err: v01::GenericError) -> Self {
+        HostRejection::Rejected { reason: err.reason }
     }
 }
 
@@ -179,13 +185,42 @@ pub enum NativePairingDeeplinkScheme {
     PolkadotAppDev,
 }
 
-impl From<NativePairingDeeplinkScheme> for PlatformPairingDeeplinkScheme {
-    fn from(scheme: NativePairingDeeplinkScheme) -> Self {
-        match scheme {
-            NativePairingDeeplinkScheme::PolkadotApp => PlatformPairingDeeplinkScheme::PolkadotApp,
-            NativePairingDeeplinkScheme::PolkadotAppDev => {
-                PlatformPairingDeeplinkScheme::PolkadotAppDev
-            }
+impl NativePairingDeeplinkScheme {
+    fn as_str(self) -> &'static str {
+        match self {
+            NativePairingDeeplinkScheme::PolkadotApp => "polkadotapp",
+            NativePairingDeeplinkScheme::PolkadotAppDev => "polkadotappdev",
+        }
+    }
+}
+
+/// Native-friendly mirror of [`PermissionAuthorizationStatus`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum NativePermissionAuthorizationStatus {
+    /// No persisted authorization exists.
+    NotDetermined,
+    /// Access is denied.
+    Denied,
+    /// Access is authorized.
+    Authorized,
+}
+
+impl From<PermissionAuthorizationStatus> for NativePermissionAuthorizationStatus {
+    fn from(status: PermissionAuthorizationStatus) -> Self {
+        match status {
+            PermissionAuthorizationStatus::NotDetermined => Self::NotDetermined,
+            PermissionAuthorizationStatus::Denied => Self::Denied,
+            PermissionAuthorizationStatus::Authorized => Self::Authorized,
+        }
+    }
+}
+
+impl From<NativePermissionAuthorizationStatus> for PermissionAuthorizationStatus {
+    fn from(status: NativePermissionAuthorizationStatus) -> Self {
+        match status {
+            NativePermissionAuthorizationStatus::NotDetermined => Self::NotDetermined,
+            NativePermissionAuthorizationStatus::Denied => Self::Denied,
+            NativePermissionAuthorizationStatus::Authorized => Self::Authorized,
         }
     }
 }
@@ -238,6 +273,12 @@ pub enum NativeRuntimeConfigError {
         /// Actual URL scheme.
         scheme: String,
     },
+    /// Pairing deeplink scheme included a URL separator.
+    #[error("pairing_deeplink_scheme must not include ://, got {scheme:?}")]
+    InvalidDeeplinkScheme {
+        /// Actual deeplink scheme value.
+        scheme: String,
+    },
 }
 
 impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
@@ -258,7 +299,7 @@ impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
             config.platform_type,
             config.platform_version,
             people_chain_genesis_hash,
-            config.pairing_deeplink_scheme.into(),
+            config.pairing_deeplink_scheme.as_str().to_string(),
         )?)
     }
 }
@@ -274,6 +315,9 @@ impl From<RuntimeConfigValidationError> for NativeRuntimeConfigError {
             }
             RuntimeConfigValidationError::InsecureHostIcon { scheme } => {
                 Self::InsecureHostIcon { scheme }
+            }
+            RuntimeConfigValidationError::InvalidDeeplinkScheme { scheme } => {
+                Self::InvalidDeeplinkScheme { scheme }
             }
         }
     }
@@ -335,14 +379,17 @@ pub trait HostCallbacks: Send + Sync {
     /// `NativeTrUApiCore.cancel_login()`.
     fn auth_state_changed(&self, state: AuthState);
 
-    /// Read the opaque core-owned SSO session blob from host-global storage.
-    fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection>;
+    /// Read a core-owned host-private storage slot. `key` is a SCALE-encoded
+    /// [`CoreStorageKey`].
+    fn core_storage_read(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection>;
 
-    /// Persist the opaque core-owned SSO session blob in host-global storage.
-    fn write_session(&self, value: Vec<u8>) -> Result<(), HostRejection>;
+    /// Persist a core-owned host-private storage slot. `key` is a
+    /// SCALE-encoded [`CoreStorageKey`].
+    fn core_storage_write(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), HostRejection>;
 
-    /// Clear the persisted core-owned SSO session blob.
-    fn clear_session(&self) -> Result<(), HostRejection>;
+    /// Clear a core-owned host-private storage slot. `key` is a SCALE-encoded
+    /// [`CoreStorageKey`].
+    fn core_storage_clear(&self, key: Vec<u8>) -> Result<(), HostRejection>;
 
     /// Open a JSON-RPC connection for a chain. Return a host-assigned
     /// connection id, or `None` when unsupported.
@@ -354,28 +401,9 @@ pub trait HostCallbacks: Send + Sync {
     /// Close a previously opened chain connection.
     fn chain_close(&self, connection_id: u32) -> Result<(), HostRejection>;
 
-    /// Confirm a sign-payload request. `review` is a SCALE-encoded review
-    /// payload owned by the Rust core.
-    fn confirm_sign_payload(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
-
-    /// Confirm a sign-raw request. `review` is a SCALE-encoded review payload
-    /// owned by the Rust core.
-    fn confirm_sign_raw(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
-
-    /// Confirm a create-transaction request. `review` is a SCALE-encoded
-    /// review payload owned by the Rust core.
-    fn confirm_create_transaction(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
-
-    /// Confirm a cross-domain account-alias request. `review` is a
-    /// SCALE-encoded review payload owned by the Rust core.
-    fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
-
-    /// Confirm a resource-allocation request. `review` is a SCALE-encoded
-    /// review payload owned by the Rust core.
-    fn confirm_resource_allocation(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
-
-    /// Confirm preimage submission before the host stores it.
-    fn confirm_preimage_submit(&self, size: u64) -> Result<(), HostRejection>;
+    /// Confirm one user-reviewed core action. `review` is a SCALE-encoded
+    /// [`UserConfirmationReview`].
+    fn confirm_user_action(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
 
     /// Submit the preimage through the host backend and return its key.
     fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection>;
@@ -434,9 +462,9 @@ impl NativeTrUApiCore {
 
     /// Notify this core that host-global session storage changed outside a
     /// direct core write/clear. Native hosts call this after cross-process or
-    /// platform storage notifications so the core re-reads `SessionStore`.
+    /// platform storage notifications so the core re-reads `CoreStorage`.
     pub fn notify_session_store_changed(&self) {
-        self.events.notify_session_store_changed();
+        self.core.notify_session_store_changed();
     }
 
     /// Cancel any in-flight `request_login` pairing (e.g. the user dismissed
@@ -445,6 +473,34 @@ impl NativeTrUApiCore {
     /// when no login is in progress.
     pub fn cancel_login(&self) {
         self.core.cancel_login();
+    }
+
+    /// Read a stored permission authorization status without prompting.
+    /// `payload` is a SCALE-encoded `PermissionAuthorizationRequest`.
+    pub fn permission_authorization_status(
+        &self,
+        payload: Vec<u8>,
+    ) -> Result<NativePermissionAuthorizationStatus, HostRejection> {
+        let request = decode_permission_authorization_request(&payload)?;
+        let status =
+            futures::executor::block_on(self.core.permission_authorization_status(request))?;
+        Ok(status.into())
+    }
+
+    /// Update a stored permission authorization status. Passing
+    /// `.notDetermined` clears the stored value so the next product request
+    /// prompts again.
+    pub fn set_permission_authorization_status(
+        &self,
+        payload: Vec<u8>,
+        status: NativePermissionAuthorizationStatus,
+    ) -> Result<(), HostRejection> {
+        let request = decode_permission_authorization_request(&payload)?;
+        futures::executor::block_on(
+            self.core
+                .set_permission_authorization_status(request, status.into()),
+        )?;
+        Ok(())
     }
 
     /// Push a host theme update to active TrUAPI theme subscriptions.
@@ -478,6 +534,16 @@ impl NativeTrUApiCore {
 #[uniffi::export]
 pub fn set_log_level(level: String) {
     crate::logging::set_level_from_str(&level);
+}
+
+fn decode_permission_authorization_request(
+    payload: &[u8],
+) -> Result<PermissionAuthorizationRequest, HostRejection> {
+    PermissionAuthorizationRequest::decode(&mut &*payload).map_err(|err| {
+        HostRejection::Rejected {
+            reason: format!("permission authorization request did not decode: {err}"),
+        }
+    })
 }
 
 fn native_core_from_platform_config(
@@ -596,7 +662,6 @@ where
 
 #[derive(Default)]
 struct NativeEventBus {
-    session_store_ticks: Mutex<Vec<mpsc::UnboundedSender<Result<(), v01::GenericError>>>>,
     theme_changes: Mutex<Vec<mpsc::UnboundedSender<Result<v01::ThemeVariant, v01::GenericError>>>>,
     preimage_changes: Mutex<Vec<PreimageSubscription>>,
     chain_responses: Mutex<HashMap<u32, mpsc::UnboundedSender<String>>>,
@@ -608,22 +673,6 @@ struct PreimageSubscription {
 }
 
 impl NativeEventBus {
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-        let (tx, rx) = mpsc::unbounded();
-        self.session_store_ticks
-            .lock()
-            .expect("native session store subscribers mutex poisoned")
-            .push(tx);
-        stream::once(async { Ok(()) }).chain(rx).boxed()
-    }
-
-    fn notify_session_store_changed(&self) {
-        self.session_store_ticks
-            .lock()
-            .expect("native session store subscribers mutex poisoned")
-            .retain(|tx| tx.unbounded_send(Ok(())).is_ok());
-    }
-
     fn subscribe_theme(
         &self,
         current: Result<v01::ThemeVariant, v01::GenericError>,
@@ -787,7 +836,7 @@ impl Features for CallbackPlatform {
     }
 }
 
-impl Storage for CallbackPlatform {
+impl ProductStorage for CallbackPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         self.callbacks.local_storage_read(key).map_err(Into::into)
     }
@@ -804,6 +853,33 @@ impl Storage for CallbackPlatform {
 
     async fn clear(&self, key: String) -> Result<(), v01::HostLocalStorageReadError> {
         self.callbacks.local_storage_clear(key).map_err(Into::into)
+    }
+}
+
+impl CoreStorage for CallbackPlatform {
+    async fn read_core_storage(
+        &self,
+        key: CoreStorageKey,
+    ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        self.callbacks
+            .core_storage_read(key.encode())
+            .map_err(v01::GenericError::from)
+    }
+
+    async fn write_core_storage(
+        &self,
+        key: CoreStorageKey,
+        value: Vec<u8>,
+    ) -> Result<(), v01::GenericError> {
+        self.callbacks
+            .core_storage_write(key.encode(), value)
+            .map_err(v01::GenericError::from)
+    }
+
+    async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), v01::GenericError> {
+        self.callbacks
+            .core_storage_clear(key.encode())
+            .map_err(v01::GenericError::from)
     }
 }
 
@@ -893,89 +969,18 @@ impl AuthPresenter for CallbackPlatform {
     }
 }
 
-impl SessionStore for CallbackPlatform {
-    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-        self.callbacks
-            .read_session()
-            .map_err(v01::GenericError::from)
-    }
-
-    async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
-        self.callbacks
-            .write_session(value)
-            .map_err(v01::GenericError::from)?;
-        self.events.notify_session_store_changed();
-        Ok(())
-    }
-
-    async fn clear_session(&self) -> Result<(), v01::GenericError> {
-        self.callbacks
-            .clear_session()
-            .map_err(v01::GenericError::from)?;
-        self.events.notify_session_store_changed();
-        Ok(())
-    }
-
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-        self.events.subscribe_session_store()
-    }
-}
-
 impl UserConfirmation for CallbackPlatform {
-    async fn confirm_sign_payload(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        self.callbacks.on_core_log(
-            "truapi.native.callback.confirm_sign_payload".to_string(),
-            String::new(),
-        );
-        let callbacks = self.callbacks.clone();
-        run_blocking_callback(move || callbacks.confirm_sign_payload(review))
-            .await
-            .map_err(v01::GenericError::from)
-    }
-
-    async fn confirm_sign_raw(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        self.callbacks.on_core_log(
-            "truapi.native.callback.confirm_sign_raw".to_string(),
-            String::new(),
-        );
-        let callbacks = self.callbacks.clone();
-        run_blocking_callback(move || callbacks.confirm_sign_raw(review))
-            .await
-            .map_err(v01::GenericError::from)
-    }
-
-    async fn confirm_create_transaction(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        self.callbacks.on_core_log(
-            "truapi.native.callback.confirm_create_transaction".to_string(),
-            String::new(),
-        );
-        let callbacks = self.callbacks.clone();
-        run_blocking_callback(move || callbacks.confirm_create_transaction(review))
-            .await
-            .map_err(v01::GenericError::from)
-    }
-
-    async fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        self.callbacks.on_core_log(
-            "truapi.native.callback.confirm_account_alias".to_string(),
-            String::new(),
-        );
-        let callbacks = self.callbacks.clone();
-        run_blocking_callback(move || callbacks.confirm_account_alias(review))
-            .await
-            .map_err(v01::GenericError::from)
-    }
-
-    async fn confirm_resource_allocation(
+    async fn confirm_user_action(
         &self,
-        review: Vec<u8>,
+        review: UserConfirmationReview,
     ) -> Result<bool, v01::GenericError> {
         self.callbacks.on_core_log(
-            "truapi.native.callback.confirm_resource_allocation".to_string(),
+            "truapi.native.callback.confirm_user_action".to_string(),
             String::new(),
         );
         let callbacks = self.callbacks.clone();
-        run_blocking_callback(move || callbacks.confirm_resource_allocation(review))
+        let payload = review.encode();
+        run_blocking_callback(move || callbacks.confirm_user_action(payload))
             .await
             .map_err(v01::GenericError::from)
     }
@@ -993,15 +998,6 @@ impl ThemeHost for CallbackPlatform {
 }
 
 impl PreimageHost for CallbackPlatform {
-    async fn confirm_preimage_submit(&self, size: u64) -> Result<(), v01::PreimageSubmitError> {
-        let callbacks = self.callbacks.clone();
-        run_blocking_callback(move || callbacks.confirm_preimage_submit(size))
-            .await
-            .map_err(|err| v01::PreimageSubmitError::Unknown {
-                reason: err.to_string(),
-            })
-    }
-
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         let callbacks = self.callbacks.clone();
         run_blocking_callback(move || callbacks.submit_preimage(value))
@@ -1076,13 +1072,17 @@ mod tests {
                 .expect("auth state mutex poisoned")
                 .push(state);
         }
-        fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
+        fn core_storage_read(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
             Ok(None)
         }
-        fn write_session(&self, _value: Vec<u8>) -> Result<(), HostRejection> {
+        fn core_storage_write(
+            &self,
+            _key: Vec<u8>,
+            _value: Vec<u8>,
+        ) -> Result<(), HostRejection> {
             Ok(())
         }
-        fn clear_session(&self) -> Result<(), HostRejection> {
+        fn core_storage_clear(&self, _key: Vec<u8>) -> Result<(), HostRejection> {
             Ok(())
         }
         fn chain_connect(&self, genesis_hash: Vec<u8>) -> Result<Option<u32>, HostRejection> {
@@ -1106,23 +1106,8 @@ mod tests {
                 .push(connection_id);
             Ok(())
         }
-        fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+        fn confirm_user_action(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
             Ok(false)
-        }
-        fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-            Ok(false)
-        }
-        fn confirm_create_transaction(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-            Ok(false)
-        }
-        fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-            Ok(false)
-        }
-        fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-            Ok(false)
-        }
-        fn confirm_preimage_submit(&self, _size: u64) -> Result<(), HostRejection> {
-            Ok(())
         }
         fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection> {
             Ok(value)
@@ -1205,19 +1190,6 @@ mod tests {
                 AuthState::Disconnected,
             ]
         );
-    }
-
-    #[test]
-    fn native_session_store_subscription_emits_current_then_notified_ticks() {
-        let (_callbacks, events, platform) = event_platform();
-        let mut stream = platform.subscribe_session_store();
-
-        let first = futures::executor::block_on(stream.next()).unwrap();
-        events.notify_session_store_changed();
-        let second = futures::executor::block_on(stream.next()).unwrap();
-
-        assert!(first.is_ok());
-        assert!(second.is_ok());
     }
 
     #[test]
@@ -1402,13 +1374,17 @@ mod tests {
                 Ok(false)
             }
             fn auth_state_changed(&self, _state: AuthState) {}
-            fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
+            fn core_storage_read(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
                 Ok(None)
             }
-            fn write_session(&self, _value: Vec<u8>) -> Result<(), HostRejection> {
+            fn core_storage_write(
+                &self,
+                _key: Vec<u8>,
+                _value: Vec<u8>,
+            ) -> Result<(), HostRejection> {
                 Ok(())
             }
-            fn clear_session(&self) -> Result<(), HostRejection> {
+            fn core_storage_clear(&self, _key: Vec<u8>) -> Result<(), HostRejection> {
                 Ok(())
             }
             fn chain_connect(&self, _genesis_hash: Vec<u8>) -> Result<Option<u32>, HostRejection> {
@@ -1424,23 +1400,8 @@ mod tests {
             fn chain_close(&self, _connection_id: u32) -> Result<(), HostRejection> {
                 Ok(())
             }
-            fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+            fn confirm_user_action(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
-            }
-            fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_create_transaction(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_preimage_submit(&self, _size: u64) -> Result<(), HostRejection> {
-                Ok(())
             }
             fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection> {
                 Ok(value)
@@ -1506,7 +1467,6 @@ mod tests {
         use parity_scale_codec::Decode;
         use tokio_tungstenite::tungstenite::Message as WsMessage;
         use truapi::versioned::permissions::HostDevicePermissionRequest;
-        use truapi_platform::PairingDeeplinkScheme;
 
         use crate::frame::{Payload, ProtocolMessage, request_ids};
 
@@ -1541,13 +1501,17 @@ mod tests {
                 Ok(false)
             }
             fn auth_state_changed(&self, _state: AuthState) {}
-            fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
+            fn core_storage_read(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
                 Ok(None)
             }
-            fn write_session(&self, _value: Vec<u8>) -> Result<(), HostRejection> {
+            fn core_storage_write(
+                &self,
+                _key: Vec<u8>,
+                _value: Vec<u8>,
+            ) -> Result<(), HostRejection> {
                 Ok(())
             }
-            fn clear_session(&self) -> Result<(), HostRejection> {
+            fn core_storage_clear(&self, _key: Vec<u8>) -> Result<(), HostRejection> {
                 Ok(())
             }
             fn chain_connect(&self, _genesis_hash: Vec<u8>) -> Result<Option<u32>, HostRejection> {
@@ -1563,23 +1527,8 @@ mod tests {
             fn chain_close(&self, _connection_id: u32) -> Result<(), HostRejection> {
                 Ok(())
             }
-            fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+            fn confirm_user_action(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
-            }
-            fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_create_transaction(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_preimage_submit(&self, _size: u64) -> Result<(), HostRejection> {
-                Ok(())
             }
             fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection> {
                 Ok(value)
@@ -1629,7 +1578,7 @@ mod tests {
                 platform_type: None,
                 platform_version: None,
                 people_chain_genesis_hash: [0xa2; 32],
-                pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+                pairing_deeplink_scheme: "polkadotapp".to_string(),
             },
             crate::subscription::thread_per_subscription_spawner(),
         ));

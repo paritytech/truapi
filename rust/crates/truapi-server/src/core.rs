@@ -1,16 +1,7 @@
-//! `TrUApiCore`: the entrypoint a host wraps around a `truapi::api::TrUApi`
-//! implementation (direct path) or a `truapi_platform::Platform`
-//! implementation (platform path).
+//! Internal dispatcher/runtime core.
 //!
-//! Direct path: `TrUApiCore::new(host)` accepts anything implementing
-//! the unified [`truapi::api::TrUApi`] super-trait. Useful for unit tests
-//! and bespoke hosts.
-//!
-//! Platform path: [`TrUApiCore::from_platform_with_config`] takes a
-//! [`truapi_platform::Platform`] and wires it through
-//! [`crate::runtime::PlatformRuntimeHost`] before registering with the
-//! generated dispatcher. This is the path real platform shims (UniFFI,
-//! wasm-bindgen, ws-bridge, ...) take.
+//! Public host adapters should wrap this through [`crate::HostCore`], which
+//! owns the stable byte-frame ingress/egress and lifecycle API.
 
 use std::sync::{Arc, Mutex};
 
@@ -18,16 +9,36 @@ use futures::future::BoxFuture;
 use parity_scale_codec::{Decode, Encode};
 use tracing::instrument;
 use truapi::api::TrUApi;
+use truapi::v01;
 use truapi_platform::{Platform, RuntimeConfig};
 
+use crate::dispatcher::Dispatcher;
+use crate::frame::ProtocolMessage;
 use crate::generated::dispatcher;
 use crate::host_logic::session::SessionState;
+use crate::host_logic::session_store::SessionStoreChangeNotifier;
 use crate::runtime::PlatformRuntimeHost;
 use crate::subscription::Spawner;
-use crate::{Dispatcher, ProtocolMessage, Transport};
+use crate::transport::Transport;
+use truapi_platform::{PermissionAuthorizationRequest, PermissionAuthorizationStatus};
 
 type DisconnectFn = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
 type CancelLoginFn = Arc<dyn Fn() + Send + Sync>;
+type PermissionAuthorizationStatusFn = Arc<
+    dyn Fn(
+            PermissionAuthorizationRequest,
+        ) -> BoxFuture<'static, Result<PermissionAuthorizationStatus, v01::GenericError>>
+        + Send
+        + Sync,
+>;
+type SetPermissionAuthorizationStatusFn = Arc<
+    dyn Fn(
+            PermissionAuthorizationRequest,
+            PermissionAuthorizationStatus,
+        ) -> BoxFuture<'static, Result<(), v01::GenericError>>
+        + Send
+        + Sync,
+>;
 
 /// Top-level core. Owns the dispatcher and, on the platform path, the shared
 /// session-state holder.
@@ -36,8 +47,11 @@ pub struct TrUApiCore {
     /// Always present; empty for [`Self::new`] (direct host path), connected
     /// to a [`PlatformRuntimeHost`] for [`Self::from_platform_with_config`].
     session_state: Arc<SessionState>,
+    session_store_changes: Arc<SessionStoreChangeNotifier>,
     disconnect: DisconnectFn,
     cancel_login: CancelLoginFn,
+    permission_authorization_status: PermissionAuthorizationStatusFn,
+    set_permission_authorization_status: SetPermissionAuthorizationStatusFn,
 }
 
 impl TrUApiCore {
@@ -53,10 +67,12 @@ impl TrUApiCore {
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, host);
         let session_state = SessionState::new();
+        let session_store_changes = SessionStoreChangeNotifier::new();
         let disconnect_state = session_state.clone();
         Self {
             dispatcher,
             session_state,
+            session_store_changes,
             disconnect: Arc::new(move || {
                 let state = disconnect_state.clone();
                 Box::pin(async move {
@@ -64,6 +80,24 @@ impl TrUApiCore {
                 })
             }),
             cancel_login: Arc::new(|| {}),
+            permission_authorization_status: Arc::new(|_| {
+                Box::pin(async {
+                    Err(v01::GenericError {
+                        reason:
+                            "permission authorization is only available on platform-backed cores"
+                                .into(),
+                    })
+                })
+            }),
+            set_permission_authorization_status: Arc::new(|_, _| {
+                Box::pin(async {
+                    Err(v01::GenericError {
+                        reason:
+                            "permission authorization is only available on platform-backed cores"
+                                .into(),
+                    })
+                })
+            }),
         }
     }
 
@@ -85,13 +119,17 @@ impl TrUApiCore {
         ));
         runtime.start_session_store_sync(spawner.clone());
         let session_state = runtime.session_state();
+        let session_store_changes = runtime.session_store_changes();
         let disconnect_runtime = runtime.clone();
         let cancel_login_runtime = runtime.clone();
+        let permission_status_runtime = runtime.clone();
+        let set_permission_status_runtime = runtime.clone();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
         Self {
             dispatcher,
             session_state,
+            session_store_changes,
             disconnect: Arc::new(move || {
                 let runtime = disconnect_runtime.clone();
                 Box::pin(async move {
@@ -99,18 +137,37 @@ impl TrUApiCore {
                 })
             }),
             cancel_login: Arc::new(move || cancel_login_runtime.cancel_login()),
+            permission_authorization_status: Arc::new(move |request| {
+                let runtime = permission_status_runtime.clone();
+                Box::pin(async move { runtime.permission_authorization_status(request).await })
+            }),
+            set_permission_authorization_status: Arc::new(move |request, status| {
+                let runtime = set_permission_status_runtime.clone();
+                Box::pin(async move {
+                    runtime
+                        .set_permission_authorization_status(request, status)
+                        .await
+                })
+            }),
         }
     }
 
     /// Handle to the shared session-state holder used by subscriptions and
-    /// tests. Real host lifecycle flows through `SessionStore` and
+    /// tests. Real host lifecycle flows through CoreStorage session sync and
     /// `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }
 
+    /// Notify the platform-backed session sync loop that the host-global auth
+    /// session slot may have changed.
+    #[instrument(skip_all, fields(runtime.method = "core.notify_session_store_changed"))]
+    pub fn notify_session_store_changed(&self) {
+        self.session_store_changes.notify();
+    }
+
     /// Core-owned logout/disconnect. Platform-backed cores best-effort notify
-    /// the SSO peer and clear the host-global session store; direct cores only
+    /// the SSO peer and clear the host-global auth session; direct cores only
     /// clear their in-memory session state.
     #[instrument(skip_all, fields(runtime.method = "core.disconnect"))]
     pub async fn disconnect_async(&self) {
@@ -130,6 +187,26 @@ impl TrUApiCore {
     #[instrument(skip_all, fields(runtime.method = "core.cancel_login"))]
     pub fn cancel_login(&self) {
         (self.cancel_login)();
+    }
+
+    /// Read a stored permission authorization status without prompting.
+    #[instrument(skip_all, fields(runtime.method = "core.permission_authorization_status"))]
+    pub async fn permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        (self.permission_authorization_status)(request).await
+    }
+
+    /// Update a stored permission authorization status. `NotDetermined`
+    /// clears the stored value so the next product request prompts again.
+    #[instrument(skip_all, fields(runtime.method = "core.set_permission_authorization_status"))]
+    pub async fn set_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+        status: PermissionAuthorizationStatus,
+    ) -> Result<(), v01::GenericError> {
+        (self.set_permission_authorization_status)(request, status).await
     }
 
     /// Asynchronous form of [`Self::receive_from_product`]. Decodes the

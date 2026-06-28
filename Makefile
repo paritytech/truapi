@@ -11,20 +11,24 @@ JS_PACKAGES := js/packages
 EXPLORER := explorer
 DOTLI := hosts/dotli
 HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host-wasm
-HOST_WASM_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
+HOST_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
+HOST_WASM_ADAPTER_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks-adapter.ts
+HOST_WASM_WORKER_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/worker-callbacks.ts
 HOST_WASM_WEB := $(HOST_WASM_PKG)/dist/wasm/web/truapi_server.js
 DOTLI_UI := $(DOTLI)/packages/ui
 DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host-wasm
 SIGNER_BOT_BASE_URL ?= https://signing-bot-dev.novasama-tech.org/
 SIGNER_BOT_NETWORK ?= paseo-next-v2
+VITE_NETWORKS ?= paseo-next-v2,previewnet
 export SIGNER_BOT_BASE_URL
 export SIGNER_BOT_NETWORK
+export VITE_NETWORKS
 
-# `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
-DOTLI_PREVIEW := preview
-ifdef DEBUG
-DOTLI_PREVIEW := preview:debug
-endif
+# Local product URLs (`http://localhost:5173/localhost:3000`) are intentionally
+# gated behind dotli's debug build flag, so the dev target must run the debug
+# preview by default. Override with `DOTLI_PREVIEW=preview` to test production
+# preview behavior.
+DOTLI_PREVIEW ?= preview:debug
 
 help: ## Show this help.
 	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n" } \
@@ -111,7 +115,7 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 	# --ignore-scripts: the workspace `prepare` builds need generated sources
 	# that only exist after codegen.sh, which also builds the packages.
 	if [ ! -d node_modules ]; then npm ci --ignore-scripts; fi
-	if [ ! -f "$(HOST_WASM_GENERATED)" ]; then ./scripts/codegen.sh; fi
+	if [ ! -f "$(HOST_CALLBACKS_GENERATED)" ] || [ ! -f "$(HOST_WASM_ADAPTER_GENERATED)" ] || [ ! -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" ]; then ./scripts/codegen.sh; fi
 	cd $(HOST_WASM_PKG) && npm run build
 	TRUAPI_WASM_PROFILE=dev $(MAKE) wasm
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
@@ -119,7 +123,9 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 	$(MAKE) dev-link-check
 
 dev-link-check: ## Verify dotli can resolve the local @parity/truapi-host-wasm package.
-	@test -f "$(HOST_WASM_GENERATED)" || (echo "Missing generated host callbacks. Run: make codegen"; exit 1)
+	@test -f "$(HOST_CALLBACKS_GENERATED)" || (echo "Missing generated host callbacks. Run: make codegen"; exit 1)
+	@test -f "$(HOST_WASM_ADAPTER_GENERATED)" || (echo "Missing generated host callbacks WASM adapter. Run: make codegen"; exit 1)
+	@test -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" || (echo "Missing generated host callbacks worker bridge. Run: make codegen"; exit 1)
 	@test -f "$(HOST_WASM_PKG)/dist/index.js" || (echo "Missing @parity/truapi-host-wasm dist. Run: npm run build --prefix $(HOST_WASM_PKG)"; exit 1)
 	@test -f "$(HOST_WASM_WEB)" || (echo "Missing @parity/truapi-host-wasm web WASM glue. Run: make wasm"; exit 1)
 	@test -e "$(DOTLI_HOST_WASM_LINK)/package.json" || (echo "dotli cannot resolve @parity/truapi-host-wasm. Run top-level: make dev"; exit 1)

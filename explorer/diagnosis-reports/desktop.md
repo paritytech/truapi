@@ -56,4 +56,4 @@
 | `System/handshake` | ✅ |  |
 | `System/feature_supported` | ✅ |  |
 | `System/navigate_to` | ✅ |  |
-| `Theme/subscribe` | ❌ | Offset is outside the bounds of the DataView |
+| `Theme/subscribe` | ✅ |  |

@@ -1,29 +1,39 @@
 /// <reference lib="webworker" />
 // Worker entrypoint. Loads the web-targeted truapi-server WASM bundle and
 // bridges every host callback over postMessage. The main thread keeps the
-// state that needs DOM access (localStorage, prompts) while the CPU-heavy
-// smoldot/dispatcher work runs here off the page main thread.
+// state that needs DOM access (localStorage, prompts) while the core dispatcher
+// runs here off the page main thread.
 
 import type {
-  CallbackName,
   MainToWorker,
-  OptionalCallbackName,
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";
-import { errorMessage } from "./error-message.js";
+import {
+  createWorkerRawCallbacks,
+  type CallbackName,
+} from "./generated/worker-callbacks.js";
 
-interface WasmCore {
-  receiveFromProduct(frame: Uint8Array): Promise<void>;
-  disconnect(): Promise<void>;
-  cancelLogin(): void;
+interface WorkerHostCore {
+  receiveFrame(frame: Uint8Array): Promise<void>;
+  disconnectSession(): Promise<void>;
+  cancelPairing(): void;
+  notifySessionStoreChanged(): void;
+  permissionAuthorizationStatus(request: Uint8Array): Promise<string>;
+  setPermissionAuthorizationStatus(
+    request: Uint8Array,
+    status: string,
+  ): Promise<void>;
   dispose(): void;
   free(): void;
 }
 
 interface WasmModuleShape {
   default: (input?: unknown) => Promise<unknown>;
-  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCore;
+  WasmHostCore: new (
+    callbacks: unknown,
+    runtimeConfig: unknown,
+  ) => WorkerHostCore;
   setLogLevel?: (level: string) => void;
 }
 
@@ -40,6 +50,12 @@ const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
 function postToMain(msg: WorkerToMain): void {
   ctx.postMessage(msg);
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return JSON.stringify(err) ?? String(err);
 }
 
 let nextRequestId = 0;
@@ -89,6 +105,33 @@ interface WorkerChainConnection {
   close(): void;
 }
 
+/**
+ * Worker-side half of the host chain-connect bridge.
+ *
+ * The Rust core runs in this worker but owns no socket. When it needs chain
+ * access (chainHead v1 for People-chain identity / statement-store SSO) it
+ * calls this; the actual transport lives on the host main thread and is reached
+ * over postMessage. The data crossing here is JSON-RPC strings, not SCALE: only
+ * the product<->core wire is SCALE.
+ *
+ *   per-tab / sandboxed          core-owned (this Web Worker)       host-owned (main thread)
+ *   +-------------------+  SCALE  +--------------------------+      +--------------------------------+
+ *   | Product (iframe)  |<------->| truapi-server WASM core  |      | host.connect() (ChainProvider) |
+ *   | speaks TrUAPI     |  frames | chainHead v1, SSO,       |      | host-owned JSON-RPC transport  |
+ *   | never sees chains |         | People-chain identity    |      | remote RPC, native client, ... |
+ *   +-------------------+         +--------------------------+      +--------------------------------+
+ *                                      |   ^  JSON-RPC strings (not SCALE)        ^   |
+ *                       chainConnect() |   | onResponse(json)           connect   |   | responses()
+ *                         (this fn)    v   |                                      |   v
+ *                 worker-runtime.ts  <======== postMessage ========>  create-worker-host-runtime.ts
+ *                 chainConnectStart / chainSend / chainClose   -->   handleChainConnect* -> host.connect()
+ *                 chainConnectAck   / chainResponse            <--   (pumped from connection.responses())
+ *
+ * Allocates a `connId`, posts `chainConnectStart`, and resolves a
+ * `{ send, close }` handle once the main thread acks. `send` posts `chainSend`,
+ * `close` posts `chainClose`, and every `chainResponse` for this `connId` is
+ * delivered to `onResponse`.
+ */
 function chainConnect(
   genesisHash: string,
   onResponse: (json: string) => void,
@@ -116,76 +159,14 @@ function chainConnect(
   });
 }
 
-type RawCallbackFn = (...args: never[]) => unknown;
-
-const requiredRawCallbacks: Record<string, RawCallbackFn> = {
-  navigateTo: (url: string) => callbackRequest("navigateTo", [url]),
-  pushNotification: (payload: Uint8Array) =>
-    callbackRequest("pushNotification", [payload]),
-  devicePermission: (payload: Uint8Array) =>
-    callbackRequest("devicePermission", [payload]) as Promise<boolean>,
-  remotePermission: (payload: Uint8Array) =>
-    callbackRequest("remotePermission", [payload]) as Promise<boolean>,
-  featureSupported: (payload: Uint8Array) =>
-    callbackRequest("featureSupported", [payload]) as Promise<boolean>,
-  read: (key: string) =>
-    callbackRequest("read", [key]) as Promise<Uint8Array | null | undefined>,
-  write: (key: string, value: Uint8Array) =>
-    callbackRequest("write", [key, value]),
-  clear: (key: string) => callbackRequest("clear", [key]),
-};
-
-const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
-  cancelNotification: (id: number) =>
-    callbackRequest("cancelNotification", [id]),
-  // Fire-and-forget notification: the wasm core ignores the returned promise.
-  authStateChanged: (state: unknown) =>
-    void callbackRequest("authStateChanged", [state]).catch(() => {}),
-  readSession: () =>
-    callbackRequest("readSession", []) as Promise<
-      Uint8Array | null | undefined
-    >,
-  writeSession: (value: Uint8Array) => callbackRequest("writeSession", [value]),
-  clearSession: () => callbackRequest("clearSession", []),
-  confirmSignPayload: (payload: Uint8Array) =>
-    callbackRequest("confirmSignPayload", [payload]) as Promise<boolean>,
-  confirmSignRaw: (payload: Uint8Array) =>
-    callbackRequest("confirmSignRaw", [payload]) as Promise<boolean>,
-  confirmCreateTransaction: (payload: Uint8Array) =>
-    callbackRequest("confirmCreateTransaction", [payload]) as Promise<boolean>,
-  confirmAccountAlias: (payload: Uint8Array) =>
-    callbackRequest("confirmAccountAlias", [payload]) as Promise<boolean>,
-  confirmResourceAllocation: (payload: Uint8Array) =>
-    callbackRequest("confirmResourceAllocation", [payload]) as Promise<boolean>,
-  confirmPreimageSubmit: (size: number) =>
-    callbackRequest("confirmPreimageSubmit", [size]) as Promise<void>,
-  submitPreimage: (value: Uint8Array) =>
-    callbackRequest("submitPreimage", [value]) as Promise<Uint8Array>,
-};
-
 function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
-  const callbacks: Record<string, unknown> = { ...requiredRawCallbacks };
-  for (const name of msg.optionalCallbacks ?? []) {
-    callbacks[name] = optionalRawCallbacks[name];
-  }
-  const optionalSubscriptions = new Set(msg.optionalSubscriptions ?? []);
-  if (optionalSubscriptions.has("subscribeSessionStore")) {
-    callbacks.subscribeSessionStore = (sendItem: (value: unknown) => void) =>
-      startSubscription("subscribeSessionStore", null, sendItem);
-  }
-  if (optionalSubscriptions.has("subscribeTheme")) {
-    callbacks.subscribeTheme = (sendItem: (value: unknown) => void) =>
-      startSubscription("subscribeTheme", null, sendItem);
-  }
-  if (optionalSubscriptions.has("lookupPreimage")) {
-    callbacks.lookupPreimage = (
-      payload: Uint8Array,
-      sendItem: (value: unknown) => void,
-    ) => startSubscription("lookupPreimage", payload, sendItem);
-  }
-  if (msg.chainConnect) {
-    callbacks.chainConnect = chainConnect;
-  }
+  const callbacks = createWorkerRawCallbacks({
+    callbackRequest,
+    startSubscription,
+    ...(msg.chainConnect ? { chainConnect } : {}),
+    optionalCallbacks: msg.optionalCallbacks,
+    optionalSubscriptions: msg.optionalSubscriptions,
+  });
   callbacks.emitFrame = (frame: Uint8Array): void => {
     postToMain({ kind: "frame", bytes: frame });
   };
@@ -195,7 +176,7 @@ function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
   return callbacks;
 }
 
-let core: WasmCore | null = null;
+let core: WorkerHostCore | null = null;
 let wasm: WasmModuleShape | null = null;
 
 (async () => {
@@ -228,10 +209,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       }
       wasm.setLogLevel?.(msg.logLevel);
       try {
-        core = new wasm.WasmTrUApiCore(
-          buildRawCallbacks(msg),
-          msg.runtimeConfig,
-        );
+        core = new wasm.WasmHostCore(buildRawCallbacks(msg), msg.runtimeConfig);
         postToMain({ kind: "ready" });
       } catch (err) {
         postToMain({ kind: "fatalError", error: `init: ${errorMessage(err)}` });
@@ -243,11 +221,24 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
     case "frame":
       void handleFrame(msg.bytes);
       break;
-    case "disconnect":
-      void handleDisconnect(msg.requestId);
+    case "disconnectSession":
+      void handleDisconnectSession(msg.requestId);
       break;
-    case "cancelLogin":
-      core?.cancelLogin();
+    case "cancelPairing":
+      core?.cancelPairing();
+      break;
+    case "notifySessionStoreChanged":
+      core?.notifySessionStoreChanged();
+      break;
+    case "getPermissionAuthorizationStatus":
+      void handleGetPermissionAuthorizationStatus(msg.requestId, msg.request);
+      break;
+    case "setPermissionAuthorizationStatus":
+      void handleSetPermissionAuthorizationStatus(
+        msg.requestId,
+        msg.request,
+        msg.status,
+      );
       break;
     case "callbackResponse": {
       const cb = pendingCallbacks.get(msg.requestId);
@@ -297,22 +288,84 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
   }
 });
 
-async function handleDisconnect(requestId: number): Promise<void> {
+async function handleDisconnectSession(requestId: number): Promise<void> {
   if (!core) {
     postToMain({
-      kind: "disconnectResponse",
+      kind: "disconnectSessionResponse",
       requestId,
       ok: false,
-      error: "disconnect received before core is ready",
+      error: "disconnectSession received before core is ready",
     });
     return;
   }
   try {
-    await core.disconnect();
-    postToMain({ kind: "disconnectResponse", requestId, ok: true });
+    await core.disconnectSession();
+    postToMain({ kind: "disconnectSessionResponse", requestId, ok: true });
   } catch (err) {
     postToMain({
-      kind: "disconnectResponse",
+      kind: "disconnectSessionResponse",
+      requestId,
+      ok: false,
+      error: errorMessage(err),
+    });
+  }
+}
+
+async function handleGetPermissionAuthorizationStatus(
+  requestId: number,
+  request: Uint8Array,
+): Promise<void> {
+  if (!core) {
+    postToMain({
+      kind: "permissionAuthorizationStatusResponse",
+      requestId,
+      ok: false,
+      error: "permissionAuthorizationStatus received before core is ready",
+    });
+    return;
+  }
+  try {
+    const status = await core.permissionAuthorizationStatus(request);
+    postToMain({
+      kind: "permissionAuthorizationStatusResponse",
+      requestId,
+      ok: true,
+      status: status as "NotDetermined" | "Denied" | "Authorized",
+    });
+  } catch (err) {
+    postToMain({
+      kind: "permissionAuthorizationStatusResponse",
+      requestId,
+      ok: false,
+      error: errorMessage(err),
+    });
+  }
+}
+
+async function handleSetPermissionAuthorizationStatus(
+  requestId: number,
+  request: Uint8Array,
+  status: "NotDetermined" | "Denied" | "Authorized",
+): Promise<void> {
+  if (!core) {
+    postToMain({
+      kind: "setPermissionAuthorizationStatusResponse",
+      requestId,
+      ok: false,
+      error: "setPermissionAuthorizationStatus received before core is ready",
+    });
+    return;
+  }
+  try {
+    await core.setPermissionAuthorizationStatus(request, status);
+    postToMain({
+      kind: "setPermissionAuthorizationStatusResponse",
+      requestId,
+      ok: true,
+    });
+  } catch (err) {
+    postToMain({
+      kind: "setPermissionAuthorizationStatusResponse",
       requestId,
       ok: false,
       error: errorMessage(err),
@@ -329,7 +382,7 @@ async function handleFrame(bytes: Uint8Array): Promise<void> {
     return;
   }
   try {
-    await core.receiveFromProduct(bytes);
+    await core.receiveFrame(bytes);
   } catch (err) {
     postToMain({
       kind: "frameError",

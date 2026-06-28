@@ -1,33 +1,36 @@
 //! Result-wire-shape regression test.
 //!
-//! The TS host/client codec expects every request response to be
-//! `Result<Ok, Err>`-shaped on the wire (one leading discriminant byte
-//! followed by the SCALE-encoded value). This test stands up a
+//! The TS host/client codec expects every request response to be a
+//! `Versioned<Result<Ok, Err>>` envelope on the wire (one leading version byte,
+//! then one result discriminant byte, then the SCALE-encoded value). This test stands up a
 //! `TrUApiCore::from_platform_with_config` with a platform whose `Features`
 //! impl returns `Ok(supported = true)` and asserts:
 //!
 //! - A `system_feature_supported_request` produces a response whose
-//!   payload begins with `0x00` (Ok), followed by the encoded
-//!   `HostFeatureSupportedResponse::V1(true)`.
+//!   payload begins with `0x00` (V1), then `0x00` (Ok), followed by the encoded
+//!   `HostFeatureSupportedResponse`.
 //! - A `local_storage_read_request` whose stub returns
 //!   `Err(HostLocalStorageReadError::Full)` produces a response whose
-//!   payload begins with `0x01` (Err), followed by the encoded
-//!   `CallError::Domain(Full)`.
+//!   payload begins with `0x00` (V1), then `0x01` (Err), followed by the encoded
+//!   `HostLocalStorageReadError::Full`.
 //!
 //! Both halves prove the wire layout stays in lockstep with the TS
-//! `S.Result(ok, err)` codec.
+//! `S.indexedTaggedUnion({ V1: S.Result(ok, err) })` codec.
 
 use std::sync::Arc;
 
 use parity_scale_codec::{Decode, Encode};
 
-use truapi::v01;
-use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
-use truapi::versioned::{account, payment, statement_store};
+#[cfg(debug_assertions)]
+use truapi::v02;
+use truapi::versioned::system::HostFeatureSupportedRequest;
+#[cfg(debug_assertions)]
+use truapi::versioned::testing;
+use truapi::versioned::{Versioned, account, payment, statement_store};
+use truapi::{CallError, v01};
 
-use truapi_server::{
-    Payload, ProtocolMessage, TrUApiCore, encode_call_error_payload, request_ids, subscription_ids,
-};
+use truapi_server::core::TrUApiCore;
+use truapi_server::frame::{Payload, ProtocolMessage, request_ids, subscription_ids};
 
 mod common;
 use common::{WireShapePlatform, test_runtime_config, test_spawner};
@@ -60,13 +63,96 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
     assert_eq!(response.request_id, "p:1");
     assert_eq!(response.payload.id, ids.response_id);
 
-    // Wire payload: [Ok disc=0x00][encoded versioned response]
-    let mut expected = vec![0x00u8];
-    HostFeatureSupportedResponse::V1(v01::HostFeatureSupportedResponse { supported: true })
+    // Wire payload: [V1 disc=0x00][Ok disc=0x00][encoded response body].
+    let mut expected = vec![0x00u8, 0x00u8];
+    v01::HostFeatureSupportedResponse { supported: true }.encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
+    assert_eq!(response.payload.value.first(), Some(&0x00));
+    assert_eq!(response.payload.value.get(1), Some(&0x00));
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn testing_probe_v1_request_gets_v1_response() {
+    let core = make_core();
+    let request = testing::TestingProbeRequest::V1(v01::TestingProbeRequest {
+        message: "hello V1".to_string(),
+    });
+    let ids = request_ids("testing_probe").expect("known request method");
+    let response = dispatch(
+        &core,
+        ProtocolMessage {
+            request_id: "p:testing-v1".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        },
+    );
+
+    let mut expected = vec![0x00u8, 0x00u8];
+    v01::TestingProbeResponse {
+        received_version: 1,
+        message: "hello V1".to_string(),
+    }
+    .encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn testing_probe_v2_request_gets_v2_response() {
+    let core = make_core();
+    let request = testing::TestingProbeRequest::V2(v02::TestingProbeRequest {
+        message: "hello V2".to_string(),
+        marker: 42,
+    });
+    let ids = request_ids("testing_probe").expect("known request method");
+    let response = dispatch(
+        &core,
+        ProtocolMessage {
+            request_id: "p:testing-v2".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        },
+    );
+
+    let mut expected = vec![0x01u8, 0x00u8];
+    v02::TestingProbeResponse {
+        received_version: 2,
+        message: "hello V2".to_string(),
+        marker: 42,
+    }
+    .encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn testing_framework_error_uses_framework_error_slot() {
+    let core = make_core();
+    let request = testing::TestingFrameworkErrorRequest::V1(v01::TestingFrameworkErrorRequest {
+        error: v01::TestingFrameworkError::HostFailure,
+    });
+    let ids = request_ids("testing_framework_error").expect("known request method");
+    let response = dispatch(
+        &core,
+        ProtocolMessage {
+            request_id: "p:testing-framework".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        },
+    );
+
+    let mut expected = vec![0x00u8, 0x01u8, 0x04u8];
+    "forced by testing.framework_error"
+        .to_string()
         .encode_to(&mut expected);
     assert_eq!(response.payload.value, expected);
-    // The Result-disc byte is unambiguously 0x00 for Ok.
-    assert_eq!(response.payload.value.first(), Some(&0x00));
 }
 
 #[test]
@@ -89,25 +175,47 @@ fn local_storage_read_err_response_uses_err_discriminant() {
     assert_eq!(response.request_id, "p:2");
     assert_eq!(response.payload.id, ids.response_id);
 
-    // Wire payload: `[Err disc=0x01][CallError::Domain variant=0x00][encoded
-    // domain error]`. Build the expected bytes from the typed value the runtime
-    // wraps (the stub returns `Full`) rather than a hand-written literal, so a
-    // reorder of any domain enum variant is caught instead of silently passing.
-    let domain = truapi::versioned::local_storage::HostLocalStorageReadError::V1(
-        v01::HostLocalStorageReadError::Full,
-    );
-    let mut expected = vec![0x01u8, 0x00u8];
-    domain.encode_to(&mut expected);
+    // Wire payload:
+    // [V1 disc=0x00][Err disc=0x01][CallError::Domain][V1 error][encoded error body].
+    let mut expected = vec![0x00u8, 0x01u8];
+    CallError::Domain(
+        truapi::versioned::local_storage::HostLocalStorageReadError::V1(
+            v01::HostLocalStorageReadError::Full,
+        ),
+    )
+    .encode_to(&mut expected);
     assert_eq!(response.payload.value, expected);
-    assert_eq!(response.payload.value.first(), Some(&0x01));
+    assert_eq!(response.payload.value.first(), Some(&0x00));
+    assert_eq!(response.payload.value.get(1), Some(&0x01));
 }
 
-fn assert_request_returns_unsupported(
+fn versioned_result_err_payload<E>(error: E) -> Vec<u8>
+where
+    E: Clone + Encode + Versioned,
+{
+    let mut expected = vec![version_index(error.version()), 0x01u8];
+    CallError::Domain(error).encode_to(&mut expected);
+    expected
+}
+
+fn versioned_interrupt_err_payload<E>(error: E) -> Vec<u8>
+where
+    E: Clone + Encode + Versioned,
+{
+    let mut expected = vec![version_index(error.version())];
+    CallError::Domain(error).encode_to(&mut expected);
+    expected
+}
+
+fn assert_request_returns_domain_error<E>(
     core: &TrUApiCore,
     request_id: &str,
     method: &str,
     value: Vec<u8>,
-) {
+    error: E,
+) where
+    E: Clone + Encode + Versioned,
+{
     let ids = request_ids(method).expect("known request method");
     let response = dispatch(
         core,
@@ -121,47 +229,20 @@ fn assert_request_returns_unsupported(
     );
     assert_eq!(response.request_id, request_id);
     assert_eq!(response.payload.id, ids.response_id);
-    assert_eq!(
-        response.payload.value,
-        vec![0x01, 0x02],
-        "{method} must remain explicitly unavailable for current dotli parity"
-    );
+    assert_eq!(response.payload.value, versioned_result_err_payload(error));
 }
 
-fn assert_request_returns_domain_error<E: Encode>(
+fn assert_subscription_start_interrupts_error<E>(
     core: &TrUApiCore,
     request_id: &str,
     method: &str,
     value: Vec<u8>,
-    error: truapi::CallError<E>,
-) {
-    let ids = request_ids(method).expect("known request method");
-    let response = dispatch(
-        core,
-        ProtocolMessage {
-            request_id: request_id.into(),
-            payload: Payload {
-                id: ids.request_id,
-                value,
-            },
-        },
-    );
-    assert_eq!(response.request_id, request_id);
-    assert_eq!(response.payload.id, ids.response_id);
-    let mut expected = vec![0x01u8];
-    expected.extend(encode_call_error_payload(error));
-    assert_eq!(response.payload.value, expected);
-}
-
-fn assert_subscription_start_interrupts_error<E: Encode>(
-    core: &TrUApiCore,
-    request_id: &str,
-    method: &str,
-    value: Vec<u8>,
-    error: truapi::CallError<E>,
-) {
+    error: E,
+) where
+    E: Clone + Encode + Versioned,
+{
     use std::sync::Mutex;
-    use truapi_server::Transport;
+    use truapi_server::transport::Transport;
 
     #[derive(Default)]
     struct RecordingTransport {
@@ -196,11 +277,18 @@ fn assert_subscription_start_interrupts_error<E: Encode>(
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].request_id, request_id);
     assert_eq!(sent[0].payload.id, ids.interrupt_id);
-    assert_eq!(sent[0].payload.value, encode_call_error_payload(error));
+    assert_eq!(
+        sent[0].payload.value,
+        versioned_interrupt_err_payload(error)
+    );
+}
+
+fn version_index(version: u8) -> u8 {
+    version.saturating_sub(1)
 }
 
 #[test]
-fn deferred_account_proof_returns_unsupported() {
+fn deferred_account_proof_returns_framework_unsupported() {
     let core = make_core();
     let request = account::HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
         product_account_id: v01::ProductAccountId {
@@ -215,12 +303,20 @@ fn deferred_account_proof_returns_unsupported() {
         context: Vec::new(),
     });
 
-    assert_request_returns_unsupported(
+    let ids = request_ids("account_create_account_proof").expect("known request method");
+    let response = dispatch(
         &core,
-        "p:account-proof",
-        "account_create_account_proof",
-        request.encode(),
+        ProtocolMessage {
+            request_id: "p:account-proof".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        },
     );
+    assert_eq!(response.request_id, "p:account-proof");
+    assert_eq!(response.payload.id, ids.response_id);
+    assert_eq!(response.payload.value, vec![0x00u8, 0x01u8, 0x02u8]);
 }
 
 #[test]
@@ -237,11 +333,9 @@ fn deferred_payment_requests_return_dotli_not_implemented_errors() {
         "p:payment",
         "payment_request",
         request.encode(),
-        truapi::CallError::Domain(payment::HostPaymentError::V1(
-            v01::HostPaymentError::Unknown {
-                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
-            },
-        )),
+        payment::HostPaymentError::V1(v01::HostPaymentError::Unknown {
+            reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
+        }),
     );
 
     let top_up = payment::HostPaymentTopUpRequest::V1(v01::HostPaymentTopUpRequest {
@@ -256,11 +350,9 @@ fn deferred_payment_requests_return_dotli_not_implemented_errors() {
         "p:top-up",
         "payment_top_up",
         top_up.encode(),
-        truapi::CallError::Domain(payment::HostPaymentTopUpError::V1(
-            v01::HostPaymentTopUpError::Unknown {
-                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
-            },
-        )),
+        payment::HostPaymentTopUpError::V1(v01::HostPaymentTopUpError::Unknown {
+            reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
+        }),
     );
 }
 
@@ -276,9 +368,9 @@ fn deferred_payment_subscriptions_interrupt_dotli_not_implemented_errors() {
         "p:balance",
         "payment_balance_subscribe",
         balance.encode(),
-        truapi::CallError::Domain(payment::HostPaymentBalanceSubscribeError::V1(
+        payment::HostPaymentBalanceSubscribeError::V1(
             v01::HostPaymentBalanceSubscribeError::PermissionDenied,
-        )),
+        ),
     );
 
     let status =
@@ -290,11 +382,11 @@ fn deferred_payment_subscriptions_interrupt_dotli_not_implemented_errors() {
         "p:status",
         "payment_status_subscribe",
         status.encode(),
-        truapi::CallError::Domain(payment::HostPaymentStatusSubscribeError::V1(
+        payment::HostPaymentStatusSubscribeError::V1(
             v01::HostPaymentStatusSubscribeError::Unknown {
                 reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
             },
-        )),
+        ),
     );
 }
 
@@ -310,11 +402,9 @@ fn statement_store_subscribe_topic_limit_interrupts_with_typed_error() {
         "p:ss-too-many",
         "statement_store_subscribe",
         request.encode(),
-        truapi::CallError::Domain(statement_store::RemoteStatementStoreSubscribeError::V1(
-            v01::GenericError {
-                reason: "MatchAny has 129 topics, maximum is 128".to_string(),
-            },
-        )),
+        statement_store::RemoteStatementStoreSubscribeError::V1(v01::GenericError {
+            reason: "MatchAny has 129 topics, maximum is 128".to_string(),
+        }),
     );
 }
 
@@ -362,7 +452,7 @@ fn malformed_frames_are_dropped_without_panic() {
 fn subscription_start_receive_stop_through_wire_boundary() {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
-    use truapi_server::Transport;
+    use truapi_server::transport::Transport;
 
     #[derive(Default)]
     struct RecordingTransport {

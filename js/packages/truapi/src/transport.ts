@@ -1,3 +1,4 @@
+import { concatBytes } from "@noble/hashes/utils.js";
 import { err, ok, type Result, type ResultAsync } from "neverthrow";
 
 import { str, u8, type ResultPayload } from "./scale.js";
@@ -200,12 +201,11 @@ export interface SubscribeRawParams {
  **/
 export interface TrUApiTransport {
   /**
-   * Highest TrUAPI protocol version supported by this generated client.
-   **/
-  readonly truapiVersion: number;
-
-  /**
-   * SCALE codec version negotiated through the handshake.
+   * SCALE codec version used by generated handshake calls.
+   *
+   * @deprecated TODO(shared-core-wire): remove this public transport field once
+   * generated handshake requests read `TRUAPI_CODEC_VERSION` directly instead
+   * of going through transport state.
    **/
   readonly codecVersion: number;
 
@@ -221,7 +221,7 @@ export interface TrUApiTransport {
 
   /**
    * Tear down the transport and release the listeners it registered on the
-   * underlying `Provider`. Pending requests reject and live subscriptions
+   * underlying `WireProvider`. Pending requests reject and live subscriptions
    * receive `onClose`. Idempotent.
    *
    * The provider itself is left alone; the caller decides whether to also
@@ -262,9 +262,11 @@ export interface ProtocolMessage {
 }
 
 /**
- * Raw message pipe abstraction used by the transport.
+ * Raw SCALE-wire-frame pipe abstraction used by the transport. A `WireProvider`
+ * is the low-level channel (a `MessagePort` or iframe `postMessage` link) that
+ * carries encoded frames between the product and the host.
  **/
-export interface Provider {
+export interface WireProvider {
   /**
    * Send a complete SCALE-encoded wire frame to the peer.
    **/
@@ -291,21 +293,6 @@ export interface Provider {
 }
 
 /**
- * Concatenate byte arrays without mutating the source arrays.
- **/
-function concatBytes(parts: Uint8Array[]): Uint8Array {
-  let total = 0;
-  for (const p of parts) total += p.length;
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const p of parts) {
-    out.set(p, off);
-    off += p.length;
-  }
-  return out;
-}
-
-/**
  * Encode a `ProtocolMessage` into a SCALE wire frame.
  **/
 export function encodeWireMessage(
@@ -316,11 +303,7 @@ export function encodeWireMessage(
     return err(new Error(`Invalid wire discriminant: ${id}`));
   }
   return ok(
-    concatBytes([
-      str.enc(message.requestId),
-      u8.enc(id),
-      message.payload.value,
-    ]),
+    concatBytes(str.enc(message.requestId), u8.enc(id), message.payload.value),
   );
 }
 
@@ -396,7 +379,7 @@ function scanStrEnd(bytes: Uint8Array): Result<number, Error> {
 
 /**
  * Internal listener bookkeeping and close-once state machine shared by the
- * built-in `Provider` implementations. Transport-specific code wires its
+ * built-in `WireProvider` implementations. Transport-specific code wires its
  * inbound source to `deliver`, registers cleanup via `onClose`, and exposes
  * `subscribe`/`subscribeClose` to callers.
  **/
@@ -484,7 +467,7 @@ function createBaseProvider() {
 export function createIframeProvider(options: {
   target: Window;
   hostOrigin: string;
-}): Provider {
+}): WireProvider {
   const base = createBaseProvider();
   const { target, hostOrigin } = options;
 
@@ -521,7 +504,7 @@ export function createIframeProvider(options: {
  **/
 export function createMessagePortProvider(
   port: MessagePort | Promise<MessagePort>,
-): Provider {
+): WireProvider {
   const base = createBaseProvider();
   let resolvedPort: MessagePort | null = null;
   const pending: Uint8Array[] = [];
@@ -581,112 +564,6 @@ export function createMessagePortProvider(
     dispose() {
       base.close(new Error("message port provider disposed"));
       pending.length = 0;
-    },
-  };
-}
-
-/**
- * Options accepted by `createWebSocketProvider`.
- **/
-export interface WebSocketProviderOptions {
-  /**
-   * Override the `WebSocket` constructor. Useful for non-browser runtimes
-   * (Node, tests) where the global isn't available.
-   **/
-  WebSocket?: typeof WebSocket;
-}
-
-function sendWebSocketBytes(socket: WebSocket, message: Uint8Array) {
-  if (!(message.buffer instanceof ArrayBuffer)) {
-    throw new Error("websocket payload must be backed by ArrayBuffer");
-  }
-  socket.send(message as Uint8Array<ArrayBuffer>);
-}
-
-/**
- * Create a provider backed by a binary WebSocket. Used by products that
- * connect through the native host's localhost WS bridge, the host exposes
- * an endpoint shaped like `ws://127.0.0.1:<port>/?t=<token>` and the product
- * passes that URL straight to this constructor.
- **/
-export function createWebSocketProvider(
-  url: string,
-  options: WebSocketProviderOptions = {},
-): Provider {
-  const WebSocketCtor = options.WebSocket ?? globalThis.WebSocket;
-  if (!WebSocketCtor) {
-    throw new Error("WebSocket constructor not available in this environment");
-  }
-
-  const base = createBaseProvider();
-  const socket = new WebSocketCtor(url);
-  socket.binaryType = "arraybuffer";
-
-  const pending: Uint8Array[] = [];
-  base.onClose(() => {
-    pending.length = 0;
-  });
-
-  socket.onopen = () => {
-    for (const msg of pending) {
-      try {
-        sendWebSocketBytes(socket, msg);
-      } catch (error) {
-        base.close(error);
-        return;
-      }
-    }
-    pending.length = 0;
-  };
-
-  socket.onmessage = (event: MessageEvent) => {
-    const data = event.data;
-    if (!(data instanceof ArrayBuffer)) {
-      return;
-    }
-    base.deliver(new Uint8Array(data));
-  };
-
-  socket.onerror = () => {
-    base.close(new Error("websocket error"));
-  };
-
-  socket.onclose = (event: CloseEvent) => {
-    base.close(
-      new Error(
-        `websocket closed (code=${event.code}, reason=${event.reason || "unknown"})`,
-      ),
-    );
-  };
-
-  return {
-    postMessage(message) {
-      const error = base.closed();
-      if (error) {
-        throw error;
-      }
-      if (socket.readyState === WebSocketCtor.OPEN) {
-        try {
-          sendWebSocketBytes(socket, message);
-        } catch (error) {
-          base.close(error);
-          throw toError(error);
-        }
-      } else if (socket.readyState === WebSocketCtor.CONNECTING) {
-        pending.push(message);
-      } else {
-        throw new Error("websocket not open");
-      }
-    },
-    subscribe: base.subscribe,
-    subscribeClose: base.subscribeClose,
-    dispose() {
-      base.close(new Error("websocket provider disposed"));
-      try {
-        socket.close();
-      } catch {
-        // ignore duplicate close during shutdown
-      }
     },
   };
 }

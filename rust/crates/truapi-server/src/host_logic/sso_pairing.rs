@@ -14,7 +14,7 @@ use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
 use thiserror::Error;
-use truapi_platform::{PairingDeeplinkScheme, RuntimeConfig};
+use truapi_platform::RuntimeConfig;
 
 use crate::host_logic::session::SsoSessionInfo;
 
@@ -412,7 +412,7 @@ pub fn create_pairing_bootstrap_from_identity(
     identity: PairingDeviceIdentity,
 ) -> Result<PairingBootstrap, PairingBootstrapError> {
     let deeplink = build_pairing_deeplink(
-        config.pairing_deeplink_scheme,
+        &config.pairing_deeplink_scheme,
         identity.statement_store_public_key,
         identity.encryption_public_key,
         config,
@@ -434,7 +434,7 @@ pub fn create_pairing_bootstrap_from_identity(
 
 /// Build the wallet deeplink that carries the v2 handshake proposal.
 pub fn build_pairing_deeplink(
-    scheme: PairingDeeplinkScheme,
+    scheme: &str,
     statement_store_public_key: [u8; 32],
     encryption_public_key: [u8; 65],
     config: &RuntimeConfig,
@@ -447,8 +447,7 @@ pub fn build_pairing_deeplink(
         metadata: handshake_metadata(config),
     });
     format!(
-        "{}pair?handshake={}",
-        deeplink_scheme_prefix(scheme),
+        "{scheme}://pair?handshake={}",
         hex::encode(handshake.encode())
     )
 }
@@ -499,13 +498,6 @@ pub fn bootstrap_topic(
     let mut topic = [0u8; 32];
     topic.copy_from_slice(digest.as_bytes());
     topic
-}
-
-fn deeplink_scheme_prefix(scheme: PairingDeeplinkScheme) -> &'static str {
-    match scheme {
-        PairingDeeplinkScheme::PolkadotApp => "polkadotapp://",
-        PairingDeeplinkScheme::PolkadotAppDev => "polkadotappdev://",
-    }
 }
 
 fn generate_statement_store_keypair() -> Result<([u8; 64], [u8; 32]), PairingBootstrapError> {
@@ -567,19 +559,14 @@ mod tests {
             platform_type: Some("Firefox".to_string()),
             platform_version: Some("192.32".to_string()),
             people_chain_genesis_hash: [0; 32],
-            pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+            pairing_deeplink_scheme: "polkadotapp".to_string(),
         }
     }
 
     #[test]
     fn builds_v2_pairing_deeplink() {
         let config = runtime_config();
-        let deeplink = build_pairing_deeplink(
-            PairingDeeplinkScheme::PolkadotApp,
-            SS_PUBLIC,
-            ENC_PUBLIC,
-            &config,
-        );
+        let deeplink = build_pairing_deeplink("polkadotapp", SS_PUBLIC, ENC_PUBLIC, &config);
 
         assert!(deeplink.starts_with("polkadotapp://pair?handshake=01"));
         let encoded = hex::decode(deeplink.split("handshake=").nth(1).unwrap()).unwrap();
@@ -597,12 +584,8 @@ mod tests {
 
     #[test]
     fn builds_dev_pairing_deeplink() {
-        let deeplink = build_pairing_deeplink(
-            PairingDeeplinkScheme::PolkadotAppDev,
-            SS_PUBLIC,
-            ENC_PUBLIC,
-            &runtime_config(),
-        );
+        let deeplink =
+            build_pairing_deeplink("polkadotappdev", SS_PUBLIC, ENC_PUBLIC, &runtime_config());
 
         assert!(deeplink.starts_with("polkadotappdev://pair?handshake="));
     }

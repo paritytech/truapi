@@ -1,29 +1,26 @@
 # @parity/truapi-host-wasm
 
-WASM-backed TrUAPI host runtime. It embeds the `truapi-server` Rust core (compiled to WASM) and
-provides the `Provider` factories that drive it, plus per-environment integration entry points.
-It is the counterpart to the native Android/iOS host shells.
-
-> This is distinct from [`@parity/truapi-host`](../truapi-host), which is the host-side codegen +
-> dispatcher for hosts that bring their **own** runtime and do not embed the shared Rust core.
+WASM-backed TrUAPI host runtime. It embeds the `truapi-server` Rust core (compiled to WASM)
+behind a Web Worker provider, plus per-environment integration entry points. It is the
+counterpart to the native Android/iOS host shells.
 
 ## Entry points
 
 The package exposes tree-shakeable subpath exports — import only what your environment needs:
 
-| Import                                     | Provides                                                                                                                |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `@parity/truapi-host-wasm`                 | Core: `createWasmProvider`, `createHostServer`, the dispatcher adapter, and the shared types.                           |
-| `@parity/truapi-host-wasm/web`             | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                       |
-| `@parity/truapi-host-wasm/worker-runtime`  | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread.     |
-| `@parity/truapi-host-wasm/wasm/web`        | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                      |
+| Import                                    | Provides                                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `@parity/truapi-host-wasm`                | Shared runtime types plus generated typed host callback contracts.                                            |
+| `@parity/truapi-host-wasm/web`            | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                   |
+| `@parity/truapi-host-wasm/worker-runtime` | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread. |
+| `@parity/truapi-host-wasm/wasm/web`       | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                  |
 
 ## Generated WASM artefacts
 
-The ignored bundle under `dist/wasm/web/` is built without smoldot
-(`wasm-pack build --no-default-features`). Hosts that already manage chain access through their own
-JSON-RPC provider wire `chainConnect` into the callbacks and never touch smoldot. The bundled WASM
-is about 1 MB (release build with `wasm-opt`).
+The ignored bundle under `dist/wasm/web/` is built with host-owned chain access.
+Hosts wire their JSON-RPC provider through `chainConnect`; if they omit it,
+chain calls fail with the core's standard unavailable error. The bundled WASM is
+about 1 MB (release build with `wasm-opt`).
 
 Build them after editing `rust/crates/truapi-server` and before packaging, publishing, or running
 tests that load the raw WASM bundle (requires `wasm-pack` on PATH):
@@ -57,12 +54,10 @@ publish job to `.github/workflows/`. Until then, consumers depend on the package
 ```text
 JS host code
   protocol handlers / typed callbacks
+  (types from @parity/truapi-host-wasm)
        |
        v
-createHostServer (re-exported from @parity/truapi-host) <-- bytes --> Provider
-                                                                        |
-                                                                        v
-                                                      createWasmProvider / Worker
+createWebWorkerProvider
                                                                         |
                                                                         v
                                                             truapi-server WASM core

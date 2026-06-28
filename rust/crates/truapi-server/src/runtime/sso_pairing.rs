@@ -26,20 +26,18 @@ use crate::host_logic::statement_store::{
 use futures::channel::oneshot;
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt, pin_mut};
-use parity_scale_codec::{Decode, Encode};
-use tracing::{debug, info, instrument, warn};
+use parity_scale_codec::Encode;
+use tracing::{debug, info, instrument};
 use truapi::CallError;
 use truapi::v01;
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi_platform::{
-    ChainProvider as PlatformChainProvider, JsonRpcConnection, Platform,
-    SessionStore as PlatformSessionStore, Storage as PlatformStorage,
+    ChainProvider as PlatformChainProvider, CoreStorage as PlatformCoreStorage, CoreStorageKey,
+    JsonRpcConnection, Platform,
 };
 
 /// Request id for the long-lived pairing topic subscription.
 pub(crate) const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
-/// Local-storage key persisting the pairing device identity between logins.
-pub(super) const PAIRING_DEVICE_IDENTITY_STORAGE_KEY: &str = "truapi:sso-device-identity:v1";
 #[cfg(not(test))]
 const PAIRING_QUERY_INTERVAL: Duration = Duration::from_secs(2);
 #[cfg(test)]
@@ -128,7 +126,7 @@ where
             ));
         }
 
-        let pairing_identity = load_or_create_pairing_device_identity(self.platform.as_ref())
+        let pairing_identity = create_fresh_pairing_device_identity(self.platform.as_ref())
             .await
             .map_err(|reason| self.fail_before_pairing(reason))?;
         let bootstrap =
@@ -169,9 +167,11 @@ where
                 }
             }
             Ok(PairingFlowOutcome::Success(session)) => {
+                let session = *session;
                 self.auth_state
                     .connected(&connected_session_ui_info(&session));
-                self.session_state.set_session(*session);
+                self.session_state.set_session(session.clone());
+                self.start_sso_disconnect_monitor(&session);
                 info!("login succeeded, SSO session established");
                 Ok(HostRequestLoginResponse::V1(
                     v01::HostRequestLoginResponse::Success,
@@ -250,8 +250,9 @@ where
             full_username: None,
         };
         let session = self.resolve_session_identity(session).await;
-        PlatformSessionStore::write_session(
+        PlatformCoreStorage::write_core_storage(
             self.platform.as_ref(),
+            CoreStorageKey::AuthSession,
             encode_persisted_session(&session),
         )
         .await
@@ -260,33 +261,15 @@ where
     }
 }
 
-#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.load_or_create"))]
-async fn load_or_create_pairing_device_identity(
-    storage: &(impl PlatformStorage + ?Sized),
+#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.create_fresh"))]
+async fn create_fresh_pairing_device_identity(
+    storage: &(impl PlatformCoreStorage + ?Sized),
 ) -> Result<PairingDeviceIdentity, String> {
-    if let Some(raw) =
-        PlatformStorage::read(storage, PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string())
-            .await
-            .map_err(|err| format!("pairing device identity read failed: {err:?}"))?
-    {
-        match PairingDeviceIdentity::decode(&mut raw.as_slice()) {
-            Ok(identity) => return Ok(identity),
-            Err(err) => {
-                warn!("stored pairing device identity is invalid, regenerating: {err}");
-                let _ = PlatformStorage::clear(
-                    storage,
-                    PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
-                )
-                .await;
-            }
-        }
-    }
-
     let identity = generate_pairing_device_identity()
         .map_err(|err| format!("pairing identity failed: {err}"))?;
-    PlatformStorage::write(
+    PlatformCoreStorage::write_core_storage(
         storage,
-        PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+        CoreStorageKey::PairingDeviceIdentity,
         identity.encode(),
     )
     .await
@@ -558,8 +541,8 @@ fn decode_v2_pairing_statement(
 mod tests {
     use super::*;
     use crate::test_support::{
-        StubPlatform, pairing_device_from_deeplink, peer_statement_keypair, runtime_config,
-        session_info, signed_test_statement, stub_platform, test_spawner,
+        StubPlatform, core_storage_test_key, pairing_device_from_deeplink, peer_statement_keypair,
+        runtime_config, session_info, signed_test_statement, stub_platform, test_spawner,
     };
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use truapi::CallContext;
@@ -567,7 +550,7 @@ mod tests {
     use truapi::versioned::account::{
         HostAccountConnectionStatusSubscribeItem, HostRequestLoginRequest,
     };
-    use truapi_platform::AuthState;
+    use truapi_platform::{AuthState, CoreStorageKey};
 
     /// Cancel the login as soon as the host observes the `Pairing` state,
     /// mimicking a user dismissing the pairing UI immediately.
@@ -624,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    fn request_login_reuses_persisted_pairing_device_identity() {
+    fn request_login_rotates_pairing_device_identity_between_attempts() {
         let platform = stub_platform();
         let host = Arc::new(PlatformRuntimeHost::new_compat(
             platform.clone(),
@@ -656,7 +639,7 @@ mod tests {
             })
             .collect();
         assert_eq!(deeplinks.len(), 2);
-        assert_eq!(
+        assert_ne!(
             pairing_device_from_deeplink(&deeplinks[0]),
             pairing_device_from_deeplink(&deeplinks[1])
         );
@@ -665,7 +648,9 @@ mod tests {
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
-                .contains_key(PAIRING_DEVICE_IDENTITY_STORAGE_KEY)
+                .contains_key(&core_storage_test_key(
+                    CoreStorageKey::PairingDeviceIdentity
+                ))
         );
     }
 

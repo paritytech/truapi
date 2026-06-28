@@ -1,145 +1,268 @@
-//! Permission state machine (ask -> granted | denied), backed by the platform
-//! [`Storage`] trait with a reserved `truapi:permissions:` key prefix.
+//! Permission authorization state machine (ask -> authorized | denied), backed by the platform
+//! [`CoreStorage`] trait with a reserved `truapi:permissions:` key prefix.
 //!
 //! The v0.1 wire protocol keeps device permissions (camera, mic, NFC, ...)
 //! separate from remote permissions (domain access, chain submit, ...), so
 //! this module exposes two `check_or_prompt` entrypoints that route to the
 //! matching platform callback. The cache layer is shared but keys live in
 //! distinct sub-namespaces so a device grant cannot authorize a remote
-//! operation by accident.
+//! operation by accident. Keys are also scoped by product id so one product's
+//! authorization never grants another product's request.
 
 use parity_scale_codec::{Decode, Encode};
 
+use truapi::v01;
 use truapi::v01::{
-    HostDevicePermissionRequest, HostDevicePermissionResponse, HostLocalStorageReadError,
-    RemotePermission, RemotePermissionRequest, RemotePermissionResponse,
+    HostDevicePermissionRequest, HostDevicePermissionResponse, RemotePermission,
+    RemotePermissionRequest, RemotePermissionResponse,
 };
-use truapi_platform::{Permissions, Storage};
+use truapi_platform::{
+    CoreStorage, CoreStorageKey, PermissionAuthorizationRequest, PermissionAuthorizationStatus,
+    Permissions,
+};
 
 /// Reserved key prefix for permission state. Hosts must not use keys under
 /// this prefix for anything else so core can own the namespace.
 pub const PERMISSION_KEY_PREFIX: &str = "truapi:permissions:";
 
-/// Persisted answer for a single permission request.
+/// Persisted answer for a single permission request. Keep `Authorized` at
+/// discriminant 0 and `Denied` at 1 to preserve the existing two-variant cache
+/// encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-pub enum Decision {
-    /// User granted the permission.
-    Granted,
+enum StoredAuthorizationStatus {
+    /// User authorized the permission.
+    Authorized,
     /// User denied the permission.
     Denied,
 }
 
-/// Coordinator that inspects persisted state first, falls back to the
-/// platform's prompt callback, and writes the decision back so future calls
-/// short-circuit. Generic over the concrete `Storage` + `Permissions` impls
-/// so callers (e.g. `PlatformRuntimeHost<P>`) can stay non-`dyn`.
-pub struct PermissionsService<'a, S: Storage, P: Permissions> {
-    storage: &'a S,
-    prompt: &'a P,
+impl From<StoredAuthorizationStatus> for PermissionAuthorizationStatus {
+    fn from(status: StoredAuthorizationStatus) -> Self {
+        match status {
+            StoredAuthorizationStatus::Authorized => PermissionAuthorizationStatus::Authorized,
+            StoredAuthorizationStatus::Denied => PermissionAuthorizationStatus::Denied,
+        }
+    }
 }
 
-impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
+/// Coordinator that inspects persisted state first, falls back to the
+/// platform's prompt callback, and writes the authorization back so future
+/// calls short-circuit. Generic over the concrete `CoreStorage` + `Permissions` impls
+/// so callers (e.g. `PlatformRuntimeHost<P>`) can stay non-`dyn`.
+pub struct PermissionsService<'a, S: CoreStorage, P: Permissions> {
+    storage: &'a S,
+    prompt: &'a P,
+    product_id: &'a str,
+}
+
+impl<'a, S: CoreStorage, P: Permissions> PermissionsService<'a, S, P> {
     /// Construct a service backed by the given storage + prompt callbacks.
-    pub fn new(storage: &'a S, prompt: &'a P) -> Self {
-        Self { storage, prompt }
+    pub fn new(storage: &'a S, prompt: &'a P, product_id: &'a str) -> Self {
+        Self {
+            storage,
+            prompt,
+            product_id,
+        }
     }
 
-    /// Returns the stored decision for a device permission without prompting.
+    /// Returns the stored authorization status for a device permission without prompting.
     pub async fn peek_device(
         &self,
         permission: &HostDevicePermissionRequest,
-    ) -> Result<Option<Decision>, HostLocalStorageReadError> {
-        peek(self.storage, &device_storage_key(permission)).await
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        authorization_status(
+            self.storage,
+            &device_storage_key(self.product_id, permission),
+        )
+        .await
     }
 
-    /// Returns the stored decision for a remote permission without
+    /// Returns the stored authorization status for a remote permission without
     /// prompting.
     pub async fn peek_remote(
         &self,
         request: &RemotePermissionRequest,
-    ) -> Result<Option<Decision>, HostLocalStorageReadError> {
-        peek(self.storage, &remote_storage_key(request)).await
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        authorization_status(self.storage, &remote_storage_key(self.product_id, request)).await
     }
 
-    /// Returns the cached device decision if any, otherwise prompts the
+    /// Returns the stored authorization status for a permission request
+    /// without prompting.
+    pub async fn authorization_status(
+        &self,
+        request: &PermissionAuthorizationRequest,
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        match request {
+            PermissionAuthorizationRequest::Device(permission) => {
+                self.peek_device(permission).await
+            }
+            PermissionAuthorizationRequest::Remote(request) => self.peek_remote(request).await,
+        }
+    }
+
+    /// Update the stored authorization status for a permission request.
+    ///
+    /// Setting `NotDetermined` clears the stored value so the next product
+    /// request prompts again.
+    pub async fn set_authorization_status(
+        &self,
+        request: &PermissionAuthorizationRequest,
+        status: PermissionAuthorizationStatus,
+    ) -> Result<(), v01::GenericError> {
+        let key = match request {
+            PermissionAuthorizationRequest::Device(permission) => {
+                device_storage_key(self.product_id, permission)
+            }
+            PermissionAuthorizationRequest::Remote(request) => {
+                remote_storage_key(self.product_id, request)
+            }
+        };
+        set_authorization_status(self.storage, key, status).await
+    }
+
+    /// Returns the cached device authorization if any, otherwise prompts the
     /// platform's `device_permission` callback and persists the answer.
     pub async fn check_or_prompt_device(
         &self,
         permission: HostDevicePermissionRequest,
-    ) -> Result<Decision, HostLocalStorageReadError> {
-        let key = device_storage_key(&permission);
-        if let Some(cached) = peek(self.storage, &key).await? {
-            return Ok(cached);
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        let key = device_storage_key(self.product_id, &permission);
+        if let Some(cached) = peek_stored(self.storage, &key).await? {
+            return Ok(cached.into());
         }
-        // Only a genuine user decision is persisted. A prompt-callback error is
+        // Only a genuine user authorization is persisted. A prompt-callback error is
         // transient (UI unavailable, IPC timeout), not a denial, so fail closed
         // for this call but do not cache it — the next request re-prompts rather
         // than locking the capability out permanently with no revoke path.
         let granted = match self.prompt.device_permission(permission).await {
             Ok(HostDevicePermissionResponse { granted }) => granted,
-            Err(_) => return Ok(Decision::Denied),
+            Err(_) => return Ok(PermissionAuthorizationStatus::Denied),
         };
-        let decision = if granted {
-            Decision::Granted
+        let authorization = if granted {
+            StoredAuthorizationStatus::Authorized
         } else {
-            Decision::Denied
+            StoredAuthorizationStatus::Denied
         };
-        self.storage.write(key, decision.encode()).await?;
-        Ok(decision)
+        self.storage
+            .write_core_storage(
+                CoreStorageKey::PermissionAuthorization { storage_key: key },
+                authorization.encode(),
+            )
+            .await?;
+        Ok(authorization.into())
     }
 
-    /// Returns the cached remote decision if any, otherwise prompts the
+    /// Returns the cached remote authorization if any, otherwise prompts the
     /// platform's `remote_permission` callback and persists the answer.
     pub async fn check_or_prompt_remote(
         &self,
         request: RemotePermissionRequest,
-    ) -> Result<Decision, HostLocalStorageReadError> {
-        let key = remote_storage_key(&request);
-        if let Some(cached) = peek(self.storage, &key).await? {
-            return Ok(cached);
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        let key = remote_storage_key(self.product_id, &request);
+        if let Some(cached) = peek_stored(self.storage, &key).await? {
+            return Ok(cached.into());
         }
         // See `check_or_prompt_device`: persist only a genuine user decision; a
         // transient callback error fails closed for this call without caching.
         let granted = match self.prompt.remote_permission(request).await {
             Ok(RemotePermissionResponse { granted }) => granted,
-            Err(_) => return Ok(Decision::Denied),
+            Err(_) => return Ok(PermissionAuthorizationStatus::Denied),
         };
-        let decision = if granted {
-            Decision::Granted
+        let authorization = if granted {
+            StoredAuthorizationStatus::Authorized
         } else {
-            Decision::Denied
+            StoredAuthorizationStatus::Denied
         };
-        self.storage.write(key, decision.encode()).await?;
-        Ok(decision)
+        self.storage
+            .write_core_storage(
+                CoreStorageKey::PermissionAuthorization { storage_key: key },
+                authorization.encode(),
+            )
+            .await?;
+        Ok(authorization.into())
     }
 }
 
-async fn peek<S: Storage>(
+async fn authorization_status<S: CoreStorage>(
     storage: &S,
     key: &str,
-) -> Result<Option<Decision>, HostLocalStorageReadError> {
-    let Some(raw) = storage.read(key.to_string()).await? else {
+) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+    Ok(peek_stored(storage, key)
+        .await?
+        .map(Into::into)
+        .unwrap_or(PermissionAuthorizationStatus::NotDetermined))
+}
+
+async fn peek_stored<S: CoreStorage>(
+    storage: &S,
+    key: &str,
+) -> Result<Option<StoredAuthorizationStatus>, v01::GenericError> {
+    let Some(raw) = storage
+        .read_core_storage(CoreStorageKey::PermissionAuthorization {
+            storage_key: key.to_string(),
+        })
+        .await?
+    else {
         return Ok(None);
     };
-    Ok(Decision::decode(&mut &*raw).ok())
+    Ok(StoredAuthorizationStatus::decode(&mut &*raw).ok())
+}
+
+async fn set_authorization_status<S: CoreStorage>(
+    storage: &S,
+    key: String,
+    status: PermissionAuthorizationStatus,
+) -> Result<(), v01::GenericError> {
+    match status_into_stored(status) {
+        Some(stored) => {
+            storage
+                .write_core_storage(
+                    CoreStorageKey::PermissionAuthorization { storage_key: key },
+                    stored.encode(),
+                )
+                .await
+        }
+        None => {
+            storage
+                .clear_core_storage(CoreStorageKey::PermissionAuthorization { storage_key: key })
+                .await
+        }
+    }
+}
+
+fn status_into_stored(status: PermissionAuthorizationStatus) -> Option<StoredAuthorizationStatus> {
+    match status {
+        PermissionAuthorizationStatus::NotDetermined => None,
+        PermissionAuthorizationStatus::Denied => Some(StoredAuthorizationStatus::Denied),
+        PermissionAuthorizationStatus::Authorized => Some(StoredAuthorizationStatus::Authorized),
+    }
 }
 
 /// Canonical storage key for a device permission. The slug is human-readable
 /// so a host developer inspecting storage can tell what's there.
-pub fn device_storage_key(permission: &HostDevicePermissionRequest) -> String {
-    format!("{PERMISSION_KEY_PREFIX}device:{}", device_slug(permission))
+pub fn device_storage_key(product_id: &str, permission: &HostDevicePermissionRequest) -> String {
+    format!(
+        "{PERMISSION_KEY_PREFIX}product:{}:device:{}",
+        product_scope(product_id),
+        device_slug(permission)
+    )
 }
 
 /// Canonical storage key for a remote permission. The permission is
 /// canonicalized (domain lists lowercased, sorted, and de-duplicated) then
 /// SCALE-encoded and hex-encoded so attacker-controlled domain strings cannot
 /// collide with another permission by injecting separator characters.
-pub fn remote_storage_key(request: &RemotePermissionRequest) -> String {
+pub fn remote_storage_key(product_id: &str, request: &RemotePermissionRequest) -> String {
     let canonical = canonical_remote_request(request);
     format!(
-        "{PERMISSION_KEY_PREFIX}remote:{}",
+        "{PERMISSION_KEY_PREFIX}product:{}:remote:{}",
+        product_scope(product_id),
         hex::encode(canonical.encode())
     )
+}
+
+fn product_scope(product_id: &str) -> String {
+    hex::encode(product_id.as_bytes())
 }
 
 fn canonical_remote_request(request: &RemotePermissionRequest) -> RemotePermissionRequest {
@@ -187,21 +310,32 @@ mod tests {
         inner: Mutex<HashMap<String, Vec<u8>>>,
     }
 
-    impl Storage for MemStorage {
-        async fn read(&self, key: String) -> Result<Option<Vec<u8>>, HostLocalStorageReadError> {
-            Ok(self.inner.lock().await.get(&key).cloned())
-        }
-        async fn write(
+    impl CoreStorage for MemStorage {
+        async fn read_core_storage(
             &self,
-            key: String,
+            key: CoreStorageKey,
+        ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+            Ok(self.inner.lock().await.get(&test_key(key)).cloned())
+        }
+        async fn write_core_storage(
+            &self,
+            key: CoreStorageKey,
             value: Vec<u8>,
-        ) -> Result<(), HostLocalStorageReadError> {
-            self.inner.lock().await.insert(key, value);
+        ) -> Result<(), v01::GenericError> {
+            self.inner.lock().await.insert(test_key(key), value);
             Ok(())
         }
-        async fn clear(&self, key: String) -> Result<(), HostLocalStorageReadError> {
-            self.inner.lock().await.remove(&key);
+        async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), v01::GenericError> {
+            self.inner.lock().await.remove(&test_key(key));
             Ok(())
+        }
+    }
+
+    fn test_key(key: CoreStorageKey) -> String {
+        match key {
+            CoreStorageKey::PermissionAuthorization { storage_key } => storage_key,
+            CoreStorageKey::AuthSession => "auth-session".to_string(),
+            CoreStorageKey::PairingDeviceIdentity => "pairing-device-identity".to_string(),
         }
     }
 
@@ -256,17 +390,21 @@ mod tests {
     #[test]
     fn storage_key_is_stable_per_variant() {
         assert_eq!(
-            device_storage_key(&HostDevicePermissionRequest::Camera),
-            "truapi:permissions:device:camera",
+            device_storage_key("product.dot", &HostDevicePermissionRequest::Camera),
+            format!(
+                "truapi:permissions:product:{}:device:camera",
+                product_scope("product.dot")
+            ),
         );
         let chain = RemotePermissionRequest {
             permission: RemotePermission::ChainSubmit,
         };
         let expected = format!(
-            "truapi:permissions:remote:{}",
+            "truapi:permissions:product:{}:remote:{}",
+            product_scope("product.dot"),
             hex::encode(canonical_remote_request(&chain).encode())
         );
-        assert_eq!(remote_storage_key(&chain), expected);
+        assert_eq!(remote_storage_key("product.dot", &chain), expected);
 
         let unsorted = RemotePermissionRequest {
             permission: RemotePermission::Remote {
@@ -278,7 +416,10 @@ mod tests {
                 domains: vec!["a.example.com".into(), "b.example.com".into()],
             },
         };
-        assert_eq!(remote_storage_key(&unsorted), remote_storage_key(&sorted));
+        assert_eq!(
+            remote_storage_key("product.dot", &unsorted),
+            remote_storage_key("product.dot", &sorted)
+        );
     }
 
     #[test]
@@ -293,7 +434,10 @@ mod tests {
                 domains: vec!["a.com".into(), "example.com".into()],
             },
         };
-        assert_eq!(remote_storage_key(&mixed), remote_storage_key(&canonical));
+        assert_eq!(
+            remote_storage_key("product.dot", &mixed),
+            remote_storage_key("product.dot", &canonical)
+        );
     }
 
     #[test]
@@ -316,8 +460,8 @@ mod tests {
                 domains: vec!["x".into(), "y".into(), "z".into()],
             },
         };
-        let injecting_key = remote_storage_key(&injecting);
-        let benign_key = remote_storage_key(&benign_same_set);
+        let injecting_key = remote_storage_key("product.dot", &injecting);
+        let benign_key = remote_storage_key("product.dot", &benign_same_set);
         assert_ne!(injecting_key, benign_key);
 
         // The injecting permission must also be distinct from the `WebRtc`
@@ -325,7 +469,7 @@ mod tests {
         let webrtc = RemotePermissionRequest {
             permission: RemotePermission::WebRtc,
         };
-        assert_ne!(injecting_key, remote_storage_key(&webrtc));
+        assert_ne!(injecting_key, remote_storage_key("product.dot", &webrtc));
 
         // Re-ordering the same domains still collapses to a single key
         // (canonicalization is order-independent).
@@ -338,14 +482,17 @@ mod tests {
                 ],
             },
         };
-        assert_eq!(injecting_key, remote_storage_key(&injecting_reordered));
+        assert_eq!(
+            injecting_key,
+            remote_storage_key("product.dot", &injecting_reordered)
+        );
     }
 
     #[test]
     fn check_or_prompt_device_caches_grant() {
         let storage = MemStorage::default();
         let prompt = ScriptedPrompt::new(vec![true], vec![]);
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let first = futures::executor::block_on(
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
@@ -356,8 +503,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(first, Decision::Granted);
-        assert_eq!(second, Decision::Granted);
+        assert_eq!(first, PermissionAuthorizationStatus::Authorized);
+        assert_eq!(second, PermissionAuthorizationStatus::Authorized);
         assert_eq!(prompt.device_calls.load(Ordering::SeqCst), 1);
     }
 
@@ -365,7 +512,7 @@ mod tests {
     fn check_or_prompt_remote_caches_denial() {
         let storage = MemStorage::default();
         let prompt = ScriptedPrompt::new(vec![], vec![false]);
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let request = RemotePermissionRequest {
             permission: RemotePermission::ChainSubmit,
@@ -374,8 +521,8 @@ mod tests {
             futures::executor::block_on(service.check_or_prompt_remote(request.clone())).unwrap();
         let second = futures::executor::block_on(service.check_or_prompt_remote(request)).unwrap();
 
-        assert_eq!(first, Decision::Denied);
-        assert_eq!(second, Decision::Denied);
+        assert_eq!(first, PermissionAuthorizationStatus::Denied);
+        assert_eq!(second, PermissionAuthorizationStatus::Denied);
         assert_eq!(prompt.remote_calls.load(Ordering::SeqCst), 1);
     }
 
@@ -385,7 +532,7 @@ mod tests {
         // Device denies, remote grants. If the caches collided we'd see the
         // same answer on the second call.
         let prompt = ScriptedPrompt::new(vec![false], vec![true]);
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let device = futures::executor::block_on(
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
@@ -397,8 +544,8 @@ mod tests {
             }))
             .unwrap();
 
-        assert_eq!(device, Decision::Denied);
-        assert_eq!(remote, Decision::Granted);
+        assert_eq!(device, PermissionAuthorizationStatus::Denied);
+        assert_eq!(remote, PermissionAuthorizationStatus::Authorized);
         assert_eq!(prompt.device_calls.load(Ordering::SeqCst), 1);
         assert_eq!(prompt.remote_calls.load(Ordering::SeqCst), 1);
     }
@@ -407,7 +554,7 @@ mod tests {
     fn device_prompt_does_not_invoke_remote_callback() {
         let storage = MemStorage::default();
         let prompt = ScriptedPrompt::new(vec![true], vec![]);
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let _ = futures::executor::block_on(
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
@@ -421,7 +568,7 @@ mod tests {
     fn remote_prompt_does_not_invoke_device_callback() {
         let storage = MemStorage::default();
         let prompt = ScriptedPrompt::new(vec![], vec![true]);
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let _ =
             futures::executor::block_on(service.check_or_prompt_remote(RemotePermissionRequest {
@@ -433,15 +580,15 @@ mod tests {
     }
 
     #[test]
-    fn peek_returns_none_until_decided() {
+    fn peek_returns_not_determined_until_authorized() {
         let storage = MemStorage::default();
         let prompt = ScriptedPrompt::new(vec![true], vec![]);
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let before =
             futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
                 .unwrap();
-        assert_eq!(before, None);
+        assert_eq!(before, PermissionAuthorizationStatus::NotDetermined);
 
         futures::executor::block_on(
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
@@ -451,7 +598,34 @@ mod tests {
         let after =
             futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
                 .unwrap();
-        assert_eq!(after, Some(Decision::Granted));
+        assert_eq!(after, PermissionAuthorizationStatus::Authorized);
+    }
+
+    #[test]
+    fn set_authorization_status_writes_and_clears() {
+        let storage = MemStorage::default();
+        let prompt = ScriptedPrompt::new(vec![], vec![]);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
+        let request = PermissionAuthorizationRequest::Device(HostDevicePermissionRequest::Camera);
+
+        futures::executor::block_on(
+            service.set_authorization_status(&request, PermissionAuthorizationStatus::Authorized),
+        )
+        .unwrap();
+        assert_eq!(
+            futures::executor::block_on(service.authorization_status(&request)).unwrap(),
+            PermissionAuthorizationStatus::Authorized
+        );
+
+        futures::executor::block_on(
+            service
+                .set_authorization_status(&request, PermissionAuthorizationStatus::NotDetermined),
+        )
+        .unwrap();
+        assert_eq!(
+            futures::executor::block_on(service.authorization_status(&request)).unwrap(),
+            PermissionAuthorizationStatus::NotDetermined
+        );
     }
 
     /// Prompt callback that always errors, to exercise the transient-failure
@@ -482,22 +656,23 @@ mod tests {
     fn prompt_failure_denies_without_persisting() {
         let storage = MemStorage::default();
         let prompt = FailingPrompt;
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let decision = futures::executor::block_on(
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
         )
         .unwrap();
-        assert_eq!(decision, Decision::Denied);
+        assert_eq!(decision, PermissionAuthorizationStatus::Denied);
 
         // A transient callback error is fail-closed for this call but NOT
-        // cached, so peek still sees no decision and the next request
+        // cached, so peek still sees no authorization and the next request
         // re-prompts rather than permanently locking out the capability.
         let cached =
             futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
                 .unwrap();
         assert_eq!(
-            cached, None,
+            cached,
+            PermissionAuthorizationStatus::NotDetermined,
             "a transient prompt error must not be persisted"
         );
     }
@@ -508,43 +683,55 @@ mod tests {
     fn corrupt_cache_entry_returns_none() {
         let storage = MemStorage::default();
         // Write garbage bytes under the canonical key.
-        futures::executor::block_on(storage.write(
-            device_storage_key(&HostDevicePermissionRequest::Camera),
+        futures::executor::block_on(storage.write_core_storage(
+            CoreStorageKey::PermissionAuthorization {
+                storage_key: device_storage_key(
+                    "product.dot",
+                    &HostDevicePermissionRequest::Camera,
+                ),
+            },
             vec![0xff, 0xfe, 0xfd],
         ))
         .unwrap();
 
         let prompt = ScriptedPrompt::new(vec![true], vec![]);
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let peeked =
             futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
                 .unwrap();
-        assert_eq!(peeked, None, "corrupt entry must decode as absent");
+        assert_eq!(
+            peeked,
+            PermissionAuthorizationStatus::NotDetermined,
+            "corrupt entry must decode as absent"
+        );
     }
 
     /// Storage failures must propagate to the caller; the service must not
-    /// swallow them by silently returning a default Decision.
+    /// swallow them by silently returning a default authorization.
     #[derive(Default)]
     struct FailingStorage;
 
-    impl Storage for FailingStorage {
-        async fn read(&self, _key: String) -> Result<Option<Vec<u8>>, HostLocalStorageReadError> {
-            Err(v01::HostLocalStorageReadError::Unknown {
+    impl CoreStorage for FailingStorage {
+        async fn read_core_storage(
+            &self,
+            _key: CoreStorageKey,
+        ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+            Err(v01::GenericError {
                 reason: "read failed".into(),
             })
         }
-        async fn write(
+        async fn write_core_storage(
             &self,
-            _key: String,
+            _key: CoreStorageKey,
             _value: Vec<u8>,
-        ) -> Result<(), HostLocalStorageReadError> {
-            Err(v01::HostLocalStorageReadError::Unknown {
+        ) -> Result<(), v01::GenericError> {
+            Err(v01::GenericError {
                 reason: "write failed".into(),
             })
         }
-        async fn clear(&self, _key: String) -> Result<(), HostLocalStorageReadError> {
-            Err(v01::HostLocalStorageReadError::Unknown {
+        async fn clear_core_storage(&self, _key: CoreStorageKey) -> Result<(), v01::GenericError> {
+            Err(v01::GenericError {
                 reason: "clear failed".into(),
             })
         }
@@ -554,15 +741,12 @@ mod tests {
     fn storage_read_error_propagates() {
         let storage = FailingStorage;
         let prompt = ScriptedPrompt::new(vec![], vec![]);
-        let service = PermissionsService::new(&storage, &prompt);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
         let err = futures::executor::block_on(
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
         )
         .expect_err("read failure must surface");
-        assert!(matches!(
-            err,
-            v01::HostLocalStorageReadError::Unknown { .. }
-        ));
+        assert!(matches!(err, v01::GenericError { .. }));
     }
 }

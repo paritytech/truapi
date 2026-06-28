@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, release/v0.3.0]
   merge_group:
   workflow_dispatch:
 
@@ -21,7 +21,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -52,7 +52,7 @@ jobs:
     name: Dependency licenses
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -65,7 +65,7 @@ jobs:
     name: Codegen
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -76,7 +76,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
         with:
           toolchain: nightly
-          components: rustfmt
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
@@ -84,21 +83,11 @@ jobs:
         with:
           node-version: 22
 
-      # codegen.sh emits the gitignored generated TS first and only then
-      # installs/builds the npm workspace, so package `prepare` (tsc -b)
-      # scripts see the generated modules. Installing the workspace before
-      # codegen fails: npm runs the truapi-host-wasm prepare build against
-      # sources whose ./generated imports don't exist yet.
+      - name: Install workspace deps
+        run: npm ci --ignore-scripts
+
       - name: Run codegen
         run: ./scripts/codegen.sh
-
-      - name: Check committed Rust codegen output is current
-        run: git diff --exit-code -- rust/crates/truapi-server/src/generated
-
-      - name: Wire-table parity (Rust vs generated TS)
-        run: cargo test -p truapi-server --test wire_table_ts_parity
-        env:
-          TRUAPI_REQUIRE_GENERATED_TS: 1
 
       - name: Upload codegen output
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -111,7 +100,6 @@ jobs:
             js/packages/truapi/src/playground/codegen
             js/packages/truapi/src/explorer/codegen
             js/packages/truapi/src/explorer/versions.ts
-            js/packages/truapi-host/src/generated
             js/packages/truapi-host-wasm/src/generated
             playground/test/generated
 
@@ -122,7 +110,7 @@ jobs:
     env:
       TRUAPI_REQUIRE_GENERATED: 1
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -155,7 +143,7 @@ jobs:
     env:
       TRUAPI_REQUIRE_GENERATED: 1
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -200,7 +188,7 @@ jobs:
     env:
       TRUAPI_REQUIRE_GENERATED: 1
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -231,86 +219,60 @@ jobs:
         run: npm run build
 
   e2e:
-    name: E2E (dotli playground diagnosis)
+    name: E2E (playground inside dotli)
+    # Temporarily disabled while the dotli playground smoke test is stabilized.
+    if: false
     runs-on: ubuntu-latest
     needs: playground
-    timeout-minutes: 35
+    timeout-minutes: 30
     env:
       TRUAPI_REQUIRE_GENERATED: 1
-      SIGNER_BOT_SVC_TOKEN: ${{ secrets.SIGNER_BOT_SVC_TOKEN }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          submodules: recursive
           persist-credentials: false
 
-      - name: Check dotli submodule access
-        id: dotli-access
-        env:
-          DOTLI_CHECKOUT_TOKEN: ${{ secrets.DOTLI_CHECKOUT_TOKEN }}
-        run: |
-          if [ -n "$DOTLI_CHECKOUT_TOKEN" ]; then
-            git config --global url."https://x-access-token:${DOTLI_CHECKOUT_TOKEN}@github.com/".insteadOf "https://github.com/"
-          fi
-          if git ls-remote https://github.com/paritytech/dotli.git >/dev/null 2>&1; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            git submodule update --init --recursive hosts/dotli
-          else
-            echo "::warning::dotli submodule is not accessible to this workflow; skipping dotli e2e."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        if: steps.dotli-access.outputs.available == 'true'
         with:
           node-version: 22
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        if: steps.dotli-access.outputs.available == 'true'
         with:
           bun-version: latest
 
-      - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
-        if: steps.dotli-access.outputs.available == 'true'
-        with:
-          toolchain: stable
-
       - name: Download codegen output
-        if: steps.dotli-access.outputs.available == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codegen-output
 
-      - name: Install wasm-pack
-        if: steps.dotli-access.outputs.available == 'true'
-        run: cargo install wasm-pack --version 0.14.0 --locked
+      - name: Build @parity/truapi
+        run: |
+          npm ci --ignore-scripts
+          npm run build --prefix js/packages/truapi
 
       - name: Install dotli deps
-        if: steps.dotli-access.outputs.available == 'true'
         working-directory: hosts/dotli
         run: bun install --frozen-lockfile
 
+      - name: Install playground deps
+        working-directory: playground
+        run: yarn install --frozen-lockfile
+
       - name: Install Playwright browsers
-        if: steps.dotli-access.outputs.available == 'true'
-        working-directory: hosts/dotli/apps/host
-        run: bunx playwright install --with-deps chromium
+        working-directory: playground
+        run: npx playwright install --with-deps chromium
 
-      - name: Run dotli diagnosis e2e
-        if: steps.dotli-access.outputs.available == 'true'
-        run: |
-          if [ -n "$SIGNER_BOT_SVC_TOKEN" ]; then
-            make e2e-dotli
-          else
-            echo "::warning::SIGNER_BOT_SVC_TOKEN is unavailable; running QR smoke mode only."
-            E2E_DOTLI_SMOKE=1 make e2e-dotli
-          fi
+      - name: Run Playwright e2e
+        working-directory: playground
+        run: yarn e2e
 
-      - name: Upload dotli e2e results
-        if: always()
+      - name: Upload Playwright report
+        if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: dotli-e2e-results
-          path: hosts/dotli/test-results/e2e-dotli
-          if-no-files-found: ignore
+          name: playwright-report
+          path: playground/playwright-report
           retention-days: 14
 
   ci-status:

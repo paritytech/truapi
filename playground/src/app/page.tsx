@@ -10,7 +10,7 @@ import {
 import {
   subscribeConnectionStatus,
   type ConnectionStatus,
-} from "@/src/lib/transport";
+} from "@parity/truapi/sandbox";
 import { ServiceTable } from "@/src/components/ServiceTable";
 import { MethodView } from "@/src/components/MethodView";
 import { DiagnosisView } from "@/src/components/DiagnosisView";
@@ -23,6 +23,7 @@ import {
   runDiagnosis,
   runSingleTest,
 } from "@/src/lib/auto-test";
+import { installE2EHooks } from "@/src/lib/e2e-hooks";
 import packageJson from "../../package.json";
 
 const VERSION_LABEL = `v${packageJson.version}`;
@@ -188,6 +189,7 @@ export default function PlaygroundPage() {
 
   useEffect(() => {
     try {
+      installE2EHooks();
       return subscribeConnectionStatus(setStatus);
     } catch {
       setStatus("disconnected");

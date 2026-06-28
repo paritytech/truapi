@@ -49,9 +49,7 @@ public enum PairingDeeplinkScheme: Sendable {
 /// `platformVersion` describe the host to the wallet during SSO pairing.
 /// `peopleChainGenesisHash` must be exactly 32 bytes.
 public struct RuntimeConfig: Sendable {
-    public let productLabel: String
     public let productId: String
-    public let siteId: String
     public let hostName: String
     public let hostIcon: String?
     public let hostVersion: String?
@@ -61,9 +59,7 @@ public struct RuntimeConfig: Sendable {
     public let pairingDeeplinkScheme: PairingDeeplinkScheme
 
     public init(
-        productLabel: String,
         productId: String,
-        siteId: String,
         hostName: String,
         hostIcon: String? = nil,
         hostVersion: String? = nil,
@@ -72,9 +68,7 @@ public struct RuntimeConfig: Sendable {
         peopleChainGenesisHash: Data,
         pairingDeeplinkScheme: PairingDeeplinkScheme = .polkadotApp
     ) {
-        self.productLabel = productLabel
         self.productId = productId
-        self.siteId = siteId
         self.hostName = hostName
         self.hostIcon = hostIcon
         self.hostVersion = hostVersion
@@ -86,9 +80,7 @@ public struct RuntimeConfig: Sendable {
 
     fileprivate var native: NativeRuntimeConfig {
         NativeRuntimeConfig(
-            productLabel: productLabel,
             productId: productId,
-            siteId: siteId,
             hostName: hostName,
             hostIcon: hostIcon,
             hostVersion: hostVersion,
@@ -147,6 +139,15 @@ public protocol HostStorageBackend: AnyObject, Sendable {
     func clear(key: String) throws
 }
 
+/// Core-owned host-private storage backend. Keys are SCALE-encoded
+/// `truapi_platform::CoreStorageKey` values, so embedders can persist them
+/// opaquely or decode them to choose a secure backing store per slot.
+public protocol HostCoreStorageBackend: AnyObject, Sendable {
+    func read(key: Data) throws -> Data?
+    func write(key: Data, value: Data) throws
+    func clear(key: Data) throws
+}
+
 /// Host-side callback bundle that the Rust core invokes for capabilities the
 /// native shell owns. The permission split mirrors the Rust `Permissions`
 /// trait:
@@ -164,7 +165,7 @@ public protocol HostStorageBackend: AnyObject, Sendable {
 /// Threading: the Rust core invokes every callback on a background thread it
 /// owns, never the main thread. UI-decision callbacks
 /// (``navigateTo(url:)``, ``devicePermission(request:)``,
-/// ``remotePermission(request:)``, the `confirm*` family, and
+/// ``remotePermission(request:)``, ``confirmUserAction(review:)``, and
 /// ``submitPreimage(value:)``) each run on their own thread from a blocking
 /// pool, so an implementation may safely block its calling thread (e.g. with
 /// `DispatchQueue.main.sync` or a semaphore) until the user decides; other
@@ -212,15 +213,6 @@ public protocol HostBridge: AnyObject, Sendable {
     /// promptly.
     func authStateChanged(state: AuthState)
 
-    /// Read the opaque core-owned SSO session blob from host-global storage.
-    func readSession() throws -> Data?
-
-    /// Persist the opaque core-owned SSO session blob in host-global storage.
-    func writeSession(value: Data) throws
-
-    /// Clear the persisted core-owned SSO session blob.
-    func clearSession() throws
-
     /// Open a JSON-RPC chain connection and return a host-assigned id, or nil if unsupported.
     func chainConnect(genesisHash: Data) throws -> UInt32?
 
@@ -230,23 +222,9 @@ public protocol HostBridge: AnyObject, Sendable {
     /// Close a native chain connection.
     func chainClose(connectionId: UInt32) throws
 
-    /// Confirm a sign-payload request before the core asks the SSO peer.
-    func confirmSignPayload(review: Data) throws -> Bool
-
-    /// Confirm a sign-raw request before the core asks the SSO peer.
-    func confirmSignRaw(review: Data) throws -> Bool
-
-    /// Confirm a create-transaction request before the core asks the SSO peer.
-    func confirmCreateTransaction(review: Data) throws -> Bool
-
-    /// Confirm a cross-domain account-alias request before the core asks the SSO peer.
-    func confirmAccountAlias(review: Data) throws -> Bool
-
-    /// Confirm a resource-allocation request before the core asks the SSO peer.
-    func confirmResourceAllocation(review: Data) throws -> Bool
-
-    /// Confirm preimage submission before the host stores it.
-    func confirmPreimageSubmit(size: UInt64) throws
+    /// Confirm one user-reviewed core action before it continues. `review` is
+    /// a SCALE-encoded `UserConfirmationReview`.
+    func confirmUserAction(review: Data) throws -> Bool
 
     /// Submit a preimage through the host backend and return its key.
     func submitPreimage(value: Data) throws -> Data
@@ -263,6 +241,10 @@ public protocol HostBridge: AnyObject, Sendable {
 
     /// Scoped key-value storage for the Rust core.
     var storage: HostStorageBackend { get }
+
+    /// Core-owned host-private storage for auth session, pairing identity,
+    /// and persisted permission decisions.
+    var coreStorage: HostCoreStorageBackend { get }
 }
 
 public extension HostBridge {
@@ -271,18 +253,10 @@ public extension HostBridge {
     func pushNotification(payload: Data) throws -> UInt32 { 0 }
     func cancelNotification(id: UInt32) throws {}
     func authStateChanged(state: AuthState) {}
-    func readSession() throws -> Data? { nil }
-    func writeSession(value: Data) throws {}
-    func clearSession() throws {}
     func chainConnect(genesisHash: Data) throws -> UInt32? { nil }
     func chainSend(connectionId: UInt32, request: String) throws {}
     func chainClose(connectionId: UInt32) throws {}
-    func confirmSignPayload(review: Data) throws -> Bool { false }
-    func confirmSignRaw(review: Data) throws -> Bool { false }
-    func confirmCreateTransaction(review: Data) throws -> Bool { false }
-    func confirmAccountAlias(review: Data) throws -> Bool { false }
-    func confirmResourceAllocation(review: Data) throws -> Bool { false }
-    func confirmPreimageSubmit(size: UInt64) throws {}
+    func confirmUserAction(review: Data) throws -> Bool { false }
     func submitPreimage(value: Data) throws -> Data { value }
     func lookupPreimage(key: Data) throws -> Data? { nil }
     func currentTheme() throws -> HostTheme { .dark }
@@ -326,16 +300,16 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         bridge.authStateChanged(state: state)
     }
 
-    func readSession() throws -> Data? {
-        try bridge.readSession()
+    func coreStorageRead(key: Data) throws -> Data? {
+        try bridge.coreStorage.read(key: key)
     }
 
-    func writeSession(value: Data) throws {
-        try bridge.writeSession(value: value)
+    func coreStorageWrite(key: Data, value: Data) throws {
+        try bridge.coreStorage.write(key: key, value: value)
     }
 
-    func clearSession() throws {
-        try bridge.clearSession()
+    func coreStorageClear(key: Data) throws {
+        try bridge.coreStorage.clear(key: key)
     }
 
     func chainConnect(genesisHash: Data) throws -> UInt32? {
@@ -350,28 +324,8 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         try bridge.chainClose(connectionId: connectionId)
     }
 
-    func confirmSignPayload(review: Data) throws -> Bool {
-        try bridge.confirmSignPayload(review: review)
-    }
-
-    func confirmSignRaw(review: Data) throws -> Bool {
-        try bridge.confirmSignRaw(review: review)
-    }
-
-    func confirmCreateTransaction(review: Data) throws -> Bool {
-        try bridge.confirmCreateTransaction(review: review)
-    }
-
-    func confirmAccountAlias(review: Data) throws -> Bool {
-        try bridge.confirmAccountAlias(review: review)
-    }
-
-    func confirmResourceAllocation(review: Data) throws -> Bool {
-        try bridge.confirmResourceAllocation(review: review)
-    }
-
-    func confirmPreimageSubmit(size: UInt64) throws {
-        try bridge.confirmPreimageSubmit(size: size)
+    func confirmUserAction(review: Data) throws -> Bool {
+        try bridge.confirmUserAction(review: review)
     }
 
     func submitPreimage(value: Data) throws -> Data {
@@ -441,7 +395,7 @@ public final class TrUAPIHostCore {
 
     /// Core-owned logout/disconnect path. Best-effort notifies the SSO peer,
     /// clears in-memory session state, clears the persisted session via
-    /// ``HostBridge/clearSession()``, and broadcasts `Disconnected` to active
+    /// ``HostBridge/coreStorage``, and broadcasts `Disconnected` to active
     /// account-status subscribers.
     public func disconnect() {
         inner.disconnect()
@@ -458,6 +412,21 @@ public final class TrUAPIHostCore {
     /// no login is in progress.
     public func cancelLogin() {
         inner.cancelLogin()
+    }
+
+    /// Read a stored permission authorization status without prompting.
+    /// `request` is a SCALE-encoded `PermissionAuthorizationRequest`.
+    public func permissionAuthorizationStatus(request: Data) throws -> NativePermissionAuthorizationStatus {
+        try inner.permissionAuthorizationStatus(payload: request)
+    }
+
+    /// Update a stored permission authorization status. `.notDetermined`
+    /// clears the stored value so the next product request prompts again.
+    public func setPermissionAuthorizationStatus(
+        request: Data,
+        status: NativePermissionAuthorizationStatus
+    ) throws {
+        try inner.setPermissionAuthorizationStatus(payload: request, status: status)
     }
 
     /// Push a host theme update to active TrUAPI theme subscriptions.

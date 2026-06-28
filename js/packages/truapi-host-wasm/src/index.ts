@@ -1,4 +1,4 @@
-export type { Payload, ProtocolMessage, Provider } from "./types.js";
+export type { Payload, ProtocolMessage, WireProvider } from "@parity/truapi";
 
 export type {
   AuthState,
@@ -6,39 +6,22 @@ export type {
   ChainConnect,
   ChainConnection,
   ChainProvider,
+  CoreAdmin,
+  CoreStorage,
+  CoreStorageKey,
   Features,
   HostCallbacks,
   LogLevel,
   Navigation,
   Notifications,
+  PermissionAuthorizationRequest,
+  PermissionAuthorizationStatus,
   Permissions,
   PreimageHost,
+  ProductStorage,
   PlatformJsonRpcConnection,
   SessionUiInfo,
-  HostStorage,
   ThemeHost,
-  TrUApiHostWasmProvider,
-  WasmCoreLike,
-  WasmRawCallbacks,
-  WasmRuntimeConfig,
+  TrUApiHostCoreProvider,
+  HostCoreRuntimeConfig,
 } from "./runtime.js";
-export { createWasmProvider } from "./runtime.js";
-export { createUnavailableCallbacks } from "./adapter-support.js";
-export type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
-export { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
-
-export type {
-  CallContext,
-  HostDispatchEntry,
-  HostServerHooks,
-  RequestEntry,
-  SubscriptionCleanup,
-  SubscriptionEntry,
-  SubscriptionFramePort,
-  TrUApiHostServer,
-} from "./dispatcher.js";
-export {
-  createHostServer,
-  toFlatResponsePayload,
-  toResponsePayload,
-} from "./dispatcher.js";

@@ -446,8 +446,11 @@ fn disambiguated_type_name(simple_name: &str, path: &[String]) -> String {
     if path.iter().any(|segment| segment == "versioned") {
         return simple_name.to_string();
     }
-    if path.iter().any(|segment| segment == "v01") {
-        return format!("V01{simple_name}");
+    if let Some(version) = path
+        .iter()
+        .find_map(|segment| version_module_number(segment))
+    {
+        return format!("V{version:02}{simple_name}");
     }
     let module = path
         .iter()
@@ -456,6 +459,12 @@ fn disambiguated_type_name(simple_name: &str, path: &[String]) -> String {
         .map(|segment| to_pascal_case(segment))
         .unwrap_or_default();
     format!("{module}{simple_name}")
+}
+
+fn version_module_number(segment: &str) -> Option<u32> {
+    segment
+        .strip_prefix('v')
+        .and_then(|value| value.parse::<u32>().ok())
 }
 
 fn to_pascal_case(value: &str) -> String {

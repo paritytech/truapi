@@ -35,7 +35,9 @@ use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
-use crate::{ProtocolMessage, TrUApiCore, Transport};
+use crate::core::TrUApiCore;
+use crate::frame::ProtocolMessage;
+use crate::transport::Transport;
 
 /// Maximum simultaneous connections the bridge will service. The product uses
 /// a single connection; the cap bounds resource use from a buggy or hostile

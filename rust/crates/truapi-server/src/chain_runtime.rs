@@ -108,6 +108,7 @@ impl RuntimeFailure {
     }
 
     /// Method tag the failure originated from.
+    #[allow(dead_code)]
     pub fn method(&self) -> &'static str {
         self.method
     }
@@ -123,8 +124,7 @@ impl RuntimeFailure {
 
 /// Provider of `JsonRpcConnection` instances keyed by chain genesis hash.
 /// The default [`UnavailableChainProvider`] makes every call fail; real
-/// hosts plug in either the platform-side `ChainProvider` or the bundled
-/// smoldot provider (feature `smoldot`).
+/// hosts plug in the platform-side `ChainProvider`.
 #[async_trait::async_trait]
 pub trait RuntimeChainProvider: Send + Sync {
     /// Open or reuse a JSON-RPC connection for the chain identified by
@@ -137,6 +137,7 @@ pub trait RuntimeChainProvider: Send + Sync {
 
 /// Default provider: every `connect` call fails with `Unavailable`, so each
 /// chain RPC surfaces a typed "unavailable" error to the product.
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct UnavailableChainProvider;
 
@@ -1383,6 +1384,7 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
 /// embedders that have not yet wired a real runtime. Not available on wasm32
 /// since the platform has no threads.
 #[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 pub fn thread_per_task_spawner() -> Spawner {
     Arc::new(|fut: futures::future::BoxFuture<'static, ()>| {
         std::thread::spawn(move || futures::executor::block_on(fut));

@@ -13,7 +13,7 @@ pub(crate) mod sso_pairing;
 pub(crate) mod sso_remote;
 pub(crate) mod statement_store;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::chain_runtime::{
     ChainRuntime, RuntimeChainProvider, RuntimeFailure, RuntimeFailureKind,
@@ -21,7 +21,7 @@ use crate::chain_runtime::{
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::entropy::derive_product_entropy_from_source;
 use crate::host_logic::features::feature_supported;
-use crate::host_logic::permissions::{Decision, PermissionsService};
+use crate::host_logic::permissions::PermissionsService;
 use crate::host_logic::product_account::{
     derive_product_public_key, is_product_identifier, normalize_product_identifier,
     product_public_key_to_address,
@@ -29,20 +29,30 @@ use crate::host_logic::product_account::{
 use crate::host_logic::session::{
     SessionInfo, SessionState, decode_persisted_session, encode_persisted_session,
 };
+use crate::host_logic::session_store::SessionStoreChangeNotifier;
+use crate::host_logic::sso_messages::SsoSessionStatement;
 use crate::host_logic::sso_messages::{
     OnExistingAllowancePolicy, SsoAllocationOutcome, SsoRemoteResponse, alias_request_message,
-    create_transaction_message, resource_allocation_message, sign_payload_message,
-    sign_raw_message,
+    create_transaction_message, decode_sso_session_statement, resource_allocation_message,
+    sign_payload_message, sign_raw_message,
+};
+use crate::host_logic::statement_store::{
+    parse_new_statements, parse_subscribe_ack, subscribe_match_all_request, unsubscribe_request,
 };
 use crate::subscription::Spawner;
 use auth_state::AuthStateMachine;
 use identity::resolve_session_identity_with_chain;
-use sso_pairing::PAIRING_DEVICE_IDENTITY_STORAGE_KEY;
-use sso_remote::{SSO_LOCAL_DISCONNECT_REASON, SessionDisconnects, sso_message_id};
+use sso_remote::{
+    SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON, SessionDisconnects, sso_message_id,
+};
 
-use futures::StreamExt;
+use futures::future::{AbortHandle, Abortable};
+use futures::{FutureExt, StreamExt};
+#[cfg(test)]
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument};
+#[cfg(debug_assertions)]
+use truapi::api::Testing;
 use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
     Preimage, ResourceAllocation, Signing, System, Theme,
@@ -123,10 +133,13 @@ use truapi::versioned::system::{
 use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
-    ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Platform, PreimageHost as PlatformPreimageHost,
-    RuntimeConfig, SessionStore as PlatformSessionStore, SessionUiInfo, Storage as PlatformStorage,
-    ThemeHost as PlatformThemeHost, UserConfirmation as PlatformUserConfirmation,
+    AccountAliasReview, ChainProvider as PlatformChainProvider, CoreStorage as PlatformCoreStorage,
+    CoreStorageKey, CreateTransactionReview, JsonRpcConnection, Navigation as PlatformNavigation,
+    Notifications as PlatformNotifications, PermissionAuthorizationRequest,
+    PermissionAuthorizationStatus, Platform, PreimageHost as PlatformPreimageHost,
+    PreimageSubmitReview, ProductStorage as PlatformProductStorage, RuntimeConfig, SessionUiInfo,
+    SignPayloadReview, SignRawReview, ThemeHost as PlatformThemeHost,
+    UserConfirmation as PlatformUserConfirmation, UserConfirmationReview,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
@@ -141,9 +154,24 @@ pub struct PlatformRuntimeHost<P> {
     /// Account-management subscriptions read from this in lieu of round-tripping
     /// a callback on every connection-status query.
     session_state: Arc<SessionState>,
+    session_store_changes: Arc<SessionStoreChangeNotifier>,
     session_disconnects: Arc<SessionDisconnects>,
+    sso_disconnect_monitor: Arc<Mutex<Option<SsoDisconnectMonitor>>>,
+    spawner: Spawner,
     /// Auth UI state machine; the single funnel for `auth_state_changed`.
     auth_state: AuthStateMachine<P>,
+}
+
+struct SsoDisconnectMonitor {
+    session_id_own: [u8; 32],
+    session_id_peer: [u8; 32],
+    abort: AbortHandle,
+}
+
+impl Drop for SsoDisconnectMonitor {
+    fn drop(&mut self) {
+        self.abort.abort();
+    }
 }
 
 impl<P> PlatformRuntimeHost<P> {
@@ -159,9 +187,12 @@ impl<P> PlatformRuntimeHost<P> {
             auth_state: AuthStateMachine::new(platform.clone()),
             platform,
             runtime_config,
-            chain: ChainRuntime::new(chain_provider, spawner),
+            chain: ChainRuntime::new(chain_provider, spawner.clone()),
             session_state: SessionState::new(),
+            session_store_changes: SessionStoreChangeNotifier::new(),
             session_disconnects: Arc::new(SessionDisconnects::default()),
+            sso_disconnect_monitor: Arc::new(Mutex::new(None)),
+            spawner,
         }
     }
 
@@ -182,44 +213,50 @@ impl<P> PlatformRuntimeHost<P> {
                 platform_type: None,
                 platform_version: None,
                 people_chain_genesis_hash: [0; 32],
-                pairing_deeplink_scheme: truapi_platform::PairingDeeplinkScheme::PolkadotApp,
+                pairing_deeplink_scheme: "polkadotapp".to_string(),
             },
             spawner,
         )
     }
 
-    /// Chain provider backing the chainHead-v1 runtime. Without the `smoldot`
-    /// feature, chain access routes through the platform's `ChainProvider`.
-    #[cfg(not(feature = "smoldot"))]
+    /// Chain provider backing the chainHead-v1 runtime. Chain access routes
+    /// through the platform's host-owned `ChainProvider`.
     fn chain_provider(platform: Arc<P>) -> Arc<dyn RuntimeChainProvider>
     where
         P: Platform + 'static,
     {
-        Arc::new(PlatformChainRuntimeProvider { platform })
-    }
-
-    /// With the `smoldot` feature, the embedded light client owns chain
-    /// access, falling back to the platform's `ChainProvider` only if the
-    /// client fails to start.
-    #[cfg(feature = "smoldot")]
-    fn chain_provider(platform: Arc<P>) -> Arc<dyn RuntimeChainProvider>
-    where
-        P: Platform + 'static,
-    {
-        match crate::smoldot_provider::SmoldotChainProvider::with_bundled_specs() {
-            Ok(provider) => Arc::new(provider),
-            Err(_err) => Arc::new(PlatformChainRuntimeProvider { platform }),
-        }
+        Arc::new(HostChainProvider { platform })
     }
 
     /// Clone of the shared session-state holder used by core subscriptions
-    /// and tests. Real host lifecycle flows through `SessionStore` and
-    /// `disconnect`.
+    /// and tests. Real host lifecycle flows through CoreStorage session sync
+    /// and `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }
 
-    /// Start syncing the in-memory session from the host-global session store.
+    pub fn session_store_changes(&self) -> Arc<SessionStoreChangeNotifier> {
+        self.session_store_changes.clone()
+    }
+
+    fn start_sso_disconnect_monitor(&self, session: &SessionInfo)
+    where
+        P: Platform + 'static,
+    {
+        start_sso_disconnect_monitor(
+            self.platform.clone(),
+            self.runtime_config.clone(),
+            self.session_state.clone(),
+            self.session_disconnects.clone(),
+            self.auth_state.clone(),
+            self.sso_disconnect_monitor.clone(),
+            self.spawner.clone(),
+            session,
+        );
+    }
+
+    /// Start syncing the in-memory session from the host-global auth session
+    /// slot.
     /// The store emits coarse ticks; each tick triggers a fresh read so same-
     /// runtime writes and cross-runtime logout/re-pair take the same path.
     #[instrument(skip_all, fields(runtime.method = "session_store.sync"))]
@@ -232,17 +269,23 @@ impl<P> PlatformRuntimeHost<P> {
         let runtime_config = self.runtime_config.clone();
         let session_state = self.session_state.clone();
         let auth_state = self.auth_state.clone();
+        let session_disconnects = self.session_disconnects.clone();
+        let sso_disconnect_monitor = self.sso_disconnect_monitor.clone();
+        let spawner_for_monitor = self.spawner.clone();
+        let session_store_changes = self.session_store_changes.clone();
         spawner(Box::pin(async move {
-            let mut ticks = PlatformSessionStore::subscribe_session_store(platform.as_ref());
+            let mut ticks = session_store_changes.subscribe();
             // Clearing the store can itself notify this subscription; clear at
             // most once per read-error streak so a persistently failing read
             // cannot spin the loop through its own clear notifications.
             let mut cleared_after_read_error = false;
-            while let Some(tick) = ticks.next().await {
-                if tick.is_err() {
-                    continue;
-                }
-                match PlatformSessionStore::read_session(platform.as_ref()).await {
+            while ticks.next().await.is_some() {
+                match PlatformCoreStorage::read_core_storage(
+                    platform.as_ref(),
+                    CoreStorageKey::AuthSession,
+                )
+                .await
+                {
                     Ok(Some(blob)) => {
                         cleared_after_read_error = false;
                         match decode_persisted_session(&blob) {
@@ -254,19 +297,36 @@ impl<P> PlatformRuntimeHost<P> {
                                 )
                                 .await;
                                 if encode_persisted_session(&resolved) != blob {
-                                    let _ = PlatformSessionStore::write_session(
+                                    let _ = PlatformCoreStorage::write_core_storage(
                                         platform.as_ref(),
+                                        CoreStorageKey::AuthSession,
                                         encode_persisted_session(&resolved),
                                     )
                                     .await;
                                 }
                                 auth_state.connected(&connected_session_ui_info(&resolved));
                                 session_state.set_session(resolved);
+                                if let Some(session) = session_state.current() {
+                                    start_sso_disconnect_monitor(
+                                        platform.clone(),
+                                        runtime_config.clone(),
+                                        session_state.clone(),
+                                        session_disconnects.clone(),
+                                        auth_state.clone(),
+                                        sso_disconnect_monitor.clone(),
+                                        spawner_for_monitor.clone(),
+                                        &session,
+                                    );
+                                }
                             }
                             Err(_) => {
                                 session_state.clear_session();
-                                let _ =
-                                    PlatformSessionStore::clear_session(platform.as_ref()).await;
+                                stop_sso_disconnect_monitor(&sso_disconnect_monitor);
+                                let _ = PlatformCoreStorage::clear_core_storage(
+                                    platform.as_ref(),
+                                    CoreStorageKey::AuthSession,
+                                )
+                                .await;
                                 auth_state.store_disconnected();
                             }
                         }
@@ -274,14 +334,20 @@ impl<P> PlatformRuntimeHost<P> {
                     Ok(None) => {
                         cleared_after_read_error = false;
                         session_state.clear_session();
+                        stop_sso_disconnect_monitor(&sso_disconnect_monitor);
                         auth_state.store_disconnected();
                     }
                     Err(_) => {
                         session_state.clear_session();
+                        stop_sso_disconnect_monitor(&sso_disconnect_monitor);
                         auth_state.store_disconnected();
                         if !cleared_after_read_error {
                             cleared_after_read_error = true;
-                            let _ = PlatformSessionStore::clear_session(platform.as_ref()).await;
+                            let _ = PlatformCoreStorage::clear_core_storage(
+                                platform.as_ref(),
+                                CoreStorageKey::AuthSession,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -318,6 +384,7 @@ impl<P> PlatformRuntimeHost<P> {
     }
 
     /// Static product/host configuration for this runtime instance.
+    #[allow(dead_code)]
     pub fn runtime_config(&self) -> &RuntimeConfig {
         &self.runtime_config
     }
@@ -356,24 +423,209 @@ impl<P> PlatformRuntimeHost<P> {
         P: Platform + 'static,
     {
         debug!("clearing disconnected SSO session state");
+        stop_sso_disconnect_monitor(&self.sso_disconnect_monitor);
         self.session_state.clear_session();
-        let _ = PlatformSessionStore::clear_session(self.platform.as_ref()).await;
-        self.auth_state.store_disconnected();
-        let _ = PlatformStorage::clear(
+        let _ = PlatformCoreStorage::clear_core_storage(
             self.platform.as_ref(),
-            PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+            CoreStorageKey::AuthSession,
+        )
+        .await;
+        self.auth_state.store_disconnected();
+        let _ = PlatformCoreStorage::clear_core_storage(
+            self.platform.as_ref(),
+            CoreStorageKey::PairingDeviceIdentity,
         )
         .await;
     }
+}
+
+fn stop_sso_disconnect_monitor(monitor: &Arc<Mutex<Option<SsoDisconnectMonitor>>>) {
+    monitor
+        .lock()
+        .expect("SSO disconnect monitor mutex poisoned")
+        .take();
+}
+
+#[allow(clippy::too_many_arguments)]
+fn start_sso_disconnect_monitor<P>(
+    platform: Arc<P>,
+    runtime_config: RuntimeConfig,
+    session_state: Arc<SessionState>,
+    session_disconnects: Arc<SessionDisconnects>,
+    auth_state: AuthStateMachine<P>,
+    monitor: Arc<Mutex<Option<SsoDisconnectMonitor>>>,
+    spawner: Spawner,
+    session: &SessionInfo,
+) where
+    P: Platform + 'static,
+{
+    let Some(sso) = session.sso.clone() else {
+        stop_sso_disconnect_monitor(&monitor);
+        return;
+    };
+
+    {
+        let mut current = monitor
+            .lock()
+            .expect("SSO disconnect monitor mutex poisoned");
+        if current.as_ref().is_some_and(|active| {
+            active.session_id_own == sso.session_id_own
+                && active.session_id_peer == sso.session_id_peer
+        }) {
+            return;
+        }
+        let (abort, registration) = AbortHandle::new_pair();
+        *current = Some(SsoDisconnectMonitor {
+            session_id_own: sso.session_id_own,
+            session_id_peer: sso.session_id_peer,
+            abort,
+        });
+
+        let monitor_slot = monitor.clone();
+        let future = async move {
+            let result = wait_for_sso_peer_disconnect(
+                platform.clone(),
+                runtime_config.people_chain_genesis_hash,
+                sso.clone(),
+            )
+            .await;
+            let peer_disconnected = result.is_ok();
+            let should_clear = peer_disconnected
+                && session_state.current().as_ref().is_some_and(|current| {
+                    current.sso.as_ref().is_some_and(|current_sso| {
+                        current_sso.session_id_own == sso.session_id_own
+                            && current_sso.session_id_peer == sso.session_id_peer
+                    })
+                });
+            {
+                let mut active = monitor_slot
+                    .lock()
+                    .expect("SSO disconnect monitor mutex poisoned");
+                if active.as_ref().is_some_and(|active| {
+                    active.session_id_own == sso.session_id_own
+                        && active.session_id_peer == sso.session_id_peer
+                }) {
+                    *active = None;
+                }
+            }
+            if should_clear {
+                session_disconnects.notify(SSO_PEER_DISCONNECT_REASON);
+                session_state.clear_session();
+                let _ = PlatformCoreStorage::clear_core_storage(
+                    platform.as_ref(),
+                    CoreStorageKey::AuthSession,
+                )
+                .await;
+                auth_state.store_disconnected();
+                let _ = PlatformCoreStorage::clear_core_storage(
+                    platform.as_ref(),
+                    CoreStorageKey::PairingDeviceIdentity,
+                )
+                .await;
+            }
+        };
+        spawner(Box::pin(Abortable::new(future, registration).map(|_| ())));
+    }
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.peer_disconnect.monitor"))]
+async fn wait_for_sso_peer_disconnect<P>(
+    platform: Arc<P>,
+    people_chain_genesis_hash: [u8; 32],
+    session: crate::host_logic::session::SsoSessionInfo,
+) -> Result<(), String>
+where
+    P: Platform + 'static,
+{
+    let connection =
+        PlatformChainProvider::connect(platform.as_ref(), people_chain_genesis_hash.to_vec())
+            .await
+            .map_err(|err| format!("SSO disconnect monitor connect failed: {err:?}"))?;
+    let subscribe_id = "truapi:sso-peer-disconnect-monitor";
+    connection.send(subscribe_match_all_request(
+        subscribe_id,
+        &[session.session_id_peer],
+    ));
+    let mut responses = connection.responses();
+    let mut remote_subscription_id: Option<String> = None;
+    while let Some(frame) = responses.next().await {
+        if remote_subscription_id.is_none()
+            && let Some(id) =
+                parse_subscribe_ack(&frame, subscribe_id).map_err(|err| err.to_string())?
+        {
+            remote_subscription_id = Some(id);
+            continue;
+        }
+        let Some(page) = parse_new_statements(&frame).map_err(|err| err.to_string())? else {
+            continue;
+        };
+        if remote_subscription_id.as_deref() != Some(page.remote_subscription_id.as_str()) {
+            continue;
+        }
+        for statement in page.statements {
+            if matches!(
+                decode_sso_session_statement(
+                    &session,
+                    &statement,
+                    "truapi:sso-peer-disconnect-monitor",
+                    "truapi:sso-peer-disconnect-monitor",
+                )?,
+                Some(SsoSessionStatement::Disconnected)
+            ) {
+                if let Some(id) = remote_subscription_id.as_ref() {
+                    connection.send(unsubscribe_request(
+                        "truapi:sso-peer-disconnect-monitor:unsubscribe",
+                        id,
+                    ));
+                }
+                return Ok(());
+            }
+        }
+    }
+    Err("SSO disconnect monitor response stream ended".to_string())
 }
 
 impl<P> PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
-    #[instrument(skip_all, fields(runtime.method = "permissions.chain_submit_decision"))]
-    async fn chain_submit_decision(&self) -> Result<Decision, String> {
-        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
+    /// Read a stored permission authorization status without prompting.
+    #[instrument(skip_all, fields(runtime.method = "permissions.authorization_status"))]
+    pub(crate) async fn permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
+        service.authorization_status(&request).await
+    }
+
+    /// Update a stored permission authorization status. `NotDetermined`
+    /// clears the stored value so the next product request prompts again.
+    #[instrument(skip_all, fields(runtime.method = "permissions.set_authorization_status"))]
+    pub(crate) async fn set_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+        status: PermissionAuthorizationStatus,
+    ) -> Result<(), v01::GenericError> {
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
+        service.set_authorization_status(&request, status).await
+    }
+
+    #[instrument(skip_all, fields(runtime.method = "permissions.chain_submit_authorization"))]
+    async fn chain_submit_authorization(&self) -> Result<PermissionAuthorizationStatus, String> {
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
         service
             .check_or_prompt_remote(v01::RemotePermissionRequest {
                 permission: v01::RemotePermission::ChainSubmit,
@@ -383,9 +635,12 @@ where
     }
 
     async fn require_chain_submit<E>(&self, denied_error: E) -> Result<(), CallError<E>> {
-        match self.chain_submit_decision().await {
-            Ok(Decision::Granted) => Ok(()),
-            Ok(Decision::Denied) => Err(CallError::Domain(denied_error)),
+        match self.chain_submit_authorization().await {
+            Ok(PermissionAuthorizationStatus::Authorized) => Ok(()),
+            Ok(
+                PermissionAuthorizationStatus::Denied
+                | PermissionAuthorizationStatus::NotDetermined,
+            ) => Err(CallError::Domain(denied_error)),
             Err(reason) => Err(CallError::HostFailure { reason }),
         }
     }
@@ -430,12 +685,12 @@ where
 /// [`RuntimeChainProvider`] surface the chain runtime expects.
 /// Reuses the platform-supplied json-rpc connection and converts the
 /// platform `GenericError` into a `RuntimeFailure::Unavailable`.
-struct PlatformChainRuntimeProvider<P> {
+struct HostChainProvider<P> {
     platform: Arc<P>,
 }
 
 #[async_trait::async_trait]
-impl<P> RuntimeChainProvider for PlatformChainRuntimeProvider<P>
+impl<P> RuntimeChainProvider for HostChainProvider<P>
 where
     P: Platform + 'static,
 {
@@ -525,11 +780,15 @@ where
         request: HostDevicePermissionRequest,
     ) -> Result<HostDevicePermissionResponse, CallError<HostDevicePermissionError>> {
         let HostDevicePermissionRequest::V1(inner) = request;
-        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
         match service.check_or_prompt_device(inner).await {
             Ok(decision) => Ok(HostDevicePermissionResponse::V1(
                 v01::HostDevicePermissionResponse {
-                    granted: decision == Decision::Granted,
+                    granted: decision == PermissionAuthorizationStatus::Authorized,
                 },
             )),
             Err(err) => Err(CallError::HostFailure {
@@ -545,11 +804,15 @@ where
         request: RemotePermissionRequest,
     ) -> Result<RemotePermissionResponse, CallError<RemotePermissionError>> {
         let RemotePermissionRequest::V1(inner) = request;
-        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
         match service.check_or_prompt_remote(inner).await {
             Ok(decision) => Ok(RemotePermissionResponse::V1(
                 v01::RemotePermissionResponse {
-                    granted: decision == Decision::Granted,
+                    granted: decision == PermissionAuthorizationStatus::Authorized,
                 },
             )),
             Err(err) => Err(CallError::HostFailure {
@@ -574,7 +837,7 @@ where
         request: HostLocalStorageReadRequest,
     ) -> Result<HostLocalStorageReadResponse, CallError<HostLocalStorageReadError>> {
         let HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key }) = request;
-        PlatformStorage::read(self.platform.as_ref(), key)
+        PlatformProductStorage::read(self.platform.as_ref(), key)
             .await
             .map(|value| {
                 HostLocalStorageReadResponse::V1(v01::HostLocalStorageReadResponse { value })
@@ -590,7 +853,7 @@ where
     ) -> Result<HostLocalStorageWriteResponse, CallError<HostLocalStorageWriteError>> {
         let HostLocalStorageWriteRequest::V1(v01::HostLocalStorageWriteRequest { key, value }) =
             request;
-        PlatformStorage::write(self.platform.as_ref(), key, value)
+        PlatformProductStorage::write(self.platform.as_ref(), key, value)
             .await
             .map(|()| HostLocalStorageWriteResponse::V1)
             .map_err(|err| CallError::Domain(HostLocalStorageWriteError::V1(err)))
@@ -603,7 +866,7 @@ where
         request: HostLocalStorageClearRequest,
     ) -> Result<HostLocalStorageClearResponse, CallError<HostLocalStorageClearError>> {
         let HostLocalStorageClearRequest::V1(v01::HostLocalStorageClearRequest { key }) = request;
-        PlatformStorage::clear(self.platform.as_ref(), key)
+        PlatformProductStorage::clear(self.platform.as_ref(), key)
             .await
             .map(|()| HostLocalStorageClearResponse::V1)
             .map_err(|err| CallError::Domain(HostLocalStorageClearError::V1(err)))
@@ -684,13 +947,12 @@ where
 
         let product_id = self.product_id();
         if product_account_id.dot_ns_identifier != product_id {
-            let confirmed = PlatformUserConfirmation::confirm_account_alias(
+            let confirmed = PlatformUserConfirmation::confirm_user_action(
                 self.platform.as_ref(),
-                (
-                    product_id.clone(),
-                    product_account_id.dot_ns_identifier.clone(),
-                )
-                    .encode(),
+                UserConfirmationReview::AccountAlias(AccountAliasReview {
+                    requesting_product_id: product_id.clone(),
+                    target_product_id: product_account_id.dot_ns_identifier.clone(),
+                }),
             )
             .await
             .map_err(|err| CallError::HostFailure {
@@ -880,9 +1142,9 @@ where
                 v01::HostSignPayloadError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_sign_payload(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::SignPayload(SignPayloadReview::Product(inner.clone())),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -939,9 +1201,9 @@ where
                 v01::HostSignPayloadError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_sign_raw(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::SignRaw(SignRawReview::Product(inner.clone())),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -998,9 +1260,11 @@ where
                 v01::HostCreateTransactionError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_create_transaction(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::CreateTransaction(CreateTransactionReview::Product(
+                inner.clone(),
+            )),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1058,9 +1322,9 @@ where
             v01::HostSignPayloadError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_sign_payload(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::SignPayload(SignPayloadReview::LegacyAccount(inner.clone())),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1126,9 +1390,9 @@ where
             v01::HostSignPayloadError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_sign_raw(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::SignRaw(SignRawReview::LegacyAccount(inner.clone())),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1200,9 +1464,11 @@ where
             v01::HostCreateTransactionError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_create_transaction(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::CreateTransaction(CreateTransactionReview::LegacyAccount(
+                inner.clone(),
+            )),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1559,9 +1825,9 @@ where
             )));
         };
 
-        let confirmed = PlatformUserConfirmation::confirm_resource_allocation(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::ResourceAllocation(inner.clone()),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1705,9 +1971,25 @@ where
         request: RemotePreimageSubmitRequest,
     ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
         let RemotePreimageSubmitRequest::V1(value) = request;
-        PlatformPreimageHost::confirm_preimage_submit(self.platform.as_ref(), value.len() as u64)
-            .await
-            .map_err(|err| CallError::Domain(RemotePreimageSubmitError::V1(err)))?;
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
+            self.platform.as_ref(),
+            UserConfirmationReview::PreimageSubmit(PreimageSubmitReview {
+                size: value.len() as u64,
+            }),
+        )
+        .await
+        .map_err(|err| {
+            CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown { reason: err.reason },
+            ))
+        })?;
+        if !confirmed {
+            return Err(CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown {
+                    reason: "User rejected preimage submission".to_string(),
+                },
+            )));
+        }
         PlatformPreimageHost::submit_preimage(self.platform.as_ref(), value)
             .await
             .map(RemotePreimageSubmitResponse::V1)
@@ -1737,6 +2019,9 @@ where
         Subscription::new(Box::pin(stream))
     }
 }
+
+#[cfg(debug_assertions)]
+impl<P> Testing for PlatformRuntimeHost<P> where P: Platform + 'static {}
 
 // `Notifications` delegates to the platform so hosts can own scheduling and
 // cancellation while the core preserves the typed TrUAPI wire shape.
@@ -1787,9 +2072,17 @@ mod tests {
     use crate::host_logic::sso_messages::{RemoteMessageData, RemoteMessageV1};
     use crate::test_support::*;
     use std::sync::Mutex;
-    use truapi_platform::AuthState;
+    use truapi_platform::{AuthState, CoreStorageKey};
 
     use super::sso_remote::SSO_PEER_DISCONNECT_REASON;
+
+    fn wait_until(mut condition: impl FnMut() -> bool, message: &str) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !condition() {
+            assert!(std::time::Instant::now() < deadline, "{message}");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
 
     #[test]
     fn feature_supported_round_trips_through_runtime() {
@@ -2538,6 +2831,57 @@ mod tests {
     }
 
     #[test]
+    fn idle_peer_disconnect_monitor_clears_session_store_and_broadcasts() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: sso_peer_disconnect_monitor_responses(&session),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session.clone());
+        let mut statuses = host.session_state().subscribe();
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Connected
+            )
+        );
+
+        host.start_sso_disconnect_monitor(&session);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let disconnected = loop {
+            if let Some(item) = statuses.next().now_or_never() {
+                break item.expect("status stream ended");
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "peer disconnect monitor did not emit Disconnected"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+
+        assert!(host.session_state().current().is_none());
+        assert_eq!(
+            *platform
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            1
+        );
+        assert_eq!(
+            disconnected,
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Disconnected
+            )
+        );
+    }
+
+    #[test]
     fn sign_payload_denies_when_chain_submit_denied() {
         let host = PlatformRuntimeHost::new(
             Arc::new(StubPlatform {
@@ -2924,7 +3268,11 @@ mod tests {
         });
         let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
 
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
+        wait_until(
+            || host.session_state().current() == Some(stored.clone()),
+            "session store sync did not restore valid blob",
+        );
 
         assert_eq!(host.session_state().current(), Some(stored.clone()));
         assert_eq!(
@@ -2953,15 +3301,15 @@ mod tests {
         let mut statuses = host.session_state().subscribe();
         let _ = futures::executor::block_on(statuses.next());
 
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
 
-        assert_eq!(host.session_state().current(), Some(replacement));
         assert_eq!(
             futures::executor::block_on(statuses.next()).unwrap(),
             HostAccountConnectionStatusSubscribeItem::V1(
                 v01::HostAccountConnectionStatusSubscribeItem::Connected
             )
         );
+        assert_eq!(host.session_state().current(), Some(replacement));
     }
 
     #[test]
@@ -2973,7 +3321,11 @@ mod tests {
         let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.session_state().set_session(sso_session_info());
 
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
+        wait_until(
+            || host.session_state().current().is_none(),
+            "session store sync did not clear invalid blob",
+        );
 
         assert!(host.session_state().current().is_none());
         // `set_session` bypasses the auth state cell, so the cell never left
@@ -3000,26 +3352,25 @@ mod tests {
         );
         host.session_state().set_session(sso_session_info());
 
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
+        wait_until(
+            || *session_clears.lock().unwrap() == 1,
+            "session store sync did not clear unreadable blob",
+        );
 
         assert!(host.session_state().current().is_none());
         assert_eq!(*session_clears.lock().unwrap(), 1);
     }
 
-    /// A persistently failing read must not spin the sync loop through its
-    /// own clear notifications: the store is cleared at most once per error
-    /// streak.
+    /// A persistently failing read clears the backing store once for the
+    /// initial sync tick. Further clears require explicit host notifications.
     #[test]
-    fn session_store_sync_clears_at_most_once_on_persistent_read_error() {
+    fn session_store_sync_clears_once_on_initial_persistent_read_error() {
         let session_clears = Arc::new(Mutex::new(0));
-        let (tick_tx, tick_rx) = futures::channel::mpsc::unbounded();
-        tick_tx.unbounded_send(Ok(())).unwrap();
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
                 session_error: Some("storage unavailable"),
                 session_clears: session_clears.clone(),
-                session_store_tick_tx: Some(tick_tx),
-                session_store_ticks: Arc::new(Mutex::new(Some(tick_rx))),
                 ..Default::default()
             }),
             test_spawner(),
@@ -3028,17 +3379,10 @@ mod tests {
 
         host.start_session_store_sync(test_spawner());
 
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        while *session_clears.lock().unwrap() == 0 {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "clear_session was never called"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        // Give the loop time to mis-fire if the clear notification were to
-        // re-trigger another clear.
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        wait_until(
+            || *session_clears.lock().unwrap() == 1,
+            "clear_stored_session was never called",
+        );
         assert_eq!(*session_clears.lock().unwrap(), 1);
         assert!(host.session_state().current().is_none());
     }
@@ -3078,7 +3422,7 @@ mod tests {
             .lock()
             .expect("local storage mutex poisoned")
             .insert(
-                PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+                core_storage_test_key(CoreStorageKey::PairingDeviceIdentity),
                 vec![1, 2, 3],
             );
         let mut statuses = host.session_state().subscribe();
@@ -3104,7 +3448,9 @@ mod tests {
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
-                .contains_key(PAIRING_DEVICE_IDENTITY_STORAGE_KEY),
+                .contains_key(&core_storage_test_key(
+                    CoreStorageKey::PairingDeviceIdentity
+                )),
             "logout must rotate the pairing device identity so stale statement-store responses cannot be replayed on the next login"
         );
         assert_eq!(
@@ -3134,7 +3480,18 @@ mod tests {
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
+        wait_until(
+            || {
+                platform
+                    .auth_states
+                    .lock()
+                    .expect("auth state list mutex poisoned")
+                    .len()
+                    == 1
+            },
+            "session store sync did not emit connected auth state",
+        );
 
         futures::executor::block_on(host.disconnect());
 

@@ -4,20 +4,47 @@
 // capability traits. One interface per Rust trait + a composite
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 
+import * as S from "@parity/truapi/scale";
+
+import {
+  HostDevicePermissionRequest,
+  HostRequestResourceAllocationRequest,
+  HostSignPayloadRequest,
+  HostSignPayloadWithLegacyAccountRequest,
+  HostSignRawRequest,
+  HostSignRawWithLegacyAccountRequest,
+  LegacyAccountTxPayload,
+  ProductAccountTxPayload,
+  RemotePermissionRequest,
+} from "@parity/truapi";
+
 import type {
   GenericError,
-  HostDevicePermissionRequest,
   HostDevicePermissionResponse,
   HostFeatureSupportedRequest,
   HostFeatureSupportedResponse,
   HostPushNotificationRequest,
   HostPushNotificationResponse,
   NotificationId,
-  RemotePermissionRequest,
   RemotePermissionResponse,
   Result,
   ThemeVariant,
 } from "@parity/truapi";
+
+/**
+ * Review shown before a product asks to alias another product account.
+ */
+export interface AccountAliasReview {
+  /**
+   * Product currently handling the request.
+   */
+  requestingProductId: string;
+
+  /**
+   * Product whose account is being requested.
+   */
+  targetProductId: string;
+}
 
 /**
  * Auth/session lifecycle state the core projects for host UI. The core owns
@@ -45,8 +72,71 @@ export type AuthState =
   | { tag: "LoginFailed"; value: { reason: string } };
 
 /**
+ * Core-owned host-private storage slots. Products never address these slots;
+ * the host chooses the backing store for each slot.
+ */
+export type CoreStorageKey =
+  /**
+   * Opaque SSO/auth session blob.
+   */
+  | { tag: "AuthSession"; value?: undefined }
+  /**
+   * Pairing device identity used during SSO flows.
+   */
+  | { tag: "PairingDeviceIdentity"; value?: undefined }
+  /**
+   * Persisted authorization for a canonical core permission key.
+   */
+  | { tag: "PermissionAuthorization"; value: { storageKey: string } };
+
+/**
+ * Review shown before a transaction-creation request is sent to the paired wallet.
+ */
+export type CreateTransactionReview =
+  /**
+   * Product-account transaction request.
+   */
+  | { tag: "Product"; value: ProductAccountTxPayload }
+  /**
+   * Legacy-account transaction request.
+   */
+  | { tag: "LegacyAccount"; value: LegacyAccountTxPayload };
+
+/**
+ * Permission request whose authorization status can be inspected or updated
+ * by host administration UI.
+ */
+export type PermissionAuthorizationRequest =
+  /**
+   * Device-level permission such as camera, microphone, or location.
+   */
+  | { tag: "Device"; value: HostDevicePermissionRequest }
+  /**
+   * Remote/product-scoped permission such as chain submit or HTTP access.
+   */
+  | { tag: "Remote"; value: RemotePermissionRequest };
+
+/**
+ * Authorization status for a permission request.
+ *
+ * `NotDetermined` means the core has no persisted answer and will prompt the
+ * host the next time the product requests this permission.
+ */
+export type PermissionAuthorizationStatus = "NotDetermined" | "Denied" | "Authorized";
+
+/**
+ * Review shown before a preimage is submitted.
+ */
+export interface PreimageSubmitReview {
+  /**
+   * Size of the preimage in bytes.
+   */
+  size: bigint;
+}
+
+/**
  * Decoded session fields a host shell needs to render account UI without
- * parsing the opaque session blob the core persists through `SessionStore`.
+ * parsing the opaque session blob the core persists through `CoreStorage`.
  */
 export interface SessionUiInfo {
   /**
@@ -69,6 +159,111 @@ export interface SessionUiInfo {
    */
   fullUsername?: string;
 }
+
+/**
+ * Review shown before a sign-payload request is sent to the paired wallet.
+ */
+export type SignPayloadReview =
+  /**
+   * Product-account signing request.
+   */
+  | { tag: "Product"; value: HostSignPayloadRequest }
+  /**
+   * Legacy-account signing request.
+   */
+  | { tag: "LegacyAccount"; value: HostSignPayloadWithLegacyAccountRequest };
+
+/**
+ * Review shown before a sign-raw request is sent to the paired wallet.
+ */
+export type SignRawReview =
+  /**
+   * Product-account raw signing request.
+   */
+  | { tag: "Product"; value: HostSignRawRequest }
+  /**
+   * Legacy-account raw signing request.
+   */
+  | { tag: "LegacyAccount"; value: HostSignRawWithLegacyAccountRequest };
+
+/**
+ * Review shown before a user-confirmed core action continues.
+ */
+export type UserConfirmationReview =
+  /**
+   * Sign a SCALE payload with a product or legacy account.
+   */
+  | { tag: "SignPayload"; value: SignPayloadReview }
+  /**
+   * Sign raw bytes with a product or legacy account.
+   */
+  | { tag: "SignRaw"; value: SignRawReview }
+  /**
+   * Create a transaction with a product or legacy account.
+   */
+  | { tag: "CreateTransaction"; value: CreateTransactionReview }
+  /**
+   * Allow a product to request another product account alias.
+   */
+  | { tag: "AccountAlias"; value: AccountAliasReview }
+  /**
+   * Allocate resources for the requesting product.
+   */
+  | { tag: "ResourceAllocation"; value: HostRequestResourceAllocationRequest }
+  /**
+   * Submit a preimage to the host-selected backend.
+   */
+  | { tag: "PreimageSubmit"; value: PreimageSubmitReview };
+
+/**
+ * Review shown before a product asks to alias another product account.
+ */
+export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Codec<AccountAliasReview> => S.Struct({requestingProductId: S.str, targetProductId: S.str}) as S.Codec<AccountAliasReview>);
+
+/**
+ * Core-owned host-private storage slots. Products never address these slots;
+ * the host chooses the backing store for each slot.
+ */
+export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({storageKey: S.str}) as S.Codec<{ storageKey: string }>}));
+
+/**
+ * Review shown before a transaction-creation request is sent to the paired wallet.
+ */
+export const CreateTransactionReview: S.Codec<CreateTransactionReview> = S.lazy((): S.Codec<CreateTransactionReview> => S.TaggedUnion({Product: ProductAccountTxPayload, LegacyAccount: LegacyAccountTxPayload}));
+
+/**
+ * Permission request whose authorization status can be inspected or updated
+ * by host administration UI.
+ */
+export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequest> = S.lazy((): S.Codec<PermissionAuthorizationRequest> => S.TaggedUnion({Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest}));
+
+/**
+ * Authorization status for a permission request.
+ *
+ * `NotDetermined` means the core has no persisted answer and will prompt the
+ * host the next time the product requests this permission.
+ */
+export const PermissionAuthorizationStatus: S.Codec<PermissionAuthorizationStatus> = S.lazy((): S.Codec<PermissionAuthorizationStatus> => S.Status("NotDetermined", "Denied", "Authorized"));
+
+/**
+ * Review shown before a preimage is submitted.
+ */
+export const PreimageSubmitReview: S.Codec<PreimageSubmitReview> = S.lazy((): S.Codec<PreimageSubmitReview> => S.Struct({size: S.u64}) as S.Codec<PreimageSubmitReview>);
+
+/**
+ * Review shown before a sign-payload request is sent to the paired wallet.
+ */
+export const SignPayloadReview: S.Codec<SignPayloadReview> = S.lazy((): S.Codec<SignPayloadReview> => S.TaggedUnion({Product: HostSignPayloadRequest, LegacyAccount: HostSignPayloadWithLegacyAccountRequest}));
+
+/**
+ * Review shown before a sign-raw request is sent to the paired wallet.
+ */
+export const SignRawReview: S.Codec<SignRawReview> = S.lazy((): S.Codec<SignRawReview> => S.TaggedUnion({Product: HostSignRawRequest, LegacyAccount: HostSignRawWithLegacyAccountRequest}));
+
+/**
+ * Review shown before a user-confirmed core action continues.
+ */
+export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy((): S.Codec<UserConfirmationReview> => S.TaggedUnion({SignPayload: SignPayloadReview, SignRaw: SignRawReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, ResourceAllocation: HostRequestResourceAllocationRequest, PreimageSubmit: PreimageSubmitReview}));
 
 /**
  * Host auth UI driven by core-owned `AuthState` transitions.
@@ -97,6 +292,62 @@ export interface ChainProvider {
 }
 
 /**
+ * Core-owned administration API exposed to host UI.
+ *
+ * Hosts call this surface to drive global runtime actions or inspect/update
+ * core-owned state without going through a product-scoped TrUAPI request.
+ */
+export interface CoreAdmin {
+  /**
+   * Best-effort logout/disconnect. Clears the active session and emits the
+   * resulting auth state transition.
+   */
+  disconnectSession(): Promise<void>;
+
+  /**
+   * Cancel any in-flight pairing request.
+   */
+  cancelPairing(): void;
+
+  /**
+   * Notify the core that the host-global auth session slot may have
+   * changed. The core re-reads storage and emits any resulting auth state.
+   */
+  notifySessionStoreChanged(): void;
+
+  /**
+   * Read a stored permission authorization status without prompting.
+   */
+  getPermissionAuthorizationStatus(request: PermissionAuthorizationRequest): Promise<PermissionAuthorizationStatus>;
+
+  /**
+   * Update a stored permission authorization status. `NotDetermined` clears
+   * the stored value so the next product request prompts again.
+   */
+  setPermissionAuthorizationStatus(request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus): Promise<void>;
+}
+
+/**
+ * Host-private persistence for core-owned state.
+ */
+export interface CoreStorage {
+  /**
+   * Read a core-owned value by typed slot.
+   */
+  readCoreStorage(key: CoreStorageKey): Promise<Uint8Array | undefined>;
+
+  /**
+   * Write a core-owned value by typed slot.
+   */
+  writeCoreStorage(key: CoreStorageKey, value: Uint8Array): Promise<void>;
+
+  /**
+   * Clear a core-owned value by typed slot.
+   */
+  clearCoreStorage(key: CoreStorageKey): Promise<void>;
+}
+
+/**
  * Feature-support probing. The host answers whether it can service a given
  * capability (currently scoped to per-chain support).
  */
@@ -104,9 +355,7 @@ export interface Features {
   /**
    * Report whether the requested feature is supported.
    */
-  featureSupported(
-    request: HostFeatureSupportedRequest,
-  ): Promise<HostFeatureSupportedResponse>;
+  featureSupported(request: HostFeatureSupportedRequest): Promise<HostFeatureSupportedResponse>;
 }
 
 /**
@@ -144,15 +393,13 @@ export interface Notifications {
    * Schedule or immediately display the given notification and return the
    * host-assigned id.
    */
-  pushNotification(
-    notification: HostPushNotificationRequest,
-  ): Promise<HostPushNotificationResponse>;
+  pushNotification(notification: HostPushNotificationRequest): Promise<HostPushNotificationResponse>;
 
   /**
    * Cancel a notification by id. Idempotent: cancelling an already-fired or
    * unknown id still returns `success`.
    */
-  cancelNotification(id: NotificationId): Promise<void>;
+  cancelNotification?(id: NotificationId): Promise<void>;
 }
 
 /**
@@ -164,16 +411,12 @@ export interface Permissions {
   /**
    * Prompt the user for a device-level permission.
    */
-  devicePermission(
-    request: HostDevicePermissionRequest,
-  ): Promise<HostDevicePermissionResponse>;
+  devicePermission(request: HostDevicePermissionRequest): Promise<HostDevicePermissionResponse>;
 
   /**
    * Prompt the user for a remote (product-scoped) permission bundle.
    */
-  remotePermission(
-    request: RemotePermissionRequest,
-  ): Promise<RemotePermissionResponse>;
+  remotePermission(request: RemotePermissionRequest): Promise<RemotePermissionResponse>;
 }
 
 /**
@@ -182,53 +425,21 @@ export interface Permissions {
  */
 export interface PreimageHost {
   /**
-   * Prompt before submitting a preimage.
-   */
-  confirmPreimageSubmit(size: bigint): Promise<void>;
-
-  /**
    * Submit the preimage and return its key.
    */
-  submitPreimage(value: Uint8Array): Promise<Uint8Array>;
+  submitPreimage?(value: Uint8Array): Promise<Uint8Array>;
 
   /**
    * Emits current value/miss immediately, then future updates.
    */
-  lookupPreimage(
-    key: Uint8Array,
-  ): AsyncIterable<Result<Uint8Array | undefined, GenericError>>;
+  lookupPreimage(key: Uint8Array): AsyncIterable<Result<Uint8Array | undefined, GenericError>>;
 }
 
 /**
- * Host-global opaque session persistence for core-owned SSO state.
+ * Product-scoped key-value storage. The platform namespaces keys so different
+ * products cannot read each other's data.
  */
-export interface SessionStore {
-  /**
-   * Read the currently persisted core session blob.
-   */
-  readSession(): Promise<Uint8Array | undefined>;
-
-  /**
-   * Persist the core session blob.
-   */
-  writeSession(value: Uint8Array): Promise<void>;
-
-  /**
-   * Clear the persisted core session blob.
-   */
-  clearSession(): Promise<void>;
-
-  /**
-   * Emit once immediately, then on future local/cross-runtime changes.
-   */
-  subscribeSessionStore(): AsyncIterable<Result<void, GenericError>>;
-}
-
-/**
- * Scoped key-value storage. The platform namespaces keys so different products
- * cannot read each other's data.
- */
-export interface HostStorage {
+export interface ProductStorage {
   /**
    * Read a value by key.
    */
@@ -260,45 +471,12 @@ export interface ThemeHost {
  */
 export interface UserConfirmation {
   /**
-   * Confirm a sign-payload request before the core asks the SSO peer.
+   * Confirm a reviewed action before the core asks the SSO peer.
    */
-  confirmSignPayload(review: Uint8Array): Promise<boolean>;
-
-  /**
-   * Confirm a sign-raw request before the core asks the SSO peer.
-   */
-  confirmSignRaw(review: Uint8Array): Promise<boolean>;
-
-  /**
-   * Confirm a create-transaction request before the core asks the SSO peer.
-   */
-  confirmCreateTransaction(review: Uint8Array): Promise<boolean>;
-
-  /**
-   * Confirm a cross-domain account-alias request before the core asks the
-   * SSO peer.
-   */
-  confirmAccountAlias(review: Uint8Array): Promise<boolean>;
-
-  /**
-   * Confirm resource allocation before the core asks the SSO peer.
-   */
-  confirmResourceAllocation(review: Uint8Array): Promise<boolean>;
+  confirmUserAction?(review: UserConfirmationReview): Promise<boolean>;
 }
 
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks
-  extends
-    Navigation,
-    Notifications,
-    Permissions,
-    Features,
-    HostStorage,
-    ChainProvider,
-    AuthPresenter,
-    SessionStore,
-    UserConfirmation,
-    ThemeHost,
-    PreimageHost {}
+export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, ProductStorage, CoreStorage, ChainProvider, AuthPresenter, UserConfirmation, ThemeHost, PreimageHost {}

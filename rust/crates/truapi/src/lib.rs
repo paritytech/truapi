@@ -13,9 +13,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 
 use futures::Stream;
+use parity_scale_codec::{Decode, Encode};
 
 pub mod api;
 pub mod v01;
+#[cfg(debug_assertions)]
+pub mod v02;
 pub mod versioned;
 
 pub use truapi_macros::wire;
@@ -24,7 +27,7 @@ pub use truapi_macros::wire;
 pub type RequestId = String;
 
 /// Framework-level outcomes shared by API methods.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CallError<D> {
     /// Method-specific failure.
     Domain(D),

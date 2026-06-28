@@ -10,52 +10,21 @@
 // views into WASM memory) and frames are small, so the copy is the simpler
 // safe choice.
 
-import type { LogLevel } from "./runtime.js";
-
-export type CallbackName =
-  | "navigateTo"
-  | "pushNotification"
-  | "cancelNotification"
-  | "devicePermission"
-  | "remotePermission"
-  | "featureSupported"
-  | "read"
-  | "write"
-  | "clear"
-  | "authStateChanged"
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-  | "confirmPreimageSubmit"
-  | "submitPreimage";
-
-export type OptionalCallbackName =
-  | "cancelNotification"
-  | "authStateChanged"
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-  | "confirmPreimageSubmit"
-  | "submitPreimage";
-
+import type { LogLevel, PermissionAuthorizationStatus } from "./runtime.js";
+import type {
+  CallbackName,
+  OptionalCallbackName,
+  SubscriptionName,
+} from "./generated/worker-callbacks.js";
 /**
- * Names of every subscription host callback. Each has the shape
- * `(payload?, sendItem) => dispose | void`.
+ * Generated callback-name unions used by the worker transport. They keep the
+ * hand-written protocol aligned with the Rust platform callback catalog.
  */
-export type SubscriptionName =
-  | "subscribeSessionStore"
-  | "lookupPreimage"
-  | "subscribeTheme";
+export type {
+  CallbackName,
+  OptionalCallbackName,
+  SubscriptionName,
+} from "./generated/worker-callbacks.js";
 
 /**
  * Positional arguments for a callback. The wasm core calls each callback
@@ -63,6 +32,11 @@ export type SubscriptionName =
  */
 export type CallbackArgs = readonly unknown[];
 
+/**
+ * Messages posted by the main window to the WASM worker. These either control
+ * worker/core lifecycle, forward encoded TrUAPI frames into the core, or return
+ * host callback/subscription/chain responses requested by the worker.
+ */
 export type MainToWorker =
   | {
       kind: "init";
@@ -74,8 +48,20 @@ export type MainToWorker =
     }
   | { kind: "setLogLevel"; level: LogLevel }
   | { kind: "frame"; bytes: Uint8Array }
-  | { kind: "disconnect"; requestId: number }
-  | { kind: "cancelLogin" }
+  | { kind: "disconnectSession"; requestId: number }
+  | { kind: "cancelPairing" }
+  | { kind: "notifySessionStoreChanged" }
+  | {
+      kind: "getPermissionAuthorizationStatus";
+      requestId: number;
+      request: Uint8Array;
+    }
+  | {
+      kind: "setPermissionAuthorizationStatus";
+      requestId: number;
+      request: Uint8Array;
+      status: PermissionAuthorizationStatus;
+    }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
   | { kind: "subscriptionItem"; subId: number; value: unknown }
@@ -84,6 +70,11 @@ export type MainToWorker =
   | { kind: "chainResponse"; connId: number; json: string }
   | { kind: "dispose" };
 
+/**
+ * Messages posted by the WASM worker back to the main window. These either
+ * report worker lifecycle/errors, emit encoded TrUAPI frames from the core, or
+ * request host callbacks, subscriptions, and chain-provider operations.
+ */
 export type WorkerToMain =
   | { kind: "loaded" }
   | { kind: "ready" }
@@ -91,8 +82,36 @@ export type WorkerToMain =
   | { kind: "frameError"; error: string }
   | { kind: "disposeError"; error: string }
   | { kind: "frame"; bytes: Uint8Array }
-  | { kind: "disconnectResponse"; requestId: number; ok: true }
-  | { kind: "disconnectResponse"; requestId: number; ok: false; error: string }
+  | { kind: "disconnectSessionResponse"; requestId: number; ok: true }
+  | {
+      kind: "disconnectSessionResponse";
+      requestId: number;
+      ok: false;
+      error: string;
+    }
+  | {
+      kind: "permissionAuthorizationStatusResponse";
+      requestId: number;
+      ok: true;
+      status: PermissionAuthorizationStatus;
+    }
+  | {
+      kind: "permissionAuthorizationStatusResponse";
+      requestId: number;
+      ok: false;
+      error: string;
+    }
+  | {
+      kind: "setPermissionAuthorizationStatusResponse";
+      requestId: number;
+      ok: true;
+    }
+  | {
+      kind: "setPermissionAuthorizationStatusResponse";
+      requestId: number;
+      ok: false;
+      error: string;
+    }
   | {
       kind: "callbackRequest";
       requestId: number;

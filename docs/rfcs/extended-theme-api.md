@@ -59,3 +59,4 @@ The old `Theme` enum (`Light | Dark`) is renamed to `ThemeVariant` for clarity. 
 ## Drawbacks
 
 - Wire-breaking change: deployed products on the old schema will fail to decode the new payload until updated.
+

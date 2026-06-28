@@ -8,9 +8,8 @@ export interface IframeHostOptions {
   container: HTMLElement;
   /**
    * Called with one end of the MessageChannel once the iframe has loaded.
-   * Hosts typically pipe this into a `Provider` (e.g. via
-   * `createMessagePortProvider` from `@parity/truapi`) and hand the
-   * provider to `createHostServer`.
+   * Hosts typically pipe this into a `WireProvider` (e.g. via
+   * `createMessagePortProvider` from `@parity/truapi`).
    */
   onPort: (port: MessagePort) => void;
   /**
@@ -18,6 +17,8 @@ export interface IframeHostOptions {
    * `iframeUrl`. Throws if it disagrees with the iframe URL's origin.
    */
   allowedOrigin?: string;
+  /** Optional iframe Permissions Policy allow attribute. */
+  allow?: string;
   /** Override the default iframe sandbox attribute. */
   sandbox?: string;
 }
@@ -60,7 +61,7 @@ function resolveAllowedOrigin(
 
 /**
  * Embed a product iframe and transfer a `MessagePort` into it. The host
- * keeps the other end and passes it to a `Provider` (typically via
+ * keeps the other end and passes it to a `WireProvider` (typically via
  * `createMessagePortProvider`). All product traffic flows over the
  * MessageChannel.
  */
@@ -70,6 +71,7 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
     container,
     onPort,
     allowedOrigin,
+    allow,
     sandbox = DEFAULT_IFRAME_SANDBOX,
   } = options;
 
@@ -91,6 +93,9 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
   // does not serve matching embedder headers.
   const credentiallessIframe = iframe as CredentiallessIframe;
   credentiallessIframe.credentialless = true;
+  if (allow !== undefined) {
+    iframe.allow = allow;
+  }
   iframe.setAttribute("sandbox", sandbox);
   iframe.referrerPolicy = "no-referrer";
   iframe.src = iframeUrl;
@@ -139,4 +144,4 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
   };
 }
 
-export type { Provider } from "@parity/truapi";
+export type { WireProvider } from "@parity/truapi";

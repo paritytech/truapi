@@ -2,29 +2,46 @@ import type {
   ChainConnection,
   HostCallbacks,
   LogLevel,
-  TrUApiHostWasmProvider,
-  WasmRuntimeConfig,
-  WasmRawCallbacks,
+  PermissionAuthorizationRequest,
+  PermissionAuthorizationStatus,
+  TrUApiHostCoreProvider,
+  HostCoreRuntimeConfig,
 } from "../index.js";
+import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec } from "../generated/host-callbacks.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
+import type { RawCallbacks } from "../generated/host-callbacks-adapter.js";
 import type {
   CallbackName,
   MainToWorker,
-  OptionalCallbackName,
   SubscriptionName,
   WorkerToMain,
 } from "../worker-protocol.js";
-import { errorMessage } from "../error-message.js";
 import { bytesToHex } from "@parity/truapi/scale";
+import {
+  implementedOptionalCallbacks,
+  implementedOptionalSubscriptions,
+  startRawSubscription,
+} from "../generated/worker-callbacks.js";
 
 interface WorkerProviderState {
   worker: Worker;
-  rawCallbacks: WasmRawCallbacks;
+  rawCallbacks: RawCallbacks;
   listeners: Set<(message: Uint8Array) => void>;
   closeListeners: Set<(error: Error) => void>;
   subscriptionDisposers: Map<number, () => void>;
   chainConnections: Map<number, ChainConnection>;
   pendingDisconnects: Map<
+    number,
+    { resolve: () => void; reject: (error: Error) => void }
+  >;
+  pendingPermissionAuthorizationStatuses: Map<
+    number,
+    {
+      resolve: (status: PermissionAuthorizationStatus) => void;
+      reject: (error: Error) => void;
+    }
+  >;
+  pendingSetPermissionAuthorizationStatuses: Map<
     number,
     { resolve: () => void; reject: (error: Error) => void }
   >;
@@ -37,27 +54,27 @@ function debugLoggingEnabled(state: WorkerProviderState): boolean {
   return state.logLevel === "debug" || state.logLevel === "trace";
 }
 
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return JSON.stringify(err) ?? String(err);
+}
+
 let nextDisconnectRequestId = 0;
+let nextPermissionAuthorizationRequestId = 0;
+
+function encodePermissionAuthorizationRequest(
+  request: PermissionAuthorizationRequest,
+): Uint8Array {
+  return PermissionAuthorizationRequestCodec.enc(request);
+}
 
 /** localStorage key the dev log level is persisted under, so it survives reloads. */
 const DEV_LOG_LEVEL_KEY = "truapi:logLevel";
-const LOG_LEVELS: readonly LogLevel[] = [
-  "off",
-  "error",
-  "warn",
-  "info",
-  "debug",
-  "trace",
-];
 
-function isLogLevel(value: string | null): value is LogLevel {
-  return value !== null && (LOG_LEVELS as readonly string[]).includes(value);
-}
-
-/** Read the persisted dev log level. Returns null when unset or unavailable. */
+/** Read the persisted dev log level. Returns null when unset. */
 function readPersistedLogLevel(): LogLevel | null {
-  const stored = globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
-  return isLogLevel(stored) ? stored : null;
+  return globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
 }
 
 /** Persist the dev log level so it re-applies on the next reload. */
@@ -66,49 +83,10 @@ function persistLogLevel(level: LogLevel): void {
 }
 
 let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();
-const devGlobalProviders = new Set<TrUApiHostWasmProvider>();
-const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
-  "cancelNotification",
-  "authStateChanged",
-  "readSession",
-  "writeSession",
-  "clearSession",
-  "confirmSignPayload",
-  "confirmSignRaw",
-  "confirmCreateTransaction",
-  "confirmAccountAlias",
-  "confirmResourceAllocation",
-  "confirmPreimageSubmit",
-  "submitPreimage",
-];
-
+const devGlobalProviders = new Set<TrUApiHostCoreProvider>();
 interface TrUApiDevConsole {
   setLogLevel(level: LogLevel): void;
   getLogLevel(): LogLevel | null;
-}
-
-function optionalCallbacks(
-  callbacks: Omit<WasmRawCallbacks, "emitFrame">,
-): OptionalCallbackName[] {
-  return OPTIONAL_CALLBACK_NAMES.filter(
-    (name) => typeof callbacks[name] === "function",
-  );
-}
-
-function optionalSubscriptions(
-  callbacks: Omit<WasmRawCallbacks, "emitFrame">,
-): SubscriptionName[] {
-  const names: SubscriptionName[] = [];
-  if (typeof callbacks.subscribeSessionStore === "function") {
-    names.push("subscribeSessionStore");
-  }
-  if (typeof callbacks.subscribeTheme === "function") {
-    names.push("subscribeTheme");
-  }
-  if (typeof callbacks.lookupPreimage === "function") {
-    names.push("lookupPreimage");
-  }
-  return names;
 }
 
 function handleCallbackRequest(
@@ -182,21 +160,12 @@ function handleSubscriptionStart(
   };
   let dispose: (() => void) | void = undefined;
   try {
-    switch (msg.name) {
-      case "subscribeSessionStore":
-        dispose = state.rawCallbacks.subscribeSessionStore?.(sendItem);
-        break;
-      case "subscribeTheme":
-        dispose = state.rawCallbacks.subscribeTheme?.(sendItem);
-        break;
-      case "lookupPreimage":
-        if (msg.payload === null) {
-          console.warn("[truapi worker] lookupPreimage requires payload");
-          return;
-        }
-        dispose = state.rawCallbacks.lookupPreimage(msg.payload, sendItem);
-        break;
-    }
+    dispose = startRawSubscription(
+      state.rawCallbacks,
+      msg.name,
+      msg.payload,
+      sendItem,
+    );
   } catch (err) {
     console.error(`[truapi worker] ${msg.name} threw on start:`, err);
     return;
@@ -320,6 +289,46 @@ function handleDisconnectResponse(
   }
 }
 
+function handlePermissionAuthorizationStatusResponse(
+  state: WorkerProviderState,
+  msg:
+    | {
+        requestId: number;
+        ok: true;
+        status: PermissionAuthorizationStatus;
+      }
+    | { requestId: number; ok: false; error: string },
+): void {
+  const pending = state.pendingPermissionAuthorizationStatuses.get(
+    msg.requestId,
+  );
+  if (!pending) return;
+  state.pendingPermissionAuthorizationStatuses.delete(msg.requestId);
+  if (msg.ok) {
+    pending.resolve(msg.status);
+  } else {
+    pending.reject(new Error(msg.error));
+  }
+}
+
+function handleSetPermissionAuthorizationStatusResponse(
+  state: WorkerProviderState,
+  msg:
+    | { requestId: number; ok: true }
+    | { requestId: number; ok: false; error: string },
+): void {
+  const pending = state.pendingSetPermissionAuthorizationStatuses.get(
+    msg.requestId,
+  );
+  if (!pending) return;
+  state.pendingSetPermissionAuthorizationStatuses.delete(msg.requestId);
+  if (msg.ok) {
+    pending.resolve();
+  } else {
+    pending.reject(new Error(msg.error));
+  }
+}
+
 function rejectPendingDisconnects(
   state: WorkerProviderState,
   error: Error,
@@ -328,6 +337,20 @@ function rejectPendingDisconnects(
     pending.reject(error);
   }
   state.pendingDisconnects.clear();
+}
+
+function rejectPendingPermissionAuthorizationRequests(
+  state: WorkerProviderState,
+  error: Error,
+): void {
+  for (const pending of state.pendingPermissionAuthorizationStatuses.values()) {
+    pending.reject(error);
+  }
+  state.pendingPermissionAuthorizationStatuses.clear();
+  for (const pending of state.pendingSetPermissionAuthorizationStatuses.values()) {
+    pending.reject(error);
+  }
+  state.pendingSetPermissionAuthorizationStatuses.clear();
 }
 
 /**
@@ -344,6 +367,7 @@ function teardown(
   state.disposed = true;
   state.closedError = error;
   rejectPendingDisconnects(state, error);
+  rejectPendingPermissionAuthorizationRequests(state, error);
   for (const fn of state.subscriptionDisposers.values()) {
     try {
       fn();
@@ -381,7 +405,7 @@ export interface CreateWebWorkerProviderOptions {
   /** Wasm core log level. Default: `"off"`. */
   logLevel?: LogLevel;
   /** Static product/pairing config passed to the Rust core. */
-  runtimeConfig: WasmRuntimeConfig;
+  runtimeConfig: HostCoreRuntimeConfig;
   /**
    * Milliseconds to wait for the worker to report `ready` before rejecting
    * and terminating it. Default: 30000.
@@ -391,8 +415,7 @@ export interface CreateWebWorkerProviderOptions {
 
 /**
  * Spawn the truapi-server WASM in `worker` and bridge it into a
- * `Provider`. The provider can be handed to `createHostServer` from
- * `@parity/truapi-host`.
+ * `WireProvider`.
  *
  * The caller is responsible for instantiating the Worker, Vite users
  * typically import the worker entry-point with `?worker`:
@@ -412,23 +435,20 @@ export function createWebWorkerProvider(
   worker: Worker,
   host: Partial<HostCallbacks>,
   options: CreateWebWorkerProviderOptions,
-): Promise<TrUApiHostWasmProvider> {
+): Promise<TrUApiHostCoreProvider> {
   const callbacks = createWasmRawCallbacks(host);
 
   return new Promise((resolve, reject) => {
     const state: WorkerProviderState = {
       worker,
-      // `emitFrame` is satisfied by the worker side; main thread never
-      // calls it. Fill in a no-op so the typed callback set is complete.
-      rawCallbacks: {
-        ...(callbacks as WasmRawCallbacks),
-        emitFrame: () => {},
-      },
+      rawCallbacks: callbacks,
       listeners: new Set(),
       closeListeners: new Set(),
       subscriptionDisposers: new Map(),
       chainConnections: new Map(),
       pendingDisconnects: new Map(),
+      pendingPermissionAuthorizationStatuses: new Map(),
+      pendingSetPermissionAuthorizationStatuses: new Map(),
       closedError: null,
       logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
       disposed: false,
@@ -458,8 +478,14 @@ export function createWebWorkerProvider(
           }
           for (const listener of [...state.listeners]) listener(msg.bytes);
           break;
-        case "disconnectResponse":
+        case "disconnectSessionResponse":
           handleDisconnectResponse(state, msg);
+          break;
+        case "permissionAuthorizationStatusResponse":
+          handlePermissionAuthorizationStatusResponse(state, msg);
+          break;
+        case "setPermissionAuthorizationStatusResponse":
+          handleSetPermissionAuthorizationStatusResponse(state, msg);
           break;
         case "callbackRequest":
           if (debugLoggingEnabled(state)) {
@@ -526,8 +552,8 @@ export function createWebWorkerProvider(
           kind: "init",
           logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
           runtimeConfig: options.runtimeConfig,
-          optionalCallbacks: optionalCallbacks(callbacks),
-          optionalSubscriptions: optionalSubscriptions(callbacks),
+          optionalCallbacks: implementedOptionalCallbacks(host),
+          optionalSubscriptions: implementedOptionalSubscriptions(host),
           chainConnect: typeof callbacks.chainConnect === "function",
         };
         worker.postMessage(init);
@@ -568,8 +594,8 @@ export function createWebWorkerProvider(
   });
 }
 
-function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
-  const provider: TrUApiHostWasmProvider = {
+function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
+  const provider: TrUApiHostCoreProvider = {
     postMessage(bytes: Uint8Array): void {
       if (state.disposed) return;
       const post: MainToWorker = { kind: "frame", bytes };
@@ -594,13 +620,13 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
         state.closeListeners.delete(callback);
       };
     },
-    disconnect(): Promise<void> {
+    disconnectSession(): Promise<void> {
       if (state.disposed) return Promise.resolve();
       return new Promise((resolve, reject) => {
         const requestId = ++nextDisconnectRequestId;
         state.pendingDisconnects.set(requestId, { resolve, reject });
         try {
-          const post: MainToWorker = { kind: "disconnect", requestId };
+          const post: MainToWorker = { kind: "disconnectSession", requestId };
           state.worker.postMessage(post);
         } catch (err) {
           state.pendingDisconnects.delete(requestId);
@@ -608,10 +634,63 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
         }
       });
     },
-    cancelLogin(): void {
+    cancelPairing(): void {
       if (state.disposed) return;
-      const post: MainToWorker = { kind: "cancelLogin" };
+      const post: MainToWorker = { kind: "cancelPairing" };
       state.worker.postMessage(post);
+    },
+    notifySessionStoreChanged(): void {
+      if (state.disposed) return;
+      const post: MainToWorker = { kind: "notifySessionStoreChanged" };
+      state.worker.postMessage(post);
+    },
+    getPermissionAuthorizationStatus(
+      request: PermissionAuthorizationRequest,
+    ): Promise<PermissionAuthorizationStatus> {
+      if (state.disposed) return Promise.resolve("NotDetermined");
+      return new Promise((resolve, reject) => {
+        const requestId = ++nextPermissionAuthorizationRequestId;
+        state.pendingPermissionAuthorizationStatuses.set(requestId, {
+          resolve,
+          reject,
+        });
+        try {
+          const post: MainToWorker = {
+            kind: "getPermissionAuthorizationStatus",
+            requestId,
+            request: encodePermissionAuthorizationRequest(request),
+          };
+          state.worker.postMessage(post);
+        } catch (err) {
+          state.pendingPermissionAuthorizationStatuses.delete(requestId);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      });
+    },
+    setPermissionAuthorizationStatus(
+      request: PermissionAuthorizationRequest,
+      status: PermissionAuthorizationStatus,
+    ): Promise<void> {
+      if (state.disposed) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const requestId = ++nextPermissionAuthorizationRequestId;
+        state.pendingSetPermissionAuthorizationStatuses.set(requestId, {
+          resolve,
+          reject,
+        });
+        try {
+          const post: MainToWorker = {
+            kind: "setPermissionAuthorizationStatus",
+            requestId,
+            request: encodePermissionAuthorizationRequest(request),
+            status,
+          };
+          state.worker.postMessage(post);
+        } catch (err) {
+          state.pendingSetPermissionAuthorizationStatuses.delete(requestId);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      });
     },
     setLogLevel(level: LogLevel): void {
       if (state.disposed) return;
@@ -634,7 +713,7 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
  * next load, so it survives refreshes. Pair with the DevTools console "Verbose"
  * level to surface debug/trace.
  */
-function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
+function exposeDevGlobal(provider: TrUApiHostCoreProvider): void {
   devGlobalProviders.add(provider);
   if (devLogLevelOverride !== null) {
     provider.setLogLevel?.(devLogLevelOverride);
