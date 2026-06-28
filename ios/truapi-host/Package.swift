@@ -22,7 +22,7 @@ let package = Package(
     targets: [
         .systemLibrary(
             name: "truapi_serverFFI",
-            path: "Sources/truapi_serverFFI",
+            path: "Sources/truapi_serverFFI/include",
             pkgConfig: nil,
             providers: []
         ),
