@@ -1,12 +1,4 @@
----
-title: "Redesign RingLocation in host_account_create_proof"
-type: rfc
-status: draft
-owner: "@valentin-parity"
-pr:
----
-
-# RFC 0004 — Redesign RingLocation in `host_account_create_proof`
+# RFC 0004 — Redesign `host_account_create_proof`
 
 |                 |                                                                                                           |
 | --------------- |-----------------------------------------------------------------------------------------------------------|
