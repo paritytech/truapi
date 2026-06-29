@@ -11,7 +11,7 @@ pr:
 |                 |                                                                                                           |
 | --------------- |-----------------------------------------------------------------------------------------------------------|
 | **Start Date**  | 2026-03-16                                                                                                |
-| **Description** | Junction-based RingLocation, person-keyed and product-context-scoped proofs, specified member-key selection |
+| **Description** | Junction-based RingLocation, context-scoped proofs, and a specified host member-key selection contract |
 | **Authors**     | Valentin Sergeev                                                                                          |
 
 ## Summary
@@ -19,7 +19,7 @@ pr:
 Redesign `host_account_create_proof` and `host_account_get_alias`:
 
 1. **Junction-based ring addressing** — replace the `ring_root_hash`-based `RingLocation` with a struct carrying a required `chain_id` and a `Vec<RingLocationJunction>` path of stable, immutable identifiers.
-2. **Person-keyed, product-context-scoped proofs** — replace `domain: ProductAccountId` with `ProductProofContext = (ProductId, ProductProofContextSuffix)`. The proof is keyed by the user's person; the context provides unlinkability.
+2. **Member-key-based, context-scoped proofs** — replace `domain: ProductAccountId` with `ProductProofContext = (ProductId, ProductProofContextSuffix)`. The proof is created with a member key the host holds (selected for the requested ring); the context scopes the derived alias for unlinkability.
 3. **Richer output and errors** — return `contextual_alias`, `ring_index`, and `ring_revision`; specify host member-key selection; add a `NotMember` error.
 
 No protocol version bump is required: the current shape of these methods is unusable (the `ring_root_hash` race makes it broken by construction) and is not implemented or consumed anywhere yet, so it can be replaced in place.
@@ -29,7 +29,7 @@ No protocol version bump is required: the current shape of these methods is unus
 - **Request invalidation.** `ring_root_hash` changes whenever ring membership changes, invalidating any in-flight proof request built against the previous root.
 - **No revision in the response.** Downstream consumers (coinage's recycler transaction extension, the `personhoodInfoByProof` precompile) need the ring revision and index, which the current `Vec<u8>` return cannot carry.
 - **Hints can't address multi-ring pallets.** With the membership pallet, one pallet instance hosts rings from multiple collections, each identified by `(collection_id, ring_index)`. `RingLocationHint`'s optional `pallet_instance` cannot disambiguate them.
-- **`domain: ProductAccountId` is the wrong key.** A personhood proof must be keyed by the user's _person_ — `personhoodInfoByProof` verifies the author is a ring member, not that a derived product account exists. Unlinkability comes from the _context_ (same person + different contexts → different aliases), so the request needs an explicit, product-scoped context rather than a derivation index.
+- **`domain: ProductAccountId` is the wrong input.** Proof generation depends only on which member key proves membership in the requested ring — the host holds one or more member keys (possibly different keys for different rings) and selects the right one. A derived product account and its derivation index have nothing to do with that. The old signature conflated product-account derivation with proof generation; unlinkability instead comes from the `context` (the same member key under different contexts yields different, unlinkable aliases), so the request needs an explicit, product-scoped context rather than a derivation index.
 - **Member-key selection is unspecified.** A host may hold several member keys but the API hides them (exposing them leaks identity). Without a defined selection contract, two hosts can derive different aliases for the same request.
 - **No "not a member" error.** A user who has not reached full personhood is not in the ring. `CreateProofErr` cannot distinguish this from "ring does not exist", so products can't route the user to onboarding.
 
@@ -87,7 +87,7 @@ fn product_context_bytes(context: ProductProofContext) -> [u8; 32] {
 
 ### `create_proof` and `get_alias`
 
-The proof is generated against the logged-in user's person; the host selects the member key (see below). Both methods take the same `(context, ring)` so they derive the same alias.
+The proof is created with a member key the host holds; the host selects which key based on the requested ring (see below). Both methods take the same `(context, ring)` so they derive the same alias.
 
 ```rust
 struct RingVrfProof {
@@ -177,14 +177,14 @@ Defined only for 4-byte suffixes to keep a bijection with `u32`. Hashing arbitra
 ## Alternatives
 
 - Keep `ring_root_hash` with product-side retry — doesn't solve revision visibility; adds complexity to every product.
-- Keep `domain: ProductAccountId` plus a separate context — keeps the proof keyed by a derived account, not the person.
+- Keep `domain: ProductAccountId` plus a separate context — keeps proof generation tied to a derived product account instead of the host's member key for the ring.
 - Single-`u32` suffix — too narrow; real contexts (pgas claims) need more.
 - XCM `MultiLocation` directly — overly general; only the junction pattern is borrowed.
 
 ## References
 
 - [Host API Design Document v0.5](https://docs.google.com/document/d/1AxKjF15y7gmdl-a6twc5wd8R5xcxKxMO8Ahp2l20v0g/edit?usp=sharing)
-- Technical Design: Sybil-Resistant Voting with Personhood — driving product for person-keyed proofs, the `contextual_alias` response, and `NotMember`.
+- Technical Design: Sybil-Resistant Voting with Personhood — driving product for the member-key-based proof model, the `contextual_alias` response, and `NotMember`.
 - [Polkadot People Registry / Ring VRF](https://forum.polkadot.network/t/the-people-registry/12749)
 - [individuality#878](https://github.com/paritytech/individuality/pull/878) — alias-account assignment for derived product addresses
 - [individuality#891](https://github.com/paritytech/individuality/pull/891) — `personhoodInfoByProof` precompile (motivates the richer response)
