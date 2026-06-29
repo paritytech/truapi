@@ -1,3 +1,4 @@
+use crate::v01::transaction::GenesisHash;
 use parity_scale_codec::{Decode, Encode};
 
 /// Identifies a product-specific account by combining a dotNS domain name with a
@@ -32,40 +33,55 @@ pub struct ProductAccount {
 
 /// A privacy-preserving alias derived via ring VRF, bound to a specific context.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostAccountGetAliasResponse {
-    /// 32-byte context identifier.
+pub struct ContextualAlias {
+    /// 32-byte context identifier the alias is bound to.
     pub context: [u8; 32],
     /// Ring VRF alias (variable length).
     pub alias: Vec<u8>,
 }
 
-/// Hints for locating a ring on-chain.
+/// A single step in a [`RingLocation`] path, addressing a ring within a chain.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct RingLocationHint {
-    /// Optional pallet instance index.
-    pub pallet_instance: Option<u32>,
+pub enum RingLocationJunction {
+    /// Pallet instance hosting the ring collection.
+    PalletInstance(u8),
+    /// Ring collection identifier within the pallet.
+    CollectionId(Vec<u8>),
 }
 
-/// Locates a specific ring on a specific chain for ring VRF operations.
+/// Locates a ring for ring VRF operations using only identifiers that are
+/// stable across membership changes.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingLocation {
-    /// Chain genesis hash.
-    pub genesis_hash: Vec<u8>,
-    /// Root hash of the ring.
-    pub ring_root_hash: Vec<u8>,
-    /// Optional location hints.
-    pub hints: Option<RingLocationHint>,
+    /// Genesis hash of the chain hosting the ring.
+    pub chain_id: GenesisHash,
+    /// Path addressing the ring within the chain.
+    pub junctions: Vec<RingLocationJunction>,
 }
 
-/// Request to create a ring VRF proof for a product account.
+/// dotNS product identifier (e.g. `"my-product.dot"`).
+pub type ProductId = String;
+
+/// Arbitrary-byte suffix distinguishing contexts within a single product.
+pub type ProductProofContextSuffix = Vec<u8>;
+
+/// A product-scoped proof context: a product and a context within it.
+///
+/// Hashed (with a `product/<ProductId>/` prefix) into the 32-byte context bound
+/// to a ring VRF proof, so contexts cannot collide across products and the same
+/// member key under different contexts yields unlinkable aliases.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct ProductProofContext(pub ProductId, pub ProductProofContextSuffix);
+
+/// Request to create a ring VRF proof.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountCreateProofRequest {
-    /// Product account that should create the proof.
-    pub product_account_id: ProductAccountId,
-    /// Ring location to use for proof generation.
+    /// Product-scoped context the derived alias is bound to.
+    pub context: ProductProofContext,
+    /// Ring to generate the proof against; the host selects the member key.
     pub ring_location: RingLocation,
-    /// Context bytes bound to the proof.
-    pub context: Vec<u8>,
+    /// Opaque message bound into the proof.
+    pub message: Vec<u8>,
 }
 
 /// User's authentication state.
@@ -118,6 +134,8 @@ pub enum HostAccountGetError {
 pub enum HostAccountCreateProofError {
     /// Ring not available at the specified location.
     RingNotFound,
+    /// The selected member key is not a member of the requested ring.
+    NotMember,
     /// User or host rejected.
     Rejected,
     /// Catch-all.
@@ -156,18 +174,27 @@ pub enum HostGetUserIdError {
     Unknown { reason: String },
 }
 
-/// Request to retrieve a contextual alias for a product account.
+/// Request to retrieve the contextual alias for a context and ring.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetAliasRequest {
-    /// Product account to derive the alias for.
-    pub product_account_id: ProductAccountId,
+    /// Product-scoped context to derive the alias for.
+    pub context: ProductProofContext,
+    /// Ring whose member key the host should use; matches `create_proof`.
+    pub ring_location: RingLocation,
 }
 
-/// Response containing a ring VRF proof.
+/// Response containing a ring VRF proof and the values needed to verify it
+/// against a downstream precompile.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountCreateProofResponse {
     /// Variable-length ring VRF proof bytes.
     pub proof: Vec<u8>,
+    /// Alias derived for the request's context.
+    pub contextual_alias: ContextualAlias,
+    /// Index of the selected member key within the ring.
+    pub ring_index: u32,
+    /// Ring revision the proof was generated against.
+    pub ring_revision: u32,
 }
 
 /// Response containing all legacy (user-imported) accounts owned by the user.

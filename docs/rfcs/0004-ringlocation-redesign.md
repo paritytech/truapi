@@ -70,15 +70,11 @@ struct RingLocation {
 
 ```rust
 type ProductProofContextSuffix = Vec<u8>;            // arbitrary bytes
-
-struct ProductProofContext {
-    product_id: ProductId,
-    suffix: ProductProofContextSuffix,
-}
+type ProductProofContext = (ProductId, ProductProofContextSuffix);
 
 // 32-byte context bound into the proof.
 fn product_context_bytes(context: ProductProofContext) -> [u8; 32] {
-    blake2b256(utf8("product/") ++ utf8(context.product_id) ++ utf8("/") ++ context.suffix)
+    blake2b256(utf8("product/") ++ utf8(context.0) ++ utf8("/") ++ context.1)
 }
 ```
 
@@ -138,7 +134,7 @@ let location = RingLocation {
     ],
 };
 let result = host_account_create_proof(
-    ProductProofContext { product_id, suffix },
+    (product_id, suffix),
     location,
     message,
 )?;
@@ -154,7 +150,7 @@ These live at the product-sdk level, not in truAPI; the host implements none of 
 ```rust
 const SINGLETON_PROOF_SUFFIX: [u8; 1] = [0];
 fn singleton_proof_context(product_id: ProductId) -> ProductProofContext {
-    ProductProofContext { product_id, suffix: SINGLETON_PROOF_SUFFIX.to_vec() }
+    (product_id, SINGLETON_PROOF_SUFFIX.to_vec())
 }
 ```
 

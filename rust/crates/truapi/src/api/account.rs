@@ -53,13 +53,16 @@ pub trait Account: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Retrieve a contextual alias for a product account.
+    /// Retrieve the contextual alias for a context and ring.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.account.getAccountAlias({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
+    ///   context: ["truapi-playground.dot", "0x00"],
+    ///   ringLocation: {
+    ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///     junctions: [{ palletInstance: 42 }],
     ///   },
     /// });
     /// assert(result.isOk(), "getAccountAlias failed:", result);
@@ -74,22 +77,18 @@ pub trait Account: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Generate a ring VRF proof for a product account.
+    /// Generate a ring VRF proof; the host selects the member key for the ring.
     ///
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
     /// const result = await truapi.account.createAccountProof({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
-    ///   },
+    ///   context: ["truapi-playground.dot", "0x00"],
     ///   ringLocation: {
-    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///     ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     hints: { palletInstance: 42 },
+    ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///     junctions: [{ palletInstance: 42 }],
     ///   },
-    ///   context: "0x",
+    ///   message: "0x",
     /// });
     /// assert(result.isOk(), "createAccountProof failed:", result);
     /// console.log("account proof created:", result.value);
