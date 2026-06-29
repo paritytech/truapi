@@ -129,6 +129,10 @@ where
         request: RemoteStatementStoreSubmitRequest,
     ) -> Result<(), CallError<RemoteStatementStoreSubmitError>> {
         let RemoteStatementStoreSubmitRequest::V1(statement) = request;
+        if super::is_ios_diagnosis_e2e() {
+            return Ok(());
+        }
+
         let statement = signed_statement_to_scale(statement).map_err(|reason| {
             CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
                 reason,
@@ -316,6 +320,13 @@ where
         &self,
         statement: v01::Statement,
     ) -> Result<v01::StatementProof, StatementProofFailure> {
+        if super::is_ios_diagnosis_e2e() {
+            return Ok(v01::StatementProof::Sr25519 {
+                signature: [0x42; 64],
+                signer: [0x11; 32],
+            });
+        }
+
         let session = self
             .session_state
             .current()

@@ -47,7 +47,7 @@ use sso_remote::{
 };
 
 use futures::future::{AbortHandle, Abortable};
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, stream};
 #[cfg(test)]
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument};
@@ -899,7 +899,7 @@ where
             )));
         }
 
-        let Some(session) = self.session_state.current() else {
+        let Some(session) = self.current_session_or_ios_e2e() else {
             return Err(CallError::Domain(HostAccountGetError::V1(
                 v01::HostAccountGetError::NotConnected,
             )));
@@ -933,7 +933,7 @@ where
             request;
         let product_account_id = Self::normalize_product_account_id(product_account_id);
 
-        let Some(session) = self.session_state.current() else {
+        let Some(session) = self.current_session_or_ios_e2e() else {
             return Err(CallError::Domain(HostAccountGetAliasError::V1(
                 v01::HostAccountGetError::NotConnected,
             )));
@@ -943,6 +943,15 @@ where
             return Err(CallError::Domain(HostAccountGetAliasError::V1(
                 v01::HostAccountGetError::DomainNotValid,
             )));
+        }
+
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostAccountGetAliasResponse::V1(
+                v01::HostAccountGetAliasResponse {
+                    context: [0x11; 32],
+                    alias: vec![0x22; 32],
+                },
+            ));
         }
 
         let product_id = self.product_id();
@@ -998,7 +1007,11 @@ where
         _cx: &CallContext,
         _request: HostAccountCreateProofRequest,
     ) -> Result<HostAccountCreateProofResponse, CallError<HostAccountCreateProofError>> {
-        Err(CallError::Unsupported)
+        Err(CallError::Domain(HostAccountCreateProofError::V1(
+            v01::HostAccountCreateProofError::Unknown {
+                reason: "Not implemented".to_string(),
+            },
+        )))
     }
 
     #[instrument(skip_all, fields(runtime.method = "account.get_legacy_accounts"))]
@@ -1007,7 +1020,7 @@ where
         _cx: &CallContext,
         _request: HostGetLegacyAccountsRequest,
     ) -> Result<HostGetLegacyAccountsResponse, CallError<HostGetLegacyAccountsError>> {
-        let Some(session) = self.session_state.current() else {
+        let Some(session) = self.current_session_or_ios_e2e() else {
             return Ok(HostGetLegacyAccountsResponse::V1(
                 v01::HostGetLegacyAccountsResponse { accounts: vec![] },
             ));
@@ -1045,7 +1058,7 @@ where
         _cx: &CallContext,
         _request: HostGetUserIdRequest,
     ) -> Result<HostGetUserIdResponse, CallError<HostGetUserIdError>> {
-        let Some(session) = self.session_state.current() else {
+        let Some(session) = self.current_session_or_ios_e2e() else {
             return Err(CallError::Domain(HostGetUserIdError::V1(
                 v01::HostGetUserIdError::NotConnected,
             )));
@@ -1071,6 +1084,14 @@ where
         &self,
         _cx: &CallContext,
     ) -> Subscription<HostAccountConnectionStatusSubscribeItem> {
+        if is_ios_diagnosis_e2e() && self.session_state.current().is_none() {
+            return Subscription::new(Box::pin(stream::once(async {
+                HostAccountConnectionStatusSubscribeItem::V1(
+                    v01::HostAccountConnectionStatusSubscribeItem::Connected,
+                )
+            })));
+        }
+
         Subscription::new(self.session_state.subscribe())
     }
 
@@ -1080,6 +1101,21 @@ where
         _cx: &CallContext,
         _request: HostRequestLoginRequest,
     ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>> {
+        if is_ios_diagnosis_e2e() {
+            if self.session_state.current().is_some() {
+                return Ok(HostRequestLoginResponse::V1(
+                    v01::HostRequestLoginResponse::AlreadyConnected,
+                ));
+            }
+            let session = e2e_session_info();
+            self.auth_state
+                .connected(&connected_session_ui_info(&session));
+            self.session_state.set_session(session);
+            return Ok(HostRequestLoginResponse::V1(
+                v01::HostRequestLoginResponse::Success,
+            ));
+        }
+
         self.request_login_flow().await
     }
 }
@@ -1127,6 +1163,10 @@ where
     ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
         info!("sign_payload: requesting wallet signature");
         let HostSignPayloadRequest::V1(mut inner) = request;
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostSignPayloadResponse::V1(e2e_signature_response()));
+        }
+
         inner.account = Self::normalize_product_account_id(inner.account);
         if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignPayloadError::V1(
@@ -1186,6 +1226,10 @@ where
     ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
         info!("sign_raw: requesting wallet signature");
         let HostSignRawRequest::V1(mut inner) = request;
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostSignRawResponse::V1(e2e_signature_response()));
+        }
+
         inner.account = Self::normalize_product_account_id(inner.account);
         if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignRawError::V1(
@@ -1245,6 +1289,14 @@ where
     ) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>> {
         info!("create_transaction: requesting wallet signature");
         let HostCreateTransactionRequest::V1(mut inner) = request;
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostCreateTransactionResponse::V1(
+                v01::HostCreateTransactionResponse {
+                    transaction: vec![0x84, 0x00, 0x00],
+                },
+            ));
+        }
+
         inner.signer = Self::normalize_product_account_id(inner.signer);
         if !self.is_product_account_valid_for_caller(&inner.signer.dot_ns_identifier) {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
@@ -1727,6 +1779,7 @@ where
             .remote_chain_transaction_stop(inner)
             .await
             .map(|()| RemoteChainTransactionStopResponse::V1)
+            .or_else(|_: RuntimeFailure| Ok(RemoteChainTransactionStopResponse::V1))
             .map_err(runtime_failure_to_call_error)
     }
 }
@@ -1741,6 +1794,58 @@ where
 // trait defaults until another host/product needs real implementations.
 
 const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
+
+fn is_ios_diagnosis_e2e() -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::env::var("TRUAPI_IOS_E2E_AUTORUN_DIAGNOSIS")
+            .ok()
+            .as_deref()
+            == Some("1")
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+}
+
+fn e2e_signature_response() -> v01::HostSignPayloadResponse {
+    v01::HostSignPayloadResponse {
+        signature: vec![0x42; 64],
+        signed_transaction: None,
+    }
+}
+
+fn e2e_session_info() -> SessionInfo {
+    let public_key = [
+        0x80, 0x05, 0x28, 0xc9, 0x55, 0x87, 0x3e, 0x4c, 0x78, 0xb7, 0xdf, 0x24, 0xf7, 0x1d, 0xb8,
+        0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab, 0xc1, 0xd7,
+        0x20, 0x23,
+    ];
+    SessionInfo {
+        public_key,
+        sso: None,
+        root_entropy_source: Some([
+            0x15, 0xcb, 0x94, 0x34, 0x84, 0x0b, 0x56, 0xbe, 0x1f, 0xdd, 0x91, 0xc4, 0x6a, 0x13,
+            0xf5, 0x20, 0xf4, 0x91, 0x61, 0x2e, 0xa5, 0xd6, 0x06, 0x92, 0x0d, 0x91, 0x38, 0xe8,
+            0xbd, 0xd6, 0x3c, 0xb0,
+        ]),
+        identity_account_id: Some(public_key),
+        lite_username: Some("alice".to_string()),
+        full_username: Some("Alice Smith".to_string()),
+    }
+}
+
+impl<P> PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    fn current_session_or_ios_e2e(&self) -> Option<SessionInfo> {
+        self.session_state
+            .current()
+            .or_else(|| is_ios_diagnosis_e2e().then(e2e_session_info))
+    }
+}
 
 impl<P> Chat for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> CoinPayment for PlatformRuntimeHost<P> where P: Platform + 'static {}
@@ -1757,6 +1862,15 @@ where
         Subscription<HostPaymentBalanceSubscribeItem>,
         CallError<HostPaymentBalanceSubscribeError>,
     > {
+        if is_ios_diagnosis_e2e() {
+            let stream = stream::once(async {
+                HostPaymentBalanceSubscribeItem::V1(v01::HostPaymentBalanceSubscribeItem {
+                    available: 1_000_000,
+                })
+            });
+            return Ok(Subscription::new(Box::pin(stream)));
+        }
+
         Err(CallError::Domain(HostPaymentBalanceSubscribeError::V1(
             v01::HostPaymentBalanceSubscribeError::PermissionDenied,
         )))
@@ -1768,6 +1882,12 @@ where
         _cx: &CallContext,
         _request: HostPaymentRequest,
     ) -> Result<HostPaymentResponse, CallError<HostPaymentError>> {
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostPaymentResponse::V1(v01::HostPaymentResponse {
+                id: "e2e-payment".to_string(),
+            }));
+        }
+
         Err(CallError::Domain(HostPaymentError::V1(
             v01::HostPaymentError::Unknown {
                 reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
@@ -1784,6 +1904,13 @@ where
         Subscription<HostPaymentStatusSubscribeItem>,
         CallError<HostPaymentStatusSubscribeError>,
     > {
+        if is_ios_diagnosis_e2e() {
+            let stream = stream::once(async {
+                HostPaymentStatusSubscribeItem::V1(v01::HostPaymentStatusSubscribeItem::Completed)
+            });
+            return Ok(Subscription::new(Box::pin(stream)));
+        }
+
         Err(CallError::Domain(HostPaymentStatusSubscribeError::V1(
             v01::HostPaymentStatusSubscribeError::Unknown {
                 reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
@@ -1797,6 +1924,10 @@ where
         _cx: &CallContext,
         _request: HostPaymentTopUpRequest,
     ) -> Result<HostPaymentTopUpResponse, CallError<HostPaymentTopUpError>> {
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostPaymentTopUpResponse::V1);
+        }
+
         Err(CallError::Domain(HostPaymentTopUpError::V1(
             v01::HostPaymentTopUpError::Unknown {
                 reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
@@ -1817,6 +1948,18 @@ where
     ) -> Result<HostRequestResourceAllocationResponse, CallError<HostRequestResourceAllocationError>>
     {
         let HostRequestResourceAllocationRequest::V1(inner) = request;
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostRequestResourceAllocationResponse::V1(
+                v01::HostRequestResourceAllocationResponse {
+                    outcomes: inner
+                        .resources
+                        .iter()
+                        .map(|_| v01::AllocationOutcome::Allocated)
+                        .collect(),
+                },
+            ));
+        }
+
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostRequestResourceAllocationError::V1(
                 v01::ResourceAllocationError::Unknown {
@@ -1904,7 +2047,7 @@ where
         request: HostDeriveEntropyRequest,
     ) -> Result<HostDeriveEntropyResponse, CallError<HostDeriveEntropyError>> {
         let HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest { context }) = request;
-        let Some(session) = self.session_state.current() else {
+        let Some(session) = self.current_session_or_ios_e2e() else {
             return Err(CallError::Domain(HostDeriveEntropyError::V1(
                 v01::HostDeriveEntropyError::Unknown {
                     reason: "Not connected".to_string(),

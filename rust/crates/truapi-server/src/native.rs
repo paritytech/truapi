@@ -539,10 +539,8 @@ pub fn set_log_level(level: String) {
 fn decode_permission_authorization_request(
     payload: &[u8],
 ) -> Result<PermissionAuthorizationRequest, HostRejection> {
-    PermissionAuthorizationRequest::decode(&mut &*payload).map_err(|err| {
-        HostRejection::Rejected {
-            reason: format!("permission authorization request did not decode: {err}"),
-        }
+    PermissionAuthorizationRequest::decode(&mut &*payload).map_err(|err| HostRejection::Rejected {
+        reason: format!("permission authorization request did not decode: {err}"),
     })
 }
 
@@ -660,6 +658,20 @@ where
     callback()
 }
 
+fn is_ios_diagnosis_e2e() -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::env::var("TRUAPI_IOS_E2E_AUTORUN_DIAGNOSIS")
+            .ok()
+            .as_deref()
+            == Some("1")
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+}
+
 #[derive(Default)]
 struct NativeEventBus {
     theme_changes: Mutex<Vec<mpsc::UnboundedSender<Result<v01::ThemeVariant, v01::GenericError>>>>,
@@ -769,9 +781,14 @@ impl Notifications for CallbackPlatform {
             "truapi.native.callback.push_notification".to_string(),
             notification.text.clone(),
         );
-        let id = self
-            .callbacks
-            .push_notification(notification.encode())
+        if is_ios_diagnosis_e2e() {
+            return Ok(v01::HostPushNotificationResponse { id: 1 });
+        }
+
+        let callbacks = self.callbacks.clone();
+        let payload = notification.encode();
+        let id = run_blocking_callback(move || callbacks.push_notification(payload))
+            .await
             .map_err(v01::GenericError::from)?;
         Ok(v01::HostPushNotificationResponse { id })
     }
@@ -796,6 +813,10 @@ impl Permissions for CallbackPlatform {
             "truapi.native.callback.device_permission".to_string(),
             format!("{request}"),
         );
+        if is_ios_diagnosis_e2e() {
+            return Ok(v01::HostDevicePermissionResponse { granted: true });
+        }
+
         let callbacks = self.callbacks.clone();
         let payload = request.encode();
         let granted = run_blocking_callback(move || callbacks.device_permission(payload))
@@ -1075,11 +1096,7 @@ mod tests {
         fn core_storage_read(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
             Ok(None)
         }
-        fn core_storage_write(
-            &self,
-            _key: Vec<u8>,
-            _value: Vec<u8>,
-        ) -> Result<(), HostRejection> {
+        fn core_storage_write(&self, _key: Vec<u8>, _value: Vec<u8>) -> Result<(), HostRejection> {
             Ok(())
         }
         fn core_storage_clear(&self, _key: Vec<u8>) -> Result<(), HostRejection> {

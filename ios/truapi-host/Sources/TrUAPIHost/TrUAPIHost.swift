@@ -17,8 +17,8 @@
 //
 // Products running inside a `WKWebView` connect to the Rust core via the
 // localhost WebSocket bridge. The bootstrap script publishes the URL
-// (`ws://127.0.0.1:<port>/?t=<token>`); products feed it to
-// `@parity/truapi`'s `createWebSocketProvider(url)`.
+// (`ws://127.0.0.1:<port>/?t=<token>`) and a MessagePort-shaped compatibility
+// object that proxies the product's existing webview transport onto it.
 
 import Foundation
 
@@ -97,16 +97,82 @@ public struct RuntimeConfig: Sendable {
 /// cdylib is built with the `ws-bridge` feature.
 public enum LocalhostBridgeBootstrap {
     /// Returns a `<script>`-injectable snippet that publishes the endpoint
-    /// metadata on `window.__truapi_localhost` and fires a `truapi-native-ready`
-    /// event. The product reads the URL and passes it to
-    /// `createWebSocketProvider` from `@parity/truapi`.
+    /// metadata on `window.__truapi_localhost`, exposes the legacy
+    /// `window.__HOST_API_PORT__` webview transport shape, and fires a
+    /// `truapi-native-ready` event.
     public static func script(port: UInt16, token: String) -> String {
         let url = "ws://127.0.0.1:\(port)/?t=\(token)"
         let safeUrl = jsStringLiteral(url)
         let safeToken = jsStringLiteral(token)
         return """
         (function() {
-          window.__truapi_localhost = { url: \(safeUrl), token: \(safeToken) };
+          var endpoint = { url: \(safeUrl), token: \(safeToken) };
+
+          function createWebSocketMessagePort(url) {
+            var socket = null;
+            var started = false;
+            var queue = [];
+
+            var port = {
+              onmessage: null,
+              onmessageerror: null,
+
+              postMessage: function(message) {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                  socket.send(message);
+                } else {
+                  queue.push(message);
+                }
+              },
+
+              start: function() {
+                if (started) return;
+                started = true;
+
+                socket = new WebSocket(url);
+                socket.binaryType = "arraybuffer";
+
+                socket.onopen = function() {
+                  var pending = queue;
+                  queue = [];
+                  pending.forEach(function(message) {
+                    socket.send(message);
+                  });
+                };
+
+                socket.onmessage = function(event) {
+                  if (typeof port.onmessage === "function") {
+                    port.onmessage({ data: new Uint8Array(event.data) });
+                  }
+                };
+
+                socket.onerror = function() {
+                  if (typeof port.onmessageerror === "function") {
+                    port.onmessageerror();
+                  }
+                };
+
+                socket.onclose = function() {
+                  if (typeof port.onmessageerror === "function") {
+                    port.onmessageerror();
+                  }
+                };
+              },
+
+              close: function() {
+                queue = [];
+                if (socket) {
+                  socket.close();
+                }
+              }
+            };
+
+            return port;
+          }
+
+          window.__truapi_localhost = endpoint;
+          window.__HOST_WEBVIEW_MARK__ = true;
+          window.__HOST_API_PORT__ = createWebSocketMessagePort(endpoint.url);
           window.dispatchEvent(new Event('truapi-native-ready'));
         })();
         """
@@ -306,10 +372,12 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
 
     func coreStorageWrite(key: Data, value: Data) throws {
         try bridge.coreStorage.write(key: key, value: value)
+        LiveSessionStoreForwarder.notifySessionStoreChanged()
     }
 
     func coreStorageClear(key: Data) throws {
         try bridge.coreStorage.clear(key: key)
+        LiveSessionStoreForwarder.notifySessionStoreChanged()
     }
 
     func chainConnect(genesisHash: Data) throws -> UInt32? {
@@ -378,6 +446,12 @@ public final class TrUAPIHostCore {
             callbacks: adapter,
             runtimeConfig: runtimeConfig.native
         )
+        LiveSessionStoreForwarder.register(self)
+        notifySessionStoreChanged()
+    }
+
+    deinit {
+        LiveSessionStoreForwarder.unregister(self)
     }
 
     /// Start the localhost WebSocket bridge. Requires the `ws-bridge`
@@ -447,5 +521,43 @@ public final class TrUAPIHostCore {
     /// Notify the core that a native chain connection closed externally.
     public func notifyChainClosed(connectionId: UInt32) {
         inner.notifyChainClosed(connectionId: connectionId)
+    }
+}
+
+private final class WeakTrUAPIHostCore {
+    weak var value: TrUAPIHostCore?
+
+    init(_ value: TrUAPIHostCore) {
+        self.value = value
+    }
+}
+
+private enum LiveSessionStoreForwarder {
+    private static let lock = NSLock()
+    private static var cores: [ObjectIdentifier: WeakTrUAPIHostCore] = [:]
+
+    static func register(_ core: TrUAPIHostCore) {
+        lock.lock()
+        cores[ObjectIdentifier(core)] = WeakTrUAPIHostCore(core)
+        lock.unlock()
+    }
+
+    static func unregister(_ core: TrUAPIHostCore) {
+        lock.lock()
+        cores.removeValue(forKey: ObjectIdentifier(core))
+        lock.unlock()
+    }
+
+    static func notifySessionStoreChanged() {
+        let liveCores: [TrUAPIHostCore]
+
+        lock.lock()
+        cores = cores.filter { $0.value.value != nil }
+        liveCores = cores.values.compactMap(\.value)
+        lock.unlock()
+
+        for core in liveCores {
+            core.notifySessionStoreChanged()
+        }
     }
 }
