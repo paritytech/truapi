@@ -12,7 +12,7 @@ rust/crates/
   truapi-codegen/        rustdoc JSON → TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits (storage, navigation, consent, ...)
-  truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node) and via UniFFI (iOS/Android)
+  truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node) and via UniFFI (iOS)
   uniffi-bindgen-cli/    Thin CLI wrapper around uniffi::uniffi_bindgen_main()
 js/packages/
   truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
@@ -20,8 +20,6 @@ js/packages/
 	                           `.` (shared host types), `/web` (iframe + Web
 	                           Worker), `/worker-runtime` (Worker entry).
 	                           WASM bundle (gitignored) under dist/wasm/web/, built via `make wasm`
-android/
-  truapi-host/             io.parity:truapi-host-android Maven library (AAR + UniFFI Kotlin bindings)
 ios/
   truapi-host/             TrUAPIHost Swift Package (sources + UniFFI Swift bindings)
 playground/                Next.js interactive playground; deploys to truapi-playground.dot
@@ -44,10 +42,8 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
   Build them locally with `make wasm` (rerun whenever
   `rust/crates/truapi-server/` changes); CI builds the bundle fresh from the
   Rust source on every run.
-- UniFFI bindings under `android/truapi-host/` and `ios/truapi-host/` are generated from the
-  `truapi-server` cdylib via `make uniffi`. The generated Swift modulemap may
-  need a one-time relocation into `Sources/truapi_serverFFI/include/`, the
-  `make uniffi` target prints a reminder.
+- UniFFI bindings under `ios/truapi-host/` are generated from the
+  `truapi-server` cdylib via `make uniffi`.
 
 ## Code style
 

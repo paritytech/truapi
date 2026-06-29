@@ -4,7 +4,6 @@ on:
     branches: [main]
     paths:
       - 'js/packages/truapi-host-wasm/**'
-      - 'android/**'
       - 'ios/**'
       - 'rust/crates/truapi-server/**'
       - 'rust/crates/truapi-platform/**'
@@ -14,7 +13,6 @@ on:
   pull_request:
     paths:
       - 'js/packages/truapi-host-wasm/**'
-      - 'android/**'
       - 'ios/**'
       - 'rust/crates/truapi-server/**'
       - 'rust/crates/truapi-platform/**'
@@ -71,36 +69,3 @@ jobs:
         run: cd js/packages/truapi && npm install --no-fund --no-audit && npm run build
       - name: Test @parity/truapi-host-wasm
         run: cd js/packages/truapi-host-wasm && npm install --no-fund --no-audit && npm test
-  android-assemble:
-    # Smoke-builds the Android library + verifies the Maven publication
-    # can be assembled (writes to maven-local). No release happens here;
-    # distribution is via JitPack, which builds tagged commits per
-    # jitpack.yml and serves the io.parity:truapi-host-android artifact.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      # No Gradle wrapper in the repo: pin the Gradle version here instead of
-      # drifting with the runner image. 8.7 is the AGP 8.5.x baseline.
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
-      # The Kotlin sources import the gitignored uniffi.truapi_server.*
-      # bindings; generate them from the truapi-server cdylib first.
-      - name: Generate UniFFI bindings
-        run: make uniffi
-      - name: Assemble truapi-host-android (release)
-        run: gradle :truapi-host:assembleRelease --no-daemon --stacktrace
-      - name: Build Maven publication into local repo
-        run: gradle :truapi-host:publishReleasePublicationToMavenLocal --no-daemon --stacktrace
-      - name: Sanity-check published artifacts
-        run: |
-          set -eux
-          base="$HOME/.m2/repository/io/parity/truapi-host-android/0.1.0"
-          test -s "$base/truapi-host-android-0.1.0.aar"
-          test -s "$base/truapi-host-android-0.1.0.pom"
-          test -s "$base/truapi-host-android-0.1.0-sources.jar"

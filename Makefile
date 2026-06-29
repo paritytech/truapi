@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
+.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -68,12 +68,8 @@ endif
 
 UNIFFI_SWIFT_TMP := target/uniffi-swift-out
 
-uniffi: ## Regenerate Kotlin + Swift bindings from truapi-server cdylib.
+uniffi: ## Regenerate Swift bindings from truapi-server cdylib.
 	cargo build -p truapi-server --release --features ws-bridge
-	cargo run -p uniffi-bindgen-cli -- generate \
-		--library $(UNIFFI_CDYLIB) \
-		--language kotlin \
-		--out-dir android/truapi-host/src/main/kotlin/generated
 	rm -rf $(UNIFFI_SWIFT_TMP)
 	mkdir -p $(UNIFFI_SWIFT_TMP)
 	cargo run -p uniffi-bindgen-cli -- generate \
@@ -87,9 +83,6 @@ uniffi: ## Regenerate Kotlin + Swift bindings from truapi-server cdylib.
 		ios/truapi-host/Sources/truapi_serverFFI/include/truapi_serverFFI.h
 	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.modulemap \
 		ios/truapi-host/Sources/truapi_serverFFI/include/module.modulemap
-
-android-publish-local: uniffi ## Publish io.parity:truapi-host-android to ~/.m2 (dev workflow).
-	gradle :truapi-host:publishReleasePublicationToMavenLocal --no-daemon
 
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace --features ws-bridge
