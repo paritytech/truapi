@@ -62,7 +62,7 @@ pub trait Account: Send + Sync {
     ///   context: ["truapi-playground.dot", "0x00"],
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///     junctions: [{ palletInstance: 42 }],
+    ///     junctions: [{ tag: "PalletInstance", value: 42 }],
     ///   },
     /// });
     /// assert(result.isOk(), "getAccountAlias failed:", result);
@@ -86,7 +86,7 @@ pub trait Account: Send + Sync {
     ///   context: ["truapi-playground.dot", "0x00"],
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///     junctions: [{ palletInstance: 42 }],
+    ///     junctions: [{ tag: "PalletInstance", value: 42 }],
     ///   },
     ///   message: "0x",
     /// });
