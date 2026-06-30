@@ -2,11 +2,11 @@ import { expect, test } from "@playwright/test";
 import { openPlaygroundInDotli, selectMethod, waitForOnline } from "./helpers";
 
 test.describe("unary call", () => {
-  test("get_account runs to completion without error", async ({ page }) => {
+  test("feature_supported runs to completion without login", async ({ page }) => {
     const frame = await openPlaygroundInDotli(page);
     await waitForOnline(frame);
 
-    await selectMethod(frame, "Account", "get_account");
+    await selectMethod(frame, "System", "feature_supported");
 
     // Click `Run example`. The button is keyed on `data-testid` so it
     // is robust to label/glyph changes.
@@ -20,6 +20,6 @@ test.describe("unary call", () => {
     await expect(frame.locator('[data-testid="error-display"]')).toHaveCount(0);
 
     const text = await entries.first().innerText();
-    expect(text.trim().length).toBeGreaterThan(0);
+    expect(text).toContain("feature supported:");
   });
 });

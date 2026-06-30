@@ -3,7 +3,6 @@ import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import {
   decodeWireMessage,
   encodeWireMessage,
-  type Provider,
   type ProtocolMessage,
   type RequestFrameIds,
   type RequestParams,
@@ -11,6 +10,7 @@ import {
   type SubscribeRawParams,
   type Subscription,
   type TrUApiTransport,
+  type WireProvider,
 } from "./transport.js";
 import {
   indexedTaggedUnion,
@@ -133,11 +133,11 @@ function unwrapVersionedWireValue(value: unknown): unknown {
 }
 
 /**
- * Build a `TrUApiTransport` on top of a `Provider`, adding request/response
+ * Build a `TrUApiTransport` on top of a `WireProvider`, adding request/response
  * correlation and subscription start/receive/stop lifecycle handling.
  */
 export function createTransport(
-  provider: Provider,
+  provider: WireProvider,
   options: CreateTransportOptions = {},
 ): TrUApiTransport {
   const truapiVersion = options.truapiVersion ?? TRUAPI_VERSION;

@@ -7,7 +7,7 @@
 | `Account/get_account_alias` | ✅ |  |
 | `Account/create_account_proof` | ❌ | createAccountProof failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
 | `Account/get_legacy_accounts` | ✅ |  |
-| `Account/get_user_id` | ❌ | getUserId failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
+| `Account/get_user_id` | ✅ |  |
 | `Account/request_login` | ✅ |  |
 | `Chain/follow_head_subscribe` | ✅ |  |
 | `Chain/get_head_header` | ✅ |  |
@@ -43,7 +43,7 @@
 | `Preimage/lookup_subscribe` | ✅ |  |
 | `Preimage/submit` | ✅ |  |
 | `Resource Allocation/request` | ✅ |  |
-| `Signing/create_transaction` | ❌ | createTransaction failed: { "error": { "tag": "Unknown", "value": { "reason": "Error: Internal error: User rejected" } } } |
+| `Signing/create_transaction` | ✅ |  |
 | `Signing/create_transaction_with_legacy_account` | ❌ | createTransactionWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
 | `Signing/sign_raw_with_legacy_account` | ❌ | signRawWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
 | `Signing/sign_payload_with_legacy_account` | ❌ | signPayloadWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |

@@ -43,7 +43,7 @@
 | `Preimage/lookup_subscribe` | ✅ |  |
 | `Preimage/submit` | ✅ |  |
 | `Resource Allocation/request` | ✅ |  |
-| `Signing/create_transaction` | ❌ | createTransaction failed: { "error": { "tag": "Unknown", "value": { "reason": "Rejected" } } } |
+| `Signing/create_transaction` | ✅ |  |
 | `Signing/create_transaction_with_legacy_account` | ❌ | createTransactionWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Account can't be derived from product account id" } } } |
 | `Signing/sign_raw_with_legacy_account` | ❌ | signRawWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Account can't be derived from product account id" } } } |
 | `Signing/sign_payload_with_legacy_account` | ❌ | signPayloadWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Account can't be derived from product account id" } } } |
