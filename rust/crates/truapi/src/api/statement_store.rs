@@ -25,10 +25,7 @@ pub trait StatementStore: Send + Sync {
     /// const statement: Statement = { expiry, topics: [topic] };
     ///
     /// const proofResult = await truapi.statementStore.createProof({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
-    ///   },
+    ///   derivationIndex: 0,
     ///   statement,
     /// });
     /// assert(proofResult.isOk(), "createProof failed:", proofResult);
@@ -74,10 +71,7 @@ pub trait StatementStore: Send + Sync {
     /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
     /// const statement = { expiry, topics: [topic] };
     /// const result = await truapi.statementStore.createProof({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
-    ///   },
+    ///   derivationIndex: 0,
     ///   statement,
     /// });
     /// assert(result.isOk(), "createProof failed:", result);
@@ -133,10 +127,7 @@ pub trait StatementStore: Send + Sync {
     /// const statement = { expiry, topics: [topic] };
     ///
     /// const proofResult = await truapi.statementStore.createProof({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
-    ///   },
+    ///   derivationIndex: 0,
     ///   statement,
     /// });
     /// assert(proofResult.isOk(), "createProof failed:", proofResult);

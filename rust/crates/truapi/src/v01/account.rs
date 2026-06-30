@@ -60,8 +60,8 @@ pub struct RingLocation {
 /// Request to create a ring VRF proof for a product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountCreateProofRequest {
-    /// Product account that should create the proof.
-    pub product_account_id: ProductAccountId,
+    /// Derivation index of the caller's product account that should create the proof.
+    pub derivation_index: u32,
     /// Ring location to use for proof generation.
     pub ring_location: RingLocation,
     /// Context bytes bound to the proof.
@@ -127,8 +127,8 @@ pub enum HostAccountCreateProofError {
 /// Request to retrieve a product-scoped account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetRequest {
-    /// Product account to retrieve.
-    pub product_account_id: ProductAccountId,
+    /// Derivation index of the caller's product account to retrieve.
+    pub derivation_index: u32,
 }
 
 /// Response containing a product-scoped account.
@@ -159,8 +159,8 @@ pub enum HostGetUserIdError {
 /// Request to retrieve a contextual alias for a product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetAliasRequest {
-    /// Product account to derive the alias for.
-    pub product_account_id: ProductAccountId,
+    /// Derivation index of the caller's product account to derive the alias for.
+    pub derivation_index: u32,
 }
 
 /// Response containing a ring VRF proof.
