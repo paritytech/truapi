@@ -1,0 +1,17 @@
+[package]
+name = "truapi-platform"
+version = "0.1.0"
+edition.workspace = true
+description = "Platform capability traits for TrUAPI host implementations"
+license = "MIT"
+
+[dependencies]
+truapi = { path = "../truapi" }
+async-trait = "0.1"
+derive_more = { version = "2", features = ["display"] }
+futures = "0.3"
+parity-scale-codec = { version = "3", features = ["derive"] }
+url = "2"
+
+[lints.rust]
+unsafe_code = "forbid"
