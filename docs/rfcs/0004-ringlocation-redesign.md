@@ -133,6 +133,27 @@ let result = host_account_create_proof(
 // result.proof / contextual_alias / ring_index / ring_revision
 ```
 
+### Accounts Protocol companion
+
+The methods above are the **TrUAPI** boundary (product ↔ Host). The same operations also cross the **Accounts Protocol** boundary (Host ↔ Account Holder, which custodies the member keys and does the selection and proof generation). The companion methods reuse the same types, with `calling_product_id: ProductId` prepended — at the TrUAPI boundary the Host already knows the calling product, but here it is the caller acting on a product's behalf, so the Account Holder needs it named to scope context derivation and permissioning:
+
+```rust
+fn create_account_proof(
+    calling_product_id: ProductId,
+    context: ProductProofContext,
+    ring: RingLocation,
+    message: Vec<u8>,
+) -> Result<RingVrfProof, CreateProofErr>;
+
+fn get_account_alias(
+    calling_product_id: ProductId,
+    context: ProductProofContext,
+    ring: RingLocation,
+) -> Result<ContextualAlias, RequestCredentialsErr>;
+```
+
+The two boundaries are kept as distinct method sets so they can evolve independently, even though they currently share request/response shapes.
+
 ## Out of Scope: Product-SDK Helpers (Non-Normative)
 
 These live at the product-sdk level, not in truAPI; the host implements none of them. Documented only because they shape how products build a `ProductProofContext`.
