@@ -49,6 +49,11 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["r
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 subxt-rpcs = { version = "0.50.1", default-features = false, features = ["native"] }
 
+[dev-dependencies]
+# Test-only: the canonical config-driven mock platform. Kept in dev-dependencies
+# so the `mock` feature never enters the default (production WASM) build.
+truapi-platform = { path = "../truapi-platform", features = ["mock"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
 subxt-rpcs = { version = "0.50.1", default-features = false, features = ["web"] }

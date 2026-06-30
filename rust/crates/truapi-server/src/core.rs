@@ -206,6 +206,52 @@ mod tests {
         assert_eq!(response.payload.value, vec![0x00, 0x00, 0x01]);
     }
 
+    /// The canonical config-driven `MockPlatform` drives the real core
+    /// end-to-end: a configured answer flows through the production dispatcher
+    /// and out the wire, proving the mock is faithful by construction rather
+    /// than merely trait-complete.
+    #[test]
+    fn from_mock_platform_dispatches_configured_feature_supported() {
+        use truapi_platform::mock::{MockConfig, MockPlatform};
+
+        let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
+            genesis_hash: vec![0u8; 32],
+        });
+        let ids = request_ids("system_feature_supported").expect("known request method");
+        let encoded = ProtocolMessage {
+            request_id: "p:1".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        }
+        .encode();
+
+        let dispatch = |platform: MockPlatform| {
+            let core = TrUApiCore::from_platform_with_config(
+                Arc::new(platform),
+                runtime_config("dotli.dot"),
+                test_spawner(),
+            );
+            let response_bytes = core
+                .receive_from_product(&encoded)
+                .expect("dispatcher should emit a response");
+            let response =
+                ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
+            assert_eq!(response.payload.id, ids.response_id);
+            response.payload.value
+        };
+
+        // Default mock supports the feature: [Ok 0x00][V1 0x00][supported=1].
+        assert_eq!(dispatch(MockPlatform::new()), vec![0x00, 0x00, 0x01]);
+        // A configured "unsupported" answer flows through the same dispatcher.
+        let unsupported = MockPlatform::with_config(MockConfig {
+            feature_supported: false,
+            ..Default::default()
+        });
+        assert_eq!(dispatch(unsupported), vec![0x00, 0x00, 0x00]);
+    }
+
     /// Drive a request frame through `TrUApiCore::receive_from_product`,
     /// decode the response envelope, and return its payload bytes (without
     /// the wrapping ProtocolMessage). Shared by the runtime-delegation
