@@ -11,6 +11,7 @@ rust/crates/
   truapi/                Rust trait + type definitions for protocol versions v0.1 and v0.2
   truapi-codegen/        rustdoc JSON → TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
+  truapi-server/         host runtime: frames, dispatcher, subscriptions
 js/packages/
   truapi/         @parity/truapi TS package; generated TS lives under ignored paths
 playground/              Next.js interactive playground; deploys to truapi-playground.dot
@@ -54,7 +55,8 @@ When the Rust trait surface changes, rerun:
 ```
 
 That will repopulate the ignored generated TS under `js/packages/truapi/src/generated/`,
-`js/packages/truapi/src/playground/codegen/`, and `js/packages/truapi/test/generated/examples/`.
+`js/packages/truapi/src/playground/codegen/`, `js/packages/truapi/test/generated/examples/`,
+and the checked-in Rust dispatcher under `rust/crates/truapi-server/src/generated/`.
 After regenerating, rebuild the client and refresh the playground's link copy:
 
 ```bash

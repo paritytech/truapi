@@ -7,6 +7,7 @@
 #                                     --output js/packages/truapi/src/generated
 #                                     --playground-output js/packages/truapi/src/playground
 #                                     --client-examples-output playground/test/generated/examples
+#                                     --rust-output rust/crates/truapi-server/src/generated
 #                                     --codec-version 1
 #
 # The client surface defaults to the latest wire version any versioned
@@ -25,8 +26,11 @@ cargo run -p truapi-codegen -- \
   --output js/packages/truapi/src/generated \
   --playground-output js/packages/truapi/src/playground \
   --client-examples-output playground/test/generated/examples \
+  --rust-output rust/crates/truapi-server/src/generated \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
+
+rustfmt --edition 2024 rust/crates/truapi-server/src/generated/*.rs
 
 node scripts/regen-explorer-versions.mjs
 
@@ -58,3 +62,4 @@ fi
 echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"
 echo "Generated client examples at playground/test/generated/examples/"
+echo "Generated Rust dispatcher at rust/crates/truapi-server/src/generated/"

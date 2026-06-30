@@ -57,6 +57,7 @@ rust/crates/
   truapi/                Rust trait and type definitions (v01, v02)
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
+  truapi-server/         host runtime: frames, dispatcher, subscriptions
 js/packages/
   truapi/                @parity/truapi TypeScript client
 playground/              Interactive Next.js playground (truapi-playground.dot)
@@ -68,7 +69,7 @@ scripts/codegen.sh       Regenerate the TS client from the Rust source
 ## How it works
 
 1. The protocol is defined as Rust traits in [`rust/crates/truapi/`](rust/crates/truapi/), with each method tagged `#[wire(id = N)]` for a stable byte-level dispatch table. Every method's doc comment must carry a ` ```ts ` example, which codegen extracts into the playground's EXAMPLE tab; the build fails if any method is missing one.
-2. `truapi-codegen` reads rustdoc JSON for that crate and generates the TypeScript client under git-ignored paths in `js/packages/truapi/`.
+2. `truapi-codegen` reads rustdoc JSON for that crate and generates the TypeScript client under git-ignored paths in `js/packages/truapi/`, plus the Rust dispatcher and wire table consumed by `truapi-server`.
 3. Higher-level SDKs wrap the typed client; the transport encodes SCALE frames and ships them over `MessagePort` (or `postMessage` in iframe mode) to the host.
 4. The host decodes the frame, dispatches to the matching trait method, encodes the response, and ships it back.
 
@@ -129,4 +130,3 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for issue reports, feature proposals, a
 ## License
 
 [MIT](./LICENSE)
-

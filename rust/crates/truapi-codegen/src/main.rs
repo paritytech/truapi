@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use std::path::PathBuf;
 use std::str::FromStr;
 
+mod rust;
 mod rustdoc;
 mod ts;
 
@@ -42,6 +44,13 @@ struct Cli {
     /// Output directory for generated TypeScript client example snippets (optional).
     #[arg(long)]
     client_examples_output: Option<String>,
+
+    /// Output directory for the generated Rust dispatcher and wire table (optional).
+    ///
+    /// When set, emits `dispatcher.rs` and `wire_table.rs` for the host runtime
+    /// crate to include.
+    #[arg(long)]
+    rust_output: Option<PathBuf>,
 
     /// Output directory for generated explorer metadata (optional). When set,
     /// writes `codegen/types.ts` with the DataType list consumed by the
@@ -110,6 +119,11 @@ fn main() -> Result<()> {
         ts::generate_client_examples(&api, path, client_version)
             .with_context(|| format!("writing client examples to {path}"))?;
         println!("Generated client examples in {path}");
+    }
+    if let Some(path) = &cli.rust_output {
+        rust::generate(&api, path)
+            .with_context(|| format!("writing Rust dispatcher to {}", path.display()))?;
+        println!("Generated Rust dispatcher in {}", path.display());
     }
     if let Some(path) = &cli.explorer_output {
         ts::generate_explorer(&api, path, client_version)
