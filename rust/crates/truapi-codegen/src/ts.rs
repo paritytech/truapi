@@ -13,10 +13,12 @@ use crate::rustdoc::*;
 
 mod examples;
 mod explorer;
+mod host_callbacks;
 mod playground;
 
 pub use examples::generate_client_examples;
 pub use explorer::generate_explorer;
+pub use host_callbacks::generate as generate_host_callbacks;
 pub use playground::generate_playground_services;
 
 #[derive(Default)]
@@ -30,23 +32,34 @@ struct CodecContext {
 /// qualifies every named type with `T.*`. Used by the client/playground/
 /// examples generators that emit version-aliased public names (e.g.
 /// `T.HostAccountGetRequest`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum NameMode {
+#[derive(Clone, Copy, Debug, Default)]
+enum NameMode<'a> {
     #[default]
     Public,
+    PreserveQualified,
+    Generated {
+        aliases: &'a BTreeMap<String, String>,
+    },
 }
 
-fn resolve_named(name: &str, mode: NameMode) -> String {
+fn resolve_named(name: &str, mode: NameMode<'_>) -> String {
     match mode {
         NameMode::Public => public_versioned_type_name(name),
+        NameMode::PreserveQualified => name.to_string(),
+        NameMode::Generated { aliases } => aliases
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.to_string()),
     }
 }
 
 /// Decide how to namespace a resolved type name for `qualified` rendering.
 /// `Public` prefixes every name with `T.*`.
-fn qualify_named(resolved: &str, mode: NameMode) -> String {
+fn qualify_named(resolved: &str, mode: NameMode<'_>) -> String {
     match mode {
         NameMode::Public => format!("T.{resolved}"),
+        NameMode::PreserveQualified => format!("T.{resolved}"),
+        NameMode::Generated { .. } => resolved.to_string(),
     }
 }
 
@@ -145,6 +158,130 @@ fn selected_public_aliases(
         .into_iter()
         .map(|(base, (_, original))| (original, base))
         .collect()
+}
+
+fn emitted_version_prefixed_types(
+    wrappers: &HashMap<String, VersionedWrapper>,
+    emit_versions: &HashMap<String, BTreeSet<u32>>,
+    aliases: &BTreeMap<String, String>,
+) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for (wrapper_name, versions) in emit_versions {
+        let Some(wrapper) = wrappers.get(wrapper_name) else {
+            continue;
+        };
+        for version in versions {
+            let Some(variant) = wrapper.variants.get(version) else {
+                continue;
+            };
+            collect_preserved_version_prefixed_types(&variant.kind, aliases, &mut names);
+        }
+    }
+    names
+}
+
+fn preserve_version_prefixed_types_referenced_by_emitted_types(
+    api: &ApiDefinition,
+    aliases: &BTreeMap<String, String>,
+    names: &mut BTreeSet<String>,
+) {
+    loop {
+        let before = names.len();
+        for ty in &api.types {
+            if version_prefixed_type(&ty.name).is_some()
+                && !aliases.contains_key(&ty.name)
+                && !names.contains(&ty.name)
+            {
+                continue;
+            }
+            collect_preserved_version_prefixed_type_refs_from_type(ty, aliases, names);
+        }
+        if names.len() == before {
+            break;
+        }
+    }
+}
+
+fn collect_preserved_version_prefixed_type_refs_from_type(
+    ty: &TypeDef,
+    aliases: &BTreeMap<String, String>,
+    names: &mut BTreeSet<String>,
+) {
+    match &ty.kind {
+        TypeDefKind::Alias(type_ref) => {
+            collect_preserved_version_prefixed_type_refs(type_ref, aliases, names);
+        }
+        TypeDefKind::Struct(fields) => {
+            for field in fields {
+                collect_preserved_version_prefixed_type_refs(&field.type_ref, aliases, names);
+            }
+        }
+        TypeDefKind::TupleStruct(fields) => {
+            for field in fields {
+                collect_preserved_version_prefixed_type_refs(field, aliases, names);
+            }
+        }
+        TypeDefKind::Enum(variants) => {
+            for variant in variants {
+                match &variant.fields {
+                    VariantFields::Unit => {}
+                    VariantFields::Unnamed(fields) => {
+                        for field in fields {
+                            collect_preserved_version_prefixed_type_refs(field, aliases, names);
+                        }
+                    }
+                    VariantFields::Named(fields) => {
+                        for field in fields {
+                            collect_preserved_version_prefixed_type_refs(
+                                &field.type_ref,
+                                aliases,
+                                names,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn collect_preserved_version_prefixed_types(
+    kind: &VersionedKind,
+    aliases: &BTreeMap<String, String>,
+    names: &mut BTreeSet<String>,
+) {
+    match kind {
+        VersionedKind::Unit => {}
+        VersionedKind::Tuple(inner) => {
+            collect_preserved_version_prefixed_type_refs(inner, aliases, names);
+        }
+    }
+}
+
+fn collect_preserved_version_prefixed_type_refs(
+    ty: &TypeRef,
+    aliases: &BTreeMap<String, String>,
+    names: &mut BTreeSet<String>,
+) {
+    match ty {
+        TypeRef::Named { name, args } => {
+            if version_prefixed_type(name).is_some() && !aliases.contains_key(name) {
+                names.insert(name.clone());
+            }
+            for arg in args {
+                collect_preserved_version_prefixed_type_refs(arg, aliases, names);
+            }
+        }
+        TypeRef::Vec(inner) | TypeRef::Option(inner) | TypeRef::Array(inner, _) => {
+            collect_preserved_version_prefixed_type_refs(inner, aliases, names);
+        }
+        TypeRef::Tuple(items) => {
+            for item in items {
+                collect_preserved_version_prefixed_type_refs(item, aliases, names);
+            }
+        }
+        TypeRef::Primitive(_) | TypeRef::Generic(_) | TypeRef::Unit => {}
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -762,9 +899,19 @@ fn generate_types(api: &ApiDefinition, target_version: u32) -> Result<String> {
     let wrappers = collect_versioned_wrappers(api);
     let emit_versions = versioned_wrapper_emit_versions(api, &wrappers, target_version)?;
     let aliases = selected_public_aliases(api, &wrappers, &emit_versions, target_version);
+    let mut preserved_version_prefixed_types =
+        emitted_version_prefixed_types(&wrappers, &emit_versions, &aliases);
+    preserve_version_prefixed_types_referenced_by_emitted_types(
+        api,
+        &aliases,
+        &mut preserved_version_prefixed_types,
+    );
 
     for ty in &api.types {
-        if version_prefixed_type(&ty.name).is_some() && !aliases.contains_key(&ty.name) {
+        if version_prefixed_type(&ty.name).is_some()
+            && !aliases.contains_key(&ty.name)
+            && !preserved_version_prefixed_types.contains(&ty.name)
+        {
             continue;
         }
         write_type_definition(&mut out, ty, &emit_versions, &aliases)?;
@@ -809,7 +956,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     .unwrap();
     write_observable_helper(&mut out);
 
-    let ctx = CodecContext::default();
+    let ctx = codec_context(&[]);
     let wrappers = collect_versioned_wrappers(api);
     let services = public_services(api)?;
 
@@ -861,13 +1008,12 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
 
         export type Client = TrUApiClient;
 
-        export type GeneratedClientTransport = Omit<TrUApiTransport, "truapiVersion" | "codecVersion"> &
-          Partial<Pick<TrUApiTransport, "truapiVersion" | "codecVersion">>;
+        export type GeneratedClientTransport = Omit<TrUApiTransport, "codecVersion"> &
+          Partial<Pick<TrUApiTransport, "codecVersion">>;
 
-        function withGeneratedTransportVersions(transport: GeneratedClientTransport): TrUApiTransport {{
+        function withGeneratedCodecVersion(transport: GeneratedClientTransport): TrUApiTransport {{
           return {{
             ...transport,
-            truapiVersion: transport.truapiVersion ?? TRUAPI_VERSION,
             codecVersion: transport.codecVersion ?? TRUAPI_CODEC_VERSION,
           }};
         }}
@@ -875,7 +1021,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
         /** Creates the generated client facade by binding each service namespace to the
          * shared transport instance. */
         export function createClient(transport: GeneratedClientTransport): TrUApiClient {{
-          const versionedTransport = withGeneratedTransportVersions(transport);
+          const transportWithCodecVersion = withGeneratedCodecVersion(transport);
           return {{
         "#
     )
@@ -888,7 +1034,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
         let field = to_camel_case(&trait_def.name);
         writeln!(
             out,
-            "    {}: new {}Client(versionedTransport),",
+            "    {}: new {}Client(transportWithCodecVersion),",
             field, trait_def.name
         )
         .unwrap();
@@ -1186,27 +1332,47 @@ fn emit_error_response(
     ctx: &CodecContext,
     wire_version: Option<u32>,
 ) -> Result<ResponseEmission> {
-    emit_response(
-        call_error_inner(ty).unwrap_or(ty),
-        wrappers,
-        ctx,
-        wire_version,
-    )
-}
+    let Some(error_wrapper_ty) = call_error_inner(ty) else {
+        return emit_response(ty, wrappers, ctx, wire_version);
+    };
 
-fn versioned_kind_codec_expr(
-    kind: &VersionedKind,
-    qualified: bool,
-    ctx: &CodecContext,
-) -> Result<String> {
-    versioned_kind_codec_expr_mode(kind, qualified, ctx, NameMode::Public)
+    if let Some((wrapper_name, _wrapper)) = versioned_wrapper_for(error_wrapper_ty, wrappers) {
+        let version = wire_version.ok_or_else(|| {
+            anyhow::anyhow!("versioned error wrapper `{wrapper_name}` has no selected wire version")
+        })?;
+        let versioned_name = versioned_wrapper_ts_name(wrapper_name);
+        let inner_type_ts = format!("S.CallErrorValue<T.{versioned_name}>");
+        let inner_codec_expr = format!("S.CallError(T.{versioned_name})");
+        let wire_codec_expr = indexed_versioned_codec_expr([(version, inner_codec_expr.clone())])?;
+        return Ok(ResponseEmission {
+            inner_type_ts: inner_type_ts.clone(),
+            wire_type_ts: format!("{{ tag: \"V{version}\"; value: {inner_type_ts} }}"),
+            wire_codec_expr,
+            inner_codec_expr,
+        });
+    }
+
+    let inner_type_ts = format!(
+        "S.CallErrorValue<{}>",
+        ts_type_qualified_preserve(error_wrapper_ty)?
+    );
+    let inner_codec_expr = format!(
+        "S.CallError({})",
+        codec_expr_mode(error_wrapper_ty, true, ctx, NameMode::PreserveQualified)?
+    );
+    Ok(ResponseEmission {
+        inner_type_ts: inner_type_ts.clone(),
+        wire_type_ts: inner_type_ts,
+        wire_codec_expr: inner_codec_expr.clone(),
+        inner_codec_expr,
+    })
 }
 
 fn versioned_kind_codec_expr_mode(
     kind: &VersionedKind,
     qualified: bool,
     ctx: &CodecContext,
-    mode: NameMode,
+    mode: NameMode<'_>,
 ) -> Result<String> {
     match kind {
         VersionedKind::Unit => Ok("S._void".to_string()),
@@ -1441,6 +1607,7 @@ fn write_type_definition(
     emit_versions: &HashMap<String, BTreeSet<u32>>,
     aliases: &BTreeMap<String, String>,
 ) -> Result<()> {
+    let generated_names = NameMode::Generated { aliases };
     let generic_decl = generic_param_declaration(&ty.generic_params);
     let emitted_name = if should_rename_wire_wrapper(ty, emit_versions, aliases) {
         versioned_wrapper_ts_name(&ty.name)
@@ -1456,7 +1623,7 @@ fn write_type_definition(
             writeln!(
                 out,
                 "export type {emitted_name}{generic_decl} = {};",
-                ts_type(type_ref)?
+                ts_type_with_named(type_ref, false, generated_names)?
             )
             .unwrap();
         }
@@ -1466,9 +1633,19 @@ fn write_type_definition(
                 let (ts_name, optional) = ts_field_name(&field.name, &field.type_ref);
                 write_jsdoc(out, "  ", field.docs.as_deref());
                 if optional {
-                    writeln!(out, "  {ts_name}?: {};", ts_inner_option(&field.type_ref)?).unwrap();
+                    writeln!(
+                        out,
+                        "  {ts_name}?: {};",
+                        ts_inner_option_with_named(&field.type_ref, false, generated_names)?
+                    )
+                    .unwrap();
                 } else {
-                    writeln!(out, "  {ts_name}: {};", ts_type(&field.type_ref)?).unwrap();
+                    writeln!(
+                        out,
+                        "  {ts_name}: {};",
+                        ts_type_with_named(&field.type_ref, false, generated_names)?
+                    )
+                    .unwrap();
                 }
             }
             writeln!(out, "}}").unwrap();
@@ -1477,7 +1654,7 @@ fn write_type_definition(
             writeln!(
                 out,
                 "export type {emitted_name}{generic_decl} = {};",
-                unnamed_fields_type(fields)?
+                unnamed_fields_type_mode(fields, false, generated_names)?
             )
             .unwrap();
         }
@@ -1505,7 +1682,12 @@ fn write_type_definition(
                         }
                     }
                     write_jsdoc(out, "  ", variant.docs.as_deref());
-                    writeln!(out, "  | {}", enum_variant_ts_type(variant)?).unwrap();
+                    writeln!(
+                        out,
+                        "  | {}",
+                        enum_variant_ts_type_mode(variant, generated_names)?
+                    )
+                    .unwrap();
                 }
                 writeln!(out, ";").unwrap();
             }
@@ -1521,8 +1703,9 @@ fn write_codec_definition(
     emit_versions: &HashMap<String, BTreeSet<u32>>,
     aliases: &BTreeMap<String, String>,
 ) -> Result<()> {
+    let generated_names = NameMode::Generated { aliases };
     if ty.generic_params.is_empty() {
-        let ctx = CodecContext::default();
+        let ctx = codec_context(&[]);
         if let Some(wrapper) = detect_versioned_wrapper(ty) {
             let selected = emit_versions.get(&ty.name);
             let emitted_name = if should_rename_wire_wrapper(ty, emit_versions, aliases) {
@@ -1542,7 +1725,12 @@ fn write_codec_definition(
                     .map(|variant| {
                         Ok((
                             variant.version,
-                            versioned_kind_codec_expr(&variant.kind, false, &ctx)?,
+                            versioned_kind_codec_expr_mode(
+                                &variant.kind,
+                                false,
+                                &ctx,
+                                generated_names,
+                            )?,
                         ))
                     })
                     .collect::<Result<Vec<_>>>()?,
@@ -1560,7 +1748,8 @@ fn write_codec_definition(
             .map(String::as_str)
             .unwrap_or(&ty.name);
         let type_name = top_level_type_name(emitted_name, &ty.generic_params);
-        let codec_expr = type_codec_expr(ty, &type_name, &ctx)?;
+        let codec_expr =
+            type_codec_expr_mode_qualified(ty, &type_name, &ctx, generated_names, false)?;
         writeln!(
             out,
             "export const {emitted_name}: S.Codec<{type_name}> = S.lazy((): S.Codec<{type_name}> => {codec_expr});",
@@ -1599,7 +1788,7 @@ fn write_codec_definition(
         .get(&ty.name)
         .map(String::as_str)
         .unwrap_or(&ty.name);
-    let codec_body = type_codec_expr(ty, &type_name, &ctx)?;
+    let codec_body = type_codec_expr_mode_qualified(ty, &type_name, &ctx, generated_names, false)?;
     writedoc!(
         out,
         "
@@ -1622,15 +1811,11 @@ fn should_rename_wire_wrapper(
         && (emit_versions.contains_key(&ty.name) || aliases.values().any(|alias| alias == &ty.name))
 }
 
-fn type_codec_expr(ty: &TypeDef, type_name: &str, ctx: &CodecContext) -> Result<String> {
-    type_codec_expr_mode_qualified(ty, type_name, ctx, NameMode::Public, false)
-}
-
 fn type_codec_expr_mode_qualified(
     ty: &TypeDef,
     type_name: &str,
     ctx: &CodecContext,
-    mode: NameMode,
+    mode: NameMode<'_>,
     qualified: bool,
 ) -> Result<String> {
     match &ty.kind {
@@ -1704,7 +1889,7 @@ fn unit_enum_summary(variants: &[VariantDef]) -> String {
     )
 }
 
-fn variant_value_type_mode(fields: &VariantFields, mode: NameMode) -> Result<String> {
+fn variant_value_type_mode(fields: &VariantFields, mode: NameMode<'_>) -> Result<String> {
     let qualified = false;
     match fields {
         VariantFields::Unit => Ok("undefined".to_string()),
@@ -1721,7 +1906,7 @@ fn enum_variant_ts_type(variant: &VariantDef) -> Result<String> {
     enum_variant_ts_type_mode(variant, NameMode::Public)
 }
 
-fn enum_variant_ts_type_mode(variant: &VariantDef, mode: NameMode) -> Result<String> {
+fn enum_variant_ts_type_mode(variant: &VariantDef, mode: NameMode<'_>) -> Result<String> {
     Ok(match &variant.fields {
         VariantFields::Unit => format!("{{ tag: \"{}\"; value?: undefined }}", variant.name),
         fields => format!(
@@ -1736,7 +1921,7 @@ fn variant_codec_expr_mode(
     fields: &VariantFields,
     qualified: bool,
     ctx: &CodecContext,
-    mode: NameMode,
+    mode: NameMode<'_>,
 ) -> Result<String> {
     match fields {
         VariantFields::Unit => Ok("S._void".to_string()),
@@ -1757,7 +1942,11 @@ fn unnamed_fields_type(types: &[TypeRef]) -> Result<String> {
     unnamed_fields_type_mode(types, false, NameMode::Public)
 }
 
-fn unnamed_fields_type_mode(types: &[TypeRef], qualified: bool, mode: NameMode) -> Result<String> {
+fn unnamed_fields_type_mode(
+    types: &[TypeRef],
+    qualified: bool,
+    mode: NameMode<'_>,
+) -> Result<String> {
     if types.is_empty() {
         Ok("undefined".to_string())
     } else if types.len() == 1 {
@@ -1778,7 +1967,7 @@ fn unnamed_fields_codec_expr_mode(
     types: &[TypeRef],
     qualified: bool,
     ctx: &CodecContext,
-    mode: NameMode,
+    mode: NameMode<'_>,
 ) -> Result<String> {
     if types.is_empty() {
         Ok("S._void".to_string())
@@ -1799,7 +1988,7 @@ fn struct_codec_expr_mode(
     type_name: &str,
     qualified: bool,
     ctx: &CodecContext,
-    mode: NameMode,
+    mode: NameMode<'_>,
 ) -> Result<String> {
     let field_specs = fields
         .iter()
@@ -1818,7 +2007,11 @@ fn struct_codec_expr_mode(
     ))
 }
 
-fn inline_object_type_mode(fields: &[FieldDef], qualified: bool, mode: NameMode) -> Result<String> {
+fn inline_object_type_mode(
+    fields: &[FieldDef],
+    qualified: bool,
+    mode: NameMode<'_>,
+) -> Result<String> {
     Ok(format!(
         "{{ {} }}",
         fields
@@ -1856,7 +2049,7 @@ fn method_payload_codec_expr_mode(
     params: &[ParamDef],
     qualified: bool,
     ctx: &CodecContext,
-    mode: NameMode,
+    mode: NameMode<'_>,
 ) -> Result<String> {
     match params.len() {
         0 => Ok("S._void".to_string()),
@@ -1880,7 +2073,7 @@ fn codec_expr_mode(
     ty: &TypeRef,
     qualified: bool,
     ctx: &CodecContext,
-    mode: NameMode,
+    mode: NameMode<'_>,
 ) -> Result<String> {
     match ty {
         TypeRef::Primitive(name) => match name.as_str() {
@@ -1901,6 +2094,12 @@ fn codec_expr_mode(
             _ => bail!("Unsupported primitive type `{name}` in TypeScript codec generation"),
         },
         TypeRef::Named { name, args } => {
+            if name == "CallError" && args.len() == 1 {
+                return Ok(format!(
+                    "S.CallError({})",
+                    codec_expr_mode(&args[0], qualified, ctx, mode)?
+                ));
+            }
             let resolved = resolve_named(name, mode);
             let target = if qualified {
                 qualify_named(&resolved, mode)
@@ -1963,7 +2162,7 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
     ts_type_with_named(ty, false, NameMode::Public)
 }
 
-fn ts_type_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> Result<String> {
+fn ts_type_with_named(ty: &TypeRef, qualified: bool, mode: NameMode<'_>) -> Result<String> {
     match ty {
         TypeRef::Primitive(name) => match name.as_str() {
             "bool" => Ok("boolean".to_string()),
@@ -1975,6 +2174,12 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> Result<S
             _ => bail!("Unsupported primitive type `{name}` in TypeScript type generation"),
         },
         TypeRef::Named { name, args } => {
+            if name == "CallError" && args.len() == 1 {
+                return Ok(format!(
+                    "S.CallErrorValue<{}>",
+                    ts_type_with_named(&args[0], qualified, mode)?
+                ));
+            }
             let resolved = resolve_named(name, mode);
             let target = if qualified {
                 qualify_named(&resolved, mode)
@@ -2040,7 +2245,7 @@ fn ts_inner_option(ty: &TypeRef) -> Result<String> {
     ts_inner_option_with_named(ty, false, NameMode::Public)
 }
 
-fn ts_inner_option_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> Result<String> {
+fn ts_inner_option_with_named(ty: &TypeRef, qualified: bool, mode: NameMode<'_>) -> Result<String> {
     match ty {
         TypeRef::Option(inner) => ts_type_with_named(inner, qualified, mode),
         other => ts_type_with_named(other, qualified, mode),
@@ -2049,6 +2254,10 @@ fn ts_inner_option_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> 
 
 fn ts_type_qualified(ty: &TypeRef) -> Result<String> {
     ts_type_with_named(ty, true, NameMode::Public)
+}
+
+fn ts_type_qualified_preserve(ty: &TypeRef) -> Result<String> {
+    ts_type_with_named(ty, true, NameMode::PreserveQualified)
 }
 
 fn ts_field_name(name: &str, ty: &TypeRef) -> (String, bool) {
@@ -2061,7 +2270,7 @@ fn payload_type(params: &[ParamDef]) -> Result<String> {
     payload_type_mode(params, NameMode::Public)
 }
 
-fn payload_type_mode(params: &[ParamDef], mode: NameMode) -> Result<String> {
+fn payload_type_mode(params: &[ParamDef], mode: NameMode<'_>) -> Result<String> {
     match params.len() {
         0 => Ok("undefined".to_string()),
         1 => ts_type_with_named(&params[0].type_ref, true, mode),
@@ -2280,6 +2489,20 @@ mod tests {
 
     fn versioned_tuple_wrapper(name: &str, legacy: &str, latest: &str) -> TypeDef {
         versioned_tuple_wrapper_variants(name, &[(1, legacy), (2, latest)])
+    }
+
+    fn single_field_struct(name: &str, field_name: &str, field_type: &str) -> TypeDef {
+        TypeDef {
+            name: name.to_string(),
+            module_path: Vec::new(),
+            generic_params: Vec::new(),
+            kind: TypeDefKind::Struct(vec![FieldDef {
+                name: field_name.to_string(),
+                type_ref: TypeRef::Primitive(field_type.to_string()),
+                docs: None,
+            }]),
+            docs: None,
+        }
     }
 
     fn named_field_versioned_wrapper(name: &str) -> TypeDef {
@@ -2649,6 +2872,73 @@ mod tests {
             )
         );
         assert!(client_source.contains("ResultAsync<T.LatestResponse, undefined>"));
+    }
+
+    #[test]
+    fn generate_types_preserves_legacy_prefixed_wrapper_variants() {
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Example".to_string(),
+                module_path: Vec::new(),
+                methods: vec![
+                    MethodDef {
+                        name: "legacy_call".to_string(),
+                        kind: MethodKind::Request,
+                        params: vec![ParamDef {
+                            name: "request".to_string(),
+                            type_ref: named_type("LegacyRequest"),
+                        }],
+                        return_type: ReturnType::Result {
+                            ok: TypeRef::Unit,
+                            err: named_type("ExampleError"),
+                        },
+                        wire: request_wire(Some(2)),
+                        docs: None,
+                    },
+                    MethodDef {
+                        name: "latest_call".to_string(),
+                        kind: MethodKind::Request,
+                        params: vec![ParamDef {
+                            name: "request".to_string(),
+                            type_ref: named_type("LatestRequest"),
+                        }],
+                        return_type: ReturnType::Result {
+                            ok: TypeRef::Unit,
+                            err: named_type("ExampleError"),
+                        },
+                        wire: request_wire(Some(4)),
+                        docs: None,
+                    },
+                ],
+                docs: None,
+            }],
+            public_trait_order: vec!["Example".to_string()],
+            types: vec![
+                versioned_tuple_wrapper_variants("LegacyRequest", &[(1, "V01LegacyRequest")]),
+                versioned_tuple_wrapper_variants("LatestRequest", &[(2, "V02LatestRequest")]),
+                versioned_tuple_wrapper_variants(
+                    "ExampleError",
+                    &[(1, "V01ExampleError"), (2, "V02ExampleError")],
+                ),
+                single_field_struct("V01LegacyRequest", "legacy_marker", "u8"),
+                single_field_struct("V02LatestRequest", "latest_marker", "u32"),
+                single_field_struct("V01ExampleError", "legacy_code", "u8"),
+                single_field_struct("V02ExampleError", "latest_code", "u32"),
+            ],
+        };
+
+        let source = generate_types(&api, 2).expect("generate types");
+
+        assert!(source.contains("export interface V01ExampleError"));
+        assert!(source.contains("legacyCode: number;"));
+        assert!(source.contains("export interface ExampleError"));
+        assert!(source.contains("latestCode: number;"));
+        assert!(!source.contains("export interface V02ExampleError"));
+        assert!(source.contains(r#"{ tag: "V1"; value: V01ExampleError }"#));
+        assert!(source.contains(r#"{ tag: "V2"; value: ExampleError }"#));
+        assert!(source.contains(
+            "S.indexedTaggedUnion({V1: [0, V01ExampleError] as const, V2: [1, ExampleError] as const})"
+        ));
     }
 
     #[test]
