@@ -8,6 +8,20 @@ import { expect, type FrameLocator, type Page } from "@playwright/test";
  * iframe so individual specs only need to know about playground selectors.
  */
 export async function openPlaygroundInDotli(page: Page): Promise<FrameLocator> {
+  await page.addInitScript(() => {
+    localStorage.setItem("dotli:mode", "gateway");
+    localStorage.setItem("dotli:chain-backend", "rpc");
+    localStorage.setItem("dotli:content-backend", "ipfs-gateway");
+    localStorage.setItem(
+      "dotli:permissions:localhost:3000",
+      JSON.stringify({ Camera: "granted" }),
+    );
+    localStorage.setItem("desktop-banner-dismissed", "1");
+    localStorage.setItem("truapi:playground:e2e", "1");
+    (
+      window as typeof window & { __TRUAPI_PLAYGROUND_E2E__?: boolean }
+    ).__TRUAPI_PLAYGROUND_E2E__ = true;
+  });
   await page.goto("/localhost:3000");
   // dotli renders an additional hidden iframe (host.localhost:5173?mode=direct)
   // alongside the proxied playground; scope to the playground src so the
