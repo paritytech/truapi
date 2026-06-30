@@ -28,7 +28,7 @@ fn generate_playground_services_code(
     let wrappers = collect_versioned_wrappers(api);
     let emit_versions = versioned_wrapper_emit_versions(api, &wrappers, target_version)?;
     let aliases = selected_public_aliases(api, &wrappers, &emit_versions, target_version);
-    let ctx = CodecContext::default();
+    let ctx = codec_context(&[]);
     let services = public_services(api)?;
     let explorer_type_ids = explorer_type_id_set(api, &aliases);
 
@@ -160,6 +160,7 @@ pub(super) struct PlaygroundDocs {
     pub(super) client_example: Option<String>,
 }
 
+/// Split method docs into playground description text and a TypeScript example.
 pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs> {
     let Some(docs) = docs else {
         return Ok(PlaygroundDocs {
@@ -238,6 +239,7 @@ fn validate_example_docs(trait_name: &str, method_name: &str, docs: Option<&str>
     Ok(())
 }
 
+/// Strip the generated TypeScript namespace prefix used by playground types.
 pub(super) fn playground_type_name(value: &str) -> String {
     value.replace("T.", "")
 }
