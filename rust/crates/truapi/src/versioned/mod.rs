@@ -36,6 +36,7 @@ pub mod chat;
 pub mod coin_payment;
 pub mod entropy;
 pub mod local_storage;
+pub mod navigation;
 pub mod notifications;
 pub mod payment;
 pub mod permissions;
