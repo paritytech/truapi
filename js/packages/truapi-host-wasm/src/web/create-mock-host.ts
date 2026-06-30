@@ -49,6 +49,12 @@ export interface MockHostConfig {
    * never answers, so chain-dependent flows park.
    */
   chainResponses?: string[];
+  /**
+   * When `true`, the chain response stream ends immediately instead of parking,
+   * so disconnect/timeout paths can be asserted (fail-fast). Ignored when
+   * `chainResponses` is non-empty.
+   */
+  chainClosed?: boolean;
 }
 
 /** A mock host: the callbacks to wire into a provider, plus assertion oracles. */
@@ -63,6 +69,10 @@ export interface MockHost {
   sentRpc(): string[];
   /** Auth-state transitions the core emitted, in order. */
   authStates(): AuthState[];
+  /** Confirmation kinds the core requested (review `tag`s), in order. */
+  confirmations(): string[];
+  /** Notification ids the core asked the host to cancel, in order. */
+  cancelledNotifications(): number[];
 }
 
 /** Deterministic 8-byte key for a preimage value (FNV-1a), so `submitPreimage`
@@ -97,6 +107,7 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
     theme = "Dark",
     confirmUserActions = true,
     chainResponses = [],
+    chainClosed = false,
   } = config;
 
   const storage = new Map<string, Uint8Array>();
@@ -105,9 +116,13 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
   const pushedNotifications: HostPushNotificationRequest[] = [];
   const sentRpc: string[] = [];
   const authStates: AuthState[] = [];
+  const confirmations: string[] = [];
+  const cancelledNotifications: number[] = [];
   let nextNotificationId = 0;
 
   // Product keys are namespaced from core slots so neither can shadow the other.
+  // This in-JS key scheme is internal and independent from the Rust MockPlatform's
+  // (state never crosses the boundary), so the two need not match byte-for-byte.
   const productKey = (key: string): string => `product:${key}`;
   const coreKey = (key: CoreStorageKey): string =>
     key.tag === "PermissionAuthorization"
@@ -148,7 +163,9 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
       pushedNotifications.push(notification);
       return { id: nextNotificationId++ };
     },
-    async cancelNotification() {},
+    async cancelNotification(id) {
+      cancelledNotifications.push(id);
+    },
 
     // Permissions
     async devicePermission() {
@@ -173,8 +190,9 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
           for (const frame of chainResponses) {
             yield frame;
           }
-          if (chainResponses.length === 0) {
-            // Silent: never yields, so chain-dependent flows park.
+          if (chainResponses.length === 0 && !chainClosed) {
+            // Silent: never yields, so chain-dependent flows park. `chainClosed`
+            // instead ends the stream here for fail-fast disconnect tests.
             await new Promise<never>(() => {});
           }
         },
@@ -187,7 +205,8 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
     },
 
     // UserConfirmation
-    async confirmUserAction() {
+    async confirmUserAction(review) {
+      confirmations.push(review.tag);
       return confirmUserActions;
     },
 
@@ -221,6 +240,8 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
     pushedNotifications: () => [...pushedNotifications],
     sentRpc: () => [...sentRpc],
     authStates: () => [...authStates],
+    confirmations: () => [...confirmations],
+    cancelledNotifications: () => [...cancelledNotifications],
   };
 }
 

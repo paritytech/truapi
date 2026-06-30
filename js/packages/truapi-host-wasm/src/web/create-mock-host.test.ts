@@ -90,6 +90,26 @@ describe("createMockHost callbacks", () => {
         expect(frames).toEqual(["f1", "f2"]);
     });
 
+    it("records confirmations and cancelled notifications", async () => {
+        const host = createMockHost();
+        await host.callbacks.confirmUserAction?.({
+            tag: "ResourceAllocation",
+            value: { resources: [] },
+        });
+        expect(host.confirmations()).toEqual(["ResourceAllocation"]);
+
+        const { id } = await host.callbacks.pushNotification({ text: "x" });
+        await host.callbacks.cancelNotification?.(id);
+        expect(host.cancelledNotifications()).toEqual([id]);
+    });
+
+    it("chainClosed ends the response stream immediately", async () => {
+        const host = createMockHost({ chainClosed: true });
+        const conn = await host.callbacks.connect(new Uint8Array(32));
+        const first = await conn.responses()[Symbol.asyncIterator]().next();
+        expect(first.done).toBe(true);
+    });
+
     it("preimage submit then lookup round-trips", async () => {
         const { callbacks } = createMockHost();
         const key = await callbacks.submitPreimage?.(new Uint8Array([4, 5, 6]));

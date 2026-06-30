@@ -89,12 +89,17 @@ impl ConfirmKind {
 #[derive(Debug, Clone, Default)]
 pub enum ChainBehavior {
     /// Record outbound requests, never answer. Chain-dependent flows (login,
-    /// signing, statement store) park rather than complete.
+    /// signing, statement store) park rather than complete, so drive any test
+    /// that reaches them under a timeout; use [`ChainBehavior::Closed`] to make
+    /// a disconnect observable instead.
     #[default]
     Silent,
     /// Record outbound requests and replay these response frames in order,
     /// then end the stream.
     Scripted(Vec<String>),
+    /// Record outbound requests; the response stream ends immediately, so
+    /// disconnect/timeout paths can be asserted (fail-fast) rather than parked.
+    Closed,
     /// `connect` fails with this reason.
     ConnectError(String),
 }
@@ -471,6 +476,10 @@ impl ChainProvider for MockPlatform {
                 sent: self.sent_rpc.clone(),
                 responses: Some(frames.clone()),
             })),
+            ChainBehavior::Closed => Ok(Box::new(MockConnection {
+                sent: self.sent_rpc.clone(),
+                responses: Some(Vec::new()),
+            })),
         }
     }
 }
@@ -807,6 +816,18 @@ mod tests {
         let conn = block_on(p.connect(vec![0u8; 32])).unwrap();
         let frames: Vec<String> = block_on(conn.responses().collect());
         assert_eq!(frames, vec!["frame-1".to_string(), "frame-2".to_string()]);
+    }
+
+    #[test]
+    fn chain_closed_ends_stream_immediately() {
+        let p = MockPlatform::with_config(MockConfig {
+            chain: ChainBehavior::Closed,
+            ..Default::default()
+        });
+        let conn = block_on(p.connect(vec![0u8; 32])).unwrap();
+        // Closed ends at once (None), so disconnect paths fail fast instead of
+        // parking like Silent.
+        assert!(block_on(conn.responses().next()).is_none());
     }
 
     #[test]
