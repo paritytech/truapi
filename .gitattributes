@@ -1,0 +1,2 @@
+rust/crates/truapi-codegen/tests/golden/* linguist-generated=true
+rust/crates/truapi-server/src/generated/* linguist-generated=true
