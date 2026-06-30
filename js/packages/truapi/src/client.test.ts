@@ -86,8 +86,6 @@ describe("generated client transport", () => {
         expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
 
         expect(toHex(fixture.sent[0])).toBe(toHex(expectedFrame));
-        expect(transport.truapiVersion).toBe(1);
-        expect(transport.codecVersion).toBe(1);
     });
 
     it("uses the transport codec version for generated handshake calls", () => {

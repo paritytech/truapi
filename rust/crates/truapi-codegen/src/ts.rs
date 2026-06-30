@@ -1901,6 +1901,12 @@ fn codec_expr_mode(
             _ => bail!("Unsupported primitive type `{name}` in TypeScript codec generation"),
         },
         TypeRef::Named { name, args } => {
+            if name == "CallError" && args.len() == 1 {
+                return Ok(format!(
+                    "S.CallError({})",
+                    codec_expr_mode(&args[0], qualified, ctx, mode)?
+                ));
+            }
             let resolved = resolve_named(name, mode);
             let target = if qualified {
                 qualify_named(&resolved, mode)
@@ -1975,6 +1981,12 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> Result<S
             _ => bail!("Unsupported primitive type `{name}` in TypeScript type generation"),
         },
         TypeRef::Named { name, args } => {
+            if name == "CallError" && args.len() == 1 {
+                return Ok(format!(
+                    "S.CallErrorValue<{}>",
+                    ts_type_with_named(&args[0], qualified, mode)?
+                ));
+            }
             let resolved = resolve_named(name, mode);
             let target = if qualified {
                 qualify_named(&resolved, mode)
