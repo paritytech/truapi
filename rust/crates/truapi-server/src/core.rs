@@ -422,6 +422,115 @@ mod tests {
         )
     }
 
+    fn make_mock_core(config: truapi_platform::mock::MockConfig) -> TrUApiCore {
+        TrUApiCore::from_platform_with_config(
+            Arc::new(truapi_platform::mock::MockPlatform::with_config(config)),
+            runtime_config("dotli.dot"),
+            test_spawner(),
+        )
+    }
+
+    /// MockPlatform product storage round-trips through the real dispatcher:
+    /// a value written over the wire reads back, then misses after clear.
+    /// Proves the seam works end-to-end, not just in the mock's own unit tests.
+    #[test]
+    fn from_mock_platform_storage_round_trips_through_core() {
+        let core = make_mock_core(truapi_platform::mock::MockConfig::default());
+
+        let write = HostLocalStorageWriteRequest::V1(v01::HostLocalStorageWriteRequest {
+            key: "k".into(),
+            value: vec![1, 2, 3],
+        });
+        // Ok 0x00, V1 0x00.
+        assert_eq!(
+            run_request(&core, "local_storage_write", write.encode()),
+            vec![0x00, 0x00]
+        );
+
+        let read =
+            HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
+        // Ok 0x00, V1 0x00, Some 0x01, compact-len(3) 0x0c, bytes.
+        assert_eq!(
+            run_request(&core, "local_storage_read", read.encode()),
+            vec![0x00, 0x00, 0x01, 0x0c, 1, 2, 3]
+        );
+
+        let clear =
+            HostLocalStorageClearRequest::V1(v01::HostLocalStorageClearRequest { key: "k".into() });
+        assert_eq!(
+            run_request(&core, "local_storage_clear", clear.encode()),
+            vec![0x00, 0x00]
+        );
+
+        // After clear the read misses: Ok 0x00, V1 0x00, None 0x00.
+        let read_again =
+            HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
+        assert_eq!(
+            run_request(&core, "local_storage_read", read_again.encode()),
+            vec![0x00, 0x00, 0x00]
+        );
+    }
+
+    /// The mock's per-capability permission policy surfaces through the real
+    /// permission service and wire: a `DenyAll` device policy yields
+    /// `granted: false`, an `AllowAll` policy yields `granted: true`. Closes the
+    /// "allow-all hiding a denied path" gap.
+    #[test]
+    fn from_mock_platform_device_permission_policy_through_core() {
+        use truapi::versioned::permissions::HostDevicePermissionRequest;
+        use truapi_platform::mock::{MockConfig, PermissionPolicy};
+
+        let request =
+            || HostDevicePermissionRequest::V1(v01::HostDevicePermissionRequest::Camera).encode();
+
+        // AllowAll (default): Ok 0x00, V1 0x00, granted=1.
+        let allow = make_mock_core(MockConfig::default());
+        assert_eq!(
+            run_request(&allow, "permissions_request_device_permission", request()),
+            vec![0x00, 0x00, 0x01]
+        );
+
+        // DenyAll: granted=0.
+        let deny = make_mock_core(MockConfig {
+            device_permissions: PermissionPolicy::DenyAll,
+            ..Default::default()
+        });
+        assert_eq!(
+            run_request(&deny, "permissions_request_device_permission", request()),
+            vec![0x00, 0x00, 0x00]
+        );
+    }
+
+    /// Preimage submit flows through the core's confirm gate to the platform:
+    /// the default mock auto-confirms (Ok envelope), and a `confirm = false`
+    /// mock is rejected by the core before reaching the platform (Err envelope).
+    #[test]
+    fn from_mock_platform_preimage_submit_through_core() {
+        use truapi::versioned::preimage::RemotePreimageSubmitRequest;
+        use truapi_platform::mock::MockConfig;
+
+        // Default mock auto-confirms: submit succeeds (Ok disc 0x00).
+        let confirmed = make_mock_core(MockConfig::default());
+        let ok_payload = run_request(
+            &confirmed,
+            "preimage_submit",
+            RemotePreimageSubmitRequest::V1(vec![1, 2, 3]).encode(),
+        );
+        assert_eq!(ok_payload.first(), Some(&0x00));
+
+        // confirm_user_actions = false: the core rejects before the platform (Err disc 0x01).
+        let rejected = make_mock_core(MockConfig {
+            confirm_user_actions: false,
+            ..Default::default()
+        });
+        let err_payload = run_request(
+            &rejected,
+            "preimage_submit",
+            RemotePreimageSubmitRequest::V1(vec![1, 2, 3]).encode(),
+        );
+        assert_eq!(err_payload.first(), Some(&0x01));
+    }
+
     #[test]
     fn local_storage_read_round_trips_none() {
         let core = make_core();
