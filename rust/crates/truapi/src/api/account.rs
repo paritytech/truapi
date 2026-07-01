@@ -86,10 +86,9 @@ pub trait Account: Send + Sync {
     ///   },
     ///   ringLocation: {
     ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///     ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     hints: { palletInstance: 42 },
+    ///     ringRootHash: "0x...",
     ///   },
-    ///   context: "0x",
+    ///   context: "0x48656c6c6f",
     /// });
     /// assert(result.isOk(), "createAccountProof failed:", result);
     /// console.log("account proof created:", result.value);
