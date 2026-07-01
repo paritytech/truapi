@@ -12,8 +12,6 @@
 //! (`Unsupported`, `HostFailure`, ...). This avoids leaking json-rpc plumbing
 //! into the public API.
 
-#![allow(dead_code)]
-
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use std::collections::HashMap;

@@ -5,8 +5,6 @@
 //! [`subxt_rpcs::RpcClientT`]: request correlation, subscription routing, and
 //! best-effort unsubscribe on subscription drop.
 
-#![allow(dead_code)]
-
 use core::fmt;
 use core::mem;
 use core::pin::Pin;
