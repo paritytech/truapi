@@ -25,8 +25,8 @@ pub mod latest {
     use crate::versioned::{self, Versioned};
 
     pub use crate::v01::{
-        AllocatableResource, GenericError, HostSignPayloadData, NotificationId, ProductAccountId,
-        RawPayload, RemotePermission, ThemeVariant,
+        AccountId, AllocatableResource, GenericError, HostSignPayloadData, NotificationId,
+        ProductAccountId, RawPayload, RemotePermission, ThemeVariant,
     };
 
     pub type LatestOf<T> = <T as Versioned>::Latest;

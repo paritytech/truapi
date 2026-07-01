@@ -645,13 +645,15 @@ impl PlatformRuntimeHost {
         &self,
         session: &SessionInfo,
         signer: &str,
-    ) -> Result<(), v01::HostSignPayloadError> {
+    ) -> Result<[u8; 32], v01::HostSignPayloadError> {
         let public_key = self
             .legacy_slot_zero_public_key(session)
             .map_err(|reason| v01::HostSignPayloadError::Unknown { reason })?;
         let expected = product_public_key_to_address(public_key);
-        if expected == signer {
-            Ok(())
+        if expected == signer
+            || parse_legacy_signer_hex(signer).is_some_and(|key| key == public_key)
+        {
+            Ok(public_key)
         } else {
             Err(v01::HostSignPayloadError::Unknown {
                 reason: "Account can't be derived from product account id".to_string(),
@@ -675,6 +677,17 @@ impl PlatformRuntimeHost {
             })
         }
     }
+}
+
+fn parse_legacy_signer_hex(signer: &str) -> Option<[u8; 32]> {
+    let raw = signer
+        .strip_prefix("0x")
+        .or_else(|| signer.strip_prefix("0X"))
+        .unwrap_or(signer);
+    if raw.len() != 64 {
+        return None;
+    }
+    hex::decode(raw).ok()?.try_into().ok()
 }
 
 /// Adapter from `truapi_platform::ChainProvider` into the
@@ -3066,9 +3079,58 @@ mod tests {
                 crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request)
             ) if matches!(
                 request.as_ref(),
-                crate::host_logic::sso::messages::SigningRequest::Raw(_)
+                crate::host_logic::sso::messages::SigningRequest::Raw(raw)
+                    if raw.product_account_id == account_id("myapp.dot", 0)
+                        && matches!(
+                            &raw.data,
+                            crate::host_logic::sso::messages::SigningRawPayload::Bytes(bytes)
+                                if bytes == b"hello"
+                        )
             )
         ));
+    }
+
+    #[test]
+    fn legacy_sign_raw_accepts_derived_hex_then_returns_sso_response() {
+        let session = sso_session_info();
+        let signer = derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap();
+        let platform = Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            rpc_responses: sso_success_responses(
+                &session,
+                "legacy-sign-raw-hex-1",
+                sign_response_message("legacy-sign-raw-hex-1", vec![8, 8], None),
+            ),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("legacy-sign-raw-hex-1".to_string());
+        let request =
+            HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
+                signer: format!("0x{}", hex::encode(signer)),
+                payload: raw_payload(),
+            });
+        let response =
+            futures::executor::block_on(host.sign_raw_with_legacy_account(&cx, request)).unwrap();
+        let HostSignRawWithLegacyAccountResponse::V1(inner) = response;
+        assert_eq!(inner.signature, vec![8, 8]);
+
+        let message = submitted_remote_message(&platform, &session);
+        let crate::host_logic::sso::messages::RemoteMessageData::V1(
+            crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request),
+        ) = message.data
+        else {
+            panic!("expected raw signing request");
+        };
+        let crate::host_logic::sso::messages::SigningRequest::Raw(request) = *request else {
+            panic!("expected raw signing request");
+        };
+        assert_eq!(request.product_account_id, account_id("myapp.dot", 0));
     }
 
     #[test]
@@ -3094,6 +3156,67 @@ mod tests {
             )) => assert_eq!(reason, "Account can't be derived from product account id"),
             other => panic!("expected legacy signer mismatch, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn legacy_create_transaction_accepts_derived_key_then_returns_sso_response() {
+        let session = sso_session_info();
+        let signer = derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap();
+        let platform = Arc::new(StubPlatform {
+            create_transaction_confirmed: true,
+            rpc_responses: sso_success_responses(
+                &session,
+                "legacy-create-tx-1",
+                crate::host_logic::sso::messages::RemoteMessage {
+                    message_id: "wallet-legacy-create-tx-1".to_string(),
+                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                        crate::host_logic::sso::messages::RemoteMessageV1::CreateTransactionResponse(
+                            crate::host_logic::sso::messages::CreateTransactionResponse {
+                                responding_to: "legacy-create-tx-1".to_string(),
+                                signed_transaction: Ok(vec![0xca, 0xfe]),
+                            },
+                        ),
+                    ),
+                },
+            ),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("legacy-create-tx-1".to_string());
+        let request =
+            HostCreateTransactionWithLegacyAccountRequest::V1(v01::LegacyAccountTxPayload {
+                signer,
+                genesis_hash: [1; 32],
+                call_data: vec![0],
+                extensions: vec![],
+                tx_ext_version: 0,
+            });
+
+        let response =
+            futures::executor::block_on(host.create_transaction_with_legacy_account(&cx, request))
+                .unwrap();
+
+        let HostCreateTransactionWithLegacyAccountResponse::V1(inner) = response;
+        assert_eq!(inner.transaction, vec![0xca, 0xfe]);
+        let message = submitted_remote_message(&platform, &session);
+        let crate::host_logic::sso::messages::RemoteMessageData::V1(
+            crate::host_logic::sso::messages::RemoteMessageV1::CreateTransactionRequest(request),
+        ) = message.data
+        else {
+            panic!("expected product transaction request");
+        };
+        let crate::host_logic::sso::messages::CreateTransactionPayload::V1(payload) =
+            request.payload;
+        assert_eq!(payload.signer, account_id("myapp.dot", 0));
+        assert_eq!(
+            signer,
+            derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap()
+        );
     }
 
     #[test]

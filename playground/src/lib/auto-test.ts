@@ -17,7 +17,9 @@ const SIGNING_TIMEOUT_MS = 30_000;
 const SSO_TIMEOUT_MS = 60_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
-const SKIPPED_SERVICES = new Set(["Coin Payment"]);
+const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);
+// Individual methods skipped while the host surface is intentionally deferred.
+const SKIPPED_METHODS = new Set(["Account/create_account_proof"]);
 // Methods whose first call implicitly triggers a host permission/signing
 // prompt, so they need the longer signing-class timeout to allow for the user
 // to respond. `get_account_alias` and `Preimage/submit` prompt on first use.
@@ -35,6 +37,9 @@ const LONG_TIMEOUT_METHODS = new Set([
 
 const METHOD_TIMEOUT_MS = new Map<string, number>([
   ["Account/get_account_alias", SSO_TIMEOUT_MS],
+  ["Resource Allocation/request", SSO_TIMEOUT_MS],
+  ["Preimage/lookup_subscribe", SSO_TIMEOUT_MS],
+  ["Signing/create_transaction", SSO_TIMEOUT_MS],
 ]);
 
 type RunOneOpts = {
@@ -51,6 +56,10 @@ async function runOne({
   const id = `${serviceName}/${method.name}`;
 
   if (SKIPPED_SERVICES.has(serviceName)) {
+    onUpdate(id, { status: "skipped" });
+    return;
+  }
+  if (SKIPPED_METHODS.has(id)) {
     onUpdate(id, { status: "skipped" });
     return;
   }
