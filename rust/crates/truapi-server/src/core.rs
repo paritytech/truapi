@@ -531,6 +531,26 @@ mod tests {
         assert_eq!(err_payload.first(), Some(&0x01));
     }
 
+    /// A MockPlatform storage fault surfaces through the real core as a wire
+    /// `Err` envelope — proving fault injection propagates through the dispatcher.
+    #[test]
+    fn from_mock_platform_storage_fault_surfaces_through_core() {
+        use truapi_platform::mock::{MockConfig, MockFaults};
+
+        let core = make_mock_core(MockConfig {
+            faults: MockFaults {
+                storage_error: Some("disk full".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let read =
+            HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
+        // Err envelope: Result discriminant 0x01 (vs 0x00 Ok in the happy-path test).
+        let payload = run_request(&core, "local_storage_read", read.encode());
+        assert_eq!(payload.first(), Some(&0x01));
+    }
+
     #[test]
     fn local_storage_read_round_trips_none() {
         let core = make_core();
