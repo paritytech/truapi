@@ -5,9 +5,9 @@ import { createMockHost, mockRuntimeConfig } from "./create-mock-host.js";
 
 // Drives the REAL truapi-server WASM core against createMockHost's callbacks —
 // headless, no browser, no worker — to prove the JS↔SCALE↔WASM callback bridge.
-// Requires the built WASM artifact (`make wasm` / `npm run build:wasm`); skipped
-// when it is absent so a plain `bun test` on a fresh checkout stays green. CI
-// builds the WASM and runs it.
+// Requires the built WASM artifact (`npm run build:wasm` / `make wasm`); skipped
+// when it is absent so a plain `bun test` on a fresh checkout stays green. The
+// `host-wasm` CI job builds the WASM and runs this suite.
 const wasmUrl = new URL("../../dist/wasm/web/truapi_server_bg.wasm", import.meta.url);
 const glueUrl = new URL("../../dist/wasm/web/truapi_server.js", import.meta.url);
 const built = existsSync(wasmUrl);
