@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["rust/crates/*"]
-exclude = ["rust/crates/truapi-server"]
 
 [workspace.package]
 edition = "2024"
