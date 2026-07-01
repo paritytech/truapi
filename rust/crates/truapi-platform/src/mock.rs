@@ -544,7 +544,12 @@ impl PreimageHost for MockPlatform {
             .expect("preimages poisoned")
             .get(&key)
             .cloned();
-        Box::pin(stream::once(async move { Ok(found) }))
+        // Emit the current value/miss, then stay open — a live subscription that
+        // never ends, matching `subscribe_theme`, the trait doc, and the JS mock.
+        Box::pin(
+            stream::once(async move { Ok(found) })
+                .chain(stream::pending::<Result<Option<Vec<u8>>, v01::GenericError>>()),
+        )
     }
 }
 
