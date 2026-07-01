@@ -17,7 +17,7 @@ js/packages/
 playground/              Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/             dotli submodule
 docs/                    design docs, RFCs, feature proposals
-scripts/codegen.sh       regenerate the TS client from the Rust crate
+scripts/codegen.sh       regenerate TS client + Rust runtime tables from the Rust crate
 ```
 
 ## Code style
@@ -46,7 +46,7 @@ git submodule update --init --recursive
 ( cd playground && yarn install --frozen-lockfile )
 ```
 
-## Regenerating the TS client
+## Regenerating generated sources
 
 When the Rust trait surface changes, rerun:
 

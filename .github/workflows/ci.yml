@@ -76,6 +76,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
         with:
           toolchain: nightly
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
@@ -88,6 +89,12 @@ jobs:
 
       - name: Run codegen
         run: ./scripts/codegen.sh
+
+      - name: Check generated Rust output is committed
+        run: git diff --exit-code -- rust/crates/truapi-server/src/generated
+
+      - name: Check Rust/TS wire table parity
+        run: TRUAPI_REQUIRE_GENERATED_TS=1 cargo test -p truapi-server --test wire_table_ts_parity
 
       - name: Upload codegen output
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

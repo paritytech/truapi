@@ -1,14 +1,15 @@
 # truapi-codegen
 
-_Reads rustdoc JSON for the `truapi` crate and generates the TypeScript client._
+_Reads rustdoc JSON for the `truapi` crate and generates client and runtime code._
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../../../LICENSE)
 
-`truapi-codegen` keeps the generated client aligned with the Rust protocol definition. It reads rustdoc JSON, extracts the TrUAPI API surface, and writes:
+`truapi-codegen` keeps generated code aligned with the Rust protocol definition. It reads rustdoc JSON, extracts the TrUAPI API surface, and writes:
 
 - TypeScript types for every protocol type in `truapi`.
 - TypeScript domain client classes for every unified trait.
 - The TypeScript wire dispatch table.
+- The Rust host dispatcher and wire dispatch table consumed by `truapi-server`.
 
 ## Generated output
 
@@ -50,7 +51,7 @@ The generator runs in three stages:
 
 1. **Parse**: read JSON emitted by nightly rustdoc.
 2. **Normalize**: extract the API model, including each method's `#[wire(id = N)]`.
-3. **Emit**: generators write TypeScript output.
+3. **Emit**: generators write TypeScript client output and, when requested, Rust runtime output.
 
 Missing or duplicate wire ids fail generation. Subscription methods reserve four consecutive ids for `_start`, `_stop`, `_interrupt`, and `_receive`.
 
@@ -60,7 +61,8 @@ Missing or duplicate wire ids fail generation. Subscription methods reserve four
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
   --output js/packages/truapi/src/generated \
-  --version V2 \
+  --rust-output rust/crates/truapi-server/src/generated \
+  --client-version V2 \
   --codec-version 1
 ```
 
@@ -71,7 +73,8 @@ cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
   --output js/packages/truapi/src/generated \
-  --version V2 \
+  --rust-output rust/crates/truapi-server/src/generated \
+  --client-version V2 \
   --codec-version 1
 ```
 

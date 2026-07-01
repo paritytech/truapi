@@ -10,7 +10,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use futures::future::LocalBoxFuture;
-use tracing::instrument;
 
 use crate::frame::{Payload, ProtocolMessage};
 use crate::generated::wire_table::{RequestFrameIds, SubscriptionFrameIds};
@@ -117,7 +116,6 @@ impl Dispatcher {
     /// Process an incoming protocol message, sending any responses or
     /// subscription frames through `transport`. A discriminant with no
     /// registered handler is dropped.
-    #[instrument(skip_all, fields(runtime.method = "dispatcher.dispatch"))]
     pub async fn dispatch(&self, message: ProtocolMessage, transport: Arc<dyn Transport>) {
         let id = message.payload.id;
 

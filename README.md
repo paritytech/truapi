@@ -63,7 +63,7 @@ js/packages/
 playground/              Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/             dotli host, vendored as a submodule
 docs/                    Design docs, RFCs, feature proposals
-scripts/codegen.sh       Regenerate the TS client from the Rust source
+scripts/codegen.sh       Regenerate TS client + Rust runtime tables from Rust source
 ```
 
 ## How it works
@@ -95,16 +95,18 @@ yarn dev
 
 Open `https://dot.li/localhost:3000` inside the Polkadot Desktop Host. See [`playground/README.md`](playground/README.md) for deployment.
 
-## Regenerate the TypeScript client
+## Regenerate generated sources
 
 When the Rust trait surface changes:
 
 ```bash
-make codegen      # regenerate the TS client and refresh the playground snapshot
+make codegen      # regenerate the TS client, Rust runtime tables, and playground snapshot
 make playground   # rebuild the playground against the refreshed snapshot
 ```
 
-This repopulates the ignored generated TS under `js/packages/truapi/`, including the playground metadata.
+This repopulates the ignored generated TS under `js/packages/truapi/`, including
+the playground metadata, and refreshes the checked-in Rust dispatcher and wire
+table under `rust/crates/truapi-server/src/generated/`.
 
 ## Protocol versions
 

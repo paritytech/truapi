@@ -9,4 +9,3 @@ description = "TrUAPI host runtime: frames, dispatcher, and subscriptions"
 truapi = { path = "../truapi" }
 futures = "0.3"
 parity-scale-codec = { version = "3", features = ["derive"] }
-tracing = "0.1"

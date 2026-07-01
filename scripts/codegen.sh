@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate js/packages/truapi/src/generated/* from rust/crates/truapi.
+# Regenerate generated TypeScript and Rust runtime sources from rust/crates/truapi.
 #
 # Pipeline:
 #   1. cargo +nightly rustdoc -p truapi --output-format json -> target/doc/truapi.json
@@ -30,7 +30,7 @@ cargo run -p truapi-codegen -- \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
 
-rustfmt --edition 2024 rust/crates/truapi-server/src/generated/*.rs
+rustfmt +nightly --edition 2024 rust/crates/truapi-server/src/generated/*.rs
 
 node scripts/regen-explorer-versions.mjs
 

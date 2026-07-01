@@ -27,12 +27,10 @@ type StopFn = Box<dyn FnOnce() + Send>;
 /// transport (tokio `LocalSet`, `wasm_bindgen_futures::spawn_local`, ...).
 pub type Spawner = Arc<dyn Fn(BoxFuture<'static, ()>) + Send + Sync>;
 
-/// Convenience spawner for tests and embedders that don't yet wire a
-/// real runtime: starts a fresh OS thread per subscription and drives the
-/// future with `futures::executor::block_on`. Not available on wasm32 since
-/// the platform has no threads.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn thread_per_subscription_spawner() -> Spawner {
+/// Test spawner that starts a fresh OS thread per subscription and drives the
+/// future with `futures::executor::block_on`.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) fn thread_per_subscription_spawner() -> Spawner {
     Arc::new(|fut: BoxFuture<'static, ()>| {
         std::thread::spawn(move || futures::executor::block_on(fut));
     })
