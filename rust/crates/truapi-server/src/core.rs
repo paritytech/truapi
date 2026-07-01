@@ -371,7 +371,11 @@ mod tests {
         use truapi::versioned::preimage::RemotePreimageSubmitRequest;
         use truapi_platform::mock::MockConfig;
 
-        // Default mock auto-confirms: submit succeeds (Ok disc 0x00).
+        // Versioned envelope layout is [version_index, result_discriminant, ..].
+        // For a V1 response the version index is 0, so the Ok/Err distinction
+        // lives at byte index 1: 0x00 = Ok, 0x01 = Err.
+
+        // Default mock auto-confirms: submit succeeds (V1 index 0x00, Ok 0x00).
         let confirmed = make_mock_core(MockConfig::default());
         let ok_payload = run_request(
             &confirmed,
@@ -379,8 +383,10 @@ mod tests {
             RemotePreimageSubmitRequest::V1(vec![1, 2, 3]).encode(),
         );
         assert_eq!(ok_payload.first(), Some(&0x00));
+        assert_eq!(ok_payload.get(1), Some(&0x00));
 
-        // confirm_user_actions = false: the core rejects before the platform (Err disc 0x01).
+        // confirm_user_actions = false: the core rejects before the platform
+        // (V1 index 0x00, Err 0x01).
         let rejected = make_mock_core(MockConfig {
             confirm_user_actions: false,
             ..Default::default()
@@ -390,7 +396,8 @@ mod tests {
             "preimage_submit",
             RemotePreimageSubmitRequest::V1(vec![1, 2, 3]).encode(),
         );
-        assert_eq!(err_payload.first(), Some(&0x01));
+        assert_eq!(err_payload.first(), Some(&0x00));
+        assert_eq!(err_payload.get(1), Some(&0x01));
     }
 
     /// A MockPlatform storage fault surfaces through the real core as a wire
@@ -408,9 +415,11 @@ mod tests {
         });
         let read =
             HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
-        // Err envelope: Result discriminant 0x01 (vs 0x00 Ok in the happy-path test).
+        // Versioned wire layout is [version_index=0x00 (V1)][result_index][inner];
+        // the Err discriminant is byte 1, not byte 0 (byte 0 is the V1 version index).
         let payload = run_request(&core, "local_storage_read", read.encode());
-        assert_eq!(payload.first(), Some(&0x01));
+        assert_eq!(payload.first(), Some(&0x00)); // V1 version index
+        assert_eq!(payload.get(1), Some(&0x01)); // Result::Err discriminant
     }
 
     #[test]
