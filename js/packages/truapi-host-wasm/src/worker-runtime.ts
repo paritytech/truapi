@@ -13,6 +13,12 @@ import {
   createWorkerRawCallbacks,
   type CallbackName,
 } from "./generated/worker-callbacks.js";
+import { errorMessage } from "./error.js";
+
+type PermissionAuthorizationStatus =
+  | "NotDetermined"
+  | "Denied"
+  | "Authorized";
 
 interface WorkerHostCore {
   receiveFrame(frame: Uint8Array): Promise<void>;
@@ -20,6 +26,7 @@ interface WorkerHostCore {
   cancelPairing(): void;
   notifySessionStoreChanged(): void;
   permissionAuthorizationStatus(request: Uint8Array): Promise<string>;
+  permissionAuthorizationStatuses(requests: Uint8Array[]): Promise<string[]>;
   setPermissionAuthorizationStatus(
     request: Uint8Array,
     status: string,
@@ -50,12 +57,6 @@ const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
 function postToMain(msg: WorkerToMain): void {
   ctx.postMessage(msg);
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return JSON.stringify(err) ?? String(err);
 }
 
 let nextRequestId = 0;
@@ -159,13 +160,16 @@ function chainConnect(
   });
 }
 
-function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
+/**
+ * Build the callback object passed to the WASM core. Most entries are
+ * generated proxy functions that bounce from the worker to the main window;
+ * `emitFrame` is filled here because it is the core-to-provider data path.
+ */
+function buildRawCallbacks() {
   const callbacks = createWorkerRawCallbacks({
     callbackRequest,
     startSubscription,
-    ...(msg.chainConnect ? { chainConnect } : {}),
-    optionalCallbacks: msg.optionalCallbacks,
-    optionalSubscriptions: msg.optionalSubscriptions,
+    chainConnect,
   });
   callbacks.emitFrame = (frame: Uint8Array): void => {
     postToMain({ kind: "frame", bytes: frame });
@@ -209,7 +213,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       }
       wasm.setLogLevel?.(msg.logLevel);
       try {
-        core = new wasm.WasmHostCore(buildRawCallbacks(msg), msg.runtimeConfig);
+        core = new wasm.WasmHostCore(buildRawCallbacks(), msg.runtimeConfig);
         postToMain({ kind: "ready" });
       } catch (err) {
         postToMain({ kind: "fatalError", error: `init: ${errorMessage(err)}` });
@@ -232,6 +236,12 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       break;
     case "getPermissionAuthorizationStatus":
       void handleGetPermissionAuthorizationStatus(msg.requestId, msg.request);
+      break;
+    case "getPermissionAuthorizationStatuses":
+      void handleGetPermissionAuthorizationStatuses(
+        msg.requestId,
+        msg.requests,
+      );
       break;
     case "setPermissionAuthorizationStatus":
       void handleSetPermissionAuthorizationStatus(
@@ -330,7 +340,7 @@ async function handleGetPermissionAuthorizationStatus(
       kind: "permissionAuthorizationStatusResponse",
       requestId,
       ok: true,
-      status: status as "NotDetermined" | "Denied" | "Authorized",
+      status: status as PermissionAuthorizationStatus,
     });
   } catch (err) {
     postToMain({
@@ -342,10 +352,41 @@ async function handleGetPermissionAuthorizationStatus(
   }
 }
 
+async function handleGetPermissionAuthorizationStatuses(
+  requestId: number,
+  requests: Uint8Array[],
+): Promise<void> {
+  if (!core) {
+    postToMain({
+      kind: "permissionAuthorizationStatusesResponse",
+      requestId,
+      ok: false,
+      error: "permissionAuthorizationStatuses received before core is ready",
+    });
+    return;
+  }
+  try {
+    const statuses = await core.permissionAuthorizationStatuses(requests);
+    postToMain({
+      kind: "permissionAuthorizationStatusesResponse",
+      requestId,
+      ok: true,
+      statuses: statuses as PermissionAuthorizationStatus[],
+    });
+  } catch (err) {
+    postToMain({
+      kind: "permissionAuthorizationStatusesResponse",
+      requestId,
+      ok: false,
+      error: errorMessage(err),
+    });
+  }
+}
+
 async function handleSetPermissionAuthorizationStatus(
   requestId: number,
   request: Uint8Array,
-  status: "NotDetermined" | "Denied" | "Authorized",
+  status: PermissionAuthorizationStatus,
 ): Promise<void> {
   if (!core) {
     postToMain({

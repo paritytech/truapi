@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ServiceInfo } from "@/src/lib/services";
 import type { TestEntry, TestStatus } from "@/src/lib/auto-test";
 import {
@@ -79,6 +79,22 @@ export function DiagnosisView({
         : "",
     [hasResults, isRunning, services, testResults],
   );
+
+  useEffect(() => {
+    if (!reportMarkdown) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    try {
+      const e2e =
+        params.has("e2e") ||
+        window.__TRUAPI_PLAYGROUND_E2E__ === true ||
+        window.localStorage.getItem("truapi:playground:e2e") === "1";
+      if (!e2e) return;
+      window.localStorage.setItem("truapi:diagnosis-report", reportMarkdown);
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, [reportMarkdown]);
 
   const handleCopyReport = async () => {
     try {

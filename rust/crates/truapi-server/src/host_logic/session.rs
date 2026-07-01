@@ -1,7 +1,7 @@
-//! Active-session state held in core. The host pushes session info via
-//! platform-specific entrypoints whenever the user pairs/unpairs.
-//! Account-management methods then read from this state instead of
-//! round-tripping a callback to the host on every product call.
+//! Core-owned active-session state. Platform entrypoints notify the core when
+//! pairing or unpairing changes the session, and account-management methods
+//! read this state instead of round-tripping a host callback on every product
+//! call.
 
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, StreamExt};
@@ -57,15 +57,6 @@ pub struct SsoSessionInfo {
 
 const PERSISTED_SESSION_VERSION: u8 = 3;
 
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-struct PersistedSessionV2 {
-    public_key: [u8; 32],
-    sso: Option<SsoSessionInfo>,
-    root_entropy_source: Option<[u8; 32]>,
-    lite_username: Option<String>,
-    full_username: Option<String>,
-}
-
 /// Encode the active-session fields the core currently understands into an
 /// opaque host-global session blob. Later SSO channel state should bump
 /// `PERSISTED_SESSION_VERSION` instead of extending this layout silently.
@@ -78,18 +69,6 @@ pub fn decode_persisted_session(blob: &[u8]) -> Result<SessionInfo, String> {
     let mut input = blob;
     let version = u8::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?;
     let info = match version {
-        2 => {
-            let legacy = PersistedSessionV2::decode(&mut input)
-                .map_err(|err| format!("invalid session blob: {err}"))?;
-            SessionInfo {
-                public_key: legacy.public_key,
-                sso: legacy.sso,
-                root_entropy_source: legacy.root_entropy_source,
-                identity_account_id: None,
-                lite_username: legacy.lite_username,
-                full_username: legacy.full_username,
-            }
-        }
         PERSISTED_SESSION_VERSION => {
             SessionInfo::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?
         }
@@ -261,21 +240,12 @@ mod tests {
     }
 
     #[test]
-    fn persisted_v2_session_decodes_without_identity_account() {
-        let legacy = PersistedSessionV2 {
-            public_key: [0x42; 32],
-            sso: None,
-            root_entropy_source: Some([0x24; 32]),
-            lite_username: Some("alice".to_string()),
-            full_username: None,
-        };
-        let blob = (2u8, legacy).encode();
+    fn persisted_session_rejects_legacy_v2() {
+        let blob = vec![2];
 
-        let decoded = decode_persisted_session(&blob).expect("v2 session should decode");
+        let err = decode_persisted_session(&blob).unwrap_err();
 
-        assert_eq!(decoded.public_key, [0x42; 32]);
-        assert_eq!(decoded.identity_account_id, None);
-        assert_eq!(decoded.lite_username.as_deref(), Some("alice"));
+        assert_eq!(err, "unsupported session blob version 2");
     }
 
     #[test]

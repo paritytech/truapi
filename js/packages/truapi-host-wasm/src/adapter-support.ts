@@ -18,11 +18,6 @@ type StreamResult<T, E> = Result<T, E> | WireResult<T, E>;
 
 type MaybeAsyncIterable<T> = AsyncIterable<T> | Iterable<T>;
 
-/** Extract the stable Rust-side error reason from a generated `GenericError`. */
-function errorReason(error: GenericError): string {
-  return error.reason;
-}
-
 /**
  * Normalize both generated `Result<T, GenericError>` values and the plain
  * `{ success, value }` envelope used by some JS fixtures into a raw item.
@@ -30,12 +25,12 @@ function errorReason(error: GenericError): string {
 function unwrapStreamResult<T>(item: StreamResult<T, GenericError>): T {
   if ("success" in item) {
     if (item.success === false) {
-      throw new Error(errorReason(item.value));
+      throw new Error(item.value.reason);
     }
     return item.value;
   }
   if (item.isErr()) {
-    throw new Error(errorReason(item.error));
+    throw new Error(item.error.reason);
   }
   return item.value;
 }
@@ -111,11 +106,10 @@ export function driveResultStream<T>(
  * `send`/`close`.
  */
 export function chainConnectAdapter(
-  host: Partial<HostCallbacks>,
-): ChainConnect | undefined {
-  if (!host.connect) return undefined;
+  host: Pick<HostCallbacks, "connect">,
+): ChainConnect {
   return async (genesisHash, onResponse): Promise<ChainConnection | null> => {
-    const connection = await host.connect!(hexToBytes(genesisHash));
+    const connection = await host.connect(hexToBytes(genesisHash));
     const iterator = connection.responses()[Symbol.asyncIterator]();
     const stopResponses = pumpIterator(iterator, onResponse, "chain responses");
     return {
@@ -124,6 +118,7 @@ export function chainConnectAdapter(
       },
       close(): void {
         stopResponses();
+        connection.close();
       },
     };
   };

@@ -1,6 +1,24 @@
 // Wire format between the main thread (`createWebWorkerProvider`) and the
 // Web Worker that hosts the truapi-server WASM core.
 //
+//   Main window / host JS
+//   ┌─────────────────────────────────────────────────────────────────┐
+//   │ createWebWorkerProvider                                         │
+//   │ host callbacks: storage, DOM prompts, chain provider, logging   │
+//   └───────────────┬─────────────────────────────────────────────────┘
+//                   │ MainToWorker: init, frame, callbackResponse,
+//                   │               subscriptionItem, chainResponse
+//                   v
+//   Dedicated Worker
+//   ┌─────────────────────────────────────────────────────────────────┐
+//   │ truapi-server WASM HostCore                                     │
+//   │ generated raw-callback proxy                                    │
+//   └───────────────┬─────────────────────────────────────────────────┘
+//                   │ WorkerToMain: frame, callbackRequest,
+//                   │               subscriptionStart, chainConnect
+//                   v
+//   Main window dispatches those requests to the actual host callbacks.
+//
 // Frames (`kind: 'frame'`) carry SCALE-encoded `ProtocolMessage` bytes
 // untouched in either direction. Everything else is a control message
 // for callback dispatch, subscription bookkeeping, or chain connections.
@@ -13,7 +31,6 @@
 import type { LogLevel, PermissionAuthorizationStatus } from "./runtime.js";
 import type {
   CallbackName,
-  OptionalCallbackName,
   SubscriptionName,
 } from "./generated/worker-callbacks.js";
 /**
@@ -22,7 +39,6 @@ import type {
  */
 export type {
   CallbackName,
-  OptionalCallbackName,
   SubscriptionName,
 } from "./generated/worker-callbacks.js";
 
@@ -42,9 +58,6 @@ export type MainToWorker =
       kind: "init";
       logLevel: LogLevel;
       runtimeConfig: unknown;
-      optionalCallbacks?: readonly OptionalCallbackName[];
-      optionalSubscriptions?: readonly SubscriptionName[];
-      chainConnect?: boolean;
     }
   | { kind: "setLogLevel"; level: LogLevel }
   | { kind: "frame"; bytes: Uint8Array }
@@ -55,6 +68,11 @@ export type MainToWorker =
       kind: "getPermissionAuthorizationStatus";
       requestId: number;
       request: Uint8Array;
+    }
+  | {
+      kind: "getPermissionAuthorizationStatuses";
+      requestId: number;
+      requests: Uint8Array[];
     }
   | {
       kind: "setPermissionAuthorizationStatus";
@@ -97,6 +115,18 @@ export type WorkerToMain =
     }
   | {
       kind: "permissionAuthorizationStatusResponse";
+      requestId: number;
+      ok: false;
+      error: string;
+    }
+  | {
+      kind: "permissionAuthorizationStatusesResponse";
+      requestId: number;
+      ok: true;
+      statuses: PermissionAuthorizationStatus[];
+    }
+  | {
+      kind: "permissionAuthorizationStatusesResponse";
       requestId: number;
       ok: false;
       error: string;

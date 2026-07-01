@@ -13,12 +13,12 @@ use truapi_platform::{AuthPresenter, AuthState, Platform, SessionUiInfo};
 /// safely re-enter the runtime (e.g. a host cancelling the login it just
 /// observed). The cancel channel for an in-flight login lives inside the
 /// `Pairing` state, making its registration atomic with the transition.
-pub(crate) struct AuthStateMachine<P> {
-    platform: Arc<P>,
+pub(crate) struct AuthStateMachine {
+    platform: Arc<dyn Platform>,
     inner: Arc<Mutex<AuthStateInner>>,
 }
 
-impl<P> Clone for AuthStateMachine<P> {
+impl Clone for AuthStateMachine {
     fn clone(&self) -> Self {
         Self {
             platform: self.platform.clone(),
@@ -38,11 +38,9 @@ struct AuthStateInner {
     cancel_tx: Option<oneshot::Sender<()>>,
 }
 
-impl<P> AuthStateMachine<P>
-where
-    P: Platform,
-{
-    pub(super) fn new(platform: Arc<P>) -> Self {
+impl AuthStateMachine {
+    /// Create an auth state machine that reports transitions to `platform`.
+    pub(super) fn new(platform: Arc<dyn Platform>) -> Self {
         Self {
             platform,
             inner: Arc::new(Mutex::new(AuthStateInner::default())),

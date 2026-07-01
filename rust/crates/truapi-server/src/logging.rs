@@ -14,7 +14,7 @@
 //! Output is plaintext, so never log secret material (key bytes, session
 //! tokens, signatures).
 
-use std::fmt::{self, Write as _};
+use core::fmt::{self, Write as _};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 

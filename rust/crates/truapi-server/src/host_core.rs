@@ -152,6 +152,15 @@ impl HostCore {
         self.core.permission_authorization_status(request).await
     }
 
+    /// Read stored permission authorization statuses without prompting.
+    #[instrument(skip_all, fields(runtime.method = "host_core.permission_authorization_statuses"))]
+    pub async fn permission_authorization_statuses(
+        &self,
+        requests: Vec<PermissionAuthorizationRequest>,
+    ) -> Result<Vec<PermissionAuthorizationStatus>, v01::GenericError> {
+        self.core.permission_authorization_statuses(requests).await
+    }
+
     /// Update a stored permission authorization status. `NotDetermined`
     /// clears the stored value so the next product request prompts again.
     #[instrument(skip_all, fields(runtime.method = "host_core.set_permission_authorization_status"))]

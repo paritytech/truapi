@@ -2,6 +2,7 @@
 //! topic on the statement store (live subscription plus periodic snapshot
 //! queries), and decrypts the wallet's V2 handshake response into a session.
 
+#[cfg(test)]
 use std::sync::{Arc, Mutex};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -10,34 +11,31 @@ use std::time::Duration;
 use web_time::Duration;
 
 use super::auth_state::AuthStateMachine;
-use super::sso_remote::SharedRemoteSubscriptionId;
+use super::statement_store_rpc::{self, StatementStoreRpc};
 use super::{PlatformRuntimeHost, connected_session_ui_info};
 use crate::host_logic::session::{SessionInfo, encode_persisted_session};
-use crate::host_logic::sso_pairing::{
+use crate::host_logic::sso::pairing::{
     EncryptedHandshakeResponseV2, PairingBootstrap, PairingDeviceIdentity,
     VersionedHandshakeResponse, create_pairing_bootstrap_from_identity, decode_app_handshake_data,
     decrypt_v2_handshake_response, establish_sso_session_info, generate_pairing_device_identity,
 };
 use crate::host_logic::statement_store::{
-    decode_verified_statement_data, parse_new_statements, parse_subscribe_ack,
-    subscribe_match_all_request, unsubscribe_request,
+    decode_verified_statement_data, parse_new_statements_result,
 };
+use crate::subscription::Spawner;
 
-use futures::channel::oneshot;
-use futures::stream::BoxStream;
+use futures::channel::{mpsc, oneshot};
 use futures::{FutureExt, StreamExt, pin_mut};
 use parity_scale_codec::Encode;
+use serde_json::Value;
+use subxt_rpcs::RpcClient;
+use subxt_rpcs::client::RpcSubscription;
 use tracing::{debug, info, instrument};
 use truapi::CallError;
 use truapi::v01;
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
-use truapi_platform::{
-    ChainProvider as PlatformChainProvider, CoreStorage as PlatformCoreStorage, CoreStorageKey,
-    JsonRpcConnection, Platform,
-};
+use truapi_platform::{CoreStorage, CoreStorageKey};
 
-/// Request id for the long-lived pairing topic subscription.
-pub(crate) const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
 #[cfg(not(test))]
 const PAIRING_QUERY_INTERVAL: Duration = Duration::from_secs(2);
 #[cfg(test)]
@@ -46,42 +44,6 @@ const PAIRING_QUERY_INTERVAL: Duration = Duration::from_millis(1);
 const PAIRING_QUERY_TIMEOUT_TICKS: u8 = 15;
 #[cfg(test)]
 const PAIRING_QUERY_TIMEOUT_TICKS: u8 = 10;
-
-struct PairingSubscriptionGuard {
-    connection: Box<dyn JsonRpcConnection>,
-    unsubscribe_request_id: String,
-    remote_subscription_id: SharedRemoteSubscriptionId,
-}
-
-impl PairingSubscriptionGuard {
-    fn new(connection: Box<dyn JsonRpcConnection>) -> Self {
-        Self {
-            connection,
-            unsubscribe_request_id: format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:unsubscribe"),
-            remote_subscription_id: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    fn remote_subscription_id(&self) -> SharedRemoteSubscriptionId {
-        self.remote_subscription_id.clone()
-    }
-}
-
-impl Drop for PairingSubscriptionGuard {
-    fn drop(&mut self) {
-        if let Some(remote_subscription_id) = self
-            .remote_subscription_id
-            .lock()
-            .expect("pairing subscription id mutex poisoned")
-            .as_ref()
-        {
-            self.connection.send(unsubscribe_request(
-                &self.unsubscribe_request_id,
-                remote_subscription_id,
-            ));
-        }
-    }
-}
 
 /// Terminal outcome of [`PlatformRuntimeHost::run_pairing_flow`].
 enum PairingFlowOutcome {
@@ -93,23 +55,20 @@ enum PairingFlowOutcome {
 }
 
 /// Resets a `Pairing` state left behind by a dropped login future (e.g. the
-/// ws-bridge dropping in-flight calls on connection close). A no-op once the
+/// transport dropping in-flight calls on connection close). A no-op once the
 /// flow reached any terminal transition or a newer pairing took over.
-struct AbandonedPairingGuard<P: Platform> {
-    auth_state: AuthStateMachine<P>,
+struct AbandonedPairingGuard {
+    auth_state: AuthStateMachine,
     epoch: u64,
 }
 
-impl<P: Platform> Drop for AbandonedPairingGuard<P> {
+impl Drop for AbandonedPairingGuard {
     fn drop(&mut self) {
         self.auth_state.reset_abandoned_pairing(self.epoch);
     }
 }
 
-impl<P> PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl PlatformRuntimeHost {
     /// `request_login` pairing flow: emits `AuthState::Pairing` for the host
     /// to present, then races host cancellation against the wallet handshake
     /// arriving on the statement store; on success resolves identity and
@@ -202,32 +161,35 @@ where
         cancel_rx: oneshot::Receiver<()>,
     ) -> Result<PairingFlowOutcome, String> {
         let mut cancel = cancel_rx.fuse();
-        let statement_store_connect = PlatformChainProvider::connect(
-            self.platform.as_ref(),
-            self.runtime_config.people_chain_genesis_hash.to_vec(),
-        )
-        .fuse();
+        let statement_store = StatementStoreRpc::new(
+            self.platform.clone(),
+            self.runtime_config.people_chain_genesis_hash,
+            self.spawner.clone(),
+        );
+        let statement_store_connect = statement_store.client("pairing statement-store").fuse();
         pin_mut!(statement_store_connect);
 
-        let statement_store = futures::select! {
+        let rpc_client = futures::select! {
             _ = cancel => return Ok(PairingFlowOutcome::Cancelled),
-            connect_result = statement_store_connect => connect_result.map_err(|err| {
-                format!("pairing statement-store connect failed: {err:?}")
-            })?,
+            connect_result = statement_store_connect => connect_result?,
         };
-        statement_store.send(subscribe_match_all_request(
-            PAIRING_SUBSCRIBE_REQUEST_ID,
-            &[bootstrap.topic],
-        ));
+        let subscribe_client = rpc_client.clone();
+        let live_topics = [bootstrap.topic];
+        let live_subscription =
+            statement_store_rpc::subscribe_match_all(&subscribe_client, &live_topics).fuse();
+        pin_mut!(live_subscription);
+        let live_subscription = futures::select! {
+            _ = cancel => return Ok(PairingFlowOutcome::Cancelled),
+            subscribe_result = live_subscription => subscribe_result
+                .map_err(|err| format!("pairing statement-store subscribe failed: {err}"))?,
+        };
         debug!("subscribed to pairing topic, polling statement store");
-        let responses = statement_store.responses();
-        let subscription_guard = PairingSubscriptionGuard::new(statement_store);
         let pairing_response = wait_for_v2_pairing_success(
-            subscription_guard.connection.as_ref(),
-            responses,
-            subscription_guard.remote_subscription_id(),
+            rpc_client,
+            live_subscription,
             bootstrap.topic,
             bootstrap.encryption_secret_key,
+            self.spawner.clone(),
         )
         .fuse();
         pin_mut!(pairing_response);
@@ -250,167 +212,82 @@ where
             full_username: None,
         };
         let session = self.resolve_session_identity(session).await;
-        PlatformCoreStorage::write_core_storage(
-            self.platform.as_ref(),
-            CoreStorageKey::AuthSession,
-            encode_persisted_session(&session),
-        )
-        .await
-        .map_err(|err| format!("session persist failed: {err:?}"))?;
+        self.platform
+            .write_core_storage(
+                CoreStorageKey::AuthSession,
+                encode_persisted_session(&session),
+            )
+            .await
+            .map_err(|err| format!("session persist failed: {err:?}"))?;
         Ok(PairingFlowOutcome::Success(Box::new(session)))
     }
 }
 
 #[instrument(skip_all, fields(runtime.method = "sso.pairing_device.create_fresh"))]
 async fn create_fresh_pairing_device_identity(
-    storage: &(impl PlatformCoreStorage + ?Sized),
+    storage: &(impl CoreStorage + ?Sized),
 ) -> Result<PairingDeviceIdentity, String> {
     let identity = generate_pairing_device_identity()
         .map_err(|err| format!("pairing identity failed: {err}"))?;
-    PlatformCoreStorage::write_core_storage(
-        storage,
-        CoreStorageKey::PairingDeviceIdentity,
-        identity.encode(),
-    )
-    .await
-    .map_err(|err| format!("pairing device identity write failed: {err:?}"))?;
+    storage
+        .write_core_storage(CoreStorageKey::PairingDeviceIdentity, identity.encode())
+        .await
+        .map_err(|err| format!("pairing device identity write failed: {err:?}"))?;
     Ok(identity)
 }
 
 struct PairingSuccess {
     peer_statement_account_id: [u8; 32],
-    success: crate::host_logic::sso_pairing::HandshakeSuccessV2,
-}
-
-#[derive(Default)]
-struct PairingFrameState {
-    remote_subscription_id: Option<String>,
-    query: PairingQueryState,
-}
-
-#[derive(Default)]
-enum PairingQueryState {
-    #[default]
-    Idle,
-    AwaitingAck {
-        request_id: String,
-        elapsed_ticks: u8,
-    },
-    Active {
-        request_id: String,
-        remote_id: String,
-        elapsed_ticks: u8,
-    },
-}
-
-impl PairingQueryState {
-    fn request_id(&self) -> Option<&str> {
-        match self {
-            Self::Idle => None,
-            Self::AwaitingAck { request_id, .. } | Self::Active { request_id, .. } => {
-                Some(request_id)
-            }
-        }
-    }
-
-    fn remote_id(&self) -> Option<&str> {
-        match self {
-            Self::Active { remote_id, .. } => Some(remote_id),
-            Self::Idle | Self::AwaitingAck { .. } => None,
-        }
-    }
-
-    fn is_idle(&self) -> bool {
-        matches!(self, Self::Idle)
-    }
-
-    fn start(&mut self, request_id: String) {
-        *self = Self::AwaitingAck {
-            request_id,
-            elapsed_ticks: 0,
-        };
-    }
-
-    fn activate(&mut self, request_id: String, remote_id: String) {
-        *self = Self::Active {
-            request_id,
-            remote_id,
-            elapsed_ticks: 0,
-        };
-    }
-
-    fn finish(&mut self) {
-        *self = Self::Idle;
-    }
-
-    fn tick_timeout(&mut self) -> Option<(String, String)> {
-        match self {
-            Self::Idle => None,
-            Self::AwaitingAck { elapsed_ticks, .. } => {
-                *elapsed_ticks = elapsed_ticks.saturating_add(1);
-                if *elapsed_ticks >= PAIRING_QUERY_TIMEOUT_TICKS {
-                    *self = Self::Idle;
-                }
-                None
-            }
-            Self::Active {
-                request_id,
-                remote_id,
-                elapsed_ticks,
-            } => {
-                *elapsed_ticks = elapsed_ticks.saturating_add(1);
-                if *elapsed_ticks < PAIRING_QUERY_TIMEOUT_TICKS {
-                    return None;
-                }
-                let timeout = Some((request_id.clone(), remote_id.clone()));
-                *self = Self::Idle;
-                timeout
-            }
-        }
-    }
+    success: crate::host_logic::sso::pairing::HandshakeSuccessV2,
 }
 
 #[instrument(skip_all, fields(runtime.method = "sso.pairing.wait_success"))]
 async fn wait_for_v2_pairing_success(
-    connection: &dyn JsonRpcConnection,
-    mut responses: BoxStream<'static, String>,
-    remote_subscription_slot: SharedRemoteSubscriptionId,
+    rpc_client: RpcClient,
+    mut live_subscription: RpcSubscription<Value>,
     topic: [u8; 32],
     core_encryption_secret_key: [u8; 32],
+    spawner: Spawner,
 ) -> Result<PairingSuccess, String> {
-    let mut state = PairingFrameState::default();
-    let mut query_counter = 0usize;
+    let (query_tx, mut query_rx) = mpsc::unbounded();
+    let mut query_active = false;
     let poll = futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse();
     pin_mut!(poll);
     loop {
         futures::select! {
-            frame = responses.next().fuse() => {
-                let Some(frame) = frame else {
-                    return Err("pairing statement-store response stream ended".to_string());
+            item = live_subscription.next().fuse() => {
+                let Some(item) = item else {
+                    return Err("pairing statement-store live subscription ended".to_string());
                 };
-                if let Some(success) = handle_v2_pairing_frame(
-                    connection,
-                    &frame,
-                    &mut state,
-                    &remote_subscription_slot,
-                    core_encryption_secret_key,
-                )? {
+                let value = item.map_err(|err| format!("pairing statement-store live error: {err}"))?;
+                if let Some(success) = handle_v2_pairing_result(&value, core_encryption_secret_key)? {
+                    return Ok(success);
+                }
+            }
+            query = query_rx.next().fuse() => {
+                query_active = false;
+                if let Some(query) = query
+                    && let Some(success) = query? {
                     return Ok(success);
                 }
             }
             _ = poll => {
-                if let Some((request_id, remote_id)) = state.query.tick_timeout() {
-                    connection.send(unsubscribe_request(
-                        &format!("{request_id}:timeout-unsubscribe"),
-                        &remote_id,
-                    ));
-                }
-                if state.query.is_idle() {
-                    query_counter += 1;
-                    let query_request_id =
-                        format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:{query_counter}");
-                    connection.send(subscribe_match_all_request(&query_request_id, &[topic]));
-                    state.query.start(query_request_id);
+                if !query_active {
+                    query_active = true;
+                    let rpc_client = rpc_client.clone();
+                    let query_tx = query_tx.clone();
+                    let fut = async move {
+                        let result = run_pairing_snapshot_query(
+                            rpc_client,
+                            topic,
+                            core_encryption_secret_key,
+                        ).await;
+                        let _ = query_tx.unbounded_send(result);
+                    };
+                    // `RpcClient` is transport-only here; spawning lets live
+                    // notifications continue to be consumed while a snapshot
+                    // query is waiting for backlog completion or timeout.
+                    (spawner)(fut.boxed());
                 }
                 poll.set(futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse());
             }
@@ -418,51 +295,47 @@ async fn wait_for_v2_pairing_success(
     }
 }
 
-#[instrument(skip_all, fields(runtime.method = "sso.pairing.handle_frame"))]
-fn handle_v2_pairing_frame(
-    connection: &dyn JsonRpcConnection,
-    frame: &str,
-    state: &mut PairingFrameState,
-    remote_subscription_slot: &SharedRemoteSubscriptionId,
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.snapshot_query"))]
+async fn run_pairing_snapshot_query(
+    rpc_client: RpcClient,
+    topic: [u8; 32],
     core_encryption_secret_key: [u8; 32],
 ) -> Result<Option<PairingSuccess>, String> {
-    if state.remote_subscription_id.is_none()
-        && let Some(id) = parse_subscribe_ack(frame, PAIRING_SUBSCRIBE_REQUEST_ID)
-            .map_err(|err| err.to_string())?
-    {
-        *remote_subscription_slot
-            .lock()
-            .expect("pairing subscription id mutex poisoned") = Some(id.clone());
-        state.remote_subscription_id = Some(id);
-        return Ok(None);
-    }
-    if let Some((query_request_id, id)) =
-        parse_pairing_query_subscribe_ack(frame, state.query.request_id())?
-    {
-        state.query.activate(query_request_id, id);
-        return Ok(None);
-    }
-
-    let Some(page) = parse_new_statements(frame).map_err(|err| err.to_string())? else {
-        return Ok(None);
-    };
-    let is_live_subscription =
-        Some(page.remote_subscription_id.as_str()) == state.remote_subscription_id.as_deref();
-    let is_query_subscription =
-        Some(page.remote_subscription_id.as_str()) == state.query.remote_id();
-    if !is_live_subscription && !is_query_subscription {
-        return Ok(None);
-    }
-
-    if is_query_subscription && page.remaining.unwrap_or(0) == 0 {
-        if let Some(request_id) = state.query.request_id() {
-            connection.send(unsubscribe_request(
-                &format!("{request_id}:unsubscribe"),
-                &page.remote_subscription_id,
-            ));
+    let topics = [topic];
+    let mut subscription = statement_store_rpc::subscribe_match_all(&rpc_client, &topics)
+        .await
+        .map_err(|err| format!("pairing statement-store query failed: {err}"))?;
+    for _ in 0..PAIRING_QUERY_TIMEOUT_TICKS {
+        let timeout = futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse();
+        pin_mut!(timeout);
+        futures::select! {
+            item = subscription.next().fuse() => {
+                let Some(item) = item else {
+                    return Ok(None);
+                };
+                let value = item.map_err(|err| format!("pairing statement-store query item failed: {err}"))?;
+                if let Some(success) = handle_v2_pairing_result(&value, core_encryption_secret_key)? {
+                    return Ok(Some(success));
+                }
+                let page = parse_new_statements_result("query".to_string(), &value)
+                    .map_err(|err| err.to_string())?;
+                if page.remaining == Some(0) {
+                    return Ok(None);
+                }
+            }
+            _ = timeout => {}
         }
-        state.query.finish();
     }
+    Ok(None)
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.handle_result"))]
+fn handle_v2_pairing_result(
+    value: &Value,
+    core_encryption_secret_key: [u8; 32],
+) -> Result<Option<PairingSuccess>, String> {
+    let page =
+        parse_new_statements_result("pairing".to_string(), value).map_err(|err| err.to_string())?;
     for statement in page.statements {
         if let Some(success) = decode_v2_pairing_statement(&statement, core_encryption_secret_key)?
         {
@@ -473,44 +346,6 @@ fn handle_v2_pairing_frame(
     Ok(None)
 }
 
-fn parse_pairing_query_subscribe_ack(
-    frame: &str,
-    pending_query_request_id: Option<&str>,
-) -> Result<Option<(String, String)>, String> {
-    let value: serde_json::Value = serde_json::from_str(frame).map_err(|err| err.to_string())?;
-    let Some(request_id) = value.get("id").and_then(serde_json::Value::as_str) else {
-        return Ok(None);
-    };
-    let is_pending_query = pending_query_request_id == Some(request_id);
-    let is_pairing_query = request_id
-        .strip_prefix(PAIRING_SUBSCRIBE_REQUEST_ID)
-        .is_some_and(|suffix| suffix.starts_with(":query:"));
-    if !is_pending_query && !is_pairing_query {
-        return Ok(None);
-    }
-    if value
-        .get("method")
-        .and_then(serde_json::Value::as_str)
-        .is_some()
-        && value.get("params").is_some()
-        && value.get("result").is_none()
-        && value.get("error").is_none()
-    {
-        return Ok(None);
-    }
-    if let Some(error) = value.get("error") {
-        return Err(error
-            .get("message")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("statement-store query subscribe failed")
-            .to_string());
-    }
-    let Some(remote_id) = value.get("result").and_then(serde_json::Value::as_str) else {
-        return Ok(None);
-    };
-    Ok(Some((request_id.to_string(), remote_id.to_string())))
-}
-
 #[instrument(skip_all, fields(runtime.method = "sso.pairing.decode_statement"))]
 fn decode_v2_pairing_statement(
     statement: &[u8],
@@ -518,14 +353,10 @@ fn decode_v2_pairing_statement(
 ) -> Result<Option<PairingSuccess>, String> {
     let verified =
         decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
-    let handshake = decode_app_handshake_data(&verified.data)?;
     let VersionedHandshakeResponse::V2 {
         encrypted_message,
         public_key,
-    } = handshake
-    else {
-        return Err("pairing response is not SSO V2".to_string());
-    };
+    } = decode_app_handshake_data(&verified.data)?;
     match decrypt_v2_handshake_response(core_encryption_secret_key, public_key, &encrypted_message)?
     {
         EncryptedHandshakeResponseV2::Pending(_) => Ok(None),
@@ -554,7 +385,7 @@ mod tests {
 
     /// Cancel the login as soon as the host observes the `Pairing` state,
     /// mimicking a user dismissing the pairing UI immediately.
-    fn cancel_on_pairing(platform: &StubPlatform, host: &Arc<PlatformRuntimeHost<StubPlatform>>) {
+    fn cancel_on_pairing(platform: &StubPlatform, host: &Arc<PlatformRuntimeHost>) {
         let host = host.clone();
         *platform
             .on_auth_state
@@ -660,7 +491,7 @@ mod tests {
         let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
         let mut wallet_ephemeral_public_bytes = [0u8; 65];
         wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
-        let handshake = crate::host_logic::sso_pairing::VersionedHandshakeResponse::V2 {
+        let handshake = crate::host_logic::sso::pairing::VersionedHandshakeResponse::V2 {
             encrypted_message: vec![0xde, 0xad],
             public_key: wallet_ephemeral_public_bytes,
         };
@@ -671,8 +502,7 @@ mod tests {
         );
         let platform = Arc::new(StubPlatform {
             rpc_responses: vec![
-                r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1","result":"remote-sub"}"#
-                    .to_string(),
+                r#"{"jsonrpc":"2.0","id":"truapi:1","result":"remote-sub"}"#.to_string(),
                 notification,
             ],
             ..Default::default()
@@ -825,51 +655,27 @@ mod tests {
             Some(session_info().public_key)
         );
 
-        let ids = platform
+        let methods = platform
             .sent_rpc
             .lock()
             .expect("rpc list mutex poisoned")
             .iter()
             .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
-            .map(|request| request["id"].as_str().unwrap().to_string())
+            .map(|request| request["method"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
         assert!(
-            ids.iter()
-                .any(|id| id.starts_with("truapi:sso-pairing:1:query:")),
-            "core should issue snapshot queries while pairing: {ids:?}"
+            methods
+                .iter()
+                .filter(|method| method.as_str() == "statement_subscribeStatement")
+                .count()
+                >= 2,
+            "core should issue snapshot queries while pairing: {methods:?}"
         );
         assert!(
-            ids.iter()
-                .any(|id| id.contains(":query:") && id.ends_with(":unsubscribe")),
-            "drained query subscription should be cleaned up: {ids:?}"
-        );
-    }
-
-    #[test]
-    fn pairing_query_parser_ignores_echoed_subscribe_request() {
-        let frame = r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1:query:7","method":"statement_subscribeStatement","params":[{"matchAll":["0x0707070707070707070707070707070707070707070707070707070707070707"]}]}"#;
-
-        assert_eq!(
-            parse_pairing_query_subscribe_ack(frame, Some("truapi:sso-pairing:1:query:7")).unwrap(),
-            None
-        );
-        assert_eq!(
-            parse_pairing_query_subscribe_ack(frame, None).unwrap(),
-            None
-        );
-    }
-
-    #[test]
-    fn pairing_query_parser_ignores_no_result_subscribe_response() {
-        let frame = r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1:query:7"}"#;
-
-        assert_eq!(
-            parse_pairing_query_subscribe_ack(frame, Some("truapi:sso-pairing:1:query:7")).unwrap(),
-            None
-        );
-        assert_eq!(
-            parse_pairing_query_subscribe_ack(frame, None).unwrap(),
-            None
+            methods
+                .iter()
+                .any(|method| method == "statement_unsubscribeStatement"),
+            "drained query subscription should be cleaned up: {methods:?}"
         );
     }
 

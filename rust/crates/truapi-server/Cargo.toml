@@ -20,6 +20,8 @@ derive_more = { version = "2", features = ["display"] }
 futures = "0.3"
 futures-timer = { version = "3", features = ["wasm-bindgen"] }
 parity-scale-codec = { version = "3", features = ["derive"] }
+primitive-types = { version = "0.13", default-features = false, features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
 unicode-normalization = "0.1"
@@ -40,14 +42,16 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+futures = { version = "0.3", features = ["thread-pool"] }
+rand = { version = "0.8", optional = true }
+subxt-rpcs = { version = "0.50.1", default-features = false, features = ["native"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util"], optional = true }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["handshake"], optional = true }
-rand = { version = "0.8", optional = true }
-futures = { version = "0.3", features = ["thread-pool"] }
 uniffi = "0.29.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
+subxt-rpcs = { version = "0.50.1", default-features = false, features = ["web"] }
 wasm-bindgen = "0.2.118"
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
@@ -64,9 +68,9 @@ web-sys = { version = "0.3", features = [
     "WebSocket",
 ] }
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect"] }
-
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-wasm-bindgen-test = "0.3"

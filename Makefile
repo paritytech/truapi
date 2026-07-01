@@ -85,7 +85,7 @@ uniffi: ## Regenerate Swift bindings from truapi-server cdylib.
 		ios/truapi-host/Sources/truapi_serverFFI/include/module.modulemap
 
 test: ## Run Rust + TypeScript client tests.
-	cargo test --workspace --features ws-bridge
+	cargo test --workspace
 	cd $(TRUAPI_PKG) && npm test
 	cd $(JS_PACKAGES)/truapi-host-wasm && npm test
 
@@ -93,7 +93,7 @@ check: ## Full verification suite (build, fmt, clippy, test, TS tests, playgroun
 	cargo build --workspace
 	cargo +nightly fmt --check
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
-	cargo test --workspace --features ws-bridge
+	cargo test --workspace
 	cd $(TRUAPI_PKG) && npm run build && npm test
 	cd $(JS_PACKAGES)/truapi-host-wasm && npm install --no-fund --no-audit && npm test
 	cd $(PLAYGROUND) && yarn build && yarn lint
@@ -128,6 +128,7 @@ dev: dev-bootstrap ## Start dotli host (:5173) + playground (:3000) together; op
 	@trap 'kill 0' EXIT; \
 	( cd $(DOTLI) && bun run $(DOTLI_PREVIEW) ) & \
 	( cd $(PLAYGROUND) && yarn dev ) & \
+	( until curl -fsS http://localhost:3000/ >/dev/null 2>&1; do sleep 1; done; curl -fsS http://localhost:3000/diagnostics >/dev/null 2>&1 || true ) & \
 	wait
 
 e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_BOT_SVC_TOKEN unless E2E_DOTLI_SMOKE=1.

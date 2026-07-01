@@ -3,10 +3,14 @@ import { describe, expect, it } from "bun:test";
 
 import { createTransport } from "./client.js";
 import { CallError, indexedTaggedUnion, Result as ScaleResult, str, _void } from "./scale.js";
+import type { Codec } from "./scale.js";
 import { createClient, SubscriptionError } from "./generated/client.js";
 import * as T from "./generated/types.js";
 import * as W from "./generated/wire-table.js";
 import { encodeWireMessage } from "./transport.js";
+
+/** Wrap a codec in the `{ V1: [0, codec] }` indexed-tagged-union envelope. */
+const versionedV1 = <T>(codec: Codec<T>) => indexedTaggedUnion({ V1: [0, codec] });
 
 function toHex(u: Uint8Array): string {
     return Array.from(u)
@@ -56,9 +60,10 @@ function providerFixture() {
 
 /** Encode a V1 host-handshake response result payload. */
 function handshakeResponsePayload(value: { success: true; value: undefined }): Uint8Array {
-    return indexedTaggedUnion({
-        V1: [0, ScaleResult(_void, CallError(T.VersionedHostHandshakeError))],
-    }).enc({ tag: "V1", value });
+    return versionedV1(ScaleResult(_void, CallError(T.VersionedHostHandshakeError))).enc({
+        tag: "V1",
+        value,
+    });
 }
 
 function accountGetResponsePayload(
@@ -72,21 +77,16 @@ function accountGetResponsePayload(
               value: { tag: "Domain"; value: T.VersionedHostAccountGetError };
           },
 ): Uint8Array {
-    return indexedTaggedUnion({
-        V1: [0, ScaleResult(T.HostAccountGetResponse, CallError(T.VersionedHostAccountGetError))],
-    }).enc({ tag: "V1", value });
+    return versionedV1(
+        ScaleResult(T.HostAccountGetResponse, CallError(T.VersionedHostAccountGetError)),
+    ).enc({ tag: "V1", value });
 }
 
-/** Encode a V1 testing framework error response payload. */
-function testingFrameworkErrorPayload(reason: string): Uint8Array {
-    return indexedTaggedUnion({
-        V1: [0, ScaleResult(_void, CallError(T.VersionedTestingProbeError))],
-    }).enc({
-        tag: "V1",
-        value: {
-            success: false,
-            value: { tag: "HostFailure", value: { reason } },
-        },
+/** Encode a raw testing echo error response payload. */
+function testingEchoErrorPayload(reason: string): Uint8Array {
+    return ScaleResult(_void, CallError(T.V01TestingVersionProbeError)).enc({
+        success: false,
+        value: { tag: "HostFailure", value: { reason } },
     });
 }
 
@@ -126,15 +126,15 @@ describe("generated client transport", () => {
             message: "hello from test",
             marker: 42,
         };
-        void client.testing.probe(request);
+        void client.testing.versionProbe(request);
 
-        const expectedPayload = T.VersionedTestingProbeRequest.enc({
+        const expectedPayload = T.VersionedTestingVersionProbeRequest.enc({
             tag: "V2",
             value: request,
         });
         const expectedFrame = new Uint8Array(str.enc("p:1").length + 1 + expectedPayload.length);
         expectedFrame.set(str.enc("p:1"), 0);
-        expectedFrame[str.enc("p:1").length] = W.TESTING_PROBE.request;
+        expectedFrame[str.enc("p:1").length] = W.TESTING_VERSION_PROBE.request;
         expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
 
         expect(toHex(fixture.sent[0])).toBe(toHex(expectedFrame));
@@ -215,13 +215,15 @@ describe("generated client transport", () => {
         const transport = createTransport(fixture.provider);
         const client = createClient(transport);
 
-        const response = client.testing.frameworkError({ error: "HostFailure" });
+        const response = client.testing.echoError({
+            error: { tag: "HostFailure", value: { reason: "forced by test" } },
+        });
         const frame = unwrap(
             encodeWireMessage({
                 requestId: "p:1",
                 payload: {
-                    id: W.TESTING_FRAMEWORK_ERROR.response,
-                    value: testingFrameworkErrorPayload("forced by test"),
+                    id: W.TESTING_ECHO_ERROR.response,
+                    value: testingEchoErrorPayload("forced by test"),
                 },
             }),
             "encode testing framework error response",
@@ -341,9 +343,10 @@ describe("generated client transport", () => {
                 requestId: sub.subscriptionId,
                 payload: {
                     id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
-                    value: indexedTaggedUnion({
-                        V1: [0, CallError(T.VersionedHostPaymentBalanceSubscribeError)],
-                    }).enc({ tag: "V1", value: callError }),
+                    value: versionedV1(CallError(T.VersionedHostPaymentBalanceSubscribeError)).enc({
+                        tag: "V1",
+                        value: callError,
+                    }),
                 },
             }),
             "encode typed payment interrupt",
@@ -377,9 +380,9 @@ describe("generated client transport", () => {
                 requestId: sub.subscriptionId,
                 payload: {
                     id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
-                    value: indexedTaggedUnion({
-                        V1: [0, CallError(T.VersionedHostCoinPaymentRebalancePurseError)],
-                    }).enc({ tag: "V1", value: callError }),
+                    value: versionedV1(
+                        CallError(T.VersionedHostCoinPaymentRebalancePurseError),
+                    ).enc({ tag: "V1", value: callError }),
                 },
             }),
             "encode typed coin payment interrupt",

@@ -53,6 +53,29 @@ pub fn generate(
     Ok(())
 }
 
+/// Emit one `import`/`import type` block listing `names` (one per line) from
+/// `module`. No-op when `names` is empty. Does not emit a trailing blank line.
+fn emit_import_block(out: &mut String, type_only: bool, module: &str, names: &BTreeSet<String>) {
+    if names.is_empty() {
+        return;
+    }
+    let entries = names
+        .iter()
+        .map(|name| format!("  {name},"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let keyword = if type_only { "import type" } else { "import" };
+    writedoc!(
+        out,
+        r#"
+        {keyword} {{
+        {entries}
+        }} from "{module}";
+        "#,
+    )
+    .unwrap();
+}
+
 fn emit_host_callbacks(
     definition: &PlatformDefinition,
     codec_types: &BTreeSet<String>,
@@ -84,21 +107,8 @@ fn emit_host_callbacks(
         .unwrap();
     }
     if !codec_imports.is_empty() {
-        let entries = codec_imports
-            .iter()
-            .map(|name| format!("  {name},"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        writedoc!(
-            out,
-            r#"
-            import {{
-            {entries}
-            }} from "@parity/truapi";
-
-            "#,
-        )
-        .unwrap();
+        emit_import_block(&mut out, false, "@parity/truapi", &codec_imports);
+        out.push('\n');
     }
 
     let imports = collect_named_types(definition)
@@ -106,21 +116,8 @@ fn emit_host_callbacks(
         .filter(|name| !codec_imports.contains(name))
         .collect::<BTreeSet<_>>();
     if !imports.is_empty() {
-        let entries = imports
-            .iter()
-            .map(|name| format!("  {name},"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        writedoc!(
-            out,
-            r#"
-            import type {{
-            {entries}
-            }} from "@parity/truapi";
-
-            "#,
-        )
-        .unwrap();
+        emit_import_block(&mut out, true, "@parity/truapi", &imports);
+        out.push('\n');
     }
 
     for type_def in &definition.types {
@@ -173,27 +170,14 @@ fn emit_wasm_adapter(
 ) -> Result<String> {
     // Only the capability traits the `Platform` super-trait composes are host
     // callbacks; returned handles like `JsonRpcConnection` are not.
-    let composed: BTreeSet<String> = match &definition.super_trait {
-        Some(s) => s.composes.iter().cloned().collect(),
-        None => definition.traits.iter().map(|t| t.name.clone()).collect(),
-    };
-    let traits: Vec<&PlatformTrait> = definition
-        .traits
-        .iter()
-        .filter(|t| composed.contains(&t.name))
-        .collect();
+    let traits = composed_traits(definition);
 
     // Local types are emitted in `host-callbacks.ts` (e.g. `AuthState`); codec
     // types carry SCALE codecs and are imported as values for `.enc`/`.dec`.
     // Anything else named in a signature (e.g. the `NotificationId` alias) is a
     // non-codec `@parity/truapi` type the `RawCallbacks` interface imports for
     // its type only.
-    let local: BTreeSet<String> = definition
-        .traits
-        .iter()
-        .map(|t| t.name.clone())
-        .chain(definition.types.iter().map(|s| s.name.clone()))
-        .collect();
+    let local = local_names(definition);
     let mut imports: BTreeSet<String> = BTreeSet::new();
     let mut extra_types: BTreeSet<String> = BTreeSet::new();
     let mut adapter_local_codec_types: BTreeSet<String> = BTreeSet::new();
@@ -235,54 +219,14 @@ fn emit_wasm_adapter(
         "#,
     )
     .unwrap();
-    if !imports.is_empty() {
-        let entries = imports
-            .iter()
-            .map(|name| format!("  {name},"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        writedoc!(
-            out,
-            r#"
-            import {{
-            {entries}
-            }} from "@parity/truapi";
-            "#,
-        )
-        .unwrap();
-    }
-    if !extra_types.is_empty() {
-        let entries = extra_types
-            .iter()
-            .map(|name| format!("  {name},"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        writedoc!(
-            out,
-            r#"
-            import type {{
-            {entries}
-            }} from "@parity/truapi";
-            "#,
-        )
-        .unwrap();
-    }
-    if !adapter_local_codec_types.is_empty() {
-        let entries = adapter_local_codec_types
-            .iter()
-            .map(|name| format!("  {name},"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        writedoc!(
-            out,
-            r#"
-            import {{
-            {entries}
-            }} from "./host-callbacks.js";
-            "#,
-        )
-        .unwrap();
-    }
+    emit_import_block(&mut out, false, "@parity/truapi", &imports);
+    emit_import_block(&mut out, true, "@parity/truapi", &extra_types);
+    emit_import_block(
+        &mut out,
+        false,
+        "./host-callbacks.js",
+        &adapter_local_codec_types,
+    );
     writedoc!(
         out,
         r#"
@@ -303,7 +247,7 @@ fn emit_wasm_adapter(
         /** Adapt typed host callbacks into the raw SCALE callback surface the
          *  WASM core invokes. */
         export function createWasmRawCallbacks(
-          host: Partial<HostCallbacks>,
+          host: Required<HostCallbacks>,
         ): RawCallbacks {{
           return {{
         "#,
@@ -311,11 +255,7 @@ fn emit_wasm_adapter(
     .unwrap();
     for trait_def in &traits {
         if trait_def.name == "ChainProvider" {
-            writeln!(
-                out,
-                "    ...(host.connect ? {{ chainConnect: chainConnectAdapter(host) }} : {{}}),"
-            )
-            .unwrap();
+            writeln!(out, "    chainConnect: chainConnectAdapter(host),").unwrap();
             continue;
         }
         for method in &trait_def.methods {
@@ -339,8 +279,7 @@ fn emit_worker_callbacks(
     _local_codec_types: &BTreeSet<String>,
 ) -> Result<String> {
     let traits = composed_traits(definition);
-    let mut required_callbacks = Vec::new();
-    let mut optional_callbacks = Vec::new();
+    let mut callbacks = Vec::new();
     let mut subscriptions = Vec::new();
 
     for trait_def in traits {
@@ -350,8 +289,7 @@ fn emit_worker_callbacks(
         for method in &trait_def.methods {
             match &method.return_shape.inner {
                 PlatformInner::Stream(_) => subscriptions.push(method),
-                _ if is_optional_worker_callback(method) => optional_callbacks.push(method),
-                _ => required_callbacks.push(method),
+                _ => callbacks.push(method),
             }
         }
     }
@@ -364,29 +302,20 @@ fn emit_worker_callbacks(
         //
         // Worker-side metadata and proxy functions for the raw WASM callback
         // surface. The worker transport/lifecycle remains hand-written; this
-        // file owns the callback names, installed host hooks, arity, and
+        // file owns the callback names, host-hook arity, and
         // subscription payload shape derived from `truapi-platform`.
 
-        import type {{ HostCallbacks, ChainConnect }} from "../runtime.js";
+        import type {{ ChainConnect }} from "../runtime.js";
         import type {{ RawCallbacks }} from "./host-callbacks-adapter.js";
 
         "#
     )
     .unwrap();
 
-    out.push_str(&const_name_array(
-        "REQUIRED_CALLBACK_NAMES",
-        &required_callbacks,
-    ));
-    out.push_str("export type RequiredCallbackName = typeof REQUIRED_CALLBACK_NAMES[number];\n\n");
-    out.push_str(&const_name_array(
-        "OPTIONAL_CALLBACK_NAMES",
-        &optional_callbacks,
-    ));
-    out.push_str("export type OptionalCallbackName = typeof OPTIONAL_CALLBACK_NAMES[number];\n\n");
+    out.push_str(&const_name_array("CALLBACK_NAMES", &callbacks));
+    out.push_str("export type CallbackName = typeof CALLBACK_NAMES[number];\n\n");
     out.push_str(&const_name_array("SUBSCRIPTION_NAMES", &subscriptions));
     out.push_str("export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];\n\n");
-    out.push_str("export type CallbackName = RequiredCallbackName | OptionalCallbackName;\n\n");
 
     writedoc!(
         out,
@@ -398,9 +327,7 @@ fn emit_worker_callbacks(
             payload: Uint8Array | null,
             sendItem: (value: T) => void,
           ): () => void;
-          chainConnect?: ChainConnect;
-          optionalCallbacks?: readonly OptionalCallbackName[];
-          optionalSubscriptions?: readonly SubscriptionName[];
+          chainConnect: ChainConnect;
         }}
 
         "#
@@ -408,15 +335,9 @@ fn emit_worker_callbacks(
     .unwrap();
 
     out.push_str(&emit_worker_callback_factory(
-        "requiredRawCallbacks",
-        "RequiredCallbackName",
-        &required_callbacks,
-    )?);
-    out.push('\n');
-    out.push_str(&emit_worker_callback_factory(
-        "optionalRawCallbacks",
-        "OptionalCallbackName",
-        &optional_callbacks,
+        "rawCallbacks",
+        "CallbackName",
+        &callbacks,
     )?);
     out.push('\n');
     out.push_str(&emit_worker_subscription_factory(&subscriptions)?);
@@ -429,36 +350,11 @@ fn emit_worker_callbacks(
           bridge: WorkerCallbackBridge,
         ): Record<string, unknown> {{
           const callbacks: Record<string, unknown> = {{
-            ...requiredRawCallbacks(bridge),
+            ...rawCallbacks(bridge),
+            ...subscriptionRawCallbacks(bridge),
+            chainConnect: bridge.chainConnect,
           }};
-          const optionalCallbacks = optionalRawCallbacks(bridge);
-          for (const name of bridge.optionalCallbacks ?? []) {{
-            callbacks[name] = optionalCallbacks[name];
-          }}
-          const optionalSubscriptions = subscriptionRawCallbacks(bridge);
-          for (const name of bridge.optionalSubscriptions ?? []) {{
-            callbacks[name] = optionalSubscriptions[name];
-          }}
-          if (bridge.chainConnect) {{
-            callbacks.chainConnect = bridge.chainConnect;
-          }}
           return callbacks;
-        }}
-
-        export function implementedOptionalCallbacks(
-          host: Partial<HostCallbacks>,
-        ): OptionalCallbackName[] {{
-          return OPTIONAL_CALLBACK_NAMES.filter(
-            (name) => typeof host[name] === "function",
-          );
-        }}
-
-        export function implementedOptionalSubscriptions(
-          host: Partial<HostCallbacks>,
-        ): SubscriptionName[] {{
-          return SUBSCRIPTION_NAMES.filter(
-            (name) => typeof host[name] === "function",
-          );
         }}
 
         export function startRawSubscription(
@@ -494,8 +390,15 @@ fn composed_traits(definition: &PlatformDefinition) -> Vec<&PlatformTrait> {
         .collect()
 }
 
-fn is_optional_worker_callback(method: &PlatformMethod) -> bool {
-    method.has_default
+/// All names defined locally in the platform crate: capability trait names plus
+/// the struct/enum type names emitted into `host-callbacks.ts`.
+fn local_names(definition: &PlatformDefinition) -> BTreeSet<String> {
+    definition
+        .traits
+        .iter()
+        .map(|t| t.name.clone())
+        .chain(definition.types.iter().map(|s| s.name.clone()))
+        .collect()
 }
 
 fn const_name_array(const_name: &str, methods: &[&PlatformMethod]) -> String {
@@ -542,7 +445,7 @@ fn emit_worker_callback_entry(method: &PlatformMethod) -> Result<String> {
     };
     if method.return_shape.is_async {
         Ok(format!(
-            "    {raw}: ({args}) =>\n      bridge.callbackRequest(\"{raw}\", {arg_array}) as ReturnType<NonNullable<RawCallbacks[\"{raw}\"]>>,\n"
+            "    {raw}: ({args}) =>\n      bridge.callbackRequest(\"{raw}\", {arg_array}) as ReturnType<RawCallbacks[\"{raw}\"]>,\n"
         ))
     } else {
         match &method.return_shape.inner {
@@ -550,7 +453,7 @@ fn emit_worker_callback_entry(method: &PlatformMethod) -> Result<String> {
                 "    {raw}: ({args}) =>\n      void bridge.callbackRequest(\"{raw}\", {arg_array}).catch(() => {{}}),\n"
             )),
             PlatformInner::Plain(_) => Ok(format!(
-                "    {raw}: ({args}) =>\n      bridge.callbackRequest(\"{raw}\", {arg_array}) as ReturnType<NonNullable<RawCallbacks[\"{raw}\"]>>,\n"
+                "    {raw}: ({args}) =>\n      bridge.callbackRequest(\"{raw}\", {arg_array}) as ReturnType<RawCallbacks[\"{raw}\"]>,\n"
             )),
             PlatformInner::Result { .. }
             | PlatformInner::Stream(_)
@@ -592,11 +495,11 @@ fn emit_start_raw_subscription_switch(methods: &[&PlatformMethod]) -> Result<Str
         let raw = to_camel_case(&method.name);
         if worker_subscription_payload_param(method)?.is_some() {
             out.push_str(&format!(
-                "    case \"{raw}\":\n      if (payload === null) {{\n        console.warn(`[truapi worker] ${{name}} requires payload`);\n        return undefined;\n      }}\n      return callbacks.{raw}?.(payload, sendItem);\n"
+                "    case \"{raw}\":\n      if (payload === null) {{\n        console.warn(`[truapi worker] ${{name}} requires payload`);\n        return undefined;\n      }}\n      return callbacks.{raw}(payload, sendItem);\n"
             ));
         } else {
             out.push_str(&format!(
-                "    case \"{raw}\":\n      return callbacks.{raw}?.(sendItem);\n"
+                "    case \"{raw}\":\n      return callbacks.{raw}(sendItem);\n"
             ));
         }
     }
@@ -641,10 +544,10 @@ fn collect_local_codec_names(
     }
 }
 
-/// Emit the sparse `RawCallbacks` interface: the byte-oriented callback bag
+/// Emit the complete `RawCallbacks` interface: the byte-oriented callback bag
 /// produced by the typed host adapter. Codec payloads cross as `Uint8Array`,
 /// strings/primitives/blobs pass through, subscriptions take a `sendItem` sink,
-/// and `chainConnect` is the bespoke optional handle.
+/// and `chainConnect` is the bespoke connection handle.
 fn emit_raw_callbacks(
     traits: &[&PlatformTrait],
     codec_types: &BTreeSet<String>,
@@ -662,7 +565,7 @@ fn emit_raw_callbacks(
             out.push('\n');
         }
     }
-    out.push_str("  chainConnect?: ChainConnect;\n");
+    out.push_str("  chainConnect: ChainConnect;\n");
     out.push_str("}\n");
     out
 }
@@ -688,7 +591,7 @@ fn raw_member(
                 })
                 .collect();
             params.push("sendItem: (item?: Uint8Array) => void".to_string());
-            format!("{name}?({}): (() => void) | void;", params.join(", "))
+            format!("{name}({}): (() => void) | void;", params.join(", "))
         }
         PlatformInner::TraitObject(_) => String::new(),
         inner => {
@@ -713,9 +616,9 @@ fn raw_member(
             // A synchronous (`!is_async`) callback is a fire-and-forget
             // notification (e.g. `authStateChanged`); everything else is async.
             if method.return_shape.is_async {
-                format!("{name}?({params}): Promise<{ok}>;")
+                format!("{name}({params}): Promise<{ok}>;")
             } else {
-                format!("{name}?({params}): {ok};")
+                format!("{name}({params}): {ok};")
             }
         }
     }
@@ -838,10 +741,9 @@ fn adapter_arg(
 ) -> String {
     let name = to_camel_case(&param.name);
     match &param.type_ref {
-        TypeRef::Named { name: ty, .. } if codec_types.contains(ty) => {
-            format!("{ty}.dec({name})")
-        }
-        TypeRef::Named { name: ty, .. } if local_codec_types.contains(ty) => {
+        TypeRef::Named { name: ty, .. }
+            if codec_types.contains(ty) || local_codec_types.contains(ty) =>
+        {
             format!("{ty}.dec({name})")
         }
         TypeRef::Primitive(p) if matches!(p.as_str(), "u64" | "u128" | "i64" | "i128") => {
@@ -861,10 +763,9 @@ fn param_names(method: &PlatformMethod) -> String {
         .join(", ")
 }
 
-/// Emit one entry of the adapter object literal for `method`: call the typed
-/// host method only when the host provides it. Absent callbacks remain absent
-/// so the worker bridge/Rust core owns optional fallback behavior and required
-/// omissions surface as explicit callback errors.
+/// Emit one entry of the adapter object literal for `method`: every web worker
+/// host provides a complete callback implementation, so missing capability
+/// behavior is expressed inside the host callback rather than by omitting it.
 fn emit_adapter_entry(
     method: &PlatformMethod,
     codec_types: &BTreeSet<String>,
@@ -886,9 +787,7 @@ fn emit_adapter_entry(
         }
         PlatformInner::TraitObject(_) => bail!("unexpected trait-object return on `{raw}`"),
     };
-    Ok(format!(
-        "...(host.{raw} ? {{ {raw}: {impl_expr} }} : {{}}),"
-    ))
+    Ok(format!("{raw}: {impl_expr},"))
 }
 
 /// The adapter implementation expression for a unary callback: decode codec
@@ -907,7 +806,7 @@ fn adapter_unary_impl(
         .map(|p| adapter_arg(p, codec_types, local_codec_types))
         .collect::<Vec<_>>()
         .join(", ");
-    let call = format!("host.{raw}!({args})");
+    let call = format!("host.{raw}({args})");
     let body = match ok {
         TypeRef::Named { name: ty, .. } if codec_types.contains(ty) => {
             format!("{ty}.enc(await {call})")
@@ -951,7 +850,7 @@ fn adapter_stream_impl(
         .collect();
     names.push("sendItem".to_string());
     let params = names.join(", ");
-    let call = format!("host.{raw}!({args})");
+    let call = format!("host.{raw}({args})");
     Ok(format!(
         "({params}) => driveResultStream({call}, {item_expr})"
     ))
@@ -992,49 +891,33 @@ fn collect_local_from_type_def(
     local: &BTreeSet<String>,
     out: &mut BTreeSet<String>,
 ) {
-    match &type_def.kind {
-        TypeDefKind::Alias(type_ref) => collect_local_from_type(type_ref, local, out),
-        TypeDefKind::Struct(fields) => {
-            for field in fields {
-                collect_local_from_type(&field.type_ref, local, out);
-            }
-        }
-        TypeDefKind::TupleStruct(fields) => {
-            for field in fields {
-                collect_local_from_type(field, local, out);
-            }
-        }
-        TypeDefKind::Enum(variants) => {
-            for variant in variants {
-                match &variant.fields {
-                    VariantFields::Unit => {}
-                    VariantFields::Unnamed(types) => {
-                        for ty in types {
-                            collect_local_from_type(ty, local, out);
-                        }
-                    }
-                    VariantFields::Named(fields) => {
-                        for field in fields {
-                            collect_local_from_type(&field.type_ref, local, out);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    walk_type_def(type_def, out, &mut |ty, out| {
+        collect_local_from_type(ty, local, out)
+    });
 }
 
 fn collect_from_type_def(type_def: &TypeDef, out: &mut BTreeSet<String>) {
+    walk_type_def(type_def, out, &mut |ty, out| collect_from_type(ty, out));
+}
+
+/// Walk every `TypeRef` reachable from a type definition's fields/variant
+/// payloads, applying `leaf` to each. Callers supply the leaf collector that
+/// decides which names land in `out`.
+fn walk_type_def(
+    type_def: &TypeDef,
+    out: &mut BTreeSet<String>,
+    leaf: &mut dyn FnMut(&TypeRef, &mut BTreeSet<String>),
+) {
     match &type_def.kind {
-        TypeDefKind::Alias(type_ref) => collect_from_type(type_ref, out),
+        TypeDefKind::Alias(type_ref) => leaf(type_ref, out),
         TypeDefKind::Struct(fields) => {
             for field in fields {
-                collect_from_type(&field.type_ref, out);
+                leaf(&field.type_ref, out);
             }
         }
         TypeDefKind::TupleStruct(fields) => {
             for field in fields {
-                collect_from_type(field, out);
+                leaf(field, out);
             }
         }
         TypeDefKind::Enum(variants) => {
@@ -1043,12 +926,12 @@ fn collect_from_type_def(type_def: &TypeDef, out: &mut BTreeSet<String>) {
                     VariantFields::Unit => {}
                     VariantFields::Unnamed(types) => {
                         for ty in types {
-                            collect_from_type(ty, out);
+                            leaf(ty, out);
                         }
                     }
                     VariantFields::Named(fields) => {
                         for field in fields {
-                            collect_from_type(&field.type_ref, out);
+                            leaf(&field.type_ref, out);
                         }
                     }
                 }
@@ -1279,7 +1162,7 @@ fn emit_trait_interface(trait_def: &PlatformTrait) -> Result<String> {
         {body}
         }}
         "#,
-        name = ts_local_name(&trait_def.name),
+        name = trait_def.name.to_string(),
     })
 }
 
@@ -1431,7 +1314,7 @@ fn emit_super_interface(name: &str, composes: &[String], docs: Option<&str>) -> 
     }
     let extends = composes
         .iter()
-        .map(|name| ts_local_name(name))
+        .map(|name| name.to_string())
         .collect::<Vec<_>>()
         .join(", ");
     format!("{jsdoc}export interface {name} extends {extends} {{}}\n")
@@ -1466,12 +1349,7 @@ fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
     }
     // Filter out names defined locally (the capability trait interfaces and
     // the platform struct/enum types emitted into this file).
-    let local: BTreeSet<String> = definition
-        .traits
-        .iter()
-        .map(|t| t.name.clone())
-        .chain(definition.types.iter().map(|s| s.name.clone()))
-        .collect();
+    let local = local_names(definition);
     out.into_iter().filter(|n| !local.contains(n)).collect()
 }
 
@@ -1555,10 +1433,6 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
         TypeRef::Generic(name) => Ok(name.clone()),
         TypeRef::Unit => Ok("void".to_string()),
     }
-}
-
-fn ts_local_name(name: &str) -> String {
-    name.to_string()
 }
 
 fn render_jsdoc(indent: &str, docs: Option<&str>) -> String {

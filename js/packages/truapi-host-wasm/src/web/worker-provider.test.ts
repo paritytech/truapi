@@ -8,6 +8,7 @@ import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
 import { CoreStorageKey } from "../generated/host-callbacks.js";
 import type { AuthState, HostCallbacks } from "../generated/host-callbacks.js";
 import type { HostCoreRuntimeConfig } from "../runtime.js";
+import { makeHostCallbacks, settle } from "../test-support.js";
 import { createWebWorkerProvider } from "./index.js";
 import type { CreateWebWorkerProviderOptions } from "./index.js";
 
@@ -62,20 +63,6 @@ function asWorker(worker: FakeWorker): Worker {
     return worker as unknown as Worker;
 }
 
-function makeCallbacks(overrides: Partial<HostCallbacks> = {}): Partial<HostCallbacks> {
-    return {
-        navigateTo: async () => {},
-        pushNotification: async () => ({ id: 0 }),
-        devicePermission: async () => ({ granted: false }),
-        remotePermission: async () => ({ granted: false }),
-        featureSupported: async () => ({ supported: false }),
-        read: async () => undefined,
-        write: async () => {},
-        clear: async () => {},
-        ...overrides,
-    };
-}
-
 function runtimeConfig(overrides: Partial<HostCoreRuntimeConfig> = {}): HostCoreRuntimeConfig {
     return {
         productId: "dotli.dot",
@@ -98,10 +85,6 @@ function runtimeConfig(overrides: Partial<HostCoreRuntimeConfig> = {}): HostCore
     };
 }
 
-async function settle() {
-    await new Promise<void>((resolve) => setImmediate(resolve));
-}
-
 type ReadyOptions = Partial<CreateWebWorkerProviderOptions> & {
     createWebWorkerProvider?: typeof createWebWorkerProvider;
 };
@@ -112,7 +95,7 @@ async function readyProvider(worker: FakeWorker, options: ReadyOptions = {}) {
         runtimeConfig: cfg = runtimeConfig(),
         ...rest
     } = options;
-    const providerPromise = createProvider(asWorker(worker), makeCallbacks(), {
+    const providerPromise = createProvider(asWorker(worker), makeHostCallbacks(), {
         runtimeConfig: cfg,
         ...rest,
     });
@@ -131,25 +114,13 @@ const devGlobal = globalThis as typeof globalThis & {
 };
 
 describe("createWebWorkerProvider", () => {
-    it("advertises only implemented optional callbacks", async () => {
-        // Optional callbacks are detected from the typed host surface, not the
-        // raw adapter defaults, so absent callbacks remain absent and the core
-        // can apply its own fallback behavior.
+    it("initializes the worker without a callback manifest", async () => {
         const worker = new FakeWorker();
         const config = runtimeConfig();
-        const providerPromise = createWebWorkerProvider(
-            asWorker(worker),
-            makeCallbacks({
-                connect: async () => ({
-                    send() {},
-                    async *responses() {},
-                }),
-            }),
-            {
-                logLevel: "debug",
-                runtimeConfig: config,
-            },
-        );
+        const providerPromise = createWebWorkerProvider(asWorker(worker), makeHostCallbacks(), {
+            logLevel: "debug",
+            runtimeConfig: config,
+        });
 
         worker.emit({ kind: "loaded" });
         expect(worker.messages.length).toBe(1);
@@ -157,9 +128,6 @@ describe("createWebWorkerProvider", () => {
             kind: "init",
             logLevel: "debug",
             runtimeConfig: config,
-            optionalCallbacks: [],
-            optionalSubscriptions: [],
-            chainConnect: true,
         });
 
         worker.emit({ kind: "ready" });
@@ -168,45 +136,6 @@ describe("createWebWorkerProvider", () => {
         expect(typeof provider.cancelPairing).toBe("function");
         expect(typeof provider.notifySessionStoreChanged).toBe("function");
 
-        provider.dispose();
-    });
-
-    it("advertises implemented optional surface", async () => {
-        const worker = new FakeWorker();
-        const config = runtimeConfig();
-        const providerPromise = createWebWorkerProvider(
-            asWorker(worker),
-            makeCallbacks({
-                cancelNotification: async () => {},
-                authStateChanged: () => {},
-                confirmUserAction: async () => true,
-                submitPreimage: async () => new Uint8Array([1]),
-                subscribeTheme: async function* () {},
-                lookupPreimage: async function* () {},
-            }),
-            {
-                logLevel: "debug",
-                runtimeConfig: config,
-            },
-        );
-
-        worker.emit({ kind: "loaded" });
-        expect(worker.messages[0]).toEqual({
-            kind: "init",
-            logLevel: "debug",
-            runtimeConfig: config,
-            optionalCallbacks: [
-                "authStateChanged",
-                "cancelNotification",
-                "submitPreimage",
-                "confirmUserAction",
-            ],
-            optionalSubscriptions: ["lookupPreimage", "subscribeTheme"],
-            chainConnect: false,
-        });
-
-        worker.emit({ kind: "ready" });
-        const provider = await providerPromise;
         provider.dispose();
     });
 
@@ -308,7 +237,7 @@ describe("createWebWorkerProvider", () => {
 
     it("resolves disconnect responses", async () => {
         const worker = new FakeWorker();
-        const providerPromise = createWebWorkerProvider(asWorker(worker), makeCallbacks(), {
+        const providerPromise = createWebWorkerProvider(asWorker(worker), makeHostCallbacks(), {
             runtimeConfig: runtimeConfig(),
         });
         worker.emit({ kind: "loaded" });
@@ -330,13 +259,13 @@ describe("createWebWorkerProvider", () => {
         provider.dispose();
     });
 
-    it("dispatches optional callback requests to host hooks", async () => {
+    it("dispatches callback requests to host hooks", async () => {
         const worker = new FakeWorker();
         let clears = 0;
         const authSessionKey = CoreStorageKey.enc({ tag: "AuthSession" });
         const providerPromise = createWebWorkerProvider(
             asWorker(worker),
-            makeCallbacks({
+            makeHostCallbacks({
                 clearCoreStorage: async (key) => {
                     expect(key).toEqual({ tag: "AuthSession", value: undefined });
                     clears += 1;
@@ -367,13 +296,11 @@ describe("createWebWorkerProvider", () => {
         provider.dispose();
     });
 
-    it("reports missing required callback requests", async () => {
+    it("reports unknown callback requests", async () => {
         const worker = new FakeWorker();
-        const providerPromise = createWebWorkerProvider(
-            asWorker(worker),
-            makeCallbacks({ pushNotification: undefined }),
-            { runtimeConfig: runtimeConfig() },
-        );
+        const providerPromise = createWebWorkerProvider(asWorker(worker), makeHostCallbacks(), {
+            runtimeConfig: runtimeConfig(),
+        });
         worker.emit({ kind: "loaded" });
         worker.emit({ kind: "ready" });
         const provider = await providerPromise;
@@ -381,7 +308,7 @@ describe("createWebWorkerProvider", () => {
         worker.emit({
             kind: "callbackRequest",
             requestId: 11,
-            name: "pushNotification",
+            name: "someFutureCallback",
             args: [new Uint8Array([1, 2, 3])],
         });
         await settle();
@@ -390,7 +317,7 @@ describe("createWebWorkerProvider", () => {
             kind: "callbackResponse",
             requestId: 11,
             ok: false,
-            error: "unknown callback: pushNotification",
+            error: "unknown callback: someFutureCallback",
         });
 
         provider.dispose();
@@ -401,7 +328,7 @@ describe("createWebWorkerProvider", () => {
         const states: AuthState[] = [];
         const providerPromise = createWebWorkerProvider(
             asWorker(worker),
-            makeCallbacks({
+            makeHostCallbacks({
                 authStateChanged: (state) => {
                     states.push(state);
                 },
@@ -472,10 +399,11 @@ describe("createWebWorkerProvider", () => {
     it("worker fault terminates the worker and runs the full teardown", async () => {
         const worker = new FakeWorker();
         let subscriptionDisposes = 0;
+        let chainResponseStops = 0;
         let chainCloses = 0;
         const providerPromise = createWebWorkerProvider(
             asWorker(worker),
-            makeCallbacks({
+            makeHostCallbacks({
                 // Manual async iterables whose `return()` records disposal; the
                 // provider disposes subscriptions and closes chain connections
                 // on a worker fault.
@@ -499,10 +427,13 @@ describe("createWebWorkerProvider", () => {
                             },
                             next: () => new Promise(() => {}),
                             return: async () => {
-                                chainCloses += 1;
+                                chainResponseStops += 1;
                                 return { done: true, value: undefined };
                             },
                         }) as unknown as AsyncIterable<string>,
+                    close() {
+                        chainCloses += 1;
+                    },
                 }),
             }),
             { runtimeConfig: runtimeConfig() },
@@ -534,6 +465,7 @@ describe("createWebWorkerProvider", () => {
 
         expect(worker.terminated).toBe(true);
         expect(subscriptionDisposes).toBe(1);
+        expect(chainResponseStops).toBe(1);
         expect(chainCloses).toBe(1);
         expect(closes.length).toBe(1);
         expect(closes[0].message).toMatch(/boom/);
@@ -552,7 +484,7 @@ describe("createWebWorkerProvider", () => {
 
     it("worker fatalError during init rejects provider creation", async () => {
         const worker = new FakeWorker();
-        const providerPromise = createWebWorkerProvider(asWorker(worker), makeCallbacks(), {
+        const providerPromise = createWebWorkerProvider(asWorker(worker), makeHostCallbacks(), {
             runtimeConfig: runtimeConfig(),
         });
 
@@ -586,7 +518,7 @@ describe("createWebWorkerProvider", () => {
         const keys: Uint8Array[] = [];
         const providerPromise = createWebWorkerProvider(
             asWorker(worker),
-            makeCallbacks({
+            makeHostCallbacks({
                 lookupPreimage: async function* (key) {
                     keys.push(key);
                     yield ok(new Uint8Array([1]));
@@ -622,7 +554,7 @@ describe("createWebWorkerProvider", () => {
         let preimageStarts = 0;
         const providerPromise = createWebWorkerProvider(
             asWorker(worker),
-            makeCallbacks({
+            makeHostCallbacks({
                 lookupPreimage: (() => {
                     preimageStarts += 1;
                     return () => {};
@@ -652,7 +584,7 @@ describe("createWebWorkerProvider", () => {
         let preimageStarts = 0;
         const providerPromise = createWebWorkerProvider(
             asWorker(worker),
-            makeCallbacks({
+            makeHostCallbacks({
                 lookupPreimage: (() => {
                     preimageStarts += 1;
                     return () => {};
@@ -678,7 +610,7 @@ describe("createWebWorkerProvider", () => {
 
     it("rejects when init times out", async () => {
         const worker = new FakeWorker();
-        const providerPromise = createWebWorkerProvider(asWorker(worker), makeCallbacks(), {
+        const providerPromise = createWebWorkerProvider(asWorker(worker), makeHostCallbacks(), {
             runtimeConfig: runtimeConfig(),
             initTimeoutMs: 20,
         });
@@ -689,7 +621,7 @@ describe("createWebWorkerProvider", () => {
 
     it("rejects on messageerror during init", async () => {
         const worker = new FakeWorker();
-        const providerPromise = createWebWorkerProvider(asWorker(worker), makeCallbacks(), {
+        const providerPromise = createWebWorkerProvider(asWorker(worker), makeHostCallbacks(), {
             runtimeConfig: runtimeConfig(),
         });
         worker.emitMessageError();
@@ -699,12 +631,14 @@ describe("createWebWorkerProvider", () => {
 
     it("decodes raw v01 push notification payloads", async () => {
         let notification: HostPushNotificationRequest | undefined;
-        const callbacks = createWasmRawCallbacks({
-            pushNotification: async (request) => {
-                notification = request;
-                return { id: 42 };
-            },
-        });
+        const callbacks = createWasmRawCallbacks(
+            makeHostCallbacks({
+                pushNotification: async (request) => {
+                    notification = request;
+                    return { id: 42 };
+                },
+            }),
+        );
 
         const encoded = await callbacks.pushNotification!(
             HostPushNotificationRequest.enc({

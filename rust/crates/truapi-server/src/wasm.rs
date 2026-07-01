@@ -8,24 +8,25 @@
 //! platform trait set imposes; sound on wasm32 because the runtime is
 //! single-threaded.
 
-use std::cell::Cell;
-use std::pin::Pin;
+use core::cell::Cell;
+use core::future::Future;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, Stream, StreamExt};
-use js_sys::{Function, Reflect, Uint8Array};
+use js_sys::{Array, Function, Reflect, Uint8Array};
 use parity_scale_codec::{Decode, Encode};
 use send_wrapper::SendWrapper;
 use truapi::v01;
-use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    AuthPresenter, AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features,
-    JsonRpcConnection, Navigation, Notifications, Permissions, PreimageHost, ProductStorage,
-    RuntimeConfig, RuntimeConfigValidationError, SessionUiInfo, ThemeHost, UserConfirmation,
-    UserConfirmationReview,
+    AuthPresenter, AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features, HostInfo,
+    JsonRpcConnection, Navigation, Notifications, Permissions, PlatformInfo, PreimageHost,
+    ProductStorage, RuntimeConfig, RuntimeConfigValidationError, SessionUiInfo, ThemeHost,
+    UserConfirmation, UserConfirmationReview,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -112,6 +113,7 @@ impl WasmPlatform {
     }
 }
 
+#[truapi_platform::async_trait]
 impl Navigation for WasmPlatform {
     async fn navigate_to(&self, url: String) -> Result<(), v01::HostNavigateToError> {
         invoke_navigate_to(&self.bridge, &url)
@@ -120,6 +122,7 @@ impl Navigation for WasmPlatform {
     }
 }
 
+#[truapi_platform::async_trait]
 impl Notifications for WasmPlatform {
     async fn push_notification(
         &self,
@@ -140,6 +143,7 @@ impl Notifications for WasmPlatform {
     }
 }
 
+#[truapi_platform::async_trait]
 impl Permissions for WasmPlatform {
     async fn device_permission(
         &self,
@@ -164,23 +168,21 @@ impl Permissions for WasmPlatform {
     }
 }
 
+#[truapi_platform::async_trait]
 impl Features for WasmPlatform {
     async fn feature_supported(
         &self,
-        request: HostFeatureSupportedRequest,
-    ) -> Result<HostFeatureSupportedResponse, v01::GenericError> {
-        // The host callback surface speaks the unversioned `v01` shape, so
-        // unwrap the request and re-wrap the response around this boundary.
-        let HostFeatureSupportedRequest::V1(inner) = request;
-        let bytes = invoke_bytes_return(&self.bridge.feature_supported, inner.encode())
+        request: v01::HostFeatureSupportedRequest,
+    ) -> Result<v01::HostFeatureSupportedResponse, v01::GenericError> {
+        let bytes = invoke_bytes_return(&self.bridge.feature_supported, request.encode())
             .await
             .map_err(generic)?;
-        let response = v01::HostFeatureSupportedResponse::decode(&mut bytes.as_slice())
-            .map_err(|_| generic("featureSupported response did not decode".to_string()))?;
-        Ok(HostFeatureSupportedResponse::V1(response))
+        v01::HostFeatureSupportedResponse::decode(&mut bytes.as_slice())
+            .map_err(|_| generic("featureSupported response did not decode".to_string()))
     }
 }
 
+#[truapi_platform::async_trait]
 impl ProductStorage for WasmPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         invoke_local_storage_read(&self.bridge, &key)
@@ -205,6 +207,7 @@ impl ProductStorage for WasmPlatform {
     }
 }
 
+#[truapi_platform::async_trait]
 impl ChainProvider for WasmPlatform {
     async fn connect(
         &self,
@@ -259,6 +262,7 @@ impl ChainProvider for WasmPlatform {
             Ok(Box::new(JsCallbackJsonRpcConnection {
                 send_fn: SendWrapper::new(send_fn),
                 close_fn: SendWrapper::new(close_fn),
+                closed: AtomicBool::new(false),
                 _on_response: SendWrapper::new(on_response),
                 response_rx: std::sync::Mutex::new(Some(response_rx)),
             }) as Box<dyn JsonRpcConnection>)
@@ -278,6 +282,7 @@ impl AuthPresenter for WasmPlatform {
     }
 }
 
+#[truapi_platform::async_trait]
 impl CoreStorage for WasmPlatform {
     async fn read_core_storage(
         &self,
@@ -305,6 +310,7 @@ impl CoreStorage for WasmPlatform {
     }
 }
 
+#[truapi_platform::async_trait]
 impl UserConfirmation for WasmPlatform {
     async fn confirm_user_action(
         &self,
@@ -326,6 +332,7 @@ impl ThemeHost for WasmPlatform {
     }
 }
 
+#[truapi_platform::async_trait]
 impl PreimageHost for WasmPlatform {
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         let Some(fn_) = self.bridge.submit_preimage.as_ref() else {
@@ -425,6 +432,7 @@ where
 struct JsCallbackJsonRpcConnection {
     send_fn: SendWrapper<Function>,
     close_fn: SendWrapper<Function>,
+    closed: AtomicBool,
     /// Closure must outlive the connection so JS keeps a live ref to the
     /// response sink. Dropped together with the rest of the struct.
     _on_response: SendWrapper<Closure<dyn FnMut(JsValue)>>,
@@ -454,11 +462,18 @@ impl JsonRpcConnection for JsCallbackJsonRpcConnection {
             }
         }
     }
+
+    fn close(&self) {
+        if self.closed.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let _ = self.close_fn.call0(&JsValue::NULL);
+    }
 }
 
 impl Drop for JsCallbackJsonRpcConnection {
     fn drop(&mut self) {
-        let _ = self.close_fn.call0(&JsValue::NULL);
+        self.close();
     }
 }
 
@@ -483,7 +498,7 @@ async fn await_optional_promise(returned: JsValue) -> Result<JsValue, String> {
 fn invoke_navigate_to(
     bridge: &JsBridge,
     url: &str,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
+) -> impl Future<Output = Result<(), String>> + Send {
     let fn_ = bridge.navigate_to.clone();
     let url = url.to_string();
     SendWrapper::new(async move {
@@ -496,7 +511,7 @@ fn invoke_navigate_to(
 fn invoke_bool(
     fn_: &Function,
     payload: Vec<u8>,
-) -> impl std::future::Future<Output = Result<bool, String>> + Send {
+) -> impl Future<Output = Result<bool, String>> + Send {
     let fn_ = fn_.clone();
     SendWrapper::new(async move {
         let arg = Uint8Array::from(payload.as_slice());
@@ -511,10 +526,7 @@ fn invoke_bool(
     })
 }
 
-fn invoke_u32_unit(
-    fn_: &Function,
-    value: u32,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
+fn invoke_u32_unit(fn_: &Function, value: u32) -> impl Future<Output = Result<(), String>> + Send {
     let fn_ = fn_.clone();
     SendWrapper::new(async move {
         let arg = JsValue::from_f64(f64::from(value));
@@ -523,26 +535,10 @@ fn invoke_u32_unit(
     })
 }
 
-fn invoke_u64_unit(
-    fn_: &Function,
-    value: u64,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
-        if value > MAX_SAFE_INTEGER {
-            return Err("callback numeric argument exceeds JS safe integer range".to_string());
-        }
-        let arg = JsValue::from_f64(value as f64);
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
-        await_optional_promise(returned).await.map(|_| ())
-    })
-}
-
 fn invoke_bytes_return(
     fn_: &Function,
     value: Vec<u8>,
-) -> impl std::future::Future<Output = Result<Vec<u8>, String>> + Send {
+) -> impl Future<Output = Result<Vec<u8>, String>> + Send {
     let fn_ = fn_.clone();
     SendWrapper::new(async move {
         let arg = Uint8Array::from(value.as_slice());
@@ -552,18 +548,6 @@ fn invoke_bytes_return(
             .dyn_into::<Uint8Array>()
             .map(|array| array.to_vec())
             .map_err(|_| "callback must resolve to Uint8Array".to_string())
-    })
-}
-
-fn invoke_bytes_unit(
-    fn_: &Function,
-    value: Vec<u8>,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        let arg = Uint8Array::from(value.as_slice());
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
-        await_optional_promise(returned).await.map(|_| ())
     })
 }
 
@@ -662,37 +646,10 @@ fn session_ui_info_to_js(info: &SessionUiInfo) -> JsValue {
     object.into()
 }
 
-fn invoke_no_args_unit(
-    fn_: &Function,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        let returned = fn_.call0(&JsValue::NULL).map_err(js_to_string)?;
-        await_optional_promise(returned).await.map(|_| ())
-    })
-}
-
-fn invoke_optional_bytes(
-    fn_: &Function,
-) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, String>> + Send {
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        let returned = fn_.call0(&JsValue::NULL).map_err(js_to_string)?;
-        let resolved = await_optional_promise(returned).await?;
-        if resolved.is_null() || resolved.is_undefined() {
-            return Ok(None);
-        }
-        let array = resolved
-            .dyn_into::<Uint8Array>()
-            .map_err(|_| "callback must resolve to Uint8Array, null or undefined".to_string())?;
-        Ok(Some(array.to_vec()))
-    })
-}
-
 fn invoke_core_storage_read(
     bridge: &JsBridge,
     key: CoreStorageKey,
-) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, String>> + Send {
+) -> impl Future<Output = Result<Option<Vec<u8>>, String>> + Send {
     let fn_ = bridge.core_storage_read.clone();
     SendWrapper::new(async move {
         let key_arg = Uint8Array::from(key.encode().as_slice());
@@ -712,7 +669,7 @@ fn invoke_core_storage_write(
     bridge: &JsBridge,
     key: CoreStorageKey,
     value: Vec<u8>,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
+) -> impl Future<Output = Result<(), String>> + Send {
     let fn_ = bridge.core_storage_write.clone();
     SendWrapper::new(async move {
         let key_arg = Uint8Array::from(key.encode().as_slice());
@@ -727,7 +684,7 @@ fn invoke_core_storage_write(
 fn invoke_core_storage_clear(
     bridge: &JsBridge,
     key: CoreStorageKey,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
+) -> impl Future<Output = Result<(), String>> + Send {
     let fn_ = bridge.core_storage_clear.clone();
     SendWrapper::new(async move {
         let key_arg = Uint8Array::from(key.encode().as_slice());
@@ -739,7 +696,7 @@ fn invoke_core_storage_clear(
 fn invoke_local_storage_read(
     bridge: &JsBridge,
     key: &str,
-) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, String>> + Send {
+) -> impl Future<Output = Result<Option<Vec<u8>>, String>> + Send {
     let fn_ = bridge.local_storage_read.clone();
     let key = key.to_string();
     SendWrapper::new(async move {
@@ -760,7 +717,7 @@ fn invoke_local_storage_write(
     bridge: &JsBridge,
     key: &str,
     value: &[u8],
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
+) -> impl Future<Output = Result<(), String>> + Send {
     let fn_ = bridge.local_storage_write.clone();
     let key = key.to_string();
     let value = value.to_vec();
@@ -777,7 +734,7 @@ fn invoke_local_storage_write(
 fn invoke_local_storage_clear(
     bridge: &JsBridge,
     key: &str,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
+) -> impl Future<Output = Result<(), String>> + Send {
     let fn_ = bridge.local_storage_clear.clone();
     let key = key.to_string();
     SendWrapper::new(async move {
@@ -832,20 +789,22 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
 
     RuntimeConfig::new(
         get_required_string_at(value, "productId", "runtimeConfig.productId")?,
-        get_required_string_at(&host, "name", "runtimeConfig.host.name")?,
-        get_optional_string_at(&host, "icon", "runtimeConfig.host.icon")?,
-        get_optional_string_at(&host, "version", "runtimeConfig.host.version")?,
-        match platform.as_ref() {
-            Some(platform) => {
-                get_optional_string_at(platform, "type", "runtimeConfig.platform.type")?
-            }
-            None => None,
+        HostInfo {
+            name: get_required_string_at(&host, "name", "runtimeConfig.host.name")?,
+            icon: get_optional_string_at(&host, "icon", "runtimeConfig.host.icon")?,
+            version: get_optional_string_at(&host, "version", "runtimeConfig.host.version")?,
         },
-        match platform.as_ref() {
-            Some(platform) => {
-                get_optional_string_at(platform, "version", "runtimeConfig.platform.version")?
-            }
-            None => None,
+        PlatformInfo {
+            kind: platform
+                .as_ref()
+                .map(|p| get_optional_string_at(p, "type", "runtimeConfig.platform.type"))
+                .transpose()?
+                .flatten(),
+            version: platform
+                .as_ref()
+                .map(|p| get_optional_string_at(p, "version", "runtimeConfig.platform.version"))
+                .transpose()?
+                .flatten(),
         },
         get_required_bytes32_at(&people, "genesisHash", "runtimeConfig.people.genesisHash")?,
         get_required_string_at(
@@ -855,6 +814,16 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
         )?,
     )
     .map_err(runtime_config_validation_to_js)
+}
+
+fn runtime_config_field_to_js(field: &str) -> &str {
+    match field {
+        "product_id" => "productId",
+        "host_info.name" => "host.name",
+        "pairing_deeplink_scheme" => "pairing.deeplinkScheme",
+        "people_chain_genesis_hash" => "people.genesisHash",
+        other => other,
+    }
 }
 
 fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue {
@@ -872,16 +841,6 @@ fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue
         RuntimeConfigValidationError::InvalidDeeplinkScheme { scheme } => JsValue::from_str(
             &format!("runtimeConfig.pairing.deeplinkScheme must not include ://, got {scheme:?}"),
         ),
-    }
-}
-
-fn runtime_config_field_to_js(field: &str) -> &str {
-    match field {
-        "product_id" => "productId",
-        "host_name" => "host.name",
-        "pairing_deeplink_scheme" => "pairing.deeplinkScheme",
-        "people_chain_genesis_hash" => "people.genesisHash",
-        other => other,
     }
 }
 
@@ -984,6 +943,19 @@ fn decode_permission_authorization_request(
             "permission authorization request did not decode: {err}"
         ))
     })
+}
+
+fn decode_permission_authorization_requests(
+    payloads: &Array,
+) -> Result<Vec<PermissionAuthorizationRequest>, JsValue> {
+    let mut requests = Vec::with_capacity(payloads.length() as usize);
+    for payload in payloads.iter() {
+        let payload = payload
+            .dyn_into::<Uint8Array>()
+            .map_err(|_| JsValue::from_str("permission authorization request must be bytes"))?;
+        requests.push(decode_permission_authorization_request(&payload.to_vec())?);
+    }
+    Ok(requests)
 }
 
 fn permission_authorization_status_to_js(status: PermissionAuthorizationStatus) -> JsValue {
@@ -1096,6 +1068,29 @@ impl WasmHostCore {
             .await
             .map_err(generic_error_to_js)?;
         Ok(permission_authorization_status_to_js(status))
+    }
+
+    /// Read stored permission authorization statuses without prompting.
+    ///
+    /// `payloads` is an array of SCALE-encoded
+    /// `PermissionAuthorizationRequest` values. Results follow the same order.
+    #[wasm_bindgen(js_name = permissionAuthorizationStatuses)]
+    pub async fn permission_authorization_statuses(
+        &self,
+        payloads: Array,
+    ) -> Result<Array, JsValue> {
+        let requests = decode_permission_authorization_requests(&payloads)?;
+        let statuses = self
+            .inner
+            .core
+            .permission_authorization_statuses(requests)
+            .await
+            .map_err(generic_error_to_js)?;
+        let values = Array::new();
+        for status in statuses {
+            values.push(&permission_authorization_status_to_js(status));
+        }
+        Ok(values)
     }
 
     /// Update a stored permission authorization status. Passing

@@ -12,16 +12,13 @@ rust/crates/
   truapi-codegen/        rustdoc JSON → TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits (storage, navigation, consent, ...)
-  truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node) and via UniFFI (iOS)
-  uniffi-bindgen-cli/    Thin CLI wrapper around uniffi::uniffi_bindgen_main()
+  truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node)
 js/packages/
   truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
   truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime. Subpath entries:
 	                           `.` (shared host types), `/web` (iframe + Web
 	                           Worker), `/worker-runtime` (Worker entry).
 	                           WASM bundle (gitignored) under dist/wasm/web/, built via `make wasm`
-ios/
-  truapi-host/             TrUAPIHost Swift Package (sources + UniFFI Swift bindings)
 playground/                Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/               dotli submodule
 docs/                      design docs, RFCs, feature proposals
@@ -42,8 +39,6 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
   Build them locally with `make wasm` (rerun whenever
   `rust/crates/truapi-server/` changes); CI builds the bundle fresh from the
   Rust source on every run.
-- UniFFI bindings under `ios/truapi-host/` are generated from the
-  `truapi-server` cdylib via `make uniffi`.
 
 ## Code style
 
@@ -52,9 +47,16 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
 - Do not add code comments or doc comments that narrate migrations, compatibility shims, or historical changes. Comments should describe only the current code.
 - Remove legacy compatibility code by default. Keep or add it only when explicitly requested.
 - In Rust format strings, prefer inlined variables: `"log value: {value:?}"` over `"log value: {:?}", value`.
+- For Rust modules, prefer `foo.rs` plus an optional `foo/` directory for
+  child modules. Do not introduce new `foo/mod.rs` files unless preserving
+  generated output or an existing external convention.
+- In runtime Rust code, prefer `core::` over `std::` for types that are
+  available in `core` (`core::pin::Pin`, `core::task::Poll`, `core::fmt`, and
+  similar). Keep `std::` for std-only APIs, tests, and std-only programs such
+  as `truapi-codegen`.
 - **No `any` in TypeScript types**: If a type can't be expressed cleanly, stop and ask the user whether to (a) refactor or import the right type or (b) add a scoped `// eslint-disable-next-line @typescript-eslint/no-explicit-any` exception. Never silently leave `any`.
 - Don't introduce typealias chains that just rename a public type from another crate (e.g. `pub type StorageError = crate::v01::HostLocalStorageReadError`). Use the canonical name directly. A typealias is only worth its indirection when it captures a real abstraction.
-- After any code change, update `README.md` (and CLAUDE.md if the layout changed) so the top-level docs reflect what the repo actually contains. Stale docs are a regression.
+- After any code change, update `README.md` (and CLAUDE.md if the layout changed) so the top-level docs reflect what the repo actually contains. Stale docs are a regression. When moving or removing docs, `rg` for the old path and update or remove stale links in README files, agent notes, skills, comments, and design docs.
 - In codegen emitters, prefer `indoc::writedoc!` / `formatdoc!` over chains of `writeln!`. A single `writedoc!` with a multi-line raw string keeps the emitted shape visible in source instead of fragmenting it across one-line `writeln!` calls. Reserve `writeln!` for the genuinely-one-line case (a single import, a single statement inside a loop).
 - In PR descriptions, issue comments, and other artifacts that outlive the conversation: describe the resulting state, not the transition between commits. Avoid "previously X, now Y", "we removed", "the old shim is gone", "this PR replaces", those read as ephemeral history once the PR is squash-merged. Write what the system _does_ after the change, not what each commit _changed_ on the way there. (Commit messages are the place for transition narrative; they survive in `git log` even after the squash.)
 
@@ -226,12 +228,12 @@ restart the tmux session. Port drift causes false-negative local e2e results.
 
 Useful debug signals:
 
-```bash
-localStorage.setItem("truapi:logLevel", "debug")
-sessionStorage.setItem("dotli:truapi-debug", "1")
+```js
+__truapi.setLogLevel("debug");
+sessionStorage.setItem("dotli:truapi-debug", "1");
 ```
 
-Reload after setting them. Watch for `Unknown wire discriminant`, missing
+Reload after setting the debug-panel flag. Watch for `Unknown wire discriminant`, missing
 `@parity/truapi-host-wasm` imports, worker WASM instantiation failures, and
 debug-panel traffic disappearing when the login popup opens.
 

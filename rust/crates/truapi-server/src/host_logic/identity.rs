@@ -21,6 +21,7 @@ struct ConsumerUsernamePrefix {
     lite_username: Vec<u8>,
 }
 
+/// Build the People-chain `Resources.Consumers` storage key for `account_id`.
 pub fn resources_consumers_storage_key(account_id: &[u8; 32]) -> Vec<u8> {
     let mut key = Vec::with_capacity(32 + 16 + account_id.len());
     key.extend_from_slice(&twox_128(b"Resources"));
@@ -30,6 +31,7 @@ pub fn resources_consumers_storage_key(account_id: &[u8; 32]) -> Vec<u8> {
     key
 }
 
+/// Decode the username fields from a `Resources.Consumers` storage value.
 pub fn decode_people_identity(value: &[u8]) -> Result<PeopleIdentity, String> {
     if value.len() < 65 {
         return Err(format!(
@@ -61,11 +63,7 @@ fn non_empty_string(bytes: Vec<u8>) -> Result<Option<String>, String> {
     }
     let value = String::from_utf8(bytes)
         .map_err(|err| format!("Resources.Consumers username is not UTF-8: {err}"))?;
-    if value.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(value))
-    }
+    Ok(Some(value))
 }
 
 #[cfg(test)]

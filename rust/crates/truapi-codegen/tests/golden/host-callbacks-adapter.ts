@@ -31,48 +31,48 @@ import {
 } from "../adapter-support.js";
 
 export interface RawCallbacks {
-  authStateChanged?(state: AuthState): void;
-  readCoreStorage?(key: Uint8Array): Promise<Uint8Array | null | undefined>;
-  writeCoreStorage?(key: Uint8Array, value: Uint8Array): Promise<void>;
-  clearCoreStorage?(key: Uint8Array): Promise<void>;
-  featureSupported?(request: Uint8Array): Promise<Uint8Array>;
-  navigateTo?(url: string): Promise<void>;
-  pushNotification?(notification: Uint8Array): Promise<Uint8Array>;
-  cancelNotification?(id: NotificationId): Promise<void>;
-  devicePermission?(request: Uint8Array): Promise<Uint8Array>;
-  remotePermission?(request: Uint8Array): Promise<Uint8Array>;
-  submitPreimage?(value: Uint8Array): Promise<Uint8Array>;
-  lookupPreimage?(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
-  read?(key: string): Promise<Uint8Array | null | undefined>;
-  write?(key: string, value: Uint8Array): Promise<void>;
-  clear?(key: string): Promise<void>;
-  subscribeTheme?(sendItem: (item?: Uint8Array) => void): (() => void) | void;
-  confirmUserAction?(review: Uint8Array): Promise<boolean>;
-  chainConnect?: ChainConnect;
+  authStateChanged(state: AuthState): void;
+  readCoreStorage(key: Uint8Array): Promise<Uint8Array | null | undefined>;
+  writeCoreStorage(key: Uint8Array, value: Uint8Array): Promise<void>;
+  clearCoreStorage(key: Uint8Array): Promise<void>;
+  featureSupported(request: Uint8Array): Promise<Uint8Array>;
+  navigateTo(url: string): Promise<void>;
+  pushNotification(notification: Uint8Array): Promise<Uint8Array>;
+  cancelNotification(id: NotificationId): Promise<void>;
+  devicePermission(request: Uint8Array): Promise<Uint8Array>;
+  remotePermission(request: Uint8Array): Promise<Uint8Array>;
+  submitPreimage(value: Uint8Array): Promise<Uint8Array>;
+  lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
+  read(key: string): Promise<Uint8Array | null | undefined>;
+  write(key: string, value: Uint8Array): Promise<void>;
+  clear(key: string): Promise<void>;
+  subscribeTheme(sendItem: (item?: Uint8Array) => void): (() => void) | void;
+  confirmUserAction(review: Uint8Array): Promise<boolean>;
+  chainConnect: ChainConnect;
 }
 /** Adapt typed host callbacks into the raw SCALE callback surface the
  *  WASM core invokes. */
 export function createWasmRawCallbacks(
-  host: Partial<HostCallbacks>,
+  host: Required<HostCallbacks>,
 ): RawCallbacks {
   return {
-    ...(host.authStateChanged ? { authStateChanged: async (state) => await host.authStateChanged!(state) } : {}),
-    ...(host.connect ? { chainConnect: chainConnectAdapter(host) } : {}),
-    ...(host.readCoreStorage ? { readCoreStorage: async (key) => await host.readCoreStorage!(CoreStorageKey.dec(key)) } : {}),
-    ...(host.writeCoreStorage ? { writeCoreStorage: async (key, value) => await host.writeCoreStorage!(CoreStorageKey.dec(key), value) } : {}),
-    ...(host.clearCoreStorage ? { clearCoreStorage: async (key) => await host.clearCoreStorage!(CoreStorageKey.dec(key)) } : {}),
-    ...(host.featureSupported ? { featureSupported: async (request) => HostFeatureSupportedResponse.enc(await host.featureSupported!(HostFeatureSupportedRequest.dec(request))) } : {}),
-    ...(host.navigateTo ? { navigateTo: async (url) => await host.navigateTo!(url) } : {}),
-    ...(host.pushNotification ? { pushNotification: async (notification) => HostPushNotificationResponse.enc(await host.pushNotification!(HostPushNotificationRequest.dec(notification))) } : {}),
-    ...(host.cancelNotification ? { cancelNotification: async (id) => await host.cancelNotification!(id) } : {}),
-    ...(host.devicePermission ? { devicePermission: async (request) => HostDevicePermissionResponse.enc(await host.devicePermission!(HostDevicePermissionRequest.dec(request))) } : {}),
-    ...(host.remotePermission ? { remotePermission: async (request) => RemotePermissionResponse.enc(await host.remotePermission!(RemotePermissionRequest.dec(request))) } : {}),
-    ...(host.submitPreimage ? { submitPreimage: async (value) => await host.submitPreimage!(value) } : {}),
-    ...(host.lookupPreimage ? { lookupPreimage: (key, sendItem) => driveResultStream(host.lookupPreimage!(key), sendItem) } : {}),
-    ...(host.read ? { read: async (key) => await host.read!(key) } : {}),
-    ...(host.write ? { write: async (key, value) => await host.write!(key, value) } : {}),
-    ...(host.clear ? { clear: async (key) => await host.clear!(key) } : {}),
-    ...(host.subscribeTheme ? { subscribeTheme: (sendItem) => driveResultStream(host.subscribeTheme!(), (item) => sendItem(ThemeVariant.enc(item))) } : {}),
-    ...(host.confirmUserAction ? { confirmUserAction: async (review) => await host.confirmUserAction!(UserConfirmationReview.dec(review)) } : {}),
+    authStateChanged: async (state) => await host.authStateChanged(state),
+    chainConnect: chainConnectAdapter(host),
+    readCoreStorage: async (key) => await host.readCoreStorage(CoreStorageKey.dec(key)),
+    writeCoreStorage: async (key, value) => await host.writeCoreStorage(CoreStorageKey.dec(key), value),
+    clearCoreStorage: async (key) => await host.clearCoreStorage(CoreStorageKey.dec(key)),
+    featureSupported: async (request) => HostFeatureSupportedResponse.enc(await host.featureSupported(HostFeatureSupportedRequest.dec(request))),
+    navigateTo: async (url) => await host.navigateTo(url),
+    pushNotification: async (notification) => HostPushNotificationResponse.enc(await host.pushNotification(HostPushNotificationRequest.dec(notification))),
+    cancelNotification: async (id) => await host.cancelNotification(id),
+    devicePermission: async (request) => HostDevicePermissionResponse.enc(await host.devicePermission(HostDevicePermissionRequest.dec(request))),
+    remotePermission: async (request) => RemotePermissionResponse.enc(await host.remotePermission(RemotePermissionRequest.dec(request))),
+    submitPreimage: async (value) => await host.submitPreimage(value),
+    lookupPreimage: (key, sendItem) => driveResultStream(host.lookupPreimage(key), sendItem),
+    read: async (key) => await host.read(key),
+    write: async (key, value) => await host.write(key, value),
+    clear: async (key) => await host.clear(key),
+    subscribeTheme: (sendItem) => driveResultStream(host.subscribeTheme(), (item) => sendItem(ThemeVariant.enc(item))),
+    confirmUserAction: async (review) => await host.confirmUserAction(UserConfirmationReview.dec(review)),
   };
 }

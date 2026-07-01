@@ -27,6 +27,8 @@ use truapi::api::{
 use truapi::versioned::{self, Versioned};
 
 use crate::dispatcher::Dispatcher;
+use crate::frame::encode_raw_err_payload;
+use crate::frame::encode_raw_unit_ok_payload;
 use crate::frame::encode_versioned_err_payload;
 use crate::frame::encode_versioned_interrupt_payload;
 use crate::frame::encode_versioned_ok_payload;
@@ -799,7 +801,16 @@ where
             Box::pin(async move {
                 let request: versioned::coin_payment::HostCoinPaymentRebalancePurseRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
-                    Err(_) => return Err(Vec::new()),
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::coin_payment::HostCoinPaymentRebalancePurseError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::coin_payment::HostCoinPaymentRebalancePurseError as Versioned>::LATEST,
+                        ));
+                    }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
@@ -820,7 +831,16 @@ where
             Box::pin(async move {
                 let request: versioned::coin_payment::HostCoinPaymentDeletePurseRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
-                    Err(_) => return Err(Vec::new()),
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::coin_payment::HostCoinPaymentDeletePurseError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::coin_payment::HostCoinPaymentDeletePurseError as Versioned>::LATEST,
+                        ));
+                    }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
@@ -897,7 +917,16 @@ where
             Box::pin(async move {
                 let request: versioned::coin_payment::HostCoinPaymentDepositRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
-                    Err(_) => return Err(Vec::new()),
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::coin_payment::HostCoinPaymentDepositError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::coin_payment::HostCoinPaymentDepositError as Versioned>::LATEST,
+                        ));
+                    }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
@@ -918,7 +947,16 @@ where
             Box::pin(async move {
                 let request: versioned::coin_payment::HostCoinPaymentRefundRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
-                    Err(_) => return Err(Vec::new()),
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::coin_payment::HostCoinPaymentRefundError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::coin_payment::HostCoinPaymentRefundError as Versioned>::LATEST,
+                        ));
+                    }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
@@ -939,7 +977,16 @@ where
             Box::pin(async move {
                 let request: versioned::coin_payment::HostCoinPaymentListenForRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
-                    Err(_) => return Err(Vec::new()),
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::coin_payment::HostCoinPaymentListenForError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::coin_payment::HostCoinPaymentListenForError as Versioned>::LATEST,
+                        ));
+                    }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
@@ -1152,7 +1199,16 @@ where
             Box::pin(async move {
                 let request: versioned::payment::HostPaymentBalanceSubscribeRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
-                    Err(_) => return Err(Vec::new()),
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::payment::HostPaymentBalanceSubscribeError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::payment::HostPaymentBalanceSubscribeError as Versioned>::LATEST,
+                        ));
+                    }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
@@ -1201,7 +1257,16 @@ where
             Box::pin(async move {
                 let request: versioned::payment::HostPaymentStatusSubscribeRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
-                    Err(_) => return Err(Vec::new()),
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::payment::HostPaymentStatusSubscribeError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::payment::HostPaymentStatusSubscribeError as Versioned>::LATEST,
+                        ));
+                    }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
@@ -1575,7 +1640,16 @@ where
             Box::pin(async move {
                 let request: versioned::statement_store::RemoteStatementStoreSubscribeRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
-                    Err(_) => return Err(Vec::new()),
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::statement_store::RemoteStatementStoreSubscribeError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::statement_store::RemoteStatementStoreSubscribeError as Versioned>::LATEST,
+                        ));
+                    }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
@@ -1771,23 +1845,23 @@ where
 {
     {
         let host = host.clone();
-        dispatcher.on_request(wire_table::TESTING_PROBE, move |request_id: String, bytes: Vec<u8>| {
+        dispatcher.on_request(wire_table::TESTING_VERSION_PROBE, move |request_id: String, bytes: Vec<u8>| {
             let host = host.clone();
             Box::pin(async move {
-                let request: versioned::testing::TestingProbeRequest = match Decode::decode(&mut &bytes[..]) {
+                let request: versioned::testing::TestingVersionProbeRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
                     Err(err) => {
-                        let error: truapi::CallError<versioned::testing::TestingProbeError> =
+                        let error: truapi::CallError<versioned::testing::TestingVersionProbeError> =
                             truapi::CallError::MalformedFrame { reason: err.to_string() };
                         return Ok(encode_versioned_err_payload(
                             error,
-                            <versioned::testing::TestingProbeError as Versioned>::LATEST,
+                            <versioned::testing::TestingVersionProbeError as Versioned>::LATEST,
                         ));
                     }
                 };
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
-                let response: versioned::testing::TestingProbeResponse = match host.probe(&cx, request).await {
+                let response: versioned::testing::TestingVersionProbeResponse = match host.version_probe(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
                         return Ok(encode_versioned_err_payload(err, target_version));
@@ -1799,27 +1873,21 @@ where
     }
     {
         let host = host;
-        dispatcher.on_request(wire_table::TESTING_FRAMEWORK_ERROR, move |request_id: String, bytes: Vec<u8>| {
+        dispatcher.on_request(wire_table::TESTING_ECHO_ERROR, move |request_id: String, bytes: Vec<u8>| {
             let host = host.clone();
             Box::pin(async move {
-                let request: versioned::testing::TestingFrameworkErrorRequest = match Decode::decode(&mut &bytes[..]) {
+                let request: truapi::v01::EchoErrorRequest = match Decode::decode(&mut &bytes[..]) {
                     Ok(request) => request,
                     Err(err) => {
-                        let error: truapi::CallError<versioned::testing::TestingProbeError> =
+                        let error: truapi::CallError<truapi::v01::TestingVersionProbeError> =
                             truapi::CallError::MalformedFrame { reason: err.to_string() };
-                        return Ok(encode_versioned_err_payload(
-                            error,
-                            <versioned::testing::TestingProbeError as Versioned>::LATEST,
-                        ));
+                        return Ok(encode_raw_err_payload(error));
                     }
                 };
-                let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
-                match host.framework_error(&cx, request).await {
-                    Ok(()) => Ok(encode_versioned_unit_ok_payload(target_version)),
-                    Err(err) => {
-                        Ok(encode_versioned_err_payload(err, target_version))
-                    }
+                match host.echo_error(&cx, request).await {
+                    Ok(()) => Ok(encode_raw_unit_ok_payload()),
+                    Err(err) => Ok(encode_raw_err_payload(err)),
                 }
             })
         });

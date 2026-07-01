@@ -1,6 +1,6 @@
 # truapi-server
 
-*Runtime core for TrUAPI: dispatcher, protocol frames, SCALE-coded wire envelope.*
+_Runtime core for TrUAPI: dispatcher, protocol frames, SCALE-coded wire envelope._
 
 ## What this crate is for
 

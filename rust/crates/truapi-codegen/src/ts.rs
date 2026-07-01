@@ -36,6 +36,7 @@ struct CodecContext {
 enum NameMode<'a> {
     #[default]
     Public,
+    PreserveQualified,
     Generated {
         aliases: &'a BTreeMap<String, String>,
     },
@@ -44,6 +45,7 @@ enum NameMode<'a> {
 fn resolve_named(name: &str, mode: NameMode<'_>) -> String {
     match mode {
         NameMode::Public => public_versioned_type_name(name),
+        NameMode::PreserveQualified => name.to_string(),
         NameMode::Generated { aliases } => aliases
             .get(name)
             .cloned()
@@ -56,6 +58,7 @@ fn resolve_named(name: &str, mode: NameMode<'_>) -> String {
 fn qualify_named(resolved: &str, mode: NameMode<'_>) -> String {
     match mode {
         NameMode::Public => format!("T.{resolved}"),
+        NameMode::PreserveQualified => format!("T.{resolved}"),
         NameMode::Generated { .. } => resolved.to_string(),
     }
 }
@@ -175,6 +178,71 @@ fn emitted_version_prefixed_types(
         }
     }
     names
+}
+
+fn preserve_version_prefixed_types_referenced_by_emitted_types(
+    api: &ApiDefinition,
+    aliases: &BTreeMap<String, String>,
+    names: &mut BTreeSet<String>,
+) {
+    loop {
+        let before = names.len();
+        for ty in &api.types {
+            if version_prefixed_type(&ty.name).is_some()
+                && !aliases.contains_key(&ty.name)
+                && !names.contains(&ty.name)
+            {
+                continue;
+            }
+            collect_preserved_version_prefixed_type_refs_from_type(ty, aliases, names);
+        }
+        if names.len() == before {
+            break;
+        }
+    }
+}
+
+fn collect_preserved_version_prefixed_type_refs_from_type(
+    ty: &TypeDef,
+    aliases: &BTreeMap<String, String>,
+    names: &mut BTreeSet<String>,
+) {
+    match &ty.kind {
+        TypeDefKind::Alias(type_ref) => {
+            collect_preserved_version_prefixed_type_refs(type_ref, aliases, names);
+        }
+        TypeDefKind::Struct(fields) => {
+            for field in fields {
+                collect_preserved_version_prefixed_type_refs(&field.type_ref, aliases, names);
+            }
+        }
+        TypeDefKind::TupleStruct(fields) => {
+            for field in fields {
+                collect_preserved_version_prefixed_type_refs(field, aliases, names);
+            }
+        }
+        TypeDefKind::Enum(variants) => {
+            for variant in variants {
+                match &variant.fields {
+                    VariantFields::Unit => {}
+                    VariantFields::Unnamed(fields) => {
+                        for field in fields {
+                            collect_preserved_version_prefixed_type_refs(field, aliases, names);
+                        }
+                    }
+                    VariantFields::Named(fields) => {
+                        for field in fields {
+                            collect_preserved_version_prefixed_type_refs(
+                                &field.type_ref,
+                                aliases,
+                                names,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn collect_preserved_version_prefixed_types(
@@ -831,8 +899,13 @@ fn generate_types(api: &ApiDefinition, target_version: u32) -> Result<String> {
     let wrappers = collect_versioned_wrappers(api);
     let emit_versions = versioned_wrapper_emit_versions(api, &wrappers, target_version)?;
     let aliases = selected_public_aliases(api, &wrappers, &emit_versions, target_version);
-    let preserved_version_prefixed_types =
+    let mut preserved_version_prefixed_types =
         emitted_version_prefixed_types(&wrappers, &emit_versions, &aliases);
+    preserve_version_prefixed_types_referenced_by_emitted_types(
+        api,
+        &aliases,
+        &mut preserved_version_prefixed_types,
+    );
 
     for ty in &api.types {
         if version_prefixed_type(&ty.name).is_some()
@@ -1279,8 +1352,14 @@ fn emit_error_response(
         });
     }
 
-    let inner_type_ts = format!("S.CallErrorValue<{}>", ts_type_qualified(error_wrapper_ty)?);
-    let inner_codec_expr = format!("S.CallError({})", codec_expr(error_wrapper_ty, true, ctx)?);
+    let inner_type_ts = format!(
+        "S.CallErrorValue<{}>",
+        ts_type_qualified_preserve(error_wrapper_ty)?
+    );
+    let inner_codec_expr = format!(
+        "S.CallError({})",
+        codec_expr_mode(error_wrapper_ty, true, ctx, NameMode::PreserveQualified)?
+    );
     Ok(ResponseEmission {
         inner_type_ts: inner_type_ts.clone(),
         wire_type_ts: inner_type_ts,
@@ -1626,7 +1705,7 @@ fn write_codec_definition(
 ) -> Result<()> {
     let generated_names = NameMode::Generated { aliases };
     if ty.generic_params.is_empty() {
-        let ctx = CodecContext::default();
+        let ctx = codec_context(&[]);
         if let Some(wrapper) = detect_versioned_wrapper(ty) {
             let selected = emit_versions.get(&ty.name);
             let emitted_name = if should_rename_wire_wrapper(ty, emit_versions, aliases) {
@@ -2015,6 +2094,12 @@ fn codec_expr_mode(
             _ => bail!("Unsupported primitive type `{name}` in TypeScript codec generation"),
         },
         TypeRef::Named { name, args } => {
+            if name == "CallError" && args.len() == 1 {
+                return Ok(format!(
+                    "S.CallError({})",
+                    codec_expr_mode(&args[0], qualified, ctx, mode)?
+                ));
+            }
             let resolved = resolve_named(name, mode);
             let target = if qualified {
                 qualify_named(&resolved, mode)
@@ -2089,6 +2174,12 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool, mode: NameMode<'_>) -> Resu
             _ => bail!("Unsupported primitive type `{name}` in TypeScript type generation"),
         },
         TypeRef::Named { name, args } => {
+            if name == "CallError" && args.len() == 1 {
+                return Ok(format!(
+                    "S.CallErrorValue<{}>",
+                    ts_type_with_named(&args[0], qualified, mode)?
+                ));
+            }
             let resolved = resolve_named(name, mode);
             let target = if qualified {
                 qualify_named(&resolved, mode)
@@ -2163,6 +2254,10 @@ fn ts_inner_option_with_named(ty: &TypeRef, qualified: bool, mode: NameMode<'_>)
 
 fn ts_type_qualified(ty: &TypeRef) -> Result<String> {
     ts_type_with_named(ty, true, NameMode::Public)
+}
+
+fn ts_type_qualified_preserve(ty: &TypeRef) -> Result<String> {
+    ts_type_with_named(ty, true, NameMode::PreserveQualified)
 }
 
 fn ts_field_name(name: &str, ty: &TypeRef) -> (String, bool) {

@@ -10,10 +10,7 @@
  * @module
  */
 
-import {
-  createMessagePortProvider,
-  type WireProvider,
-} from "./transport.js";
+import { createMessagePortProvider, type WireProvider } from "./transport.js";
 import { createTransport } from "./client.js";
 import { createClient, type TrUApiClient } from "./generated/index.js";
 
@@ -180,20 +177,10 @@ function waitForIframePort(
 /** Build the {@link WireProvider} matching the detected environment (iframe or webview). */
 function createSandboxProvider(): WireProvider {
   const portController = new AbortController();
-  if (isIframe()) {
-    const provider = createMessagePortProvider(
-      waitForIframePort(portController.signal),
-    );
-    const baseDispose = provider.dispose;
-    provider.dispose = () => {
-      portController.abort();
-      baseDispose?.();
-    };
-    return provider;
-  }
-  const provider = createMessagePortProvider(
-    waitForWebviewPort(portController.signal),
-  );
+  const portPromise = isIframe()
+    ? waitForIframePort(portController.signal)
+    : waitForWebviewPort(portController.signal);
+  const provider = createMessagePortProvider(portPromise);
   const baseDispose = provider.dispose;
   provider.dispose = () => {
     portController.abort();

@@ -23,6 +23,7 @@ pub enum ProductAccountError {
     NumericJunctionOutOfRange,
 }
 
+/// Whether `identifier` is a product scope the core is allowed to derive for.
 pub fn is_product_identifier(identifier: &str) -> bool {
     let normalized = normalize_product_identifier(identifier);
     normalized.ends_with(".dot")
@@ -30,10 +31,12 @@ pub fn is_product_identifier(identifier: &str) -> bool {
         || normalized.starts_with("localhost:")
 }
 
+/// Normalize product identifiers before derivation and policy checks.
 pub fn normalize_product_identifier(identifier: &str) -> String {
     identifier.nfc().collect::<String>().to_lowercase()
 }
 
+/// Derive a product account public key from the paired root public key.
 pub fn derive_product_public_key(
     root_public_key: [u8; 32],
     product_id: &str,
@@ -55,6 +58,7 @@ pub fn derive_product_public_key(
     Ok(public_key.to_bytes())
 }
 
+/// Encode a product account public key as a generic Substrate SS58 address.
 pub fn product_public_key_to_address(public_key: [u8; 32]) -> String {
     let mut payload = Vec::with_capacity(35);
     payload.push(SUBSTRATE_GENERIC_SS58_PREFIX);

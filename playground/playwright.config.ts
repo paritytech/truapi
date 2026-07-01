@@ -11,6 +11,7 @@ export default defineConfig({
   reporter: isCI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://localhost:5173",
+    serviceWorkers: "block",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -23,11 +24,13 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // dotli host iframe shell at :5173. `bun run preview` runs
-      // `turbo run build && bun scripts/preview-server.ts`, so a cold
-      // CI runner needs the long timeout.
-      command: "bun run preview",
+      // dotli host iframe shell at :5173. Localhost product proxy routes are
+      // debug-build-only, so mirror `make dev` and run the debug preview.
+      command: "bun run preview:debug",
       cwd: "../hosts/dotli",
+      env: {
+        VITE_NETWORKS: process.env.VITE_NETWORKS ?? "paseo-next-v2,previewnet",
+      },
       url: "http://localhost:5173",
       reuseExistingServer: !isCI,
       timeout: 10 * 60 * 1000,

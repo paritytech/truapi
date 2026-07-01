@@ -316,6 +316,9 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
         }
 
         for candidate in candidates {
+            if should_skip_type_candidate(&name, &candidate) {
+                continue;
+            }
             let item = krate
                 .index
                 .get(&candidate.item_id)
@@ -415,18 +418,24 @@ fn should_skip_type_name(name: &str) -> bool {
             | "CancellationToken"
             | "FrameworkOnlyError"
             | "Infallible"
+            | "LatestOf"
             | "RequestId"
             | "RuntimeFailure"
             | "RuntimeFailureKind"
     )
 }
 
+fn should_skip_type_candidate(name: &str, candidate: &ItemCandidate) -> bool {
+    should_skip_type_name(name) || candidate.path.iter().any(|segment| segment == "latest")
+}
+
 fn build_name_context(type_candidates: &BTreeMap<String, Vec<ItemCandidate>>) -> NameContext {
     let mut ctx = NameContext::default();
     for (simple_name, candidates) in type_candidates {
-        if should_skip_type_name(simple_name) {
-            continue;
-        }
+        let candidates = candidates
+            .iter()
+            .filter(|candidate| !should_skip_type_candidate(simple_name, candidate))
+            .collect::<Vec<_>>();
         let has_conflict = candidates.len() > 1;
         for candidate in candidates {
             let output_name = if has_conflict {
@@ -875,6 +884,7 @@ fn extract_generic_arg(
     resolve_type(&generic, names)
 }
 
+/// Resolve a rustdoc JSON type node into the internal type reference model.
 pub(crate) fn resolve_type(ty: &serde_json::Value, names: &NameContext) -> Result<TypeRef> {
     if let Some(name) = ty.get("generic").and_then(|value| value.as_str()) {
         return Ok(TypeRef::Generic(name.to_string()));
@@ -1016,6 +1026,7 @@ fn expect_single_arg(type_name: &str, mut args: Vec<TypeRef>) -> Result<TypeRef>
     Ok(args.remove(0))
 }
 
+/// Extract a struct item, including field docs and generic parameters.
 pub(crate) fn extract_struct(
     item_id: &str,
     item: &Item,
@@ -1117,6 +1128,7 @@ pub(crate) fn extract_struct(
     })
 }
 
+/// Extract an enum item, including variant docs and field payloads.
 pub(crate) fn extract_enum(
     item_id: &str,
     item: &Item,
@@ -1319,6 +1331,7 @@ fn value_id(value: &serde_json::Value) -> Result<String> {
     bail!("Expected rustdoc item id, got {}", summarize_json(value))
 }
 
+/// Render a bounded JSON snippet for diagnostics.
 pub(crate) fn summarize_json(value: &serde_json::Value) -> String {
     const LIMIT: usize = 200;
 

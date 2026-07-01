@@ -3,17 +3,16 @@
 use crate::{v01, v02};
 
 truapi_macros::versioned_type! {
-    pub enum TestingProbeRequest {
-        V1 => v01::TestingProbeRequest,
-        V2 => v02::TestingProbeRequest,
+    pub enum TestingVersionProbeRequest {
+        V1 => v01::TestingVersionProbeRequest,
+        V2 => v02::TestingVersionProbeRequest,
     }
-    pub enum TestingProbeResponse {
-        V1 => v01::TestingProbeResponse,
-        V2 => v02::TestingProbeResponse,
+    pub enum TestingVersionProbeResponse {
+        V1 => v01::TestingVersionProbeResponse,
+        V2 => v02::TestingVersionProbeResponse,
     }
-    pub enum TestingProbeError {
-        V1 => v01::TestingProbeError,
-        V2 => v02::TestingProbeError,
+    pub enum TestingVersionProbeError {
+        V1 => v01::TestingVersionProbeError,
+        V2 => v02::TestingVersionProbeError,
     }
-    pub enum TestingFrameworkErrorRequest { V1 => v01::TestingFrameworkErrorRequest }
 }

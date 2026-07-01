@@ -15,10 +15,12 @@ pub struct SessionStoreChangeNotifier {
 }
 
 impl SessionStoreChangeNotifier {
+    /// Create a notifier with no subscribers.
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
     }
 
+    /// Broadcast a storage-change tick to current subscribers.
     pub fn notify(&self) {
         let mut subscribers = self
             .subscribers
@@ -27,6 +29,7 @@ impl SessionStoreChangeNotifier {
         subscribers.retain(|tx| tx.unbounded_send(()).is_ok());
     }
 
+    /// Subscribe to storage-change ticks, including one initial tick.
     pub fn subscribe(&self) -> BoxStream<'static, ()> {
         let (tx, rx) = mpsc::unbounded();
         self.subscribers

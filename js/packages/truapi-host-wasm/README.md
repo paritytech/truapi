@@ -10,7 +10,7 @@ The package exposes tree-shakeable subpath exports — import only what your env
 
 | Import                                    | Provides                                                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `@parity/truapi-host-wasm`                | Shared runtime types plus generated typed host callback contracts.                                            |
+| `@parity/truapi-host-wasm`                | Shared runtime types plus generated typed host callback contracts.                                                  |
 | `@parity/truapi-host-wasm/web`            | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                   |
 | `@parity/truapi-host-wasm/worker-runtime` | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread. |
 | `@parity/truapi-host-wasm/wasm/web`       | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                  |

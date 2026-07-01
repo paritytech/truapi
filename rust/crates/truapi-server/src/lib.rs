@@ -19,6 +19,7 @@ pub(crate) mod dispatcher;
 pub mod frame;
 pub(crate) mod host_core;
 pub mod host_logic;
+pub(crate) mod host_rpc_client;
 pub mod logging;
 pub(crate) mod runtime;
 pub mod subscription;

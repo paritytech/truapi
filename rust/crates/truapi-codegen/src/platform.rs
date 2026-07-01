@@ -2,10 +2,10 @@
 //!
 //! Unlike the `truapi` API crate, the platform crate has no `#[wire(id = N)]`
 //! annotations: it is a set of host-facing capability traits whose methods
-//! are typed `async fn`-style (`impl Future<Output = T> + Send`) or plain
-//! synchronous functions returning trait objects / `BoxStream`. This module
-//! walks the rustdoc index for every public trait in the platform crate and
-//! produces a [`PlatformDefinition`] the TS emitter can render directly.
+//! use `async_trait` (rustdoc exposes those as boxed `Future` trait objects) or
+//! plain synchronous functions returning trait objects / `BoxStream`. This
+//! module walks the rustdoc index for every public trait in the platform crate
+//! and produces a [`PlatformDefinition`] the TS emitter can render directly.
 
 use std::collections::BTreeSet;
 
@@ -65,10 +65,11 @@ pub struct PlatformParam {
     pub type_ref: TypeRef,
 }
 
-/// Return shape after stripping `impl Future + Send` / `Box<dyn _>` wrappers.
+/// Return shape after stripping async-trait `Pin<Box<dyn Future<Output = T>>>`
+/// / `Box<dyn _>` wrappers.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PlatformReturn {
-    /// Whether the method returns `impl Future<...> + Send` (i.e. is async).
+    /// Whether the method returns an async-trait boxed future (i.e. is async).
     pub is_async: bool,
     /// Unwrapped inner shape.
     pub inner: PlatformInner,
@@ -445,7 +446,7 @@ fn resolve_return(
         });
     }
 
-    if let Some(future_output) = extract_impl_future_output(output) {
+    if let Some(future_output) = extract_async_trait_future_output(output) {
         let inner = resolve_inner_shape(&future_output, names)?;
         return Ok(PlatformReturn {
             is_async: true,
@@ -460,15 +461,22 @@ fn resolve_return(
     })
 }
 
-fn extract_impl_future_output(output: &serde_json::Value) -> Option<serde_json::Value> {
-    let bounds = output.get("impl_trait")?.as_array()?;
-    for bound in bounds {
-        // Skip non-trait bounds (outlives, `use<..>` captures) instead of
-        // aborting: a `Future` trait bound may come after them.
-        let Some(trait_obj) = bound.get("trait_bound").and_then(|tb| tb.get("trait")) else {
-            continue;
-        };
-        if trait_obj.get("path").and_then(|p| p.as_str()) != Some("Future") {
+fn extract_async_trait_future_output(output: &serde_json::Value) -> Option<serde_json::Value> {
+    let pin = output.get("resolved_path")?;
+    if resolved_leaf(pin) != Some("Pin") {
+        return None;
+    }
+    let boxed = generic_arg(pin, 0)?;
+    let boxed = boxed.get("resolved_path")?;
+    if resolved_leaf(boxed) != Some("Box") {
+        return None;
+    }
+    let dyn_trait = generic_arg(boxed, 0)?;
+    let dyn_trait = dyn_trait.get("dyn_trait")?;
+    let traits = dyn_trait.get("traits")?.as_array()?;
+    for trait_entry in traits {
+        let trait_obj = trait_entry.get("trait")?;
+        if resolved_leaf(trait_obj) != Some("Future") {
             continue;
         }
         let constraints = trait_obj
@@ -528,19 +536,7 @@ fn resolve_inner_shape(ty: &serde_json::Value, names: &NameContext) -> Result<Pl
                 if let Some(arg) = generic_arg(resolved, 0)
                     && let Some(dyn_trait) = arg.get("dyn_trait")
                 {
-                    let trait_name = dyn_trait
-                        .get("traits")
-                        .and_then(|t| t.as_array())
-                        .and_then(|arr| arr.first())
-                        .and_then(|first| first.get("trait"))
-                        .and_then(|trait_obj| trait_obj.get("path"))
-                        .and_then(|p| p.as_str())
-                        .context("Box<dyn Trait> missing trait path")?
-                        .rsplit("::")
-                        .next()
-                        .unwrap_or_default()
-                        .to_string();
-                    return Ok(PlatformInner::TraitObject(trait_name));
+                    return Ok(PlatformInner::TraitObject(dyn_trait_leaf_name(dyn_trait)?));
                 }
             }
             _ => {}
@@ -565,24 +561,34 @@ fn resolve_inner_type(ty: &serde_json::Value, names: &NameContext) -> Result<Typ
         && let Some(arg) = generic_arg(resolved, 0)
         && let Some(dyn_trait) = arg.get("dyn_trait")
     {
-        let trait_name = dyn_trait
-            .get("traits")
-            .and_then(|t| t.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|first| first.get("trait"))
-            .and_then(|trait_obj| trait_obj.get("path"))
-            .and_then(|p| p.as_str())
-            .context("Box<dyn Trait> missing trait path")?
-            .rsplit("::")
-            .next()
-            .unwrap_or_default()
-            .to_string();
         return Ok(TypeRef::Named {
-            name: trait_name,
+            name: dyn_trait_leaf_name(dyn_trait)?,
             args: Vec::new(),
         });
     }
     resolve_type(ty, names)
+}
+
+/// Extract the leaf trait name from a `Box<dyn Trait>` rustdoc `dyn_trait`
+/// value (the last `::`-segment of the first listed trait path).
+fn dyn_trait_leaf_name(dyn_trait: &serde_json::Value) -> Result<String> {
+    Ok(dyn_trait
+        .get("traits")
+        .and_then(|t| t.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|first| first.get("trait"))
+        .and_then(|trait_obj| trait_obj.get("path"))
+        .and_then(|p| p.as_str())
+        .context("Box<dyn Trait> missing trait path")?
+        .rsplit("::")
+        .next()
+        .unwrap_or_default()
+        .to_string())
+}
+
+fn resolved_leaf(resolved: &serde_json::Value) -> Option<&str> {
+    let path = resolved.get("path")?.as_str()?;
+    Some(path.rsplit("::").next().unwrap_or(path))
 }
 
 fn generic_arg(resolved: &serde_json::Value, index: usize) -> Option<serde_json::Value> {
@@ -612,42 +618,72 @@ mod tests {
 
     use super::*;
 
-    /// A non-trait bound (e.g. an outlives or `use<..>` capture bound)
-    /// preceding the `Future` bound must be skipped, not misclassify the
-    /// method as synchronous.
     #[test]
-    fn extract_impl_future_output_skips_non_trait_bounds() {
+    fn extract_async_trait_future_output_from_pin_box_dyn_future() {
         let output = json!({
-            "impl_trait": [
-                { "outlives": "'static" },
-                {
-                    "trait_bound": {
-                        "trait": {
-                            "path": "Future",
-                            "args": {
-                                "angle_bracketed": {
-                                    "args": [],
-                                    "constraints": [
-                                        {
-                                            "name": "Output",
-                                            "binding": {
-                                                "equality": {
-                                                    "type": { "primitive": "u8" }
-                                                }
+            "resolved_path": {
+                "path": "::core::pin::Pin",
+                "args": {
+                    "angle_bracketed": {
+                        "args": [
+                            {
+                                "type": {
+                                    "resolved_path": {
+                                        "path": "Box",
+                                        "args": {
+                                            "angle_bracketed": {
+                                                "args": [
+                                                    {
+                                                        "type": {
+                                                            "dyn_trait": {
+                                                                "traits": [
+                                                                    {
+                                                                        "trait": {
+                                                                            "path": "::core::future::Future",
+                                                                            "args": {
+                                                                                "angle_bracketed": {
+                                                                                    "args": [],
+                                                                                    "constraints": [
+                                                                                        {
+                                                                                            "name": "Output",
+                                                                                            "binding": {
+                                                                                                "equality": {
+                                                                                                    "type": { "primitive": "u8" }
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    ]
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    {
+                                                                        "trait": {
+                                                                            "path": "::core::marker::Send",
+                                                                            "args": null
+                                                                        }
+                                                                    }
+                                                                ],
+                                                                "lifetime": "'async_trait"
+                                                            }
+                                                        }
+                                                    }
+                                                ],
+                                                "constraints": []
                                             }
                                         }
-                                    ]
+                                    }
                                 }
                             }
-                        }
+                        ],
+                        "constraints": []
                     }
-                },
-                { "trait_bound": { "trait": { "path": "Send" } } }
-            ]
+                }
+            }
         });
 
         assert_eq!(
-            extract_impl_future_output(&output),
+            extract_async_trait_future_output(&output),
             Some(json!({ "primitive": "u8" }))
         );
     }

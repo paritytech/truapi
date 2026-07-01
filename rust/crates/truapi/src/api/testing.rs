@@ -3,7 +3,7 @@
 use crate::v01;
 use crate::v02;
 use crate::versioned::testing::{
-    TestingFrameworkErrorRequest, TestingProbeError, TestingProbeRequest, TestingProbeResponse,
+    TestingVersionProbeError, TestingVersionProbeRequest, TestingVersionProbeResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
@@ -13,65 +13,51 @@ pub trait Testing: Send + Sync {
     /// Echo the request version back to the caller.
     ///
     /// ```ts
-    /// const result = await truapi.testing.probe({
+    /// const result = await truapi.testing.versionProbe({
     ///   message: "hello from V2",
     ///   marker: 42,
     /// });
-    /// assert(result.isOk(), "testing probe failed:", result);
-    /// console.log("testing probe:", result.value);
+    /// assert(result.isOk(), "testing version probe failed:", result);
+    /// console.log("testing version probe:", result.value);
     /// ```
     #[wire(request_id = 164)]
-    async fn probe(
+    async fn version_probe(
         &self,
         _cx: &CallContext,
-        request: TestingProbeRequest,
-    ) -> Result<TestingProbeResponse, CallError<TestingProbeError>> {
+        request: TestingVersionProbeRequest,
+    ) -> Result<TestingVersionProbeResponse, CallError<TestingVersionProbeError>> {
         match request {
-            TestingProbeRequest::V1(inner) => {
-                Ok(TestingProbeResponse::V1(v01::TestingProbeResponse {
+            TestingVersionProbeRequest::V1(inner) => Ok(TestingVersionProbeResponse::V1(
+                v01::TestingVersionProbeResponse {
                     received_version: 1,
                     message: inner.message,
-                }))
-            }
-            TestingProbeRequest::V2(inner) => {
-                Ok(TestingProbeResponse::V2(v02::TestingProbeResponse {
+                },
+            )),
+            TestingVersionProbeRequest::V2(inner) => Ok(TestingVersionProbeResponse::V2(
+                v02::TestingVersionProbeResponse {
                     received_version: 2,
                     message: inner.message,
                     marker: inner.marker,
-                }))
-            }
+                },
+            )),
         }
     }
 
-    /// Force a framework-level error on the public response channel.
+    /// Echo a framework/domain error on the public response channel.
     ///
     /// ```ts
-    /// const result = await truapi.testing.frameworkError({
-    ///   error: "HostFailure",
+    /// const result = await truapi.testing.echoError({
+    ///   error: { tag: "HostFailure", value: { reason: "forced by test" } },
     /// });
     /// assert(result.isErr(), "expected host failure");
-    /// console.log("framework error:", result.error);
+    /// console.log("echo error:", result.error);
     /// ```
     #[wire(request_id = 166)]
-    async fn framework_error(
+    async fn echo_error(
         &self,
         _cx: &CallContext,
-        request: TestingFrameworkErrorRequest,
-    ) -> Result<(), CallError<TestingProbeError>> {
-        let TestingFrameworkErrorRequest::V1(inner) = request;
-        force_framework_error(inner.error)
-    }
-}
-
-fn force_framework_error<E>(error: v01::TestingFrameworkError) -> Result<(), CallError<E>> {
-    match error {
-        v01::TestingFrameworkError::Denied => Err(CallError::Denied),
-        v01::TestingFrameworkError::Unsupported => Err(CallError::Unsupported),
-        v01::TestingFrameworkError::MalformedFrame => Err(CallError::MalformedFrame {
-            reason: "forced by testing.framework_error".to_string(),
-        }),
-        v01::TestingFrameworkError::HostFailure => Err(CallError::HostFailure {
-            reason: "forced by testing.framework_error".to_string(),
-        }),
+        request: v01::EchoErrorRequest,
+    ) -> Result<(), CallError<v01::TestingVersionProbeError>> {
+        Err(request.error)
     }
 }

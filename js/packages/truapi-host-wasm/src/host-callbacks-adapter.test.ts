@@ -16,6 +16,7 @@ import type { HostSignPayloadData } from "@parity/truapi";
 
 import { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
 import { CoreStorageKey, UserConfirmationReview } from "./generated/host-callbacks.js";
+import { makeHostCallbacks, settle } from "./test-support.js";
 
 // The generated `createWasmRawCallbacks` adapter speaks the symmetric SCALE
 // byte boundary: codec-typed requests arrive as `Uint8Array` and are decoded
@@ -45,39 +46,37 @@ const SIGN_PAYLOAD: HostSignPayloadData = {
     mode: undefined,
 };
 
-function settle() {
-    return new Promise<void>((resolve) => setImmediate(resolve));
-}
-
 describe("createWasmRawCallbacks", () => {
     it("decodes requests and encodes typed responses", async () => {
         const writes: [string, number[]][] = [];
         const clears: string[] = [];
         const cancelled: number[] = [];
-        const raw = createWasmRawCallbacks({
-            pushNotification: async (notification) => ({
-                id: notification.text.length,
+        const raw = createWasmRawCallbacks(
+            makeHostCallbacks({
+                pushNotification: async (notification) => ({
+                    id: notification.text.length,
+                }),
+                cancelNotification: async (id) => {
+                    cancelled.push(id);
+                },
+                devicePermission: async (request) => ({
+                    granted: request === "Camera",
+                }),
+                remotePermission: async (request) => ({
+                    granted: request.permission.tag === "ChainSubmit",
+                }),
+                featureSupported: async (request) => ({
+                    supported: request.tag === "Chain" && request.value.genesisHash === GENESIS,
+                }),
+                read: async (key) => new TextEncoder().encode(`read:${key}`),
+                write: async (key, value) => {
+                    writes.push([key, [...value]]);
+                },
+                clear: async (key) => {
+                    clears.push(key);
+                },
             }),
-            cancelNotification: async (id) => {
-                cancelled.push(id);
-            },
-            devicePermission: async (request) => ({
-                granted: request === "Camera",
-            }),
-            remotePermission: async (request) => ({
-                granted: request.permission.tag === "ChainSubmit",
-            }),
-            featureSupported: async (request) => ({
-                supported: request.tag === "Chain" && request.value.genesisHash === GENESIS,
-            }),
-            read: async (key) => new TextEncoder().encode(`read:${key}`),
-            write: async (key, value) => {
-                writes.push([key, [...value]]);
-            },
-            clear: async (key) => {
-                clears.push(key);
-            },
-        });
+        );
 
         expect(
             HostPushNotificationResponse.dec(
@@ -132,59 +131,61 @@ describe("createWasmRawCallbacks", () => {
             yield ok(new Uint8Array([4, 5, 6]));
         }
 
-        const raw = createWasmRawCallbacks({
-            authStateChanged: (state) => {
-                calls.push(["authStateChanged", state]);
-            },
-            readCoreStorage: async (key) =>
-                key.tag === "AuthSession" ? new Uint8Array([1, 2, 3]) : undefined,
-            writeCoreStorage: async (key, value) => {
-                calls.push(["writeCoreStorage", key, [...value]]);
-            },
-            clearCoreStorage: async (key) => {
-                calls.push(["clearCoreStorage", key]);
-            },
-            confirmUserAction: async (review) => {
-                switch (review.tag) {
-                    case "SignPayload":
-                        return (
-                            review.value.tag === "Product" &&
-                            review.value.value.account.dotNsIdentifier === "playground.dot" &&
-                            review.value.value.payload.method === "0x0102"
-                        );
-                    case "SignRaw":
-                        return (
-                            review.value.tag === "Product" &&
-                            review.value.value.payload.tag === "Bytes" &&
-                            review.value.value.payload.value.bytes === "0x0304"
-                        );
-                    case "CreateTransaction":
-                        return (
-                            review.value.tag === "Product" &&
-                            review.value.value.signer.derivationIndex === 0 &&
-                            review.value.value.callData === "0x0506"
-                        );
-                    case "AccountAlias":
-                        return (
-                            review.value.requestingProductId === "playground.dot" &&
-                            review.value.targetProductId === "wallet.dot"
-                        );
-                    case "ResourceAllocation":
-                        return review.value.resources[0]?.tag === "StatementStoreAllowance";
-                    case "PreimageSubmit":
-                        calls.push(["confirmUserAction:PreimageSubmit", review.value.size]);
-                        return review.value.size === 42n;
-                }
-            },
-            submitPreimage: async (value) => {
-                calls.push(["submitPreimage", [...value]]);
-                return new Uint8Array([7, 8, 9]);
-            },
-            lookupPreimage: (key) => {
-                calls.push(["lookupPreimage", [...key]]);
-                return preimages();
-            },
-        });
+        const raw = createWasmRawCallbacks(
+            makeHostCallbacks({
+                authStateChanged: (state) => {
+                    calls.push(["authStateChanged", state]);
+                },
+                readCoreStorage: async (key) =>
+                    key.tag === "AuthSession" ? new Uint8Array([1, 2, 3]) : undefined,
+                writeCoreStorage: async (key, value) => {
+                    calls.push(["writeCoreStorage", key, [...value]]);
+                },
+                clearCoreStorage: async (key) => {
+                    calls.push(["clearCoreStorage", key]);
+                },
+                confirmUserAction: async (review) => {
+                    switch (review.tag) {
+                        case "SignPayload":
+                            return (
+                                review.value.tag === "Product" &&
+                                review.value.value.account.dotNsIdentifier === "playground.dot" &&
+                                review.value.value.payload.method === "0x0102"
+                            );
+                        case "SignRaw":
+                            return (
+                                review.value.tag === "Product" &&
+                                review.value.value.payload.tag === "Bytes" &&
+                                review.value.value.payload.value.bytes === "0x0304"
+                            );
+                        case "CreateTransaction":
+                            return (
+                                review.value.tag === "Product" &&
+                                review.value.value.signer.derivationIndex === 0 &&
+                                review.value.value.callData === "0x0506"
+                            );
+                        case "AccountAlias":
+                            return (
+                                review.value.requestingProductId === "playground.dot" &&
+                                review.value.targetProductId === "wallet.dot"
+                            );
+                        case "ResourceAllocation":
+                            return review.value.resources[0]?.tag === "StatementStoreAllowance";
+                        case "PreimageSubmit":
+                            calls.push(["confirmUserAction:PreimageSubmit", review.value.size]);
+                            return review.value.size === 42n;
+                    }
+                },
+                submitPreimage: async (value) => {
+                    calls.push(["submitPreimage", [...value]]);
+                    return new Uint8Array([7, 8, 9]);
+                },
+                lookupPreimage: (key) => {
+                    calls.push(["lookupPreimage", [...key]]);
+                    return preimages();
+                },
+            }),
+        );
 
         const preimageEvents: (number[] | null)[] = [];
         const disposePreimages = raw.lookupPreimage!(new Uint8Array([9]), (value) =>
@@ -294,26 +295,17 @@ describe("createWasmRawCallbacks", () => {
         disposePreimages?.();
     });
 
-    it("omits absent host callbacks", () => {
-        const raw = createWasmRawCallbacks({});
-        expect(raw.subscribeTheme).toBeUndefined();
-        expect(raw.lookupPreimage).toBeUndefined();
-        expect(raw.confirmUserAction).toBeUndefined();
-        expect(raw.submitPreimage).toBeUndefined();
-        expect(raw.cancelNotification).toBeUndefined();
-        expect(raw.pushNotification).toBeUndefined();
-        expect(raw.read).toBeUndefined();
-    });
-
     it("adapts typed result subscriptions", async () => {
         async function* themes() {
             yield ok<ThemeVariant>("Dark");
             yield ok<ThemeVariant>("Light");
         }
 
-        const raw = createWasmRawCallbacks({
-            subscribeTheme: () => themes(),
-        });
+        const raw = createWasmRawCallbacks(
+            makeHostCallbacks({
+                subscribeTheme: () => themes(),
+            }),
+        );
         const seen: ThemeVariant[] = [];
         const dispose = raw.subscribeTheme?.((theme) => seen.push(ThemeVariant.dec(theme!)));
 
@@ -327,19 +319,25 @@ describe("createWasmRawCallbacks", () => {
     it("bridges typed chain connections", async () => {
         const sent: string[] = [];
         const responses = ['{"jsonrpc":"2.0","id":1,"result":"ok"}'];
-        const raw = createWasmRawCallbacks({
-            connect: async (genesisHash) => {
-                expect([...genesisHash]).toEqual(Array(32).fill(0x11));
-                return {
-                    send(request) {
-                        sent.push(request);
-                    },
-                    async *responses() {
-                        yield* responses;
-                    },
-                };
-            },
-        });
+        let closes = 0;
+        const raw = createWasmRawCallbacks(
+            makeHostCallbacks({
+                connect: async (genesisHash) => {
+                    expect([...genesisHash]).toEqual(Array(32).fill(0x11));
+                    return {
+                        send(request) {
+                            sent.push(request);
+                        },
+                        async *responses() {
+                            yield* responses;
+                        },
+                        close() {
+                            closes += 1;
+                        },
+                    };
+                },
+            }),
+        );
 
         expect(typeof raw.chainConnect).toBe("function");
         const received: string[] = [];
@@ -352,5 +350,6 @@ describe("createWasmRawCallbacks", () => {
         expect(sent).toEqual(['{"jsonrpc":"2.0","id":1,"method":"system_health"}']);
         expect(received).toEqual(responses);
         connection!.close();
+        expect(closes).toBe(1);
     });
 });

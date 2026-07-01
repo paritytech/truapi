@@ -181,18 +181,9 @@ cd hosts/dotli
 bun run preview            # → http://localhost:5173
 ```
 
-When investigating a wire issue, raise the Rust core's log level in the
-host origin before reloading dotli:
-
-```js
-localStorage.setItem("truapi:logLevel", "debug"); // off|error|warn|info|debug|trace
-location.reload();
-```
-
-The WASM worker bridge forwards core `tracing` output to the browser
-console, mapping each level to the matching `console` method. To tune the
-level live without reloading, call the dev helper the worker runtime
-publishes:
+When investigating a wire issue, raise the Rust core's log level from the
+host origin. The WASM worker bridge forwards core `tracing` output to the
+browser console, mapping each level to the matching `console` method:
 
 ```js
 window.__truapi.setLogLevel("trace");

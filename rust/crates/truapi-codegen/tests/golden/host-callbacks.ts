@@ -85,9 +85,9 @@ export type CoreStorageKey =
    */
   | { tag: "PairingDeviceIdentity"; value?: undefined }
   /**
-   * Persisted authorization for a canonical core permission key.
+   * Persisted authorization for one product-scoped permission request.
    */
-  | { tag: "PermissionAuthorization"; value: { storageKey: string } };
+  | { tag: "PermissionAuthorization"; value: { productId: string; request: PermissionAuthorizationRequest } };
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -224,7 +224,7 @@ export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Code
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  */
-export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({storageKey: S.str}) as S.Codec<{ storageKey: string }>}));
+export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>}));
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -321,6 +321,13 @@ export interface CoreAdmin {
   getPermissionAuthorizationStatus(request: PermissionAuthorizationRequest): Promise<PermissionAuthorizationStatus>;
 
   /**
+   * Read stored permission authorization statuses without prompting.
+   *
+   * Results are returned in the same order as `requests`.
+   */
+  getPermissionAuthorizationStatuses(requests: Array<PermissionAuthorizationRequest>): Promise<Array<PermissionAuthorizationStatus>>;
+
+  /**
    * Update a stored permission authorization status. `NotDetermined` clears
    * the stored value so the next product request prompts again.
    */
@@ -371,6 +378,14 @@ export interface JsonRpcConnection {
    * Stream of JSON-RPC response strings.
    */
   responses(): AsyncIterable<string>;
+
+  /**
+   * Close the connection lease.
+   *
+   * Hosts may keep a shared underlying transport alive, but this handle
+   * must stop receiving responses and release any per-caller resources.
+   */
+  close(): void;
 }
 
 /**

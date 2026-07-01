@@ -9,7 +9,7 @@ use p256::elliptic_curve::sec1::ToEncodedPoint;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
-use truapi_platform::RuntimeConfig;
+use truapi_platform::{HostInfo, PlatformInfo, RuntimeConfig};
 use truapi_server::host_logic::entropy::derive_product_entropy;
 use truapi_server::host_logic::product_account::{
     derive_product_public_key, product_public_key_to_address,
@@ -46,21 +46,21 @@ const ENC_PUBLIC: [u8; 65] = [
 ];
 
 fn entropy_secret() -> [u8; 32] {
-    let mut secret = [0u8; 32];
-    for (i, byte) in secret.iter_mut().enumerate() {
-        *byte = i as u8;
-    }
-    secret
+    std::array::from_fn(|i| i as u8)
 }
 
 fn runtime_config() -> RuntimeConfig {
     RuntimeConfig {
         product_id: "dotli.dot".to_string(),
-        host_name: "Polkadot Web".to_string(),
-        host_icon: Some("https://example.invalid/dotli.png".to_string()),
-        host_version: Some("1.2.3".to_string()),
-        platform_type: Some("Firefox".to_string()),
-        platform_version: Some("192.32".to_string()),
+        host_info: HostInfo {
+            name: "Polkadot Web".to_string(),
+            icon: Some("https://example.invalid/dotli.png".to_string()),
+            version: Some("1.2.3".to_string()),
+        },
+        platform_info: PlatformInfo {
+            kind: Some("Firefox".to_string()),
+            version: Some("192.32".to_string()),
+        },
         people_chain_genesis_hash: [0xa2; 32],
         pairing_deeplink_scheme: "polkadotapp".to_string(),
     }

@@ -17,11 +17,8 @@ import type {
   WorkerToMain,
 } from "../worker-protocol.js";
 import { bytesToHex } from "@parity/truapi/scale";
-import {
-  implementedOptionalCallbacks,
-  implementedOptionalSubscriptions,
-  startRawSubscription,
-} from "../generated/worker-callbacks.js";
+import { startRawSubscription } from "../generated/worker-callbacks.js";
+import { errorMessage } from "../error.js";
 
 interface WorkerProviderState {
   worker: Worker;
@@ -41,6 +38,13 @@ interface WorkerProviderState {
       reject: (error: Error) => void;
     }
   >;
+  pendingPermissionAuthorizationStatusBatches: Map<
+    number,
+    {
+      resolve: (statuses: PermissionAuthorizationStatus[]) => void;
+      reject: (error: Error) => void;
+    }
+  >;
   pendingSetPermissionAuthorizationStatuses: Map<
     number,
     { resolve: () => void; reject: (error: Error) => void }
@@ -52,12 +56,6 @@ interface WorkerProviderState {
 
 function debugLoggingEnabled(state: WorkerProviderState): boolean {
   return state.logLevel === "debug" || state.logLevel === "trace";
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return JSON.stringify(err) ?? String(err);
 }
 
 let nextDisconnectRequestId = 0;
@@ -194,16 +192,6 @@ async function handleChainConnectStart(
   msg: { connId: number; genesisHash: string },
 ): Promise<void> {
   const chainConnect = state.rawCallbacks.chainConnect;
-  if (!chainConnect) {
-    const reply: MainToWorker = {
-      kind: "chainConnectAck",
-      connId: msg.connId,
-      ok: false,
-      error: "host did not supply chainConnect",
-    };
-    state.worker.postMessage(reply);
-    return;
-  }
   const onResponse = (json: string): void => {
     if (state.disposed) return;
     const post: MainToWorker = {
@@ -273,20 +261,46 @@ function handleChainClose(
   }
 }
 
+interface PendingEntry<T> {
+  resolve: (value: T) => void;
+  reject: (error: Error) => void;
+}
+
+/** Settle and remove the pending entry for `requestId`, no-op if already gone. */
+function settlePending<T>(
+  map: Map<number, PendingEntry<T>>,
+  requestId: number,
+  result: { ok: true; value: T } | { ok: false; error: string },
+): void {
+  const pending = map.get(requestId);
+  if (!pending) return;
+  map.delete(requestId);
+  if (result.ok) {
+    pending.resolve(result.value);
+  } else {
+    pending.reject(new Error(result.error));
+  }
+}
+
+/** Reject every pending entry in `map` with `error`, then drain the map. */
+function rejectAll<T>(map: Map<number, PendingEntry<T>>, error: Error): void {
+  for (const pending of map.values()) {
+    pending.reject(error);
+  }
+  map.clear();
+}
+
 function handleDisconnectResponse(
   state: WorkerProviderState,
   msg:
     | { requestId: number; ok: true }
     | { requestId: number; ok: false; error: string },
 ): void {
-  const pending = state.pendingDisconnects.get(msg.requestId);
-  if (!pending) return;
-  state.pendingDisconnects.delete(msg.requestId);
-  if (msg.ok) {
-    pending.resolve();
-  } else {
-    pending.reject(new Error(msg.error));
-  }
+  settlePending(
+    state.pendingDisconnects,
+    msg.requestId,
+    msg.ok ? { ok: true, value: undefined } : { ok: false, error: msg.error },
+  );
 }
 
 function handlePermissionAuthorizationStatusResponse(
@@ -299,16 +313,30 @@ function handlePermissionAuthorizationStatusResponse(
       }
     | { requestId: number; ok: false; error: string },
 ): void {
-  const pending = state.pendingPermissionAuthorizationStatuses.get(
+  settlePending(
+    state.pendingPermissionAuthorizationStatuses,
     msg.requestId,
+    msg.ok ? { ok: true, value: msg.status } : { ok: false, error: msg.error },
   );
-  if (!pending) return;
-  state.pendingPermissionAuthorizationStatuses.delete(msg.requestId);
-  if (msg.ok) {
-    pending.resolve(msg.status);
-  } else {
-    pending.reject(new Error(msg.error));
-  }
+}
+
+function handlePermissionAuthorizationStatusesResponse(
+  state: WorkerProviderState,
+  msg:
+    | {
+        requestId: number;
+        ok: true;
+        statuses: PermissionAuthorizationStatus[];
+      }
+    | { requestId: number; ok: false; error: string },
+): void {
+  settlePending(
+    state.pendingPermissionAuthorizationStatusBatches,
+    msg.requestId,
+    msg.ok
+      ? { ok: true, value: msg.statuses }
+      : { ok: false, error: msg.error },
+  );
 }
 
 function handleSetPermissionAuthorizationStatusResponse(
@@ -317,40 +345,52 @@ function handleSetPermissionAuthorizationStatusResponse(
     | { requestId: number; ok: true }
     | { requestId: number; ok: false; error: string },
 ): void {
-  const pending = state.pendingSetPermissionAuthorizationStatuses.get(
+  settlePending(
+    state.pendingSetPermissionAuthorizationStatuses,
     msg.requestId,
+    msg.ok ? { ok: true, value: undefined } : { ok: false, error: msg.error },
   );
-  if (!pending) return;
-  state.pendingSetPermissionAuthorizationStatuses.delete(msg.requestId);
-  if (msg.ok) {
-    pending.resolve();
-  } else {
-    pending.reject(new Error(msg.error));
-  }
 }
 
 function rejectPendingDisconnects(
   state: WorkerProviderState,
   error: Error,
 ): void {
-  for (const pending of state.pendingDisconnects.values()) {
-    pending.reject(error);
-  }
-  state.pendingDisconnects.clear();
+  rejectAll(state.pendingDisconnects, error);
 }
 
 function rejectPendingPermissionAuthorizationRequests(
   state: WorkerProviderState,
   error: Error,
 ): void {
-  for (const pending of state.pendingPermissionAuthorizationStatuses.values()) {
-    pending.reject(error);
-  }
-  state.pendingPermissionAuthorizationStatuses.clear();
-  for (const pending of state.pendingSetPermissionAuthorizationStatuses.values()) {
-    pending.reject(error);
-  }
-  state.pendingSetPermissionAuthorizationStatuses.clear();
+  rejectAll(state.pendingPermissionAuthorizationStatuses, error);
+  rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
+  rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
+}
+
+/**
+ * Register a pending request, post its message to the worker, and resolve when
+ * the matching response arrives. Short-circuits to `disposedFallback` once the
+ * provider is disposed; rolls back the pending entry if `postMessage` throws.
+ */
+function sendWorkerRequest<T>(
+  state: WorkerProviderState,
+  pending: Map<number, PendingEntry<T>>,
+  nextId: () => number,
+  disposedFallback: T,
+  buildMessage: (requestId: number) => MainToWorker,
+): Promise<T> {
+  if (state.disposed) return Promise.resolve(disposedFallback);
+  return new Promise((resolve, reject) => {
+    const requestId = nextId();
+    pending.set(requestId, { resolve, reject });
+    try {
+      state.worker.postMessage(buildMessage(requestId));
+    } catch (err) {
+      pending.delete(requestId);
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  });
 }
 
 /**
@@ -413,6 +453,8 @@ export interface CreateWebWorkerProviderOptions {
   initTimeoutMs?: number;
 }
 
+export type WebWorkerHostCallbacks = Required<HostCallbacks>;
+
 /**
  * Spawn the truapi-server WASM in `worker` and bridge it into a
  * `WireProvider`.
@@ -433,7 +475,7 @@ export interface CreateWebWorkerProviderOptions {
  */
 export function createWebWorkerProvider(
   worker: Worker,
-  host: Partial<HostCallbacks>,
+  host: WebWorkerHostCallbacks,
   options: CreateWebWorkerProviderOptions,
 ): Promise<TrUApiHostCoreProvider> {
   const callbacks = createWasmRawCallbacks(host);
@@ -448,6 +490,7 @@ export function createWebWorkerProvider(
       chainConnections: new Map(),
       pendingDisconnects: new Map(),
       pendingPermissionAuthorizationStatuses: new Map(),
+      pendingPermissionAuthorizationStatusBatches: new Map(),
       pendingSetPermissionAuthorizationStatuses: new Map(),
       closedError: null,
       logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
@@ -483,6 +526,9 @@ export function createWebWorkerProvider(
           break;
         case "permissionAuthorizationStatusResponse":
           handlePermissionAuthorizationStatusResponse(state, msg);
+          break;
+        case "permissionAuthorizationStatusesResponse":
+          handlePermissionAuthorizationStatusesResponse(state, msg);
           break;
         case "setPermissionAuthorizationStatusResponse":
           handleSetPermissionAuthorizationStatusResponse(state, msg);
@@ -552,9 +598,6 @@ export function createWebWorkerProvider(
           kind: "init",
           logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
           runtimeConfig: options.runtimeConfig,
-          optionalCallbacks: implementedOptionalCallbacks(host),
-          optionalSubscriptions: implementedOptionalSubscriptions(host),
-          chainConnect: typeof callbacks.chainConnect === "function",
         };
         worker.postMessage(init);
       } else if (msg.kind === "ready") {
@@ -621,18 +664,13 @@ function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
       };
     },
     disconnectSession(): Promise<void> {
-      if (state.disposed) return Promise.resolve();
-      return new Promise((resolve, reject) => {
-        const requestId = ++nextDisconnectRequestId;
-        state.pendingDisconnects.set(requestId, { resolve, reject });
-        try {
-          const post: MainToWorker = { kind: "disconnectSession", requestId };
-          state.worker.postMessage(post);
-        } catch (err) {
-          state.pendingDisconnects.delete(requestId);
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-      });
+      return sendWorkerRequest<void>(
+        state,
+        state.pendingDisconnects,
+        () => ++nextDisconnectRequestId,
+        undefined,
+        (requestId) => ({ kind: "disconnectSession", requestId }),
+      );
     },
     cancelPairing(): void {
       if (state.disposed) return;
@@ -647,50 +685,49 @@ function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
     getPermissionAuthorizationStatus(
       request: PermissionAuthorizationRequest,
     ): Promise<PermissionAuthorizationStatus> {
-      if (state.disposed) return Promise.resolve("NotDetermined");
-      return new Promise((resolve, reject) => {
-        const requestId = ++nextPermissionAuthorizationRequestId;
-        state.pendingPermissionAuthorizationStatuses.set(requestId, {
-          resolve,
-          reject,
-        });
-        try {
-          const post: MainToWorker = {
-            kind: "getPermissionAuthorizationStatus",
-            requestId,
-            request: encodePermissionAuthorizationRequest(request),
-          };
-          state.worker.postMessage(post);
-        } catch (err) {
-          state.pendingPermissionAuthorizationStatuses.delete(requestId);
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-      });
+      return sendWorkerRequest<PermissionAuthorizationStatus>(
+        state,
+        state.pendingPermissionAuthorizationStatuses,
+        () => ++nextPermissionAuthorizationRequestId,
+        "NotDetermined",
+        (requestId) => ({
+          kind: "getPermissionAuthorizationStatus",
+          requestId,
+          request: encodePermissionAuthorizationRequest(request),
+        }),
+      );
+    },
+    getPermissionAuthorizationStatuses(
+      requests: PermissionAuthorizationRequest[],
+    ): Promise<PermissionAuthorizationStatus[]> {
+      return sendWorkerRequest<PermissionAuthorizationStatus[]>(
+        state,
+        state.pendingPermissionAuthorizationStatusBatches,
+        () => ++nextPermissionAuthorizationRequestId,
+        requests.map(() => "NotDetermined"),
+        (requestId) => ({
+          kind: "getPermissionAuthorizationStatuses",
+          requestId,
+          requests: requests.map(encodePermissionAuthorizationRequest),
+        }),
+      );
     },
     setPermissionAuthorizationStatus(
       request: PermissionAuthorizationRequest,
       status: PermissionAuthorizationStatus,
     ): Promise<void> {
-      if (state.disposed) return Promise.resolve();
-      return new Promise((resolve, reject) => {
-        const requestId = ++nextPermissionAuthorizationRequestId;
-        state.pendingSetPermissionAuthorizationStatuses.set(requestId, {
-          resolve,
-          reject,
-        });
-        try {
-          const post: MainToWorker = {
-            kind: "setPermissionAuthorizationStatus",
-            requestId,
-            request: encodePermissionAuthorizationRequest(request),
-            status,
-          };
-          state.worker.postMessage(post);
-        } catch (err) {
-          state.pendingSetPermissionAuthorizationStatuses.delete(requestId);
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-      });
+      return sendWorkerRequest<void>(
+        state,
+        state.pendingSetPermissionAuthorizationStatuses,
+        () => ++nextPermissionAuthorizationRequestId,
+        undefined,
+        (requestId) => ({
+          kind: "setPermissionAuthorizationStatus",
+          requestId,
+          request: encodePermissionAuthorizationRequest(request),
+          status,
+        }),
+      );
     },
     setLogLevel(level: LogLevel): void {
       if (state.disposed) return;

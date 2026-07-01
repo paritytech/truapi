@@ -31,6 +31,14 @@ type PermissionAuthorizationStatusFn = Arc<
         + Send
         + Sync,
 >;
+type PermissionAuthorizationStatusesFn = Arc<
+    dyn Fn(
+            Vec<PermissionAuthorizationRequest>,
+        )
+            -> BoxFuture<'static, Result<Vec<PermissionAuthorizationStatus>, v01::GenericError>>
+        + Send
+        + Sync,
+>;
 type SetPermissionAuthorizationStatusFn = Arc<
     dyn Fn(
             PermissionAuthorizationRequest,
@@ -51,6 +59,7 @@ pub struct TrUApiCore {
     disconnect: DisconnectFn,
     cancel_login: CancelLoginFn,
     permission_authorization_status: PermissionAuthorizationStatusFn,
+    permission_authorization_statuses: PermissionAuthorizationStatusesFn,
     set_permission_authorization_status: SetPermissionAuthorizationStatusFn,
 }
 
@@ -81,6 +90,15 @@ impl TrUApiCore {
             }),
             cancel_login: Arc::new(|| {}),
             permission_authorization_status: Arc::new(|_| {
+                Box::pin(async {
+                    Err(v01::GenericError {
+                        reason:
+                            "permission authorization is only available on platform-backed cores"
+                                .into(),
+                    })
+                })
+            }),
+            permission_authorization_statuses: Arc::new(|_| {
                 Box::pin(async {
                     Err(v01::GenericError {
                         reason:
@@ -123,6 +141,7 @@ impl TrUApiCore {
         let disconnect_runtime = runtime.clone();
         let cancel_login_runtime = runtime.clone();
         let permission_status_runtime = runtime.clone();
+        let permission_statuses_runtime = runtime.clone();
         let set_permission_status_runtime = runtime.clone();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
@@ -140,6 +159,10 @@ impl TrUApiCore {
             permission_authorization_status: Arc::new(move |request| {
                 let runtime = permission_status_runtime.clone();
                 Box::pin(async move { runtime.permission_authorization_status(request).await })
+            }),
+            permission_authorization_statuses: Arc::new(move |requests| {
+                let runtime = permission_statuses_runtime.clone();
+                Box::pin(async move { runtime.permission_authorization_statuses(requests).await })
             }),
             set_permission_authorization_status: Arc::new(move |request, status| {
                 let runtime = set_permission_status_runtime.clone();
@@ -198,6 +221,15 @@ impl TrUApiCore {
         (self.permission_authorization_status)(request).await
     }
 
+    /// Read stored permission authorization statuses without prompting.
+    #[instrument(skip_all, fields(runtime.method = "core.permission_authorization_statuses"))]
+    pub async fn permission_authorization_statuses(
+        &self,
+        requests: Vec<PermissionAuthorizationRequest>,
+    ) -> Result<Vec<PermissionAuthorizationStatus>, v01::GenericError> {
+        (self.permission_authorization_statuses)(requests).await
+    }
+
     /// Update a stored permission authorization status. `NotDetermined`
     /// clears the stored value so the next product request prompts again.
     #[instrument(skip_all, fields(runtime.method = "core.set_permission_authorization_status"))]
@@ -223,8 +255,8 @@ impl TrUApiCore {
     }
 
     /// Synchronous wrapper that blocks the current thread until the inner
-    /// future resolves. Convenient for embedding contexts (e.g. UniFFI) that
-    /// don't already drive an async runtime.
+    /// future resolves. Convenient for embedding contexts that don't already
+    /// drive an async runtime.
     #[instrument(skip_all, fields(runtime.method = "core.receive_from_product_blocking"))]
     pub fn receive_from_product(&self, frame: &[u8]) -> Option<Vec<u8>> {
         futures::executor::block_on(self.receive_from_product_async(frame))

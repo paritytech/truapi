@@ -1,5 +1,7 @@
 export type { Payload, ProtocolMessage, WireProvider } from "@parity/truapi";
 
+export { encodeCoreStorageKey } from "./runtime.js";
+
 export type {
   AuthState,
   Awaitable,

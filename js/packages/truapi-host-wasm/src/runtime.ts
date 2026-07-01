@@ -1,5 +1,6 @@
 import type { WireProvider } from "@parity/truapi";
-import type { CoreAdmin } from "./generated/host-callbacks.js";
+import { CoreStorageKey as GeneratedCoreStorageKey } from "./generated/host-callbacks.js";
+import type { CoreAdmin, CoreStorageKey } from "./generated/host-callbacks.js";
 
 // The typed capability interfaces below come straight from the
 // `truapi-platform` Rust crate via `truapi-codegen --platform-ts-output`.
@@ -26,6 +27,11 @@ export type {
   SessionUiInfo,
   ThemeHost,
 } from "./generated/host-callbacks.js";
+
+/** Encode a typed core-storage slot for hosts that need an opaque backing key. */
+export function encodeCoreStorageKey(key: CoreStorageKey): Uint8Array {
+  return GeneratedCoreStorageKey.enc(key);
+}
 
 /**
  * Async-or-sync return. Synchronous hosts (e.g. the dotli main-thread

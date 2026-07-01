@@ -23,12 +23,8 @@ use truapi::v01::{
     OperationStartedResult, RemoteChainHeadFollowItem as V01RemoteChainHeadFollowItem,
     StorageQueryType,
 };
-use truapi_platform::Platform;
 
-impl<P> PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl PlatformRuntimeHost {
     /// Resolve usernames for `session` against this runtime's people chain.
     #[instrument(skip_all, fields(runtime.method = "session.identity.resolve"))]
     pub(super) async fn resolve_session_identity(&self, session: SessionInfo) -> SessionInfo {
@@ -57,78 +53,81 @@ pub(super) async fn resolve_session_identity_with_chain(
     }
 
     let preferred_account = session.identity_account_id.unwrap_or(session.public_key);
-    match lookup_people_identity(chain, people_chain_genesis_hash, preferred_account).await {
-        Ok(Some(identity)) => {
-            debug!(
-                account = %hex::encode(preferred_account),
-                lite_username = identity.lite_username.as_deref().unwrap_or(""),
-                full_username = identity.full_username.as_deref().unwrap_or(""),
-                "People-chain identity lookup found username"
-            );
-            apply_people_identity(&mut session, identity);
-            return session;
-        }
-        Ok(None) => debug!(
-            account = %hex::encode(preferred_account),
-            "People-chain identity lookup found no consumer record"
-        ),
-        Err(reason) => warn!(
-            account = %hex::encode(preferred_account),
-            %reason,
-            "People-chain identity lookup failed"
-        ),
-    }
-
-    if preferred_account != session.public_key {
-        match lookup_people_identity(chain, people_chain_genesis_hash, session.public_key).await {
-            Ok(Some(identity)) => {
-                debug!(
-                    account = %hex::encode(session.public_key),
-                    lite_username = identity.lite_username.as_deref().unwrap_or(""),
-                    full_username = identity.full_username.as_deref().unwrap_or(""),
-                    "People-chain root identity lookup found username"
-                );
-                apply_people_identity(&mut session, identity);
-            }
-            Ok(None) => debug!(
-                account = %hex::encode(session.public_key),
-                "People-chain root identity lookup found no consumer record"
-            ),
-            Err(reason) => warn!(
-                account = %hex::encode(session.public_key),
-                %reason,
-                "People-chain root identity lookup failed"
-            ),
-        }
+    if !lookup_and_apply(
+        chain,
+        people_chain_genesis_hash,
+        preferred_account,
+        &mut session,
+        "identity",
+    )
+    .await
+        && preferred_account != session.public_key
+    {
+        let public_key = session.public_key;
+        lookup_and_apply(
+            chain,
+            people_chain_genesis_hash,
+            public_key,
+            &mut session,
+            "root identity",
+        )
+        .await;
     }
 
     session
+}
+
+/// Look up `account`'s people-chain identity and apply any usernames to
+/// `session`; returns whether a username record was found and applied.
+async fn lookup_and_apply(
+    chain: &ChainRuntime,
+    people_chain_genesis_hash: [u8; 32],
+    account: [u8; 32],
+    session: &mut SessionInfo,
+    label: &str,
+) -> bool {
+    match lookup_people_identity(chain, people_chain_genesis_hash, account).await {
+        Ok(Some(identity)) => {
+            debug!(
+                account = %hex::encode(account),
+                lite_username = identity.lite_username.as_deref().unwrap_or(""),
+                full_username = identity.full_username.as_deref().unwrap_or(""),
+                "People-chain {label} lookup found username"
+            );
+            apply_people_identity(session, identity);
+            true
+        }
+        Ok(None) => {
+            debug!(
+                account = %hex::encode(account),
+                "People-chain {label} lookup found no consumer record"
+            );
+            false
+        }
+        Err(reason) => {
+            warn!(
+                account = %hex::encode(account),
+                %reason,
+                "People-chain {label} lookup failed"
+            );
+            false
+        }
+    }
+}
+
+fn non_empty(value: &Option<String>) -> bool {
+    value.as_ref().is_some_and(|value| !value.is_empty())
 }
 
 fn session_has_username(session: &SessionInfo) -> bool {
-    session
-        .full_username
-        .as_ref()
-        .is_some_and(|value| !value.is_empty())
-        || session
-            .lite_username
-            .as_ref()
-            .is_some_and(|value| !value.is_empty())
+    non_empty(&session.full_username) || non_empty(&session.lite_username)
 }
 
 fn apply_people_identity(session: &mut SessionInfo, identity: PeopleIdentity) {
-    if identity
-        .full_username
-        .as_ref()
-        .is_some_and(|value| !value.is_empty())
-    {
+    if non_empty(&identity.full_username) {
         session.full_username = identity.full_username;
     }
-    if identity
-        .lite_username
-        .as_ref()
-        .is_some_and(|value| !value.is_empty())
-    {
+    if non_empty(&identity.lite_username) {
         session.lite_username = identity.lite_username;
     }
 }

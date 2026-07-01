@@ -2,6 +2,8 @@
 //!
 //! This module owns the byte shape of the QR/deeplink payload described in
 //! `docs/design/host-contract-and-core-impl/H - sso-pairing-protocol.md`.
+//! The SCALE handshake codecs mirror host-papp's v2 handshake codec:
+//! <https://github.com/paritytech/triangle-js-sdks/blob/2674746d3e92173fff900b24acb12d3f6ea8cfdc/packages/host-papp/src/sso/auth/scale/handshakeV2.ts#L43-L115>
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -15,6 +17,8 @@ use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
 use thiserror::Error;
 use truapi_platform::RuntimeConfig;
+#[cfg(test)]
+use truapi_platform::{HostInfo, PlatformInfo};
 
 use crate::host_logic::session::SsoSessionInfo;
 
@@ -59,8 +63,6 @@ pub enum PairingBootstrapError {
 /// Versioned SCALE payload embedded in the pairing deeplink.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum VersionedHandshakeProposal {
-    #[codec(index = 0)]
-    ReservedV1,
     #[codec(index = 1)]
     V2(HandshakeProposalV2),
 }
@@ -86,28 +88,17 @@ pub struct HandshakeMetadataEntry(pub HandshakeMetadataKey, pub String);
 /// Metadata keys understood by the mobile SSO pairing flow.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HandshakeMetadataKey {
-    #[codec(index = 0)]
     Custom(String),
-    #[codec(index = 1)]
     HostName,
-    #[codec(index = 2)]
     HostVersion,
-    #[codec(index = 3)]
     HostIcon,
-    #[codec(index = 4)]
     PlatformType,
-    #[codec(index = 5)]
     PlatformVersion,
 }
 
 /// Versioned encrypted response posted by the wallet to the pairing topic.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum VersionedHandshakeResponse {
-    #[codec(index = 0)]
-    V1 {
-        encrypted_message: Vec<u8>,
-        public_key: [u8; 65],
-    },
     #[codec(index = 1)]
     V2 {
         encrypted_message: Vec<u8>,
@@ -115,29 +106,17 @@ pub enum VersionedHandshakeResponse {
     },
 }
 
-/// Legacy v1 plaintext handshake answer.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct SsoHandshakeAnswerV1 {
-    pub shared_secret_derivation_key: [u8; 65],
-    pub root_user_account_id: [u8; 32],
-    pub identity_account_id: [u8; 32],
-}
-
 /// Plaintext v2 wallet response after decrypting the pairing statement.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum EncryptedHandshakeResponseV2 {
-    #[codec(index = 0)]
     Pending(HandshakeStatusV2),
-    #[codec(index = 1)]
     Success(Box<HandshakeSuccessV2>),
-    #[codec(index = 2)]
     Failed(String),
 }
 
 /// Intermediate v2 handshake status emitted before success/failure.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HandshakeStatusV2 {
-    #[codec(index = 0)]
     AllowanceAllocation,
 }
 
@@ -153,14 +132,15 @@ pub struct HandshakeSuccessV2 {
 }
 
 /// Encrypted statement-channel envelope shared with the wallet.
+///
+/// Mirrors `@novasamatech/statement-store` session statement data:
+/// <https://github.com/paritytech/triangle-js-sdks/blob/2674746d3e92173fff900b24acb12d3f6ea8cfdc/packages/statement-store/src/session/scale/statementData.ts#L33-L46>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoStatementData {
-    #[codec(index = 0)]
     Request {
         request_id: String,
         data: Vec<Vec<u8>>,
     },
-    #[codec(index = 1)]
     Response {
         request_id: String,
         response_code: u8,
@@ -174,26 +154,6 @@ pub fn decode_app_handshake_data(blob: &[u8]) -> Result<VersionedHandshakeRespon
         Decode::decode(&mut input).map_err(|err| format!("invalid app handshake data: {err}"))?;
     if !input.is_empty() {
         return Err("invalid app handshake data: trailing bytes".to_string());
-    }
-    Ok(value)
-}
-
-/// Decrypt a legacy v1 handshake answer.
-pub fn decrypt_handshake_answer(
-    core_encryption_secret_key: [u8; 32],
-    wallet_ephemeral_public_key: [u8; 65],
-    encrypted_message: &[u8],
-) -> Result<SsoHandshakeAnswerV1, String> {
-    let plaintext = decrypt_p256_hkdf_aes_gcm(
-        core_encryption_secret_key,
-        wallet_ephemeral_public_key,
-        encrypted_message,
-    )?;
-    let mut input = plaintext.as_slice();
-    let value = SsoHandshakeAnswerV1::decode(&mut input)
-        .map_err(|err| format!("invalid SSO handshake answer: {err}"))?;
-    if !input.is_empty() {
-        return Err("invalid SSO handshake answer: trailing bytes".to_string());
     }
     Ok(value)
 }
@@ -455,27 +415,27 @@ pub fn build_pairing_deeplink(
 fn handshake_metadata(config: &RuntimeConfig) -> Vec<HandshakeMetadataEntry> {
     let mut entries = vec![HandshakeMetadataEntry(
         HandshakeMetadataKey::HostName,
-        config.host_name.clone(),
+        config.host_info.name.clone(),
     )];
-    if let Some(value) = &config.host_version {
+    if let Some(value) = &config.host_info.version {
         entries.push(HandshakeMetadataEntry(
             HandshakeMetadataKey::HostVersion,
             value.clone(),
         ));
     }
-    if let Some(value) = &config.host_icon {
+    if let Some(value) = &config.host_info.icon {
         entries.push(HandshakeMetadataEntry(
             HandshakeMetadataKey::HostIcon,
             value.clone(),
         ));
     }
-    if let Some(value) = &config.platform_type {
+    if let Some(value) = &config.platform_info.kind {
         entries.push(HandshakeMetadataEntry(
             HandshakeMetadataKey::PlatformType,
             value.clone(),
         ));
     }
-    if let Some(value) = &config.platform_version {
+    if let Some(value) = &config.platform_info.version {
         entries.push(HandshakeMetadataEntry(
             HandshakeMetadataKey::PlatformVersion,
             value.clone(),
@@ -494,10 +454,7 @@ pub fn bootstrap_topic(
     message.extend_from_slice(&encryption_public_key);
     message.extend_from_slice(HANDSHAKE_TOPIC_SUFFIX);
 
-    let digest = blake2b(32, &statement_store_public_key, &message);
-    let mut topic = [0u8; 32];
-    topic.copy_from_slice(digest.as_bytes());
-    topic
+    keyed_hash(statement_store_public_key, &message)
 }
 
 fn generate_statement_store_keypair() -> Result<([u8; 64], [u8; 32]), PairingBootstrapError> {
@@ -553,11 +510,15 @@ mod tests {
     fn runtime_config() -> RuntimeConfig {
         RuntimeConfig {
             product_id: "myapp.dot".to_string(),
-            host_name: "Polkadot Web".to_string(),
-            host_icon: Some("https://example.invalid/dotli.png".to_string()),
-            host_version: Some("1.2.3".to_string()),
-            platform_type: Some("Firefox".to_string()),
-            platform_version: Some("192.32".to_string()),
+            host_info: HostInfo {
+                name: "Polkadot Web".to_string(),
+                icon: Some("https://example.invalid/dotli.png".to_string()),
+                version: Some("1.2.3".to_string()),
+            },
+            platform_info: PlatformInfo {
+                kind: Some("Firefox".to_string()),
+                version: Some("192.32".to_string()),
+            },
             people_chain_genesis_hash: [0; 32],
             pairing_deeplink_scheme: "polkadotapp".to_string(),
         }
@@ -571,9 +532,7 @@ mod tests {
         assert!(deeplink.starts_with("polkadotapp://pair?handshake=01"));
         let encoded = hex::decode(deeplink.split("handshake=").nth(1).unwrap()).unwrap();
         let decoded = <VersionedHandshakeProposal as Decode>::decode(&mut &encoded[..]).unwrap();
-        let VersionedHandshakeProposal::V2(proposal) = decoded else {
-            panic!("expected V2 proposal");
-        };
+        let VersionedHandshakeProposal::V2(proposal) = decoded;
         assert_eq!(proposal.device.statement_account_id, SS_PUBLIC);
         assert_eq!(proposal.device.encryption_public_key, ENC_PUBLIC);
         assert!(proposal.metadata.contains(&HandshakeMetadataEntry(
@@ -620,8 +579,8 @@ mod tests {
     }
 
     #[test]
-    fn decodes_app_handshake_answer() {
-        let answer = VersionedHandshakeResponse::V1 {
+    fn decodes_app_handshake_response() {
+        let answer = VersionedHandshakeResponse::V2 {
             encrypted_message: vec![0xde, 0xad],
             public_key: ENC_PUBLIC,
         };
@@ -631,7 +590,7 @@ mod tests {
 
     #[test]
     fn rejects_app_handshake_trailing_bytes() {
-        let mut encoded = VersionedHandshakeResponse::V1 {
+        let mut encoded = VersionedHandshakeResponse::V2 {
             encrypted_message: vec![0xde, 0xad],
             public_key: ENC_PUBLIC,
         }
@@ -645,7 +604,7 @@ mod tests {
     }
 
     #[test]
-    fn decrypts_handshake_answer() {
+    fn decrypts_v2_handshake_response() {
         let core_secret = SecretKey::from_slice(&[1; 32]).unwrap();
         let wallet_ephemeral_secret = SecretKey::from_slice(&[2; 32]).unwrap();
         let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
@@ -660,11 +619,14 @@ mod tests {
         let mut aes_key = [0u8; 32];
         hkdf.expand(&[], &mut aes_key).unwrap();
 
-        let sensitive = SsoHandshakeAnswerV1 {
-            shared_secret_derivation_key: ENC_PUBLIC,
-            root_user_account_id: [7; 32],
+        let sensitive = EncryptedHandshakeResponseV2::Success(Box::new(HandshakeSuccessV2 {
             identity_account_id: [8; 32],
-        };
+            root_account_id: [7; 32],
+            identity_chat_private_key: [6; 32],
+            sso_enc_pub_key: ENC_PUBLIC,
+            device_enc_pub_key: ENC_PUBLIC,
+            root_entropy_source: [5; 32],
+        }));
         let nonce = [9u8; AES_GCM_NONCE_LEN];
         let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
         let mut encrypted = nonce.to_vec();
@@ -675,7 +637,7 @@ mod tests {
         );
 
         assert_eq!(
-            decrypt_handshake_answer(
+            decrypt_v2_handshake_response(
                 core_secret.to_bytes().into(),
                 wallet_ephemeral_public_bytes,
                 &encrypted
@@ -688,7 +650,8 @@ mod tests {
     #[test]
     fn rejects_short_handshake_ciphertext() {
         assert_eq!(
-            decrypt_handshake_answer([1; 32], ENC_PUBLIC, &[0; AES_GCM_NONCE_LEN - 1]).unwrap_err(),
+            decrypt_v2_handshake_response([1; 32], ENC_PUBLIC, &[0; AES_GCM_NONCE_LEN - 1])
+                .unwrap_err(),
             "encrypted SSO handshake answer is too short"
         );
     }

@@ -18,12 +18,12 @@ use futures::stream::{self, BoxStream, StreamExt};
 use futures::task::SpawnExt;
 use parity_scale_codec::{Decode, Encode};
 use truapi::v01;
-use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, JsonRpcConnection,
-    Navigation, Notifications, PermissionAuthorizationRequest, PermissionAuthorizationStatus,
-    Permissions, PreimageHost, ProductStorage, RuntimeConfig, RuntimeConfigValidationError,
-    ThemeHost, UserConfirmation, UserConfirmationReview,
+    AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, HostInfo,
+    JsonRpcConnection, Navigation, Notifications, PermissionAuthorizationRequest,
+    PermissionAuthorizationStatus, Permissions, PlatformInfo, PreimageHost, ProductStorage,
+    RuntimeConfig, RuntimeConfigValidationError, ThemeHost, UserConfirmation,
+    UserConfirmationReview, async_trait,
 };
 
 use crate::core::TrUApiCore;
@@ -293,11 +293,15 @@ impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
             })?;
         Ok(Self::new(
             config.product_id,
-            config.host_name,
-            config.host_icon,
-            config.host_version,
-            config.platform_type,
-            config.platform_version,
+            HostInfo {
+                name: config.host_name,
+                icon: config.host_icon,
+                version: config.host_version,
+            },
+            PlatformInfo {
+                kind: config.platform_type,
+                version: config.platform_version,
+            },
             people_chain_genesis_hash,
             config.pairing_deeplink_scheme.as_str().to_string(),
         )?)
@@ -759,6 +763,7 @@ impl NativeEventBus {
     }
 }
 
+#[async_trait]
 impl Navigation for CallbackPlatform {
     async fn navigate_to(&self, url: String) -> Result<(), v01::HostNavigateToError> {
         self.callbacks.on_core_log(
@@ -772,6 +777,7 @@ impl Navigation for CallbackPlatform {
     }
 }
 
+#[async_trait]
 impl Notifications for CallbackPlatform {
     async fn push_notification(
         &self,
@@ -804,6 +810,7 @@ impl Notifications for CallbackPlatform {
     }
 }
 
+#[async_trait]
 impl Permissions for CallbackPlatform {
     async fn device_permission(
         &self,
@@ -842,21 +849,30 @@ impl Permissions for CallbackPlatform {
     }
 }
 
+#[async_trait]
 impl Features for CallbackPlatform {
     async fn feature_supported(
         &self,
-        request: HostFeatureSupportedRequest,
-    ) -> Result<HostFeatureSupportedResponse, v01::GenericError> {
-        let supported = self
-            .callbacks
-            .feature_supported(request.encode())
+        request: v01::HostFeatureSupportedRequest,
+    ) -> Result<v01::HostFeatureSupportedResponse, v01::GenericError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.feature_supported".to_string(),
+            format!("{request:?}"),
+        );
+        if is_ios_diagnosis_e2e() {
+            return Ok(v01::HostFeatureSupportedResponse { supported: true });
+        }
+
+        let callbacks = self.callbacks.clone();
+        let payload = request.encode();
+        let supported = run_blocking_callback(move || callbacks.feature_supported(payload))
+            .await
             .map_err(v01::GenericError::from)?;
-        Ok(HostFeatureSupportedResponse::V1(
-            v01::HostFeatureSupportedResponse { supported },
-        ))
+        Ok(v01::HostFeatureSupportedResponse { supported })
     }
 }
 
+#[async_trait]
 impl ProductStorage for CallbackPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         self.callbacks.local_storage_read(key).map_err(Into::into)
@@ -877,6 +893,7 @@ impl ProductStorage for CallbackPlatform {
     }
 }
 
+#[async_trait]
 impl CoreStorage for CallbackPlatform {
     async fn read_core_storage(
         &self,
@@ -938,10 +955,8 @@ impl JsonRpcConnection for NativeJsonRpcConnection {
             }
         }
     }
-}
 
-impl Drop for NativeJsonRpcConnection {
-    fn drop(&mut self) {
+    fn close(&self) {
         if self.closed.swap(true, Ordering::Relaxed) {
             return;
         }
@@ -955,6 +970,13 @@ impl Drop for NativeJsonRpcConnection {
     }
 }
 
+impl Drop for NativeJsonRpcConnection {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+#[async_trait]
 impl ChainProvider for CallbackPlatform {
     async fn connect(
         &self,
@@ -990,6 +1012,7 @@ impl AuthPresenter for CallbackPlatform {
     }
 }
 
+#[async_trait]
 impl UserConfirmation for CallbackPlatform {
     async fn confirm_user_action(
         &self,
@@ -1018,6 +1041,7 @@ impl ThemeHost for CallbackPlatform {
     }
 }
 
+#[async_trait]
 impl PreimageHost for CallbackPlatform {
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         let callbacks = self.callbacks.clone();

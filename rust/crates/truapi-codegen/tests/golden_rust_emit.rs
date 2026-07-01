@@ -32,8 +32,8 @@ fn quoted_strings_in_const_array(src: &str, const_name: &str) -> Vec<String> {
 }
 
 fn wasm_optional_callback_names(workspace: &Path) -> Vec<String> {
-    let src = fs::read_to_string(workspace.join("rust/crates/truapi-server/src/wasm/mod.rs"))
-        .expect("read wasm/mod.rs");
+    let src = fs::read_to_string(workspace.join("rust/crates/truapi-server/src/wasm.rs"))
+        .expect("read wasm.rs");
     let mut names = src
         .lines()
         .filter_map(|line| {
@@ -264,16 +264,20 @@ fn golden_host_callbacks_ts() {
         );
     }
 
-    let mut generated_optional =
-        quoted_strings_in_const_array(&worker_actual, "OPTIONAL_CALLBACK_NAMES");
-    generated_optional.extend(quoted_strings_in_const_array(
+    assert!(
+        !worker_actual.contains("OPTIONAL_CALLBACK_NAMES"),
+        "worker callback generation should not expose an optional callback manifest"
+    );
+    let mut generated_names = quoted_strings_in_const_array(&worker_actual, "CALLBACK_NAMES");
+    generated_names.extend(quoted_strings_in_const_array(
         &worker_actual,
         "SUBSCRIPTION_NAMES",
     ));
-    generated_optional.sort();
-    assert_eq!(
-        generated_optional,
-        wasm_optional_callback_names(&workspace),
-        "generated worker optional/subscription callbacks must match JsBridge optional callbacks"
-    );
+    let wasm_optional = wasm_optional_callback_names(&workspace);
+    for name in wasm_optional {
+        assert!(
+            generated_names.contains(&name),
+            "generated worker names must include JsBridge optional callback `{name}`"
+        );
+    }
 }

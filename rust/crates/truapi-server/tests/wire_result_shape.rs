@@ -33,7 +33,7 @@ use truapi_server::core::TrUApiCore;
 use truapi_server::frame::{Payload, ProtocolMessage, request_ids, subscription_ids};
 
 mod common;
-use common::{WireShapePlatform, test_runtime_config, test_spawner};
+use common::{RecordingTransport, WireShapePlatform, test_runtime_config, test_spawner};
 
 const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 
@@ -73,12 +73,12 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
 
 #[cfg(debug_assertions)]
 #[test]
-fn testing_probe_v1_request_gets_v1_response() {
+fn testing_version_probe_v1_request_gets_v1_response() {
     let core = make_core();
-    let request = testing::TestingProbeRequest::V1(v01::TestingProbeRequest {
+    let request = testing::TestingVersionProbeRequest::V1(v01::TestingVersionProbeRequest {
         message: "hello V1".to_string(),
     });
-    let ids = request_ids("testing_probe").expect("known request method");
+    let ids = request_ids("testing_version_probe").expect("known request method");
     let response = dispatch(
         &core,
         ProtocolMessage {
@@ -91,7 +91,7 @@ fn testing_probe_v1_request_gets_v1_response() {
     );
 
     let mut expected = vec![0x00u8, 0x00u8];
-    v01::TestingProbeResponse {
+    v01::TestingVersionProbeResponse {
         received_version: 1,
         message: "hello V1".to_string(),
     }
@@ -101,13 +101,13 @@ fn testing_probe_v1_request_gets_v1_response() {
 
 #[cfg(debug_assertions)]
 #[test]
-fn testing_probe_v2_request_gets_v2_response() {
+fn testing_version_probe_v2_request_gets_v2_response() {
     let core = make_core();
-    let request = testing::TestingProbeRequest::V2(v02::TestingProbeRequest {
+    let request = testing::TestingVersionProbeRequest::V2(v02::TestingVersionProbeRequest {
         message: "hello V2".to_string(),
         marker: 42,
     });
-    let ids = request_ids("testing_probe").expect("known request method");
+    let ids = request_ids("testing_version_probe").expect("known request method");
     let response = dispatch(
         &core,
         ProtocolMessage {
@@ -120,7 +120,7 @@ fn testing_probe_v2_request_gets_v2_response() {
     );
 
     let mut expected = vec![0x01u8, 0x00u8];
-    v02::TestingProbeResponse {
+    v02::TestingVersionProbeResponse {
         received_version: 2,
         message: "hello V2".to_string(),
         marker: 42,
@@ -131,12 +131,14 @@ fn testing_probe_v2_request_gets_v2_response() {
 
 #[cfg(debug_assertions)]
 #[test]
-fn testing_framework_error_uses_framework_error_slot() {
+fn testing_echo_error_uses_raw_result_shape() {
     let core = make_core();
-    let request = testing::TestingFrameworkErrorRequest::V1(v01::TestingFrameworkErrorRequest {
-        error: v01::TestingFrameworkError::HostFailure,
-    });
-    let ids = request_ids("testing_framework_error").expect("known request method");
+    let request = v01::EchoErrorRequest {
+        error: CallError::HostFailure {
+            reason: "forced by testing.echo_error".to_string(),
+        },
+    };
+    let ids = request_ids("testing_echo_error").expect("known request method");
     let response = dispatch(
         &core,
         ProtocolMessage {
@@ -148,10 +150,11 @@ fn testing_framework_error_uses_framework_error_slot() {
         },
     );
 
-    let mut expected = vec![0x00u8, 0x01u8, 0x04u8];
-    "forced by testing.framework_error"
-        .to_string()
-        .encode_to(&mut expected);
+    let mut expected = vec![0x01u8];
+    CallError::<v01::TestingVersionProbeError>::HostFailure {
+        reason: "forced by testing.echo_error".to_string(),
+    }
+    .encode_to(&mut expected);
     assert_eq!(response.payload.value, expected);
 }
 
@@ -241,25 +244,6 @@ fn assert_subscription_start_interrupts_error<E>(
 ) where
     E: Clone + Encode + Versioned,
 {
-    use std::sync::Mutex;
-    use truapi_server::transport::Transport;
-
-    #[derive(Default)]
-    struct RecordingTransport {
-        sent: Mutex<Vec<ProtocolMessage>>,
-    }
-    impl Transport for RecordingTransport {
-        fn send(&self, message: ProtocolMessage) {
-            self.sent.lock().unwrap().push(message);
-        }
-        fn on_message(
-            &self,
-            _handler: Box<dyn Fn(ProtocolMessage) + Send + Sync>,
-        ) -> Box<dyn FnOnce()> {
-            Box::new(|| {})
-        }
-    }
-
     let ids = subscription_ids(method).expect("known subscription method");
     let transport = Arc::new(RecordingTransport::default());
     futures::executor::block_on(core.dispatch(
@@ -408,6 +392,40 @@ fn statement_store_subscribe_topic_limit_interrupts_with_typed_error() {
     );
 }
 
+#[test]
+fn malformed_result_subscription_start_interrupts_with_malformed_frame() {
+    let core = make_core();
+    let method = "payment_balance_subscribe";
+    let ids = subscription_ids(method).expect("known subscription method");
+    let transport = Arc::new(RecordingTransport::default());
+
+    futures::executor::block_on(core.dispatch(
+        ProtocolMessage {
+            request_id: "p:malformed-sub".into(),
+            payload: Payload {
+                id: ids.start_id,
+                value: vec![0xff],
+            },
+        },
+        transport.clone(),
+    ));
+
+    let sent = transport.sent.lock().unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].request_id, "p:malformed-sub");
+    assert_eq!(sent[0].payload.id, ids.interrupt_id);
+    assert_eq!(sent[0].payload.value.first(), Some(&0x00));
+
+    let mut payload = &sent[0].payload.value[1..];
+    let error = CallError::<payment::HostPaymentBalanceSubscribeError>::decode(&mut payload)
+        .expect("decode malformed interrupt error");
+    assert!(payload.is_empty());
+    match error {
+        CallError::MalformedFrame { reason } => assert!(!reason.is_empty()),
+        other => panic!("expected MalformedFrame interrupt, got {other:?}"),
+    }
+}
+
 fn make_core() -> TrUApiCore {
     TrUApiCore::from_platform_with_config(
         Arc::new(WireShapePlatform),
@@ -450,25 +468,8 @@ fn malformed_frames_are_dropped_without_panic() {
 /// `subscription.rs` unit tests bypass.
 #[test]
 fn subscription_start_receive_stop_through_wire_boundary() {
-    use std::sync::Mutex;
     use std::time::{Duration, Instant};
     use truapi_server::transport::Transport;
-
-    #[derive(Default)]
-    struct RecordingTransport {
-        sent: Mutex<Vec<ProtocolMessage>>,
-    }
-    impl Transport for RecordingTransport {
-        fn send(&self, message: ProtocolMessage) {
-            self.sent.lock().unwrap().push(message);
-        }
-        fn on_message(
-            &self,
-            _handler: Box<dyn Fn(ProtocolMessage) + Send + Sync>,
-        ) -> Box<dyn FnOnce()> {
-            Box::new(|| {})
-        }
-    }
 
     let core = make_core();
     let transport = Arc::new(RecordingTransport::default());

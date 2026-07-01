@@ -6,28 +6,25 @@
 //! Account management, signing, and statement-store protocol flows live in the
 //! Rust core itself and are not part of this trait set.
 //!
-//! Host implementations may use `async fn` in trait bodies directly. The
-//! consumers (`truapi-server::runtime::PlatformRuntimeHost<P>`) are generic
-//! over `P: Platform`, so `dyn Trait` object safety is not required.
-
-#![forbid(unsafe_code)]
+//! Async capability traits use `async_trait` so the combined [`Platform`]
+//! surface can be used as a trait object by the runtime.
 
 use futures::stream::BoxStream;
 use parity_scale_codec::{Decode, Encode};
 
-use truapi::v01::{
+pub use async_trait::async_trait;
+
+use truapi::latest::{
     GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
-    HostLocalStorageReadError, HostNavigateToError, HostPushNotificationRequest,
-    HostPushNotificationResponse, NotificationId, PreimageSubmitError, RemotePermissionRequest,
+    HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageReadError,
+    HostNavigateToError, HostPushNotificationRequest, HostPushNotificationResponse,
+    HostRequestResourceAllocationRequest, HostSignPayloadRequest,
+    HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
+    HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
+    PreimageSubmitError, ProductAccountTxPayload, RemotePermissionRequest,
     RemotePermissionResponse, ThemeVariant,
 };
-use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use url::Url;
-
-/// Re-export of `truapi::v01` for host implementations.
-pub use truapi::v01;
-/// Re-export of `truapi::versioned` for host implementations.
-pub use truapi::versioned;
 
 /// Static runtime configuration supplied by the embedding host before the
 /// core handles product-scoped calls.
@@ -35,43 +32,50 @@ pub use truapi::versioned;
 pub struct RuntimeConfig {
     /// Canonical product identifier used for account derivation.
     pub product_id: String,
-    /// Host name shown by the wallet during SSO pairing.
-    pub host_name: String,
-    /// Optional host icon URL/CID shown by the wallet during SSO pairing.
-    pub host_icon: Option<String>,
-    /// Optional host version shown by the wallet during SSO pairing.
-    pub host_version: Option<String>,
-    /// Optional platform/browser name shown by the wallet during SSO pairing.
-    pub platform_type: Option<String>,
-    /// Optional platform/browser version shown by the wallet during SSO pairing.
-    pub platform_version: Option<String>,
+    /// Host metadata shown by the wallet during SSO pairing.
+    pub host_info: HostInfo,
+    /// Platform metadata shown by the wallet during SSO pairing.
+    pub platform_info: PlatformInfo,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
     pub pairing_deeplink_scheme: String,
 }
 
+/// Host metadata shown by the wallet during SSO pairing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostInfo {
+    /// Host name shown by the wallet during SSO pairing.
+    pub name: String,
+    /// Optional host icon URL/CID shown by the wallet during SSO pairing.
+    pub icon: Option<String>,
+    /// Optional host version shown by the wallet during SSO pairing.
+    pub version: Option<String>,
+}
+
+/// Platform metadata shown by the wallet during SSO pairing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PlatformInfo {
+    /// Optional platform/browser name shown by the wallet during SSO pairing.
+    pub kind: Option<String>,
+    /// Optional platform/browser version shown by the wallet during SSO pairing.
+    pub version: Option<String>,
+}
+
 impl RuntimeConfig {
     /// Build a runtime config, validating fields whose representation cannot
     /// be made invalid by Rust types alone.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         product_id: String,
-        host_name: String,
-        host_icon: Option<String>,
-        host_version: Option<String>,
-        platform_type: Option<String>,
-        platform_version: Option<String>,
+        host_info: HostInfo,
+        platform_info: PlatformInfo,
         people_chain_genesis_hash: [u8; 32],
         pairing_deeplink_scheme: String,
     ) -> Result<Self, RuntimeConfigValidationError> {
         let config = Self {
             product_id,
-            host_name,
-            host_icon,
-            host_version,
-            platform_type,
-            platform_version,
+            host_info,
+            platform_info,
             people_chain_genesis_hash,
             pairing_deeplink_scheme,
         };
@@ -81,14 +85,14 @@ impl RuntimeConfig {
 
     fn validate(&self) -> Result<(), RuntimeConfigValidationError> {
         require_non_empty("product_id", &self.product_id)?;
-        require_non_empty("host_name", &self.host_name)?;
+        require_non_empty("host_info.name", &self.host_info.name)?;
         require_non_empty("pairing_deeplink_scheme", &self.pairing_deeplink_scheme)?;
         if self.pairing_deeplink_scheme.contains("://") {
             return Err(RuntimeConfigValidationError::InvalidDeeplinkScheme {
                 scheme: self.pairing_deeplink_scheme.clone(),
             });
         }
-        if let Some(icon) = &self.host_icon {
+        if let Some(icon) = &self.host_info.icon {
             let parsed =
                 Url::parse(icon).map_err(|err| RuntimeConfigValidationError::InvalidHostIcon {
                     reason: err.to_string(),
@@ -111,123 +115,93 @@ fn require_non_empty(field: &'static str, value: &str) -> Result<(), RuntimeConf
 }
 
 /// Runtime config validation error.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
 pub enum RuntimeConfigValidationError {
     /// Required string field was empty or whitespace-only.
+    #[display("{field} must not be empty")]
     EmptyField {
         /// Field name.
         field: &'static str,
     },
     /// Host icon URL could not be parsed as an absolute URL.
+    #[display("host_info.icon must be an absolute HTTPS URL: {reason}")]
     InvalidHostIcon {
         /// Parse failure reason.
         reason: String,
     },
     /// Host icon URL used a non-HTTPS scheme.
+    #[display("host_info.icon must use https scheme, got {scheme:?}")]
     InsecureHostIcon {
         /// Actual URL scheme.
         scheme: String,
     },
     /// Pairing deeplink scheme included a URL separator.
+    #[display("pairing_deeplink_scheme must not include ://, got {scheme:?}")]
     InvalidDeeplinkScheme {
         /// Actual deeplink scheme value.
         scheme: String,
     },
 }
 
-impl std::fmt::Display for RuntimeConfigValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RuntimeConfigValidationError::EmptyField { field } => {
-                write!(f, "{field} must not be empty")
-            }
-            RuntimeConfigValidationError::InvalidHostIcon { reason } => {
-                write!(f, "host_icon must be an absolute HTTPS URL: {reason}")
-            }
-            RuntimeConfigValidationError::InsecureHostIcon { scheme } => {
-                write!(f, "host_icon must use https scheme, got {scheme:?}")
-            }
-            RuntimeConfigValidationError::InvalidDeeplinkScheme { scheme } => {
-                write!(
-                    f,
-                    "pairing_deeplink_scheme must not include ://, got {scheme:?}"
-                )
-            }
-        }
-    }
-}
-
 impl std::error::Error for RuntimeConfigValidationError {}
 
 /// Product-scoped key-value storage. The platform namespaces keys so different
 /// products cannot read each other's data.
+#[async_trait]
 pub trait ProductStorage: Send + Sync {
     /// Read a value by key.
-    fn read(
-        &self,
-        key: String,
-    ) -> impl Future<Output = Result<Option<Vec<u8>>, HostLocalStorageReadError>> + Send;
+    async fn read(&self, key: String) -> Result<Option<Vec<u8>>, HostLocalStorageReadError>;
 
     /// Write a value to a key.
-    fn write(
-        &self,
-        key: String,
-        value: Vec<u8>,
-    ) -> impl Future<Output = Result<(), HostLocalStorageReadError>> + Send;
+    async fn write(&self, key: String, value: Vec<u8>) -> Result<(), HostLocalStorageReadError>;
 
     /// Clear a value at a key.
-    fn clear(
-        &self,
-        key: String,
-    ) -> impl Future<Output = Result<(), HostLocalStorageReadError>> + Send;
+    async fn clear(&self, key: String) -> Result<(), HostLocalStorageReadError>;
 }
 
 /// Open URLs in the system browser. Input is already trimmed, categorized,
 /// and (where needed) normalized by the core; the host implementation only
 /// needs to hand the URL to the OS URL handler.
+#[async_trait]
 pub trait Navigation: Send + Sync {
     /// Open the given URL in the system browser.
-    fn navigate_to(
-        &self,
-        url: String,
-    ) -> impl Future<Output = Result<(), HostNavigateToError>> + Send;
+    async fn navigate_to(&self, url: String) -> Result<(), HostNavigateToError>;
 }
 
 /// Deliver push notifications.
+#[async_trait]
 pub trait Notifications: Send + Sync {
     /// Schedule or immediately display the given notification and return the
     /// host-assigned id.
-    fn push_notification(
+    async fn push_notification(
         &self,
         notification: HostPushNotificationRequest,
-    ) -> impl Future<Output = Result<HostPushNotificationResponse, GenericError>> + Send;
+    ) -> Result<HostPushNotificationResponse, GenericError>;
 
     /// Cancel a notification by id. Idempotent: cancelling an already-fired or
     /// unknown id still returns `Ok(())`.
-    fn cancel_notification(
-        &self,
-        id: NotificationId,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send {
+    async fn cancel_notification(&self, id: NotificationId) -> Result<(), GenericError> {
         let _ = id;
-        async { Ok(()) }
+        Ok(())
     }
 }
 
 /// Permission prompts. v0.1 keeps device permissions (camera, mic, NFC, ...)
 /// separate from remote permissions (domain access, chain submit, ...), so the
 /// platform surface mirrors that split.
+#[async_trait]
 pub trait Permissions: Send + Sync {
     /// Prompt the user for a device-level permission.
-    fn device_permission(
+    async fn device_permission(
         &self,
         request: HostDevicePermissionRequest,
-    ) -> impl Future<Output = Result<HostDevicePermissionResponse, GenericError>> + Send;
+    ) -> Result<HostDevicePermissionResponse, GenericError>;
 
     /// Prompt the user for a remote (product-scoped) permission bundle.
-    fn remote_permission(
+    async fn remote_permission(
         &self,
         request: RemotePermissionRequest,
-    ) -> impl Future<Output = Result<RemotePermissionResponse, GenericError>> + Send;
+    ) -> Result<RemotePermissionResponse, GenericError>;
 }
 
 /// Permission request whose authorization status can be inspected or updated
@@ -258,10 +232,11 @@ pub enum PermissionAuthorizationStatus {
 ///
 /// Hosts call this surface to drive global runtime actions or inspect/update
 /// core-owned state without going through a product-scoped TrUAPI request.
+#[async_trait]
 pub trait CoreAdmin: Send + Sync {
     /// Best-effort logout/disconnect. Clears the active session and emits the
     /// resulting auth state transition.
-    fn disconnect_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
+    async fn disconnect_session(&self) -> Result<(), GenericError>;
 
     /// Cancel any in-flight pairing request.
     fn cancel_pairing(&self);
@@ -271,41 +246,51 @@ pub trait CoreAdmin: Send + Sync {
     fn notify_session_store_changed(&self);
 
     /// Read a stored permission authorization status without prompting.
-    fn get_permission_authorization_status(
+    async fn get_permission_authorization_status(
         &self,
         request: PermissionAuthorizationRequest,
-    ) -> impl Future<Output = Result<PermissionAuthorizationStatus, GenericError>> + Send;
+    ) -> Result<PermissionAuthorizationStatus, GenericError>;
+
+    /// Read stored permission authorization statuses without prompting.
+    ///
+    /// Results are returned in the same order as `requests`.
+    async fn get_permission_authorization_statuses(
+        &self,
+        requests: Vec<PermissionAuthorizationRequest>,
+    ) -> Result<Vec<PermissionAuthorizationStatus>, GenericError>;
 
     /// Update a stored permission authorization status. `NotDetermined` clears
     /// the stored value so the next product request prompts again.
-    fn set_permission_authorization_status(
+    async fn set_permission_authorization_status(
         &self,
         request: PermissionAuthorizationRequest,
         status: PermissionAuthorizationStatus,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+    ) -> Result<(), GenericError>;
 }
 
 /// Feature-support probing. The host answers whether it can service a given
 /// capability (currently scoped to per-chain support).
+#[async_trait]
 pub trait Features: Send + Sync {
     /// Report whether the requested feature is supported.
-    fn feature_supported(
+    async fn feature_supported(
         &self,
         request: HostFeatureSupportedRequest,
-    ) -> impl Future<Output = Result<HostFeatureSupportedResponse, GenericError>> + Send;
+    ) -> Result<HostFeatureSupportedResponse, GenericError>;
 }
 
 /// JSON-RPC provider factory for chain access.
 ///
 /// The platform provides a way to get a JSON-RPC connection for a given chain.
 /// The server runtime manages the chainHead v1 state machine on top of this.
+#[async_trait]
 pub trait ChainProvider: Send + Sync {
     /// Open a JSON-RPC connection for the chain identified by `genesis_hash`.
     /// Drop the returned connection to disconnect.
-    fn connect(
+    async fn connect(
         &self,
         genesis_hash: Vec<u8>,
-    ) -> impl Future<Output = Result<Box<dyn JsonRpcConnection>, GenericError>> + Send;
+    ) -> Result<Box<dyn JsonRpcConnection>, GenericError>;
 }
 
 /// A live JSON-RPC connection to a chain.
@@ -315,6 +300,12 @@ pub trait JsonRpcConnection: Send + Sync {
 
     /// Stream of JSON-RPC response strings.
     fn responses(&self) -> BoxStream<'static, String>;
+
+    /// Close the connection lease.
+    ///
+    /// Hosts may keep a shared underlying transport alive, but this handle
+    /// must stop receiving responses and release any per-caller resources.
+    fn close(&self);
 }
 
 /// Core-owned host-private storage slots. Products never address these slots;
@@ -325,33 +316,31 @@ pub enum CoreStorageKey {
     AuthSession,
     /// Pairing device identity used during SSO flows.
     PairingDeviceIdentity,
-    /// Persisted authorization for a canonical core permission key.
+    /// Persisted authorization for one product-scoped permission request.
     PermissionAuthorization {
-        /// Core-generated permission storage key.
-        storage_key: String,
+        /// Product whose permission decision is being stored.
+        product_id: String,
+        /// Permission request whose authorization is being stored.
+        request: PermissionAuthorizationRequest,
     },
 }
 
 /// Host-private persistence for core-owned state.
+#[async_trait]
 pub trait CoreStorage: Send + Sync {
     /// Read a core-owned value by typed slot.
-    fn read_core_storage(
-        &self,
-        key: CoreStorageKey,
-    ) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;
+    async fn read_core_storage(&self, key: CoreStorageKey)
+    -> Result<Option<Vec<u8>>, GenericError>;
 
     /// Write a core-owned value by typed slot.
-    fn write_core_storage(
+    async fn write_core_storage(
         &self,
         key: CoreStorageKey,
         value: Vec<u8>,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+    ) -> Result<(), GenericError>;
 
     /// Clear a core-owned value by typed slot.
-    fn clear_core_storage(
-        &self,
-        key: CoreStorageKey,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+    async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), GenericError>;
 }
 
 /// Decoded session fields a host shell needs to render account UI without
@@ -406,27 +395,27 @@ pub trait AuthPresenter: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SignPayloadReview {
     /// Product-account signing request.
-    Product(v01::HostSignPayloadRequest),
+    Product(HostSignPayloadRequest),
     /// Legacy-account signing request.
-    LegacyAccount(v01::HostSignPayloadWithLegacyAccountRequest),
+    LegacyAccount(HostSignPayloadWithLegacyAccountRequest),
 }
 
 /// Review shown before a sign-raw request is sent to the paired wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SignRawReview {
     /// Product-account raw signing request.
-    Product(v01::HostSignRawRequest),
+    Product(HostSignRawRequest),
     /// Legacy-account raw signing request.
-    LegacyAccount(v01::HostSignRawWithLegacyAccountRequest),
+    LegacyAccount(HostSignRawWithLegacyAccountRequest),
 }
 
 /// Review shown before a transaction-creation request is sent to the paired wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CreateTransactionReview {
     /// Product-account transaction request.
-    Product(v01::ProductAccountTxPayload),
+    Product(ProductAccountTxPayload),
     /// Legacy-account transaction request.
-    LegacyAccount(v01::LegacyAccountTxPayload),
+    LegacyAccount(LegacyAccountTxPayload),
 }
 
 /// Review shown before a product asks to alias another product account.
@@ -458,20 +447,21 @@ pub enum UserConfirmationReview {
     /// Allow a product to request another product account alias.
     AccountAlias(AccountAliasReview),
     /// Allocate resources for the requesting product.
-    ResourceAllocation(v01::HostRequestResourceAllocationRequest),
+    ResourceAllocation(HostRequestResourceAllocationRequest),
     /// Submit a preimage to the host-selected backend.
     PreimageSubmit(PreimageSubmitReview),
 }
 
 /// Local user confirmation UI for session-channel operations.
+#[async_trait]
 pub trait UserConfirmation: Send + Sync {
     /// Confirm a reviewed action before the core asks the SSO peer.
-    fn confirm_user_action(
+    async fn confirm_user_action(
         &self,
         review: UserConfirmationReview,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send {
+    ) -> Result<bool, GenericError> {
         let _ = review;
-        async { Ok(false) }
+        Ok(false)
     }
 }
 
@@ -483,18 +473,14 @@ pub trait ThemeHost: Send + Sync {
 
 /// Host preimage backend. The core owns wire mapping and subscription
 /// lifecycle; the host owns the selected backend.
+#[async_trait]
 pub trait PreimageHost: Send + Sync {
     /// Submit the preimage and return its key.
-    fn submit_preimage(
-        &self,
-        value: Vec<u8>,
-    ) -> impl Future<Output = Result<Vec<u8>, PreimageSubmitError>> + Send {
+    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, PreimageSubmitError> {
         let _ = value;
-        async {
-            Err(PreimageSubmitError::Unknown {
-                reason: "submitPreimage callback not provided by host".to_string(),
-            })
-        }
+        Err(PreimageSubmitError::Unknown {
+            reason: "submitPreimage callback not provided by host".to_string(),
+        })
     }
 
     /// Emits current value/miss immediately, then future updates.

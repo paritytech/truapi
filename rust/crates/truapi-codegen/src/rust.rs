@@ -9,6 +9,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use convert_case::{Case, Casing};
+
 use crate::rustdoc::*;
 
 mod dispatcher;
@@ -72,13 +74,16 @@ pub(crate) fn wire_method_name(trait_name: &str, method_name: &str) -> String {
 }
 
 /// The `SCREAMING_SNAKE_CASE` const name holding a wire method's ids.
+/// Routed through [`convert_case::Case::UpperSnake`] so it follows the same
+/// casing rules as the TS wire-table emitter (`ts.rs`).
 pub(crate) fn const_name(wire_method: &str) -> String {
-    wire_method.to_uppercase()
+    wire_method.to_case(Case::UpperSnake)
 }
 
-/// Const name for a trait/method pair's wire ids. The single naming
-/// algorithm shared by the Rust and TS wire-table emitters, so both
-/// generated surfaces agree on const names.
+/// Const name for a trait/method pair's wire ids. Both the Rust and TS
+/// wire-table emitters apply `Case::UpperSnake`, so for the real
+/// (single-capital PascalCase trait, snake_case method) surface the two
+/// generated const names agree.
 #[cfg(test)]
 pub(crate) fn wire_const_name(trait_name: &str, method_name: &str) -> String {
     const_name(&wire_method_name(trait_name, method_name))
@@ -161,14 +166,37 @@ mod tests {
         }
     }
 
+    fn versioned_test_type(name: &str) -> TypeDef {
+        TypeDef {
+            name: name.to_string(),
+            module_path: Vec::new(),
+            generic_params: Vec::new(),
+            kind: TypeDefKind::Enum(vec![VariantDef {
+                name: "V1".to_string(),
+                fields: VariantFields::Unnamed(vec![TypeRef::Named {
+                    name: format!("V01{name}"),
+                    args: vec![],
+                }]),
+                docs: None,
+            }]),
+            docs: None,
+        }
+    }
+
+    fn versioned_request_test_types() -> Vec<TypeDef> {
+        ["ReqWrapper", "RespWrapper", "ErrWrapper"]
+            .into_iter()
+            .map(versioned_test_type)
+            .collect()
+    }
+
     fn parse_entries(src: &str) -> Vec<(u8, String)> {
         // Each method's ids are emitted as a named const, e.g.
         //   pub const PREIMAGE_SUBMIT: RequestFrameIds = RequestFrameIds {
         //       request_id: 68,
         //       response_id: 69,
         //   };
-        // Reconstruct the `(id, "{method}_{suffix}")` pairs the assertions use,
-        // mirroring the parser in `tests/wire_table_ts_parity.rs`.
+        // Reconstruct the `(id, "{method}_{suffix}")` pairs the assertions use.
         let mut out = Vec::new();
         let mut lines = src.lines();
         while let Some(line) = lines.next() {
@@ -265,7 +293,7 @@ mod tests {
                 },
             ],
             public_trait_order: vec!["StatementStore".to_string(), "Preimage".to_string()],
-            types: vec![],
+            types: versioned_request_test_types(),
         };
 
         let dispatcher = generate_dispatcher(&api).expect("dispatcher");
@@ -346,7 +374,7 @@ mod tests {
                 docs: None,
             }],
             public_trait_order: vec!["Permissions".to_string()],
-            types: vec![],
+            types: versioned_request_test_types(),
         };
 
         let dispatcher_a = generate_dispatcher(&api).expect("dispatcher a");
@@ -385,14 +413,15 @@ mod tests {
         );
     }
 
-    /// `wire_const_name` is the single naming algorithm for wire-id consts;
-    /// the TS and Rust emitters both call it. Pin its behavior on digits
-    /// (kept attached) and consecutive capitals (split per letter) so the
-    /// two generated surfaces can never drift apart.
+    /// Pin `wire_const_name`'s `convert_case::Case::UpperSnake` behavior:
+    /// digits split off (`v2` -> `V_2`) and acronyms split (`HTTPServer`
+    /// snake-cases to `h_t_t_p_server`, then upper-snakes to
+    /// `H_T_T_P_SERVER`). Real traits/methods avoid both, so the committed
+    /// output is unaffected; the pin guards future drift.
     #[test]
     fn wire_const_name_pins_digits_and_acronyms() {
         assert_eq!(wire_const_name("Preimage", "submit"), "PREIMAGE_SUBMIT");
-        assert_eq!(wire_const_name("Signing", "sign_v2"), "SIGNING_SIGN_V2");
+        assert_eq!(wire_const_name("Signing", "sign_v2"), "SIGNING_SIGN_V_2");
         assert_eq!(
             wire_const_name("HTTPServer", "serve"),
             "H_T_T_P_SERVER_SERVE"

@@ -207,342 +207,253 @@ fn suffix(url: &Url) -> String {
 mod tests {
     use super::*;
 
-    fn dot(identifier: &str, path: &str) -> NavigateDecision {
-        NavigateDecision::DotName {
+    enum Expected {
+        Decision(NavigateDecision),
+        AnyExternalOrReject,
+        Reject,
+    }
+
+    struct TestCase {
+        name: &'static str,
+        input: &'static str,
+        expected: Expected,
+    }
+
+    fn dot(identifier: &str, path: &str) -> Expected {
+        Expected::Decision(NavigateDecision::DotName {
             identifier: identifier.to_string(),
             path: path.to_string(),
-        }
+        })
     }
 
-    fn localhost(host: &str, path: &str) -> NavigateDecision {
-        NavigateDecision::Localhost {
+    fn localhost(host: &str, path: &str) -> Expected {
+        Expected::Decision(NavigateDecision::Localhost {
             host: host.to_string(),
             path: path.to_string(),
-        }
+        })
     }
 
-    fn external(url: &str) -> NavigateDecision {
-        NavigateDecision::External {
+    fn external(url: &str) -> Expected {
+        Expected::Decision(NavigateDecision::External {
             url: url.to_string(),
+        })
+    }
+
+    #[test]
+    fn parse_navigate_cases() {
+        let cases = vec![
+            TestCase {
+                name: "dot bare",
+                input: "mytestapp.dot",
+                expected: dot("mytestapp.dot", ""),
+            },
+            TestCase {
+                name: "dot trailing root dot",
+                input: "example.dot.",
+                expected: dot("example.dot", ""),
+            },
+            TestCase {
+                name: "dot trailing root dot with path",
+                input: "https://example.dot./path",
+                expected: dot("example.dot", "path"),
+            },
+            TestCase {
+                name: "dot li is external",
+                input: "mytestapp.dot.li",
+                expected: external("https://mytestapp.dot.li/"),
+            },
+            TestCase {
+                name: "dot with https",
+                input: "https://mytestapp.dot",
+                expected: dot("mytestapp.dot", ""),
+            },
+            TestCase {
+                name: "dot with http",
+                input: "http://mytestapp.dot",
+                expected: dot("mytestapp.dot", ""),
+            },
+            TestCase {
+                name: "dot with path",
+                input: "mytestapp.dot/some/path",
+                expected: dot("mytestapp.dot", "some/path"),
+            },
+            TestCase {
+                name: "dot with query only",
+                input: "pr508.faucet.dot?embed=1",
+                expected: dot("pr508.faucet.dot", "?embed=1"),
+            },
+            TestCase {
+                name: "dot with hash only",
+                input: "pr508.faucet.dot#section=main",
+                expected: dot("pr508.faucet.dot", "#section=main"),
+            },
+            TestCase {
+                name: "dot with path query hash",
+                input: "pr508.faucet.dot/nested/path?embed=1#frame=compact",
+                expected: dot("pr508.faucet.dot", "nested/path?embed=1#frame=compact"),
+            },
+            TestCase {
+                name: "polkadot scheme dot host",
+                input: "polkadot://currenthost.dot/mytestapp.dot",
+                expected: dot("currenthost.dot", "mytestapp.dot"),
+            },
+            TestCase {
+                name: "polkadot scheme non dot host falls through",
+                input: "polkadot://example.com/settings",
+                expected: Expected::AnyExternalOrReject,
+            },
+            TestCase {
+                name: "polkadot scheme with path",
+                input: "polkadot://currenthost.dot/mytestapp.dot/settings",
+                expected: dot("currenthost.dot", "mytestapp.dot/settings"),
+            },
+            TestCase {
+                name: "polkadot scheme with query and hash",
+                input: "polkadot://currenthost.dot/mytestapp.dot?embed=1#frame=compact",
+                expected: dot("currenthost.dot", "mytestapp.dot?embed=1#frame=compact"),
+            },
+            TestCase {
+                name: "dot subdomain",
+                input: "sub.acme.dot/path",
+                expected: dot("sub.acme.dot", "path"),
+            },
+            TestCase {
+                name: "dot mixed case",
+                input: "Example.DOT/Path",
+                expected: dot("example.dot", "Path"),
+            },
+            TestCase {
+                name: "dot with port is rejected",
+                input: "https://x.dot:8080/path",
+                expected: Expected::Reject,
+            },
+            TestCase {
+                name: "dot with userinfo is rejected",
+                input: "https://user:pass@x.dot/path",
+                expected: Expected::Reject,
+            },
+            TestCase {
+                name: "trim whitespace",
+                input: "  mytestapp.dot/path  ",
+                expected: dot("mytestapp.dot", "path"),
+            },
+            TestCase {
+                name: "localhost bare with port",
+                input: "localhost:3000",
+                expected: localhost("localhost:3000", ""),
+            },
+            TestCase {
+                name: "localhost with port and path",
+                input: "localhost:3000/some/path",
+                expected: localhost("localhost:3000", "some/path"),
+            },
+            TestCase {
+                name: "localhost with explicit http",
+                input: "http://localhost:5000",
+                expected: localhost("localhost:5000", ""),
+            },
+            TestCase {
+                name: "localhost with http and path",
+                input: "http://localhost:5000/path",
+                expected: localhost("localhost:5000", "path"),
+            },
+            TestCase {
+                name: "localhost with query and hash",
+                input: "localhost:3000/path?q=1#h",
+                expected: localhost("localhost:3000", "path?q=1#h"),
+            },
+            TestCase {
+                name: "localhost without port",
+                input: "localhost",
+                expected: localhost("localhost", ""),
+            },
+            TestCase {
+                name: "localhost without port with path",
+                input: "localhost/path",
+                expected: localhost("localhost", "path"),
+            },
+            TestCase {
+                name: "external bare domain",
+                input: "google.com",
+                expected: external("https://google.com/"),
+            },
+            TestCase {
+                name: "external bare domain with path",
+                input: "google.com/search?q=test",
+                expected: external("https://google.com/search?q=test"),
+            },
+            TestCase {
+                name: "external preserves https",
+                input: "https://example.com/page",
+                expected: external("https://example.com/page"),
+            },
+            TestCase {
+                name: "external preserves http",
+                input: "http://example.com/page",
+                expected: external("http://example.com/page"),
+            },
+            TestCase {
+                name: "external dot li",
+                input: "acme.dot.li/path/1",
+                expected: external("https://acme.dot.li/path/1"),
+            },
+            TestCase {
+                name: "reject empty",
+                input: "",
+                expected: Expected::Reject,
+            },
+            TestCase {
+                name: "reject whitespace",
+                input: "   ",
+                expected: Expected::Reject,
+            },
+            TestCase {
+                name: "reject unparseable",
+                input: ":::invalid",
+                expected: Expected::Reject,
+            },
+            TestCase {
+                name: "reject javascript URI",
+                input: "javascript:alert(1)",
+                expected: Expected::Reject,
+            },
+            TestCase {
+                name: "reject file URI",
+                input: "file:///etc/passwd",
+                expected: Expected::Reject,
+            },
+            TestCase {
+                name: "reject data URI",
+                input: "data:text/html,<script>alert(1)</script>",
+                expected: Expected::Reject,
+            },
+            TestCase {
+                name: "reject vbscript URI",
+                input: "vbscript:msgbox(1)",
+                expected: Expected::Reject,
+            },
+        ];
+
+        for case in cases {
+            let actual = parse_navigate(case.input);
+            match case.expected {
+                Expected::Decision(expected) => assert_eq!(actual, expected, "{}", case.name),
+                Expected::AnyExternalOrReject => assert!(
+                    matches!(
+                        actual,
+                        NavigateDecision::External { .. } | NavigateDecision::Reject { .. }
+                    ),
+                    "{}: expected External or Reject, got {actual:?}",
+                    case.name,
+                ),
+                Expected::Reject => assert!(
+                    matches!(actual, NavigateDecision::Reject { .. }),
+                    "{}: expected Reject, got {actual:?}",
+                    case.name,
+                ),
+            }
         }
-    }
 
-    #[test]
-    fn dot_bare() {
-        assert_eq!(parse_navigate("mytestapp.dot"), dot("mytestapp.dot", ""));
-    }
-
-    #[test]
-    fn dot_trailing_root_dot_is_a_product() {
-        // The absolute FQDN form classifies and keys like the bare name.
-        assert_eq!(parse_navigate("example.dot."), dot("example.dot", ""));
-        assert_eq!(
-            parse_navigate("https://example.dot./path"),
-            dot("example.dot", "path")
-        );
-    }
-
-    #[test]
-    fn dot_li_is_not_a_product() {
-        assert_eq!(
-            parse_navigate("mytestapp.dot.li"),
-            external("https://mytestapp.dot.li/")
-        );
-    }
-
-    #[test]
-    fn dot_with_https() {
-        assert_eq!(
-            parse_navigate("https://mytestapp.dot"),
-            dot("mytestapp.dot", "")
-        );
-    }
-
-    #[test]
-    fn dot_with_http() {
-        assert_eq!(
-            parse_navigate("http://mytestapp.dot"),
-            dot("mytestapp.dot", "")
-        );
-    }
-
-    #[test]
-    fn dot_with_path() {
-        assert_eq!(
-            parse_navigate("mytestapp.dot/some/path"),
-            dot("mytestapp.dot", "some/path")
-        );
-    }
-
-    #[test]
-    fn dot_with_query_only() {
-        assert_eq!(
-            parse_navigate("pr508.faucet.dot?embed=1"),
-            dot("pr508.faucet.dot", "?embed=1")
-        );
-    }
-
-    #[test]
-    fn dot_with_hash_only() {
-        assert_eq!(
-            parse_navigate("pr508.faucet.dot#section=main"),
-            dot("pr508.faucet.dot", "#section=main")
-        );
-    }
-
-    #[test]
-    fn dot_with_path_query_hash() {
-        assert_eq!(
-            parse_navigate("pr508.faucet.dot/nested/path?embed=1#frame=compact"),
-            dot("pr508.faucet.dot", "nested/path?embed=1#frame=compact")
-        );
-    }
-
-    #[test]
-    fn polkadot_scheme_dot_host() {
-        assert_eq!(
-            parse_navigate("polkadot://currenthost.dot/mytestapp.dot"),
-            dot("currenthost.dot", "mytestapp.dot")
-        );
-    }
-
-    #[test]
-    fn polkadot_scheme_non_dot_host_falls_through() {
-        match parse_navigate("polkadot://example.com/settings") {
-            NavigateDecision::External { .. } | NavigateDecision::Reject { .. } => {}
-            other => panic!("expected External or Reject, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn polkadot_scheme_with_path() {
-        assert_eq!(
-            parse_navigate("polkadot://currenthost.dot/mytestapp.dot/settings"),
-            dot("currenthost.dot", "mytestapp.dot/settings")
-        );
-    }
-
-    #[test]
-    fn polkadot_scheme_with_query_and_hash() {
-        assert_eq!(
-            parse_navigate("polkadot://currenthost.dot/mytestapp.dot?embed=1#frame=compact"),
-            dot("currenthost.dot", "mytestapp.dot?embed=1#frame=compact")
-        );
-    }
-
-    #[test]
-    fn dot_subdomain() {
-        assert_eq!(
-            parse_navigate("sub.acme.dot/path"),
-            dot("sub.acme.dot", "path")
-        );
-    }
-
-    #[test]
-    fn dot_with_mixed_case_normalizes() {
-        assert_eq!(
-            parse_navigate("Example.DOT/Path"),
-            dot("example.dot", "Path")
-        );
-    }
-
-    #[test]
-    fn dot_with_port_is_rejected() {
-        assert!(matches!(
-            parse_navigate("https://x.dot:8080/path"),
-            NavigateDecision::Reject { .. }
-        ));
-    }
-
-    #[test]
-    fn dot_with_userinfo_is_rejected() {
-        assert!(matches!(
-            parse_navigate("https://user:pass@x.dot/path"),
-            NavigateDecision::Reject { .. }
-        ));
-    }
-
-    #[test]
-    fn trim_whitespace() {
-        assert_eq!(
-            parse_navigate("  mytestapp.dot/path  "),
-            dot("mytestapp.dot", "path")
-        );
-    }
-
-    #[test]
-    fn localhost_bare_with_port() {
-        assert_eq!(
-            parse_navigate("localhost:3000"),
-            localhost("localhost:3000", "")
-        );
-    }
-
-    #[test]
-    fn localhost_with_port_and_path() {
-        assert_eq!(
-            parse_navigate("localhost:3000/some/path"),
-            localhost("localhost:3000", "some/path")
-        );
-    }
-
-    #[test]
-    fn localhost_with_explicit_http() {
-        assert_eq!(
-            parse_navigate("http://localhost:5000"),
-            localhost("localhost:5000", "")
-        );
-    }
-
-    #[test]
-    fn localhost_with_http_and_path() {
-        assert_eq!(
-            parse_navigate("http://localhost:5000/path"),
-            localhost("localhost:5000", "path")
-        );
-    }
-
-    #[test]
-    fn localhost_with_query_and_hash() {
-        assert_eq!(
-            parse_navigate("localhost:3000/path?q=1#h"),
-            localhost("localhost:3000", "path?q=1#h")
-        );
-    }
-
-    #[test]
-    fn localhost_without_port() {
-        assert_eq!(parse_navigate("localhost"), localhost("localhost", ""));
-    }
-
-    #[test]
-    fn localhost_without_port_with_path() {
-        assert_eq!(
-            parse_navigate("localhost/path"),
-            localhost("localhost", "path")
-        );
-    }
-
-    #[test]
-    fn external_bare_domain() {
-        assert_eq!(
-            parse_navigate("google.com"),
-            external("https://google.com/")
-        );
-    }
-
-    #[test]
-    fn external_bare_domain_with_path() {
-        assert_eq!(
-            parse_navigate("google.com/search?q=test"),
-            external("https://google.com/search?q=test")
-        );
-    }
-
-    #[test]
-    fn external_preserves_https() {
-        assert_eq!(
-            parse_navigate("https://example.com/page"),
-            external("https://example.com/page")
-        );
-    }
-
-    #[test]
-    fn external_preserves_http() {
-        assert_eq!(
-            parse_navigate("http://example.com/page"),
-            external("http://example.com/page")
-        );
-    }
-
-    #[test]
-    fn external_dot_li() {
-        assert_eq!(
-            parse_navigate("acme.dot.li/path/1"),
-            external("https://acme.dot.li/path/1")
-        );
-    }
-
-    #[test]
-    fn reject_empty() {
-        assert!(matches!(
-            parse_navigate(""),
-            NavigateDecision::Reject { .. }
-        ));
-    }
-
-    #[test]
-    fn reject_whitespace() {
-        assert!(matches!(
-            parse_navigate("   "),
-            NavigateDecision::Reject { .. }
-        ));
-    }
-
-    #[test]
-    fn reject_unparseable() {
-        assert!(matches!(
-            parse_navigate(":::invalid"),
-            NavigateDecision::Reject { .. }
-        ));
-    }
-
-    /// `javascript:` URIs must never reach the platform's `navigate_to`;
-    /// otherwise a malicious product could execute arbitrary JS in the host.
-    #[test]
-    fn reject_javascript_uri() {
-        assert!(
-            matches!(
-                parse_navigate("javascript:alert(1)"),
-                NavigateDecision::Reject { .. }
-            ),
-            "javascript: scheme must be rejected"
-        );
-    }
-
-    /// `file:` URIs leak local filesystem paths; reject them.
-    #[test]
-    fn reject_file_uri() {
-        assert!(
-            matches!(
-                parse_navigate("file:///etc/passwd"),
-                NavigateDecision::Reject { .. }
-            ),
-            "file: scheme must be rejected"
-        );
-    }
-
-    /// `data:` URIs can carry inline HTML/JS payloads; reject them.
-    #[test]
-    fn reject_data_uri() {
-        assert!(
-            matches!(
-                parse_navigate("data:text/html,<script>alert(1)</script>"),
-                NavigateDecision::Reject { .. }
-            ),
-            "data: scheme must be rejected"
-        );
-    }
-
-    /// `vbscript:` URIs are the legacy IE equivalent of `javascript:`;
-    /// reject them too even though modern browsers don't execute them.
-    #[test]
-    fn reject_vbscript_uri() {
-        assert!(
-            matches!(
-                parse_navigate("vbscript:msgbox(1)"),
-                NavigateDecision::Reject { .. }
-            ),
-            "vbscript: scheme must be rejected"
-        );
-    }
-
-    /// NFC-normalized and NFD-normalized inputs that represent the same
-    /// dotns name must produce the same `DotName.identifier` so downstream
-    /// resolution can't be fooled into looking up two different lookup keys
-    /// for one visual identity.
-    #[test]
-    fn nfc_normalization_collapses_nfd() {
         let nfc = parse_navigate("café.dot");
         let nfd = parse_navigate("cafe\u{0301}.dot");
         match (&nfc, &nfd) {

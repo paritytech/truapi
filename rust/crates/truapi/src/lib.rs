@@ -1,16 +1,16 @@
 //! TrUAPI trait and type definitions for the host product SDK.
 //!
-//! Concrete wire types live in per-version modules (currently [`v01`]).
-//! Versioned envelopes are in [`versioned`].
+//! Concrete wire types live in per-version modules. Versioned envelopes are in
+//! [`versioned`].
 
 #![forbid(unsafe_code)]
 #![allow(async_fn_in_trait)]
 
-use std::convert::Infallible;
-use std::pin::Pin;
+use core::convert::Infallible;
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::task::{Context, Poll};
 
 use futures::Stream;
 use parity_scale_codec::{Decode, Encode};
@@ -20,6 +20,48 @@ pub mod v01;
 #[cfg(debug_assertions)]
 pub mod v02;
 pub mod versioned;
+
+pub mod latest {
+    use crate::versioned::{self, Versioned};
+
+    pub use crate::v01::{
+        AllocatableResource, GenericError, HostSignPayloadData, NotificationId, ProductAccountId,
+        RawPayload, RemotePermission, ThemeVariant,
+    };
+
+    pub type LatestOf<T> = <T as Versioned>::Latest;
+
+    pub type HostAccountGetAliasResponse =
+        LatestOf<versioned::account::HostAccountGetAliasResponse>;
+    pub type HostDevicePermissionRequest =
+        LatestOf<versioned::permissions::HostDevicePermissionRequest>;
+    pub type HostDevicePermissionResponse =
+        LatestOf<versioned::permissions::HostDevicePermissionResponse>;
+    pub type HostFeatureSupportedRequest = LatestOf<versioned::system::HostFeatureSupportedRequest>;
+    pub type HostFeatureSupportedResponse =
+        LatestOf<versioned::system::HostFeatureSupportedResponse>;
+    pub type HostLocalStorageReadError =
+        LatestOf<versioned::local_storage::HostLocalStorageReadError>;
+    pub type HostNavigateToError = LatestOf<versioned::system::HostNavigateToError>;
+    pub type HostPushNotificationRequest =
+        LatestOf<versioned::notifications::HostPushNotificationRequest>;
+    pub type HostPushNotificationResponse =
+        LatestOf<versioned::notifications::HostPushNotificationResponse>;
+    pub type HostRequestResourceAllocationRequest =
+        LatestOf<versioned::resource_allocation::HostRequestResourceAllocationRequest>;
+    pub type HostSignPayloadRequest = LatestOf<versioned::signing::HostSignPayloadRequest>;
+    pub type HostSignPayloadWithLegacyAccountRequest =
+        LatestOf<versioned::signing::HostSignPayloadWithLegacyAccountRequest>;
+    pub type HostSignRawRequest = LatestOf<versioned::signing::HostSignRawRequest>;
+    pub type HostSignRawWithLegacyAccountRequest =
+        LatestOf<versioned::signing::HostSignRawWithLegacyAccountRequest>;
+    pub type LegacyAccountTxPayload =
+        LatestOf<versioned::signing::HostCreateTransactionWithLegacyAccountRequest>;
+    pub type PreimageSubmitError = LatestOf<versioned::preimage::RemotePreimageSubmitError>;
+    pub type ProductAccountTxPayload = LatestOf<versioned::signing::HostCreateTransactionRequest>;
+    pub type RemotePermissionRequest = LatestOf<versioned::permissions::RemotePermissionRequest>;
+    pub type RemotePermissionResponse = LatestOf<versioned::permissions::RemotePermissionResponse>;
+}
 
 pub use truapi_macros::wire;
 

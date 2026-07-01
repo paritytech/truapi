@@ -1,32 +1,36 @@
 //! ChainHead v1 state machine used by `PlatformRuntimeHost`.
 //!
 //! [`ChainRuntime`] keeps one [`ChainConnection`] per chain (keyed by genesis
-//! hash) on top of the platform-provided [`JsonRpcConnection`]. Each connection
-//! owns the per-product `chainHead_v1_follow` subscriptions, the in-flight
-//! request map, and the json-rpc response loop. The follow event stream is
-//! parsed into v01 [`RemoteChainHeadFollowItem`] values; one-shot calls
-//! (header / body / call / storage / spec / broadcast / stop) are submitted as
-//! json-rpc requests and the matching response is decoded back into a typed
-//! v01 result.
+//! hash) on top of the platform-provided [`JsonRpcConnection`]. The generic
+//! JSON-RPC mechanics are delegated to [`crate::host_rpc_client`], while
+//! `subxt-rpcs` owns the raw `chainHead_v1` method shapes and event parsing.
+//! This module keeps the TrUAPI-facing local follow ids and maps subxt DTOs to
+//! public v01 [`RemoteChainHeadFollowItem`] values.
 //!
 //! The chain-side traits return [`RuntimeFailure`], a local classification
 //! that the [`crate::runtime`] layer maps to [`truapi::CallError`] variants
 //! (`Unsupported`, `HostFailure`, ...). This avoids leaking json-rpc plumbing
 //! into the public API.
 
+use core::pin::Pin;
+use core::task::{Context, Poll};
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::task::{Context, Poll};
 
 use futures::FutureExt;
-use futures::channel::{mpsc, oneshot};
+use futures::channel::mpsc;
+use futures::future::{AbortHandle, Abortable};
 use futures::future::{BoxFuture, Shared};
 use futures::stream::BoxStream;
 use futures::{Stream, StreamExt};
-use serde_json::{Map, Value, json};
+use parity_scale_codec::{Decode, Error as ScaleError, Input};
+use primitive_types::H256;
+use serde::de::{Deserializer, Error as DeError};
+use serde_json::Value;
+use subxt_rpcs::client::RpcClient;
+use subxt_rpcs::methods::chain_head as subxt_chain;
+use subxt_rpcs::{ChainHeadRpcMethods, Error as SubxtRpcError, RpcConfig};
 use tracing::instrument;
 use truapi::v01::{
     OperationStartedResult, RemoteChainHeadBodyRequest, RemoteChainHeadBodyResponse,
@@ -41,16 +45,42 @@ use truapi::v01::{
 };
 use truapi_platform::JsonRpcConnection;
 
+use crate::host_rpc_client::HostRpcClient;
 use crate::subscription::Spawner;
 
 const FOLLOW_METHOD: &str = "remote_chain_head_follow";
 
-/// Cap on the number of distinct remote subscription ids buffered in
-/// `pending_follow_events`, and on the events held per id, so a misbehaving
-/// node (or late events for a retired remote id) cannot grow memory without
-/// bound while a follow id is being established.
-const MAX_PENDING_FOLLOW_EVENT_IDS: usize = 64;
-const MAX_PENDING_FOLLOW_EVENTS_PER_ID: usize = 256;
+struct TruapiRpcConfig;
+
+impl RpcConfig for TruapiRpcConfig {
+    type Header = RawHeader;
+    type Hash = H256;
+    type AccountId = ();
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RawHeader(Vec<u8>);
+
+impl Decode for RawHeader {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, ScaleError> {
+        let Some(len) = input.remaining_len()? else {
+            return Err("raw header input length is unknown".into());
+        };
+        let mut bytes = vec![0u8; len];
+        input.read(&mut bytes)?;
+        Ok(Self(bytes))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for RawHeader {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bytes = subxt_chain::Bytes::deserialize(deserializer).map_err(D::Error::custom)?;
+        Ok(Self(bytes.0))
+    }
+}
 
 /// Shared, single-flight `chainHead_v1_follow` setup keyed by local follow id.
 /// Concurrent callers for the same id await one in-flight request rather than
@@ -118,6 +148,14 @@ impl RuntimeFailure {
         match &self.reason {
             Some(reason) => format!("{}: {}", self.method, reason),
             None => self.method.to_string(),
+        }
+    }
+
+    /// Re-tag this failure under `method`, preserving its kind and reason.
+    fn reclassify(&self, method: &'static str) -> RuntimeFailure {
+        match self.kind() {
+            RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(method),
+            RuntimeFailureKind::HostFailure => RuntimeFailure::host_failure(method, self.reason()),
         }
     }
 }
@@ -203,20 +241,19 @@ impl ChainRuntime {
         };
         (self.spawner)(fut.boxed());
 
-        let stream = ManagedSubscription::new(
+        ManagedSubscription::new(
             rx.boxed(),
             Some(Box::new(move || {
                 cleanup_runtime.cleanup_follow(&cleanup_genesis_hash, &cleanup_follow_id);
             })),
-        );
-        stream
-            .filter_map(|signal| async move {
-                match signal {
-                    FollowSignal::Item(item) => Some(item),
-                    FollowSignal::Interrupt => None,
-                }
-            })
-            .boxed()
+        )
+        .filter_map(|signal| async move {
+            match signal {
+                FollowSignal::Item(item) => Some(item),
+                FollowSignal::Interrupt => None,
+            }
+        })
+        .boxed()
     }
 
     /// Fetch a block header.
@@ -231,26 +268,13 @@ impl ChainRuntime {
             .ensure_follow_context(method, &connection, request.follow_subscription_id, false)
             .await?;
 
-        let value = connection
-            .request_value(
-                method,
-                "chainHead_v1_header",
-                json!([remote_follow_id, encode_hex(&request.hash)]),
-            )
-            .await?;
-        let header = match value {
-            Value::Null => None,
-            Value::String(encoded) => Some(
-                decode_hex(&encoded)
-                    .map_err(|reason| RuntimeFailure::host_failure(method, reason))?,
-            ),
-            _ => {
-                return Err(RuntimeFailure::host_failure(
-                    method,
-                    "unexpected chainHead_v1_header result",
-                ));
-            }
-        };
+        let hash = hash_from_bytes(method, &request.hash)?;
+        let header = connection
+            .methods
+            .chainhead_v1_header(&remote_follow_id, hash)
+            .await
+            .map_err(|err| rpc_failure(method, err))?
+            .map(|header| header.0);
         Ok(RemoteChainHeadHeaderResponse { header })
     }
 
@@ -266,14 +290,12 @@ impl ChainRuntime {
             .ensure_follow_context(method, &connection, request.follow_subscription_id, false)
             .await?;
 
-        let value = connection
-            .request_value(
-                method,
-                "chainHead_v1_body",
-                json!([remote_follow_id, encode_hex(&request.hash)]),
-            )
-            .await?;
-        let operation = operation_started_result(method, value)?;
+        let operation = connection
+            .methods
+            .chainhead_v1_body(&remote_follow_id, hash_from_bytes(method, &request.hash)?)
+            .await
+            .map_err(|err| rpc_failure(method, err))
+            .and_then(operation_started_result)?;
         Ok(RemoteChainHeadBodyResponse { operation })
     }
 
@@ -292,27 +314,20 @@ impl ChainRuntime {
         let items = request
             .items
             .iter()
-            .map(encode_storage_query_item)
+            .map(map_storage_query_item)
             .collect::<Vec<_>>();
-        let child_trie = request
-            .child_trie
-            .as_ref()
-            .map(|bytes| Value::String(encode_hex(bytes)))
-            .unwrap_or(Value::Null);
 
-        let value = connection
-            .request_value(
-                method,
-                "chainHead_v1_storage",
-                json!([
-                    remote_follow_id,
-                    encode_hex(&request.hash),
-                    Value::Array(items),
-                    child_trie,
-                ]),
+        let operation = connection
+            .methods
+            .chainhead_v1_storage(
+                &remote_follow_id,
+                hash_from_bytes(method, &request.hash)?,
+                items,
+                request.child_trie.as_deref(),
             )
-            .await?;
-        let operation = operation_started_result(method, value)?;
+            .await
+            .map_err(|err| rpc_failure(method, err))
+            .and_then(operation_started_result)?;
         Ok(RemoteChainHeadStorageResponse { operation })
     }
 
@@ -328,19 +343,17 @@ impl ChainRuntime {
             .ensure_follow_context(method, &connection, request.follow_subscription_id, true)
             .await?;
 
-        let value = connection
-            .request_value(
-                method,
-                "chainHead_v1_call",
-                json!([
-                    remote_follow_id,
-                    encode_hex(&request.hash),
-                    request.function,
-                    encode_hex(&request.call_parameters),
-                ]),
+        let operation = connection
+            .methods
+            .chainhead_v1_call(
+                &remote_follow_id,
+                hash_from_bytes(method, &request.hash)?,
+                &request.function,
+                &request.call_parameters,
             )
-            .await?;
-        let operation = operation_started_result(method, value)?;
+            .await
+            .map_err(|err| rpc_failure(method, err))
+            .and_then(operation_started_result)?;
         Ok(RemoteChainHeadCallResponse { operation })
     }
 
@@ -355,25 +368,14 @@ impl ChainRuntime {
         let remote_follow_id = self
             .ensure_follow_context(method, &connection, request.follow_subscription_id, false)
             .await?;
-        let hashes: Vec<Value> = request
-            .hashes
-            .iter()
-            .map(|hash| Value::String(encode_hex(hash)))
-            .collect();
-        let value = connection
-            .request_value(
-                method,
-                "chainHead_v1_unpin",
-                json!([remote_follow_id, Value::Array(hashes)]),
-            )
-            .await?;
-        match value {
-            Value::Null => Ok(()),
-            _ => Err(RuntimeFailure::host_failure(
-                method,
-                "unexpected chainHead_v1_unpin result",
-            )),
+        for hash in request.hashes {
+            connection
+                .methods
+                .chainhead_v1_unpin(&remote_follow_id, hash_from_bytes(method, &hash)?)
+                .await
+                .map_err(|err| rpc_failure(method, err))?;
         }
+        Ok(())
     }
 
     /// Continue a paused operation.
@@ -387,20 +389,11 @@ impl ChainRuntime {
         let remote_follow_id = self
             .ensure_follow_context(method, &connection, request.follow_subscription_id, false)
             .await?;
-        let value = connection
-            .request_value(
-                method,
-                "chainHead_v1_continue",
-                json!([remote_follow_id, request.operation_id]),
-            )
-            .await?;
-        match value {
-            Value::Null => Ok(()),
-            _ => Err(RuntimeFailure::host_failure(
-                method,
-                "unexpected chainHead_v1_continue result",
-            )),
-        }
+        connection
+            .methods
+            .chainhead_v1_continue(&remote_follow_id, &request.operation_id)
+            .await
+            .map_err(|err| rpc_failure(method, err))
     }
 
     /// Stop a chain-head operation.
@@ -414,20 +407,11 @@ impl ChainRuntime {
         let remote_follow_id = self
             .ensure_follow_context(method, &connection, request.follow_subscription_id, false)
             .await?;
-        let value = connection
-            .request_value(
-                method,
-                "chainHead_v1_stopOperation",
-                json!([remote_follow_id, request.operation_id]),
-            )
-            .await?;
-        match value {
-            Value::Null => Ok(()),
-            _ => Err(RuntimeFailure::host_failure(
-                method,
-                "unexpected chainHead_v1_stopOperation result",
-            )),
-        }
+        connection
+            .methods
+            .chainhead_v1_stop_operation(&remote_follow_id, &request.operation_id)
+            .await
+            .map_err(|err| rpc_failure(method, err))
     }
 
     /// Echo back the chain genesis hash via chainSpec_v1_genesisHash.
@@ -438,22 +422,13 @@ impl ChainRuntime {
     ) -> Result<RemoteChainSpecGenesisHashResponse, RuntimeFailure> {
         let method = "remote_chain_spec_genesis_hash";
         let connection = self.connection_for(method, &genesis_hash).await?;
-        let value = connection
-            .request_value(method, "chainSpec_v1_genesisHash", json!([]))
-            .await?;
-        match value {
-            Value::String(encoded) => {
-                let bytes = decode_hex(&encoded)
-                    .map_err(|reason| RuntimeFailure::host_failure(method, reason))?;
-                Ok(RemoteChainSpecGenesisHashResponse {
-                    genesis_hash: bytes,
-                })
-            }
-            _ => Err(RuntimeFailure::host_failure(
-                method,
-                "unexpected chainSpec_v1_genesisHash result",
-            )),
-        }
+        let genesis_hash = connection
+            .methods
+            .chainspec_v1_genesis_hash()
+            .await
+            .map_err(|err| rpc_failure(method, err))
+            .map(hash_to_bytes)?;
+        Ok(RemoteChainSpecGenesisHashResponse { genesis_hash })
     }
 
     /// Fetch the chain display name via chainSpec_v1_chainName.
@@ -464,16 +439,12 @@ impl ChainRuntime {
     ) -> Result<RemoteChainSpecChainNameResponse, RuntimeFailure> {
         let method = "remote_chain_spec_chain_name";
         let connection = self.connection_for(method, &genesis_hash).await?;
-        let value = connection
-            .request_value(method, "chainSpec_v1_chainName", json!([]))
-            .await?;
-        match value {
-            Value::String(name) => Ok(RemoteChainSpecChainNameResponse { chain_name: name }),
-            _ => Err(RuntimeFailure::host_failure(
-                method,
-                "unexpected chainSpec_v1_chainName result",
-            )),
-        }
+        let chain_name = connection
+            .methods
+            .chainspec_v1_chain_name()
+            .await
+            .map_err(|err| rpc_failure(method, err))?;
+        Ok(RemoteChainSpecChainNameResponse { chain_name })
     }
 
     /// Fetch the chain JSON properties via chainSpec_v1_properties.
@@ -485,8 +456,10 @@ impl ChainRuntime {
         let method = "remote_chain_spec_properties";
         let connection = self.connection_for(method, &genesis_hash).await?;
         let value = connection
-            .request_value(method, "chainSpec_v1_properties", json!([]))
-            .await?;
+            .methods
+            .chainspec_v1_properties::<Value>()
+            .await
+            .map_err(|err| rpc_failure(method, err))?;
         let properties = serde_json::to_string(&value)
             .map_err(|err| RuntimeFailure::host_failure(method, err.to_string()))?;
         Ok(RemoteChainSpecPropertiesResponse { properties })
@@ -500,23 +473,12 @@ impl ChainRuntime {
     ) -> Result<RemoteChainTransactionBroadcastResponse, RuntimeFailure> {
         let method = "remote_chain_transaction_broadcast";
         let connection = self.connection_for(method, &request.genesis_hash).await?;
-        let value = connection
-            .request_value(
-                method,
-                "transaction_v1_broadcast",
-                json!([encode_hex(&request.transaction)]),
-            )
-            .await?;
-        match value {
-            Value::Null => Ok(RemoteChainTransactionBroadcastResponse { operation_id: None }),
-            Value::String(operation_id) => Ok(RemoteChainTransactionBroadcastResponse {
-                operation_id: Some(operation_id),
-            }),
-            _ => Err(RuntimeFailure::host_failure(
-                method,
-                "unexpected transaction_v1_broadcast result",
-            )),
-        }
+        let operation_id = connection
+            .methods
+            .transaction_v1_broadcast(&request.transaction)
+            .await
+            .map_err(|err| rpc_failure(method, err))?;
+        Ok(RemoteChainTransactionBroadcastResponse { operation_id })
     }
 
     /// Stop a transaction broadcast via transaction_v1_stop.
@@ -527,16 +489,18 @@ impl ChainRuntime {
     ) -> Result<(), RuntimeFailure> {
         let method = "remote_chain_transaction_stop";
         let connection = self.connection_for(method, &request.genesis_hash).await?;
-        let value = connection
-            .request_value(method, "transaction_v1_stop", json!([request.operation_id]))
-            .await?;
-        match value {
-            Value::Null => Ok(()),
-            _ => Err(RuntimeFailure::host_failure(
-                method,
-                "unexpected transaction_v1_stop result",
-            )),
+        if let Err(err) = connection
+            .methods
+            .transaction_v1_stop(&request.operation_id)
+            .await
+        {
+            tracing::debug!(
+                ?err,
+                operation_id = request.operation_id,
+                "ignoring transaction stop failure"
+            );
         }
+        Ok(())
     }
 
     #[instrument(skip_all, fields(runtime.method = "chain_runtime.connection_for", method = method))]
@@ -588,12 +552,7 @@ impl ChainRuntime {
             }
         };
 
-        setup.await.map_err(|failure| match failure.kind() {
-            RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(method),
-            RuntimeFailureKind::HostFailure => {
-                RuntimeFailure::host_failure(method, failure.reason())
-            }
-        })
+        setup.await.map_err(|failure| failure.reclassify(method))
     }
 
     #[instrument(skip_all, fields(runtime.method = "chain_runtime.start_follow"))]
@@ -625,7 +584,7 @@ impl ChainRuntime {
         with_runtime: bool,
     ) -> Result<String, RuntimeFailure> {
         let remote_follow_id = connection
-            .ensure_remote_follow(local_follow_id.clone(), with_runtime)
+            .require_remote_follow(method, local_follow_id.clone())
             .await?;
         if with_runtime && !connection.follow_with_runtime(&local_follow_id) {
             return Err(RuntimeFailure::host_failure(
@@ -655,87 +614,28 @@ enum FollowSignal {
 }
 
 struct ChainConnection {
-    rpc: Arc<dyn JsonRpcConnection>,
-    request_ids: AtomicU64,
-    closed: AtomicBool,
+    rpc_client: HostRpcClient,
+    methods: ChainHeadRpcMethods<TruapiRpcConfig>,
+    spawner: Spawner,
     follows: Mutex<HashMap<String, FollowState>>,
-    follows_by_remote: Mutex<HashMap<String, String>>,
-    pending_follow_events: Mutex<HashMap<String, Vec<RemoteChainHeadFollowItem>>>,
     follow_setups: Mutex<HashMap<String, FollowSetup>>,
-    requests: Mutex<HashMap<String, PendingRequest>>,
 }
 
 impl ChainConnection {
     fn new(rpc: Arc<dyn JsonRpcConnection>, spawner: Spawner) -> Arc<Self> {
-        let connection = Arc::new(Self {
-            rpc,
-            request_ids: AtomicU64::new(1),
-            closed: AtomicBool::new(false),
+        let rpc_client = HostRpcClient::new(rpc, spawner.clone());
+        let methods = ChainHeadRpcMethods::new(RpcClient::new(rpc_client.clone()));
+        Arc::new(Self {
+            rpc_client,
+            methods,
+            spawner,
             follows: Mutex::new(HashMap::new()),
-            follows_by_remote: Mutex::new(HashMap::new()),
-            pending_follow_events: Mutex::new(HashMap::new()),
             follow_setups: Mutex::new(HashMap::new()),
-            requests: Mutex::new(HashMap::new()),
-        });
-        connection.clone().spawn_response_loop(spawner);
-        connection
-    }
-
-    fn spawn_response_loop(self: Arc<Self>, spawner: Spawner) {
-        let rpc = self.rpc.clone();
-        let fut = async move {
-            let mut responses = rpc.responses();
-            while let Some(response) = responses.next().await {
-                if let Err(failure) = self.handle_response(&response) {
-                    self.close_with_failure(failure);
-                    return;
-                }
-            }
-            self.close_with_failure(RuntimeFailure::unavailable(FOLLOW_METHOD));
-        };
-        (spawner)(fut.boxed());
+        })
     }
 
     fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::Relaxed)
-    }
-
-    #[instrument(skip_all, fields(runtime.method = "chain_connection.request_value", method = method, rpc_method = rpc_method))]
-    async fn request_value(
-        &self,
-        method: &'static str,
-        rpc_method: &'static str,
-        params: Value,
-    ) -> Result<Value, RuntimeFailure> {
-        let request_id = format!(
-            "truapi:{}",
-            self.request_ids.fetch_add(1, Ordering::Relaxed)
-        );
-        let (tx, rx) = oneshot::channel();
-        {
-            // Check `closed` and insert under the same lock `close_with_failure`
-            // takes, so the connection cannot drain the request map between the
-            // check and the insert and leave this request to hang forever.
-            let mut requests = self.requests.lock().unwrap();
-            if self.is_closed() {
-                return Err(RuntimeFailure::unavailable(method));
-            }
-            requests.insert(request_id.clone(), PendingRequest { method, tx });
-        }
-        self.rpc.send(
-            json!({
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "method": rpc_method,
-                "params": params,
-            })
-            .to_string(),
-        );
-
-        match rx.await {
-            Ok(result) => result,
-            Err(_) => Err(RuntimeFailure::unavailable(method)),
-        }
+        self.rpc_client.is_closed()
     }
 
     fn follow_with_runtime(&self, local_follow_id: &str) -> bool {
@@ -743,8 +643,7 @@ impl ChainConnection {
             .lock()
             .unwrap()
             .get(local_follow_id)
-            .map(|follow| follow.with_runtime)
-            .unwrap_or(false)
+            .is_some_and(|follow| follow.with_runtime)
     }
 
     fn remote_follow_id(&self, local_follow_id: &str) -> Option<String> {
@@ -752,7 +651,7 @@ impl ChainConnection {
             .lock()
             .unwrap()
             .get(local_follow_id)
-            .and_then(|follow| follow.remote_follow_id.clone())
+            .and_then(|follow| follow.remote_subscription_id.clone())
     }
 
     /// Record intent to follow `local_follow_id`, attaching `sender` for a
@@ -776,7 +675,8 @@ impl ChainConnection {
                     local_follow_id.to_string(),
                     FollowState {
                         with_runtime,
-                        remote_follow_id: None,
+                        remote_subscription_id: None,
+                        abort: None,
                         sender,
                     },
                 );
@@ -824,6 +724,45 @@ impl ChainConnection {
         result
     }
 
+    /// Return the remote follow id for an already-created local follow.
+    ///
+    /// Follow-bound request methods must not create remote follows themselves:
+    /// the local follow stream owns cleanup, so only `follow_head_subscribe`
+    /// may establish the remote subscription.
+    #[instrument(skip_all, fields(runtime.method = "chain_connection.require_remote_follow"))]
+    async fn require_remote_follow(
+        self: &Arc<Self>,
+        method: &'static str,
+        local_follow_id: String,
+    ) -> Result<String, RuntimeFailure> {
+        if let Some(remote_follow_id) = self.remote_follow_id(&local_follow_id) {
+            return Ok(remote_follow_id);
+        }
+
+        let setup = {
+            let follows = self.follows.lock().unwrap();
+            if !follows.contains_key(&local_follow_id) {
+                return Err(RuntimeFailure::host_failure(
+                    method,
+                    format!("unknown follow subscription id {local_follow_id:?}"),
+                ));
+            }
+            self.follow_setups
+                .lock()
+                .unwrap()
+                .get(&local_follow_id)
+                .cloned()
+        };
+
+        match setup {
+            Some(setup) => setup.await.map_err(|failure| failure.reclassify(method)),
+            None => Err(RuntimeFailure::host_failure(
+                method,
+                format!("follow subscription {local_follow_id:?} is not established"),
+            )),
+        }
+    }
+
     /// Body of the single-flight follow setup: ensure the `FollowState`
     /// exists, issue `chainHead_v1_follow`, and record the remote id.
     #[instrument(skip_all, fields(runtime.method = "chain_connection.run_follow_setup"))]
@@ -838,194 +777,101 @@ impl ChainConnection {
             .entry(local_follow_id.clone())
             .or_insert_with(|| FollowState {
                 with_runtime,
-                remote_follow_id: None,
+                remote_subscription_id: None,
+                abort: None,
                 sender: None,
             });
 
-        let remote_follow_id = match self
-            .request_value(FOLLOW_METHOD, "chainHead_v1_follow", json!([with_runtime]))
+        let mut follow = self
+            .methods
+            .chainhead_v1_follow(with_runtime)
             .await
-        {
-            Ok(Value::String(value)) => value,
-            Ok(_) => {
+            .map_err(|err| {
                 self.remove_follow(&local_follow_id);
-                return Err(RuntimeFailure::host_failure(
-                    FOLLOW_METHOD,
-                    "unexpected chainHead_v1_follow result",
-                ));
+                rpc_failure(FOLLOW_METHOD, err)
+            })?;
+        let remote_follow_id = follow
+            .subscription_id()
+            .ok_or_else(|| {
+                RuntimeFailure::host_failure(FOLLOW_METHOD, "missing follow subscription id")
+            })?
+            .to_string();
+
+        let (abort, abort_registration) = AbortHandle::new_pair();
+        let connection = self.clone();
+        let pump_follow_id = local_follow_id.clone();
+        let pump = async move {
+            while let Some(item) = follow.next().await {
+                match item {
+                    Ok(event) => match map_follow_event(event) {
+                        Ok(item) => {
+                            let is_stop = matches!(item, RemoteChainHeadFollowItem::Stop);
+                            connection.deliver_follow_event(&pump_follow_id, item, false);
+                            if is_stop {
+                                break;
+                            }
+                        }
+                        Err(_) => {
+                            connection.interrupt_follow(&pump_follow_id, false);
+                            break;
+                        }
+                    },
+                    Err(_) => {
+                        connection.interrupt_follow(&pump_follow_id, false);
+                        break;
+                    }
+                }
             }
-            Err(failure) => {
-                self.remove_follow(&local_follow_id);
-                return Err(failure);
-            }
+            connection.remove_follow_without_abort(&pump_follow_id);
         };
 
-        self.set_remote_follow_id(&local_follow_id, remote_follow_id.clone());
+        if !self.attach_remote_follow(&local_follow_id, remote_follow_id.clone(), abort) {
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
+
+        (self.spawner)(Abortable::new(pump, abort_registration).map(|_| ()).boxed());
         Ok(remote_follow_id)
     }
 
-    fn set_remote_follow_id(&self, local_follow_id: &str, remote_follow_id: String) {
-        let attached = {
-            let mut follows = self.follows.lock().unwrap();
-            if let Some(follow) = follows.get_mut(local_follow_id) {
-                follow.remote_follow_id = Some(remote_follow_id.clone());
-                self.follows_by_remote
-                    .lock()
-                    .unwrap()
-                    .insert(remote_follow_id.clone(), local_follow_id.to_string());
-                true
-            } else {
-                false
-            }
+    fn attach_remote_follow(
+        &self,
+        local_follow_id: &str,
+        remote_follow_id: String,
+        abort: AbortHandle,
+    ) -> bool {
+        let mut follows = self.follows.lock().unwrap();
+        let Some(follow) = follows.get_mut(local_follow_id) else {
+            return false;
         };
-        if !attached {
-            // The local follow was torn down (stream dropped, connection
-            // closed) while `chainHead_v1_follow` was in flight. Release the
-            // now-orphaned remote subscription rather than leaking it on the
-            // node, and drop any events buffered for it.
-            self.send_unfollow(&remote_follow_id);
-            self.pending_follow_events
-                .lock()
-                .unwrap()
-                .remove(&remote_follow_id);
-            return;
-        }
-        let buffered = self
-            .pending_follow_events
-            .lock()
-            .unwrap()
-            .remove(&remote_follow_id)
-            .unwrap_or_default();
-        for event in buffered {
-            self.deliver_follow_event(local_follow_id, event);
-        }
+        follow.remote_subscription_id = Some(remote_follow_id);
+        follow.abort = Some(abort);
+        true
     }
 
     fn remove_follow(&self, local_follow_id: &str) {
         self.follow_setups.lock().unwrap().remove(local_follow_id);
-        if let Some(follow) = self.follows.lock().unwrap().remove(local_follow_id)
-            && let Some(remote_follow_id) = follow.remote_follow_id
+        if let Some(mut follow) = self.follows.lock().unwrap().remove(local_follow_id)
+            && let Some(abort) = follow.abort.take()
         {
-            self.follows_by_remote
-                .lock()
-                .unwrap()
-                .remove(&remote_follow_id);
+            abort.abort();
         }
+    }
+
+    fn remove_follow_without_abort(&self, local_follow_id: &str) {
+        self.follow_setups.lock().unwrap().remove(local_follow_id);
+        self.follows.lock().unwrap().remove(local_follow_id);
     }
 
     fn unfollow(&self, local_follow_id: &str) {
-        let remote_follow_id = self.remote_follow_id(local_follow_id);
         self.remove_follow(local_follow_id);
-        let Some(remote_follow_id) = remote_follow_id else {
-            return;
-        };
-        self.send_unfollow(&remote_follow_id);
     }
 
-    /// Send a `chainHead_v1_unfollow` for `remote_follow_id`. Best-effort: a
-    /// closed connection simply drops the request.
-    fn send_unfollow(&self, remote_follow_id: &str) {
-        self.rpc.send(
-            json!({
-                "jsonrpc": "2.0",
-                "id": format!("truapi:{}", self.request_ids.fetch_add(1, Ordering::Relaxed)),
-                "method": "chainHead_v1_unfollow",
-                "params": [remote_follow_id],
-            })
-            .to_string(),
-        );
-    }
-
-    fn handle_response(&self, response: &str) -> Result<(), RuntimeFailure> {
-        let value: Value = serde_json::from_str(response).map_err(|error| {
-            RuntimeFailure::host_failure(FOLLOW_METHOD, format!("invalid json-rpc frame: {error}"))
-        })?;
-
-        if value.get("method") == Some(&Value::String("chainHead_v1_followEvent".to_string())) {
-            return self.handle_follow_notification(&value);
-        }
-
-        let Some(request_id) = value.get("id").and_then(json_id) else {
-            return Ok(());
-        };
-        let Some(pending) = self.requests.lock().unwrap().remove(&request_id) else {
-            return Ok(());
-        };
-
-        if let Some(result) = value.get("result") {
-            let _ = pending.tx.send(Ok(result.clone()));
-            return Ok(());
-        }
-
-        if let Some(error) = value.get("error") {
-            let reason = error
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("json-rpc error")
-                .to_string();
-            let _ = pending
-                .tx
-                .send(Err(RuntimeFailure::host_failure(pending.method, reason)));
-            return Ok(());
-        }
-
-        let _ = pending.tx.send(Err(RuntimeFailure::host_failure(
-            pending.method,
-            "json-rpc response missing result and error",
-        )));
-        Ok(())
-    }
-
-    fn handle_follow_notification(&self, value: &Value) -> Result<(), RuntimeFailure> {
-        let params = value
-            .get("params")
-            .and_then(Value::as_object)
-            .ok_or_else(|| {
-                RuntimeFailure::host_failure(
-                    FOLLOW_METHOD,
-                    "missing chainHead_v1_followEvent params",
-                )
-            })?;
-        let remote_follow_id = params
-            .get("subscription")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                RuntimeFailure::host_failure(
-                    FOLLOW_METHOD,
-                    "missing chainHead_v1_followEvent subscription",
-                )
-            })?;
-        let event = parse_follow_event(params.get("result").ok_or_else(|| {
-            RuntimeFailure::host_failure(FOLLOW_METHOD, "missing chainHead_v1_followEvent result")
-        })?)?;
-        let local_follow_id = self
-            .follows_by_remote
-            .lock()
-            .unwrap()
-            .get(remote_follow_id)
-            .cloned();
-        match local_follow_id {
-            Some(local_follow_id) => self.deliver_follow_event(&local_follow_id, event),
-            None => {
-                let mut pending = self.pending_follow_events.lock().unwrap();
-                // Bound the buffer in both dimensions so a misbehaving node, or
-                // late events for a retired remote id, cannot grow memory
-                // without limit while a follow id is being established.
-                let known = pending.contains_key(remote_follow_id);
-                if !known && pending.len() >= MAX_PENDING_FOLLOW_EVENT_IDS {
-                    return Ok(());
-                }
-                let buffer = pending.entry(remote_follow_id.to_string()).or_default();
-                if buffer.len() >= MAX_PENDING_FOLLOW_EVENTS_PER_ID {
-                    return Ok(());
-                }
-                buffer.push(event);
-            }
-        }
-        Ok(())
-    }
-
-    fn deliver_follow_event(&self, local_follow_id: &str, event: RemoteChainHeadFollowItem) {
+    fn deliver_follow_event(
+        &self,
+        local_follow_id: &str,
+        event: RemoteChainHeadFollowItem,
+        abort_on_stop: bool,
+    ) {
         let sender = self
             .follows
             .lock()
@@ -1037,50 +883,36 @@ impl ChainConnection {
             let _ = sender.unbounded_send(FollowSignal::Item(event));
         }
         if is_stop {
-            self.remove_follow(local_follow_id);
-        }
-    }
-
-    fn close_with_failure(&self, failure: RuntimeFailure) {
-        // Flip `closed` while holding the requests lock so it is mutually
-        // exclusive with `request_value`'s check-and-insert: a request is
-        // either seen here and failed, or sees `closed` and bails, but never
-        // slips through to hang.
-        let requests = {
-            let mut requests = self.requests.lock().unwrap();
-            self.closed.store(true, Ordering::Relaxed);
-            std::mem::take(&mut *requests)
-        };
-        for (_, request) in requests {
-            let mapped = match failure.kind() {
-                RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(request.method),
-                RuntimeFailureKind::HostFailure => {
-                    RuntimeFailure::host_failure(request.method, failure.reason())
-                }
-            };
-            let _ = request.tx.send(Err(mapped));
-        }
-
-        let follows = std::mem::take(&mut *self.follows.lock().unwrap());
-        self.follows_by_remote.lock().unwrap().clear();
-        self.pending_follow_events.lock().unwrap().clear();
-        self.follow_setups.lock().unwrap().clear();
-        for (_, follow) in follows {
-            if let Some(sender) = follow.sender {
-                let _ = sender.unbounded_send(FollowSignal::Interrupt);
+            if abort_on_stop {
+                self.remove_follow(local_follow_id);
+            } else {
+                self.remove_follow_without_abort(local_follow_id);
             }
         }
     }
-}
 
-struct PendingRequest {
-    method: &'static str,
-    tx: oneshot::Sender<Result<Value, RuntimeFailure>>,
+    fn interrupt_follow(&self, local_follow_id: &str, abort: bool) {
+        let sender = self
+            .follows
+            .lock()
+            .unwrap()
+            .get(local_follow_id)
+            .and_then(|follow| follow.sender.clone());
+        if let Some(sender) = sender {
+            let _ = sender.unbounded_send(FollowSignal::Interrupt);
+        }
+        if abort {
+            self.remove_follow(local_follow_id);
+        } else {
+            self.remove_follow_without_abort(local_follow_id);
+        }
+    }
 }
 
 struct FollowState {
     with_runtime: bool,
-    remote_follow_id: Option<String>,
+    remote_subscription_id: Option<String>,
+    abort: Option<AbortHandle>,
     sender: Option<mpsc::UnboundedSender<FollowSignal>>,
 }
 
@@ -1115,251 +947,183 @@ impl<T> Stream for ManagedSubscription<T> {
     }
 }
 
-fn parse_follow_event(value: &Value) -> Result<RemoteChainHeadFollowItem, RuntimeFailure> {
-    let event = value
-        .get("event")
-        .and_then(Value::as_str)
-        .ok_or_else(|| RuntimeFailure::host_failure(FOLLOW_METHOD, "missing event name"))?;
+fn operation_started_result(
+    response: subxt_chain::MethodResponse,
+) -> Result<OperationStartedResult, RuntimeFailure> {
+    match response {
+        subxt_chain::MethodResponse::Started(started) => Ok(OperationStartedResult::Started {
+            operation_id: started.operation_id,
+        }),
+        subxt_chain::MethodResponse::LimitReached => Ok(OperationStartedResult::LimitReached),
+    }
+}
+
+fn map_follow_event(
+    event: subxt_chain::FollowEvent<H256>,
+) -> Result<RemoteChainHeadFollowItem, RuntimeFailure> {
     match event {
-        "initialized" => Ok(RemoteChainHeadFollowItem::Initialized {
-            finalized_block_hashes: decode_hex_vec_field(value, "finalizedBlockHashes")?,
-            finalized_block_runtime: value
-                .get("finalizedBlockRuntime")
-                .map(parse_runtime_type)
-                .transpose()
-                .map_err(|reason| RuntimeFailure::host_failure(FOLLOW_METHOD, reason))?,
-        }),
-        "newBlock" => Ok(RemoteChainHeadFollowItem::NewBlock {
-            block_hash: decode_hex_field(value, "blockHash")?,
-            parent_block_hash: decode_hex_field(value, "parentBlockHash")?,
-            new_runtime: value
-                .get("newRuntime")
-                .map(parse_runtime_type)
-                .transpose()
-                .map_err(|reason| RuntimeFailure::host_failure(FOLLOW_METHOD, reason))?,
-        }),
-        "bestBlockChanged" => Ok(RemoteChainHeadFollowItem::BestBlockChanged {
-            best_block_hash: decode_hex_field(value, "bestBlockHash")?,
-        }),
-        "finalized" => Ok(RemoteChainHeadFollowItem::Finalized {
-            finalized_block_hashes: decode_hex_vec_field(value, "finalizedBlockHashes")?,
-            pruned_block_hashes: decode_hex_vec_field(value, "prunedBlockHashes")?,
-        }),
-        "operationBodyDone" => Ok(RemoteChainHeadFollowItem::OperationBodyDone {
-            operation_id: string_field(value, "operationId")?,
-            value: decode_hex_vec_field(value, "value")?,
-        }),
-        "operationCallDone" => Ok(RemoteChainHeadFollowItem::OperationCallDone {
-            operation_id: string_field(value, "operationId")?,
-            output: decode_hex_field(value, "output")?,
-        }),
-        "operationStorageItems" => Ok(RemoteChainHeadFollowItem::OperationStorageItems {
-            operation_id: string_field(value, "operationId")?,
-            items: parse_storage_result_items(value)?,
-        }),
-        "operationStorageDone" => Ok(RemoteChainHeadFollowItem::OperationStorageDone {
-            operation_id: string_field(value, "operationId")?,
-        }),
-        "operationWaitingForContinue" => {
-            Ok(RemoteChainHeadFollowItem::OperationWaitingForContinue {
-                operation_id: string_field(value, "operationId")?,
+        subxt_chain::FollowEvent::Initialized(event) => {
+            Ok(RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: event
+                    .finalized_block_hashes
+                    .into_iter()
+                    .map(hash_to_bytes)
+                    .collect(),
+                finalized_block_runtime: event
+                    .finalized_block_runtime
+                    .map(map_runtime_event)
+                    .transpose()?,
             })
         }
-        "operationInaccessible" => Ok(RemoteChainHeadFollowItem::OperationInaccessible {
-            operation_id: string_field(value, "operationId")?,
+        subxt_chain::FollowEvent::NewBlock(event) => Ok(RemoteChainHeadFollowItem::NewBlock {
+            block_hash: hash_to_bytes(event.block_hash),
+            parent_block_hash: hash_to_bytes(event.parent_block_hash),
+            new_runtime: event.new_runtime.map(map_runtime_event).transpose()?,
         }),
-        "operationError" => Ok(RemoteChainHeadFollowItem::OperationError {
-            operation_id: string_field(value, "operationId")?,
-            error: string_field(value, "error")?,
-        }),
-        "stop" => Ok(RemoteChainHeadFollowItem::Stop),
-        other => Err(RuntimeFailure::host_failure(
-            FOLLOW_METHOD,
-            format!("unsupported follow event {other}"),
-        )),
-    }
-}
-
-fn parse_storage_result_items(value: &Value) -> Result<Vec<StorageResultItem>, RuntimeFailure> {
-    let Some(items) = value.get("items").and_then(Value::as_array) else {
-        return Ok(Vec::new());
-    };
-    items
-        .iter()
-        .map(|item| -> Result<StorageResultItem, RuntimeFailure> {
-            let key = decode_hex_field(item, "key")?;
-            let value = optional_hex_field(item, "value")?;
-            let hash = optional_hex_field(item, "hash")?;
-            let closest_descendant_merkle_value =
-                optional_hex_field(item, "closestDescendantMerkleValue")?;
-            Ok(StorageResultItem {
-                key,
-                value,
-                hash,
-                closest_descendant_merkle_value,
+        subxt_chain::FollowEvent::BestBlockChanged(event) => {
+            Ok(RemoteChainHeadFollowItem::BestBlockChanged {
+                best_block_hash: hash_to_bytes(event.best_block_hash),
             })
-        })
-        .collect()
-}
-
-fn operation_started_result(
-    method: &'static str,
-    value: Value,
-) -> Result<OperationStartedResult, RuntimeFailure> {
-    let result = value
-        .get("result")
-        .and_then(Value::as_str)
-        .ok_or_else(|| RuntimeFailure::host_failure(method, "missing operation result kind"))?;
-    match result {
-        "started" => Ok(OperationStartedResult::Started {
-            operation_id: value
-                .get("operationId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| RuntimeFailure::host_failure(method, "missing operation id"))?
-                .to_string(),
+        }
+        subxt_chain::FollowEvent::Finalized(event) => Ok(RemoteChainHeadFollowItem::Finalized {
+            finalized_block_hashes: event
+                .finalized_block_hashes
+                .into_iter()
+                .map(hash_to_bytes)
+                .collect(),
+            pruned_block_hashes: event
+                .pruned_block_hashes
+                .into_iter()
+                .map(hash_to_bytes)
+                .collect(),
         }),
-        "limitReached" => Ok(OperationStartedResult::LimitReached),
-        other => Err(RuntimeFailure::host_failure(
-            method,
-            format!("unexpected operation result {other}"),
-        )),
+        subxt_chain::FollowEvent::OperationBodyDone(event) => {
+            Ok(RemoteChainHeadFollowItem::OperationBodyDone {
+                operation_id: event.operation_id,
+                value: event.value.into_iter().map(|bytes| bytes.0).collect(),
+            })
+        }
+        subxt_chain::FollowEvent::OperationCallDone(event) => {
+            Ok(RemoteChainHeadFollowItem::OperationCallDone {
+                operation_id: event.operation_id,
+                output: event.output.0,
+            })
+        }
+        subxt_chain::FollowEvent::OperationStorageItems(event) => {
+            Ok(RemoteChainHeadFollowItem::OperationStorageItems {
+                operation_id: event.operation_id,
+                items: event
+                    .items
+                    .into_iter()
+                    .map(map_storage_result)
+                    .collect::<Result<Vec<_>, _>>()?,
+            })
+        }
+        subxt_chain::FollowEvent::OperationStorageDone(event) => {
+            Ok(RemoteChainHeadFollowItem::OperationStorageDone {
+                operation_id: event.operation_id,
+            })
+        }
+        subxt_chain::FollowEvent::OperationWaitingForContinue(event) => {
+            Ok(RemoteChainHeadFollowItem::OperationWaitingForContinue {
+                operation_id: event.operation_id,
+            })
+        }
+        subxt_chain::FollowEvent::OperationInaccessible(event) => {
+            Ok(RemoteChainHeadFollowItem::OperationInaccessible {
+                operation_id: event.operation_id,
+            })
+        }
+        subxt_chain::FollowEvent::OperationError(event) => {
+            Ok(RemoteChainHeadFollowItem::OperationError {
+                operation_id: event.operation_id,
+                error: event.error,
+            })
+        }
+        subxt_chain::FollowEvent::Stop => Ok(RemoteChainHeadFollowItem::Stop),
     }
 }
 
-fn parse_runtime_type(value: &Value) -> Result<RuntimeType, String> {
-    let Some(kind) = value.get("type").and_then(Value::as_str) else {
-        return Ok(RuntimeType::Invalid {
-            error: "missing runtime type".to_string(),
-        });
-    };
-    match kind {
-        "valid" => {
-            let spec = value
-                .get("spec")
-                .and_then(Value::as_object)
-                .ok_or_else(|| "missing valid runtime spec".to_string())?;
-            let apis = spec
-                .get("apis")
-                .and_then(Value::as_object)
-                .map(|apis| {
-                    let mut entries = apis
-                        .iter()
-                        .filter_map(|(name, version)| {
-                            version.as_u64().map(|version| RuntimeApi {
-                                name: name.clone(),
-                                version: version as u32,
-                            })
-                        })
-                        .collect::<Vec<_>>();
-                    entries.sort_by(|left, right| left.name.cmp(&right.name));
-                    entries
-                })
-                .unwrap_or_default();
+fn map_runtime_event(event: subxt_chain::RuntimeEvent) -> Result<RuntimeType, RuntimeFailure> {
+    match event {
+        subxt_chain::RuntimeEvent::Valid(event) => {
+            let mut apis = event
+                .spec
+                .apis
+                .into_iter()
+                .map(|(name, version)| RuntimeApi { name, version })
+                .collect::<Vec<_>>();
+            apis.sort_by(|left, right| left.name.cmp(&right.name));
             Ok(RuntimeType::Valid(RuntimeSpec {
-                spec_name: string_object_field(spec, "specName")?,
-                impl_name: string_object_field(spec, "implName")?,
-                spec_version: u32_object_field(spec, "specVersion")?,
-                impl_version: u32_object_field(spec, "implVersion")?,
-                transaction_version: spec
-                    .get("transactionVersion")
-                    .and_then(Value::as_u64)
-                    .map(|value| value as u32),
+                spec_name: event.spec.spec_name,
+                impl_name: event.spec.impl_name,
+                spec_version: event.spec.spec_version,
+                impl_version: event.spec.impl_version,
+                transaction_version: Some(event.spec.transaction_version),
                 apis,
             }))
         }
-        "invalid" => Ok(RuntimeType::Invalid {
-            error: value
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("invalid runtime")
-                .to_string(),
-        }),
-        other => Err(format!("unsupported runtime type {other}")),
+        subxt_chain::RuntimeEvent::Invalid(event) => {
+            Ok(RuntimeType::Invalid { error: event.error })
+        }
     }
 }
 
-fn encode_storage_query_item(item: &StorageQueryItem) -> Value {
-    let query_type = match item.query_type {
-        StorageQueryType::Value => "value",
-        StorageQueryType::Hash => "hash",
-        StorageQueryType::ClosestDescendantMerkleValue => "closestDescendantMerkleValue",
-        StorageQueryType::DescendantsValues => "descendantsValues",
-        StorageQueryType::DescendantsHashes => "descendantsHashes",
+fn map_storage_query_item(item: &StorageQueryItem) -> subxt_chain::StorageQuery<&[u8]> {
+    subxt_chain::StorageQuery {
+        key: item.key.as_slice(),
+        query_type: match item.query_type {
+            StorageQueryType::Value => subxt_chain::StorageQueryType::Value,
+            StorageQueryType::Hash => subxt_chain::StorageQueryType::Hash,
+            StorageQueryType::ClosestDescendantMerkleValue => {
+                subxt_chain::StorageQueryType::ClosestDescendantMerkleValue
+            }
+            StorageQueryType::DescendantsValues => subxt_chain::StorageQueryType::DescendantsValues,
+            StorageQueryType::DescendantsHashes => subxt_chain::StorageQueryType::DescendantsHashes,
+        },
+    }
+}
+
+fn map_storage_result(
+    item: subxt_chain::StorageResult,
+) -> Result<StorageResultItem, RuntimeFailure> {
+    let mut result = StorageResultItem {
+        key: item.key.0,
+        value: None,
+        hash: None,
+        closest_descendant_merkle_value: None,
     };
-    let mut map = Map::new();
-    map.insert("key".to_string(), Value::String(encode_hex(&item.key)));
-    map.insert("type".to_string(), Value::String(query_type.to_string()));
-    Value::Object(map)
-}
-
-fn json_id(value: &Value) -> Option<String> {
-    match value {
-        Value::String(text) => Some(text.clone()),
-        Value::Number(number) => Some(number.to_string()),
-        _ => None,
+    match item.result {
+        subxt_chain::StorageResultType::Value(value) => result.value = Some(value.0),
+        subxt_chain::StorageResultType::Hash(hash) => result.hash = Some(hash.0),
+        subxt_chain::StorageResultType::ClosestDescendantMerkleValue(value) => {
+            result.closest_descendant_merkle_value = Some(value.0);
+        }
     }
+    Ok(result)
 }
 
-fn decode_hex_field(value: &Value, field: &str) -> Result<Vec<u8>, RuntimeFailure> {
-    let string = string_field(value, field)?;
-    decode_hex(&string).map_err(|reason| RuntimeFailure::host_failure(FOLLOW_METHOD, reason))
-}
-
-fn optional_hex_field(value: &Value, field: &str) -> Result<Option<Vec<u8>>, RuntimeFailure> {
-    match value.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(text)) => decode_hex(text)
-            .map(Some)
-            .map_err(|reason| RuntimeFailure::host_failure(FOLLOW_METHOD, reason)),
-        Some(_) => Err(RuntimeFailure::host_failure(
-            FOLLOW_METHOD,
-            format!("invalid {field}"),
-        )),
+fn hash_from_bytes(method: &'static str, bytes: &[u8]) -> Result<H256, RuntimeFailure> {
+    if bytes.len() != 32 {
+        return Err(RuntimeFailure::host_failure(
+            method,
+            format!("expected 32-byte hash, got {}", bytes.len()),
+        ));
     }
+    Ok(H256::from_slice(bytes))
 }
 
-fn decode_hex_vec_field(value: &Value, field: &str) -> Result<Vec<Vec<u8>>, RuntimeFailure> {
-    let Some(values) = value.get(field).and_then(Value::as_array) else {
-        return Ok(Vec::new());
-    };
-    values
-        .iter()
-        .map(|value| {
-            value
-                .as_str()
-                .ok_or_else(|| {
-                    RuntimeFailure::host_failure(FOLLOW_METHOD, format!("invalid {field}"))
-                })
-                .and_then(|value| {
-                    decode_hex(value)
-                        .map_err(|reason| RuntimeFailure::host_failure(FOLLOW_METHOD, reason))
-                })
-        })
-        .collect()
+fn hash_to_bytes(hash: H256) -> Vec<u8> {
+    hash.as_bytes().to_vec()
 }
 
-fn string_field(value: &Value, field: &str) -> Result<String, RuntimeFailure> {
-    value
-        .get(field)
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .ok_or_else(|| RuntimeFailure::host_failure(FOLLOW_METHOD, format!("missing {field}")))
-}
-
-fn string_object_field(value: &Map<String, Value>, field: &str) -> Result<String, String> {
-    value
-        .get(field)
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .ok_or_else(|| format!("missing {field}"))
-}
-
-fn u32_object_field(value: &Map<String, Value>, field: &str) -> Result<u32, String> {
-    value
-        .get(field)
-        .and_then(Value::as_u64)
-        .map(|value| value as u32)
-        .ok_or_else(|| format!("missing {field}"))
+fn rpc_failure(method: &'static str, error: SubxtRpcError) -> RuntimeFailure {
+    match error {
+        SubxtRpcError::Client(_) | SubxtRpcError::DisconnectedWillReconnect(_) => {
+            RuntimeFailure::unavailable(method)
+        }
+        error => RuntimeFailure::host_failure(method, error.to_string()),
+    }
 }
 
 /// Encode a byte slice as a `0x`-prefixed lowercase hex string.
@@ -1367,28 +1131,9 @@ pub(crate) fn encode_hex(value: &[u8]) -> String {
     format!("0x{}", hex::encode(value))
 }
 
+#[cfg(test)]
 fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
     hex::decode(value.strip_prefix("0x").unwrap_or(value)).map_err(|_| "invalid hex".to_string())
-}
-
-// ---------------------------------------------------------------------------
-// Spawner adapter for the chain runtime.
-// ---------------------------------------------------------------------------
-//
-// `ChainRuntime` uses a small wrapper future type so callers can construct
-// the runtime with a generic `Spawner` without exposing the `BoxFuture`
-// requirement in the public signature.
-
-/// Convenience: build a [`Spawner`] that runs each spawned future on a fresh
-/// OS thread driven by [`futures::executor::block_on`]. Useful for tests and
-/// embedders that have not yet wired a real runtime. Not available on wasm32
-/// since the platform has no threads.
-#[cfg(not(target_arch = "wasm32"))]
-#[allow(dead_code)]
-pub fn thread_per_task_spawner() -> Spawner {
-    Arc::new(|fut: futures::future::BoxFuture<'static, ()>| {
-        std::thread::spawn(move || futures::executor::block_on(fut));
-    })
 }
 
 #[cfg(test)]
@@ -1402,7 +1147,7 @@ mod tests {
     fn spawner_for_tests() -> Spawner {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            thread_per_task_spawner()
+            crate::subscription::thread_per_subscription_spawner()
         }
         #[cfg(target_arch = "wasm32")]
         {
@@ -1467,6 +1212,10 @@ mod tests {
                 .expect("ScriptedConnection::responses called twice");
             rx.boxed()
         }
+
+        fn close(&self) {
+            self.sender.lock().unwrap().take();
+        }
     }
 
     #[async_trait]
@@ -1517,8 +1266,22 @@ mod tests {
         value.get("id")?.as_str().map(ToString::to_string)
     }
 
+    fn wait_for_sent(
+        provider: &ScriptedProvider,
+        predicate: impl Fn(&[String]) -> bool,
+    ) -> Vec<String> {
+        for _ in 0..500 {
+            let sent = provider.sent.lock().unwrap().clone();
+            if predicate(&sent) {
+                return sent;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        provider.sent.lock().unwrap().clone()
+    }
+
     #[test]
-    fn header_request_routes_through_provider() {
+    fn header_request_reuses_existing_follow() {
         let provider = Arc::new(ScriptedProvider::new(|request| {
             let id = extract_id(request).unwrap();
             if request.contains("chainHead_v1_follow") {
@@ -1534,6 +1297,23 @@ mod tests {
             }
         }));
         let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let _follow_stream = runtime.remote_chain_head_follow(
+            "local-follow".to_string(),
+            RemoteChainHeadFollowRequest {
+                genesis_hash: vec![0u8; 32],
+                with_runtime: false,
+            },
+        );
+        let sent = wait_for_sent(&provider, |sent| {
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow"))
+        });
+        assert!(
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow")),
+            "follow setup did not start; sent: {sent:?}",
+        );
+
         let response = futures::executor::block_on(runtime.remote_chain_head_header(
             RemoteChainHeadHeaderRequest {
                 genesis_hash: vec![0u8; 32],
@@ -1548,6 +1328,42 @@ mod tests {
         assert_eq!(sent.len(), 2);
         assert!(sent[0].contains("chainHead_v1_follow"));
         assert!(sent[1].contains("chainHead_v1_header"));
+    }
+
+    #[test]
+    fn header_request_rejects_unknown_follow_id_without_opening_follow() {
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            if request.contains("chainHead_v1_follow") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-FOLLOW"}}"#
+                ))
+            } else if request.contains("chainHead_v1_header") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"0xdeadbeef"}}"#
+                ))
+            } else {
+                None
+            }
+        }));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+
+        let err = futures::executor::block_on(runtime.remote_chain_head_header(
+            RemoteChainHeadHeaderRequest {
+                genesis_hash: vec![0u8; 32],
+                follow_subscription_id: "missing-follow".to_string(),
+                hash: vec![1u8; 32],
+            },
+        ))
+        .expect_err("unknown follow id should fail");
+
+        assert_eq!(err.kind(), RuntimeFailureKind::HostFailure);
+        assert!(
+            err.reason().contains("unknown follow subscription id"),
+            "unexpected error: {}",
+            err.reason(),
+        );
+        assert!(provider.sent.lock().unwrap().is_empty());
     }
 
     /// Two concurrent calls for the same chain must share one provider
@@ -1661,7 +1477,7 @@ mod tests {
         // once the follow is established.
         let tx = notification_sender(&provider);
         tx.unbounded_send(
-            r#"{"jsonrpc":"2.0","method":"chainHead_v1_followEvent","params":{"subscription":"REMOTE-FOLLOW","result":{"event":"initialized","finalizedBlockHashes":["0xaabbccdd"]}}}"#
+            r#"{"jsonrpc":"2.0","method":"chainHead_v1_followEvent","params":{"subscription":"REMOTE-FOLLOW","result":{"event":"initialized","finalizedBlockHashes":["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]}}}"#
                 .to_string(),
         ).unwrap();
         tx.unbounded_send(
@@ -1686,7 +1502,7 @@ mod tests {
                 finalized_block_hashes,
                 finalized_block_runtime,
             } => {
-                assert_eq!(finalized_block_hashes, &vec![vec![0xaa, 0xbb, 0xcc, 0xdd]]);
+                assert_eq!(finalized_block_hashes, &vec![vec![0xaa; 32]]);
                 assert!(finalized_block_runtime.is_none());
             }
             other => panic!("expected Initialized, got {other:?}"),
@@ -1755,11 +1571,19 @@ mod tests {
 
     #[test]
     fn parse_runtime_type_valid_sorts_apis() {
-        let value: Value = serde_json::from_str(
-            r#"{"type":"valid","spec":{"specName":"polkadot","implName":"parity-polkadot","specVersion":1000,"implVersion":1,"transactionVersion":24,"apis":{"0xbeef":2,"0xbabe":4}}}"#,
-        )
+        let runtime_type = map_runtime_event(subxt_chain::RuntimeEvent::Valid(
+            subxt_chain::RuntimeVersionEvent {
+                spec: subxt_chain::RuntimeSpec {
+                    spec_name: "polkadot".to_string(),
+                    impl_name: "parity-polkadot".to_string(),
+                    spec_version: 1000,
+                    impl_version: 1,
+                    transaction_version: 24,
+                    apis: HashMap::from([("0xbeef".to_string(), 2), ("0xbabe".to_string(), 4)]),
+                },
+            },
+        ))
         .unwrap();
-        let runtime_type = parse_runtime_type(&value).unwrap();
         match runtime_type {
             RuntimeType::Valid(spec) => {
                 assert_eq!(spec.apis.len(), 2);

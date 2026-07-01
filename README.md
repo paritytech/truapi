@@ -4,7 +4,7 @@
 
 > The following is a prototype, reference implementation, and proof-of-concept. This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
 
-*The protocol that lets product webviews talk to their Polkadot host.*
+_The protocol that lets product webviews talk to their Polkadot host._
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/paritytech/truapi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/paritytech/truapi/actions/workflows/ci.yml)
@@ -58,22 +58,19 @@ rust/crates/
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
-  truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM + iOS UniFFI surface
-  uniffi-bindgen-cli/    Thin CLI wrapper around uniffi::uniffi_bindgen_main() for the workspace
+  truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM surface
 js/packages/
   truapi/                  @parity/truapi TypeScript client
   truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime; entries `.`
                            (shared host types), `/web` (iframe + Web Worker),
                            `/worker-runtime`
-ios/
-  truapi-host/             TrUAPIHost Swift Package (sources + UniFFI Swift bindings)
 playground/                Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/               dotli host, vendored as a submodule
 docs/                      Design docs, RFCs, feature proposals
 scripts/codegen.sh         Regenerate the TS client from the Rust source
 ```
 
-### Native + JS host SDKs
+### JS Host SDKs
 
 JS hosts integrate the Rust core through [`@parity/truapi-host-wasm`](js/packages/truapi-host-wasm),
 a single package with tree-shakeable subpath entries:
@@ -83,14 +80,6 @@ a single package with tree-shakeable subpath entries:
   MessageChannel handshake (`createIframeHost`) plus `createWebWorkerProvider`.
 - `@parity/truapi-host-wasm/worker-runtime` is the Web Worker entrypoint so the WASM core can
   run off the page main thread.
-
-The iOS native shell sits under `ios/` and ships as a Swift Package:
-
-- [`ios/truapi-host/`](ios/truapi-host) is a Swift Package consumed via `.package(url:)` or `.package(path:)`.
-
-The nested layout leaves room for additional packages alongside (e.g. `ios/something-else/`) without re-shaping the top-level directory.
-
-It links the `truapi-server` cdylib via UniFFI-generated bindings. The bindings are regenerated from the same Rust source via `make uniffi`.
 
 ## How it works
 
@@ -111,7 +100,6 @@ make build    # Rust workspace + TypeScript client + @parity/truapi-host-wasm
 make test     # Rust + TypeScript client + @parity/truapi-host-wasm tests
 make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
 make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host-wasm/dist/wasm/
-make uniffi   # regenerate UniFFI Swift bindings under ios/truapi-host/
 ```
 
 To run the playground locally:

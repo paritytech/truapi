@@ -119,10 +119,9 @@ impl Dispatcher {
 
         if let Some(entry) = self.by_request.get(&id) {
             let request_id = message.request_id.clone();
-            let value = match (entry.handler)(request_id, message.payload.value).await {
-                Ok(value) => value,
-                Err(value) => value,
-            };
+            let value = (entry.handler)(request_id, message.payload.value)
+                .await
+                .unwrap_or_else(|value| value);
             transport.send(ProtocolMessage {
                 request_id: message.request_id,
                 payload: Payload {

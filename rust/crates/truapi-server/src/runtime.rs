@@ -1,4 +1,4 @@
-//! `PlatformRuntimeHost<P>` adapts a [`truapi_platform::Platform`] into the
+//! `PlatformRuntimeHost` adapts a [`truapi_platform::Platform`] into the
 //! typed `truapi::api::*` host traits the generated dispatcher routes to.
 //!
 //! Most methods are straight delegations to the platform; the rest carry
@@ -12,12 +12,11 @@ mod identity;
 pub(crate) mod sso_pairing;
 pub(crate) mod sso_remote;
 pub(crate) mod statement_store;
+mod statement_store_rpc;
 
 use std::sync::{Arc, Mutex};
 
-use crate::chain_runtime::{
-    ChainRuntime, RuntimeChainProvider, RuntimeFailure, RuntimeFailureKind,
-};
+use crate::chain_runtime::{ChainRuntime, RuntimeChainProvider, RuntimeFailure};
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::entropy::derive_product_entropy_from_source;
 use crate::host_logic::features::feature_supported;
@@ -30,21 +29,20 @@ use crate::host_logic::session::{
     SessionInfo, SessionState, decode_persisted_session, encode_persisted_session,
 };
 use crate::host_logic::session_store::SessionStoreChangeNotifier;
-use crate::host_logic::sso_messages::SsoSessionStatement;
-use crate::host_logic::sso_messages::{
+use crate::host_logic::sso::messages::SsoSessionStatement;
+use crate::host_logic::sso::messages::{
     OnExistingAllowancePolicy, SsoAllocationOutcome, SsoRemoteResponse, alias_request_message,
     create_transaction_message, decode_sso_session_statement, resource_allocation_message,
     sign_payload_message, sign_raw_message,
 };
-use crate::host_logic::statement_store::{
-    parse_new_statements, parse_subscribe_ack, subscribe_match_all_request, unsubscribe_request,
-};
+use crate::host_logic::statement_store::parse_new_statements_result;
 use crate::subscription::Spawner;
 use auth_state::AuthStateMachine;
 use identity::resolve_session_identity_with_chain;
 use sso_remote::{
     SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON, SessionDisconnects, sso_message_id,
 };
+use statement_store_rpc::StatementStoreRpc;
 
 use futures::future::{AbortHandle, Abortable};
 use futures::{FutureExt, StreamExt, stream};
@@ -133,22 +131,18 @@ use truapi::versioned::system::{
 use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
-    AccountAliasReview, ChainProvider as PlatformChainProvider, CoreStorage as PlatformCoreStorage,
-    CoreStorageKey, CreateTransactionReview, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, PermissionAuthorizationRequest,
-    PermissionAuthorizationStatus, Platform, PreimageHost as PlatformPreimageHost,
-    PreimageSubmitReview, ProductStorage as PlatformProductStorage, RuntimeConfig, SessionUiInfo,
-    SignPayloadReview, SignRawReview, ThemeHost as PlatformThemeHost,
-    UserConfirmation as PlatformUserConfirmation, UserConfirmationReview,
+    AccountAliasReview, CoreStorageKey, CreateTransactionReview, JsonRpcConnection,
+    PermissionAuthorizationRequest, PermissionAuthorizationStatus, Platform, PreimageSubmitReview,
+    RuntimeConfig, SessionUiInfo, SignPayloadReview, SignRawReview, UserConfirmationReview,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
-pub struct PlatformRuntimeHost<P> {
-    platform: Arc<P>,
+pub struct PlatformRuntimeHost {
+    platform: Arc<dyn Platform>,
     runtime_config: RuntimeConfig,
     /// chainHead-v1 state machine. The provider adapter forwards
-    /// [`PlatformChainProvider::connect`] into the json-rpc layer.
+    /// [`truapi_platform::ChainProvider::connect`] into the json-rpc layer.
     chain: ChainRuntime,
     /// Currently-paired session, pushed by the host through a side channel.
     /// Account-management subscriptions read from this in lieu of round-tripping
@@ -159,7 +153,7 @@ pub struct PlatformRuntimeHost<P> {
     sso_disconnect_monitor: Arc<Mutex<Option<SsoDisconnectMonitor>>>,
     spawner: Spawner,
     /// Auth UI state machine; the single funnel for `auth_state_changed`.
-    auth_state: AuthStateMachine<P>,
+    auth_state: AuthStateMachine,
 }
 
 struct SsoDisconnectMonitor {
@@ -174,14 +168,15 @@ impl Drop for SsoDisconnectMonitor {
     }
 }
 
-impl<P> PlatformRuntimeHost<P> {
+impl PlatformRuntimeHost {
     /// Wrap a platform implementation. The runtime takes ownership via `Arc`.
     /// `spawner` is used by the embedded chain runtime to drive json-rpc
     /// response loops and follow-setup futures.
-    pub fn new(platform: Arc<P>, runtime_config: RuntimeConfig, spawner: Spawner) -> Self
-    where
-        P: Platform + 'static,
-    {
+    pub fn new(
+        platform: Arc<dyn Platform>,
+        runtime_config: RuntimeConfig,
+        spawner: Spawner,
+    ) -> Self {
         let chain_provider = Self::chain_provider(platform.clone());
         Self {
             auth_state: AuthStateMachine::new(platform.clone()),
@@ -199,19 +194,17 @@ impl<P> PlatformRuntimeHost<P> {
     /// Compatibility constructor used only by tests that do not exercise
     /// product-scoped behavior.
     #[cfg(test)]
-    fn new_compat(platform: Arc<P>, spawner: Spawner) -> Self
-    where
-        P: Platform + 'static,
-    {
+    fn new_compat(platform: Arc<dyn Platform>, spawner: Spawner) -> Self {
         Self::new(
             platform,
             RuntimeConfig {
                 product_id: "unknown.dot".to_string(),
-                host_name: "Polkadot Web".to_string(),
-                host_icon: Some("https://example.invalid/dotli.png".to_string()),
-                host_version: None,
-                platform_type: None,
-                platform_version: None,
+                host_info: truapi_platform::HostInfo {
+                    name: "Polkadot Web".to_string(),
+                    icon: Some("https://example.invalid/dotli.png".to_string()),
+                    version: None,
+                },
+                platform_info: truapi_platform::PlatformInfo::default(),
                 people_chain_genesis_hash: [0; 32],
                 pairing_deeplink_scheme: "polkadotapp".to_string(),
             },
@@ -221,10 +214,7 @@ impl<P> PlatformRuntimeHost<P> {
 
     /// Chain provider backing the chainHead-v1 runtime. Chain access routes
     /// through the platform's host-owned `ChainProvider`.
-    fn chain_provider(platform: Arc<P>) -> Arc<dyn RuntimeChainProvider>
-    where
-        P: Platform + 'static,
-    {
+    fn chain_provider(platform: Arc<dyn Platform>) -> Arc<dyn RuntimeChainProvider> {
         Arc::new(HostChainProvider { platform })
     }
 
@@ -235,14 +225,12 @@ impl<P> PlatformRuntimeHost<P> {
         self.session_state.clone()
     }
 
+    /// Clone of the notifier used to wake the session-store sync loop.
     pub fn session_store_changes(&self) -> Arc<SessionStoreChangeNotifier> {
         self.session_store_changes.clone()
     }
 
-    fn start_sso_disconnect_monitor(&self, session: &SessionInfo)
-    where
-        P: Platform + 'static,
-    {
+    fn start_sso_disconnect_monitor(&self, session: &SessionInfo) {
         start_sso_disconnect_monitor(
             self.platform.clone(),
             self.runtime_config.clone(),
@@ -260,10 +248,7 @@ impl<P> PlatformRuntimeHost<P> {
     /// The store emits coarse ticks; each tick triggers a fresh read so same-
     /// runtime writes and cross-runtime logout/re-pair take the same path.
     #[instrument(skip_all, fields(runtime.method = "session_store.sync"))]
-    pub(crate) fn start_session_store_sync(&self, spawner: Spawner)
-    where
-        P: Platform + 'static,
-    {
+    pub(crate) fn start_session_store_sync(&self, spawner: Spawner) {
         let platform = self.platform.clone();
         let chain = self.chain.clone();
         let runtime_config = self.runtime_config.clone();
@@ -280,11 +265,9 @@ impl<P> PlatformRuntimeHost<P> {
             // cannot spin the loop through its own clear notifications.
             let mut cleared_after_read_error = false;
             while ticks.next().await.is_some() {
-                match PlatformCoreStorage::read_core_storage(
-                    platform.as_ref(),
-                    CoreStorageKey::AuthSession,
-                )
-                .await
+                match platform
+                    .read_core_storage(CoreStorageKey::AuthSession)
+                    .await
                 {
                     Ok(Some(blob)) => {
                         cleared_after_read_error = false;
@@ -297,12 +280,12 @@ impl<P> PlatformRuntimeHost<P> {
                                 )
                                 .await;
                                 if encode_persisted_session(&resolved) != blob {
-                                    let _ = PlatformCoreStorage::write_core_storage(
-                                        platform.as_ref(),
-                                        CoreStorageKey::AuthSession,
-                                        encode_persisted_session(&resolved),
-                                    )
-                                    .await;
+                                    let _ = platform
+                                        .write_core_storage(
+                                            CoreStorageKey::AuthSession,
+                                            encode_persisted_session(&resolved),
+                                        )
+                                        .await;
                                 }
                                 auth_state.connected(&connected_session_ui_info(&resolved));
                                 session_state.set_session(resolved);
@@ -322,11 +305,9 @@ impl<P> PlatformRuntimeHost<P> {
                             Err(_) => {
                                 session_state.clear_session();
                                 stop_sso_disconnect_monitor(&sso_disconnect_monitor);
-                                let _ = PlatformCoreStorage::clear_core_storage(
-                                    platform.as_ref(),
-                                    CoreStorageKey::AuthSession,
-                                )
-                                .await;
+                                let _ = platform
+                                    .clear_core_storage(CoreStorageKey::AuthSession)
+                                    .await;
                                 auth_state.store_disconnected();
                             }
                         }
@@ -343,11 +324,9 @@ impl<P> PlatformRuntimeHost<P> {
                         auth_state.store_disconnected();
                         if !cleared_after_read_error {
                             cleared_after_read_error = true;
-                            let _ = PlatformCoreStorage::clear_core_storage(
-                                platform.as_ref(),
-                                CoreStorageKey::AuthSession,
-                            )
-                            .await;
+                            let _ = platform
+                                .clear_core_storage(CoreStorageKey::AuthSession)
+                                .await;
                         }
                     }
                 }
@@ -359,10 +338,7 @@ impl<P> PlatformRuntimeHost<P> {
     /// peer, then clears in-memory and persisted session state regardless of
     /// any transport failure.
     #[instrument(skip_all, fields(runtime.method = "account.disconnect"))]
-    pub(crate) async fn disconnect(&self)
-    where
-        P: Platform + 'static,
-    {
+    pub(crate) async fn disconnect(&self) {
         self.cancel_login();
         self.session_disconnects.notify(SSO_LOCAL_DISCONNECT_REASON);
         let session = self.session_state.current();
@@ -376,10 +352,7 @@ impl<P> PlatformRuntimeHost<P> {
     /// `Disconnected` state immediately and the login flow resolves to
     /// `Rejected`. A no-op when no login is in progress.
     #[instrument(skip_all, fields(runtime.method = "account.cancel_login"))]
-    pub(crate) fn cancel_login(&self)
-    where
-        P: Platform + 'static,
-    {
+    pub(crate) fn cancel_login(&self) {
         self.auth_state.login_cancelled();
     }
 
@@ -418,24 +391,19 @@ impl<P> PlatformRuntimeHost<P> {
     }
 
     #[instrument(skip_all, fields(runtime.method = "session_store.clear_disconnected"))]
-    async fn clear_disconnected_session(&self)
-    where
-        P: Platform + 'static,
-    {
+    async fn clear_disconnected_session(&self) {
         debug!("clearing disconnected SSO session state");
         stop_sso_disconnect_monitor(&self.sso_disconnect_monitor);
         self.session_state.clear_session();
-        let _ = PlatformCoreStorage::clear_core_storage(
-            self.platform.as_ref(),
-            CoreStorageKey::AuthSession,
-        )
-        .await;
+        let _ = self
+            .platform
+            .clear_core_storage(CoreStorageKey::AuthSession)
+            .await;
         self.auth_state.store_disconnected();
-        let _ = PlatformCoreStorage::clear_core_storage(
-            self.platform.as_ref(),
-            CoreStorageKey::PairingDeviceIdentity,
-        )
-        .await;
+        let _ = self
+            .platform
+            .clear_core_storage(CoreStorageKey::PairingDeviceIdentity)
+            .await;
     }
 }
 
@@ -446,19 +414,26 @@ fn stop_sso_disconnect_monitor(monitor: &Arc<Mutex<Option<SsoDisconnectMonitor>>
         .take();
 }
 
+/// True when an own/peer session-id pair matches the captured SSO session.
+fn same_sso_session(
+    own: [u8; 32],
+    peer: [u8; 32],
+    sso: &crate::host_logic::session::SsoSessionInfo,
+) -> bool {
+    own == sso.session_id_own && peer == sso.session_id_peer
+}
+
 #[allow(clippy::too_many_arguments)]
-fn start_sso_disconnect_monitor<P>(
-    platform: Arc<P>,
+fn start_sso_disconnect_monitor(
+    platform: Arc<dyn Platform>,
     runtime_config: RuntimeConfig,
     session_state: Arc<SessionState>,
     session_disconnects: Arc<SessionDisconnects>,
-    auth_state: AuthStateMachine<P>,
+    auth_state: AuthStateMachine,
     monitor: Arc<Mutex<Option<SsoDisconnectMonitor>>>,
     spawner: Spawner,
     session: &SessionInfo,
-) where
-    P: Platform + 'static,
-{
+) {
     let Some(sso) = session.sso.clone() else {
         stop_sso_disconnect_monitor(&monitor);
         return;
@@ -469,8 +444,7 @@ fn start_sso_disconnect_monitor<P>(
             .lock()
             .expect("SSO disconnect monitor mutex poisoned");
         if current.as_ref().is_some_and(|active| {
-            active.session_id_own == sso.session_id_own
-                && active.session_id_peer == sso.session_id_peer
+            same_sso_session(active.session_id_own, active.session_id_peer, &sso)
         }) {
             return;
         }
@@ -482,19 +456,24 @@ fn start_sso_disconnect_monitor<P>(
         });
 
         let monitor_slot = monitor.clone();
+        let monitor_spawner = spawner.clone();
         let future = async move {
             let result = wait_for_sso_peer_disconnect(
                 platform.clone(),
                 runtime_config.people_chain_genesis_hash,
                 sso.clone(),
+                monitor_spawner.clone(),
             )
             .await;
             let peer_disconnected = result.is_ok();
             let should_clear = peer_disconnected
                 && session_state.current().as_ref().is_some_and(|current| {
                     current.sso.as_ref().is_some_and(|current_sso| {
-                        current_sso.session_id_own == sso.session_id_own
-                            && current_sso.session_id_peer == sso.session_id_peer
+                        same_sso_session(
+                            current_sso.session_id_own,
+                            current_sso.session_id_peer,
+                            &sso,
+                        )
                     })
                 });
             {
@@ -502,8 +481,7 @@ fn start_sso_disconnect_monitor<P>(
                     .lock()
                     .expect("SSO disconnect monitor mutex poisoned");
                 if active.as_ref().is_some_and(|active| {
-                    active.session_id_own == sso.session_id_own
-                        && active.session_id_peer == sso.session_id_peer
+                    same_sso_session(active.session_id_own, active.session_id_peer, &sso)
                 }) {
                     *active = None;
                 }
@@ -511,17 +489,13 @@ fn start_sso_disconnect_monitor<P>(
             if should_clear {
                 session_disconnects.notify(SSO_PEER_DISCONNECT_REASON);
                 session_state.clear_session();
-                let _ = PlatformCoreStorage::clear_core_storage(
-                    platform.as_ref(),
-                    CoreStorageKey::AuthSession,
-                )
-                .await;
+                let _ = platform
+                    .clear_core_storage(CoreStorageKey::AuthSession)
+                    .await;
                 auth_state.store_disconnected();
-                let _ = PlatformCoreStorage::clear_core_storage(
-                    platform.as_ref(),
-                    CoreStorageKey::PairingDeviceIdentity,
-                )
-                .await;
+                let _ = platform
+                    .clear_core_storage(CoreStorageKey::PairingDeviceIdentity)
+                    .await;
             }
         };
         spawner(Box::pin(Abortable::new(future, registration).map(|_| ())));
@@ -529,39 +503,22 @@ fn start_sso_disconnect_monitor<P>(
 }
 
 #[instrument(skip_all, fields(runtime.method = "sso.peer_disconnect.monitor"))]
-async fn wait_for_sso_peer_disconnect<P>(
-    platform: Arc<P>,
+async fn wait_for_sso_peer_disconnect(
+    platform: Arc<dyn Platform>,
     people_chain_genesis_hash: [u8; 32],
     session: crate::host_logic::session::SsoSessionInfo,
-) -> Result<(), String>
-where
-    P: Platform + 'static,
-{
-    let connection =
-        PlatformChainProvider::connect(platform.as_ref(), people_chain_genesis_hash.to_vec())
+    spawner: Spawner,
+) -> Result<(), String> {
+    let statement_store = StatementStoreRpc::new(platform, people_chain_genesis_hash, spawner);
+    let rpc_client = statement_store.client("SSO disconnect monitor").await?;
+    let mut subscription =
+        statement_store_rpc::subscribe_match_all(&rpc_client, &[session.session_id_peer])
             .await
-            .map_err(|err| format!("SSO disconnect monitor connect failed: {err:?}"))?;
-    let subscribe_id = "truapi:sso-peer-disconnect-monitor";
-    connection.send(subscribe_match_all_request(
-        subscribe_id,
-        &[session.session_id_peer],
-    ));
-    let mut responses = connection.responses();
-    let mut remote_subscription_id: Option<String> = None;
-    while let Some(frame) = responses.next().await {
-        if remote_subscription_id.is_none()
-            && let Some(id) =
-                parse_subscribe_ack(&frame, subscribe_id).map_err(|err| err.to_string())?
-        {
-            remote_subscription_id = Some(id);
-            continue;
-        }
-        let Some(page) = parse_new_statements(&frame).map_err(|err| err.to_string())? else {
-            continue;
-        };
-        if remote_subscription_id.as_deref() != Some(page.remote_subscription_id.as_str()) {
-            continue;
-        }
+            .map_err(|err| format!("SSO disconnect monitor subscribe failed: {err}"))?;
+    while let Some(item) = subscription.next().await {
+        let value = item.map_err(|err| format!("SSO disconnect monitor item failed: {err}"))?;
+        let page = parse_new_statements_result("sso-peer-disconnect-monitor".to_string(), &value)
+            .map_err(|err| err.to_string())?;
         for statement in page.statements {
             if matches!(
                 decode_sso_session_statement(
@@ -572,12 +529,6 @@ where
                 )?,
                 Some(SsoSessionStatement::Disconnected)
             ) {
-                if let Some(id) = remote_subscription_id.as_ref() {
-                    connection.send(unsubscribe_request(
-                        "truapi:sso-peer-disconnect-monitor:unsubscribe",
-                        id,
-                    ));
-                }
                 return Ok(());
             }
         }
@@ -585,10 +536,7 @@ where
     Err("SSO disconnect monitor response stream ended".to_string())
 }
 
-impl<P> PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl PlatformRuntimeHost {
     /// Read a stored permission authorization status without prompting.
     #[instrument(skip_all, fields(runtime.method = "permissions.authorization_status"))]
     pub(crate) async fn permission_authorization_status(
@@ -601,6 +549,20 @@ where
             &self.runtime_config.product_id,
         );
         service.authorization_status(&request).await
+    }
+
+    /// Read stored permission authorization statuses without prompting.
+    #[instrument(skip_all, fields(runtime.method = "permissions.authorization_statuses"))]
+    pub(crate) async fn permission_authorization_statuses(
+        &self,
+        requests: Vec<PermissionAuthorizationRequest>,
+    ) -> Result<Vec<PermissionAuthorizationStatus>, v01::GenericError> {
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
+        service.authorization_statuses(&requests).await
     }
 
     /// Update a stored permission authorization status. `NotDetermined`
@@ -645,6 +607,40 @@ where
         }
     }
 
+    /// Shared tail of the four `sign_*` methods: submit the already-built SSO
+    /// message, require a `Sign` wallet response, and map its payload into the
+    /// caller's concrete response variant. `wrap` adapts a sign-payload domain
+    /// error into the method's error type.
+    async fn submit_sign_request<E, R>(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        wrap: fn(v01::HostSignPayloadError) -> E,
+        action: &str,
+        message: crate::host_logic::sso::messages::RemoteMessage,
+        into_response: impl FnOnce(v01::HostSignPayloadResponse) -> R,
+    ) -> Result<R, CallError<E>> {
+        let response = self
+            .submit_sso_remote_message(cx, session, action, message)
+            .await
+            .map_err(|reason| signing_unknown_call_error(wrap, reason))?;
+        let SsoRemoteResponse::Sign(response) = response else {
+            return Err(signing_unknown_call_error(
+                wrap,
+                UNEXPECTED_SSO_SIGNING_RESPONSE,
+            ));
+        };
+        response
+            .payload
+            .map(|payload| {
+                into_response(v01::HostSignPayloadResponse {
+                    signature: payload.signature,
+                    signed_transaction: payload.signed_transaction,
+                })
+            })
+            .map_err(|reason| signing_unknown_call_error(wrap, reason))
+    }
+
     fn validate_legacy_address_signer(
         &self,
         session: &SessionInfo,
@@ -685,21 +681,19 @@ where
 /// [`RuntimeChainProvider`] surface the chain runtime expects.
 /// Reuses the platform-supplied json-rpc connection and converts the
 /// platform `GenericError` into a `RuntimeFailure::Unavailable`.
-struct HostChainProvider<P> {
-    platform: Arc<P>,
+struct HostChainProvider {
+    platform: Arc<dyn Platform>,
 }
 
 #[async_trait::async_trait]
-impl<P> RuntimeChainProvider for HostChainProvider<P>
-where
-    P: Platform + 'static,
-{
+impl RuntimeChainProvider for HostChainProvider {
     #[instrument(skip_all, fields(runtime.method = "chain.provider.connect"))]
     async fn connect(
         &self,
         genesis_hash: Vec<u8>,
     ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
-        PlatformChainProvider::connect(self.platform.as_ref(), genesis_hash)
+        self.platform
+            .connect(genesis_hash)
             .await
             .map(Arc::from)
             .map_err(|_| RuntimeFailure::unavailable("remote_chain_connect"))
@@ -707,13 +701,8 @@ where
 }
 
 fn runtime_failure_to_call_error<E>(failure: RuntimeFailure) -> CallError<E> {
-    match failure.kind() {
-        RuntimeFailureKind::Unavailable => CallError::HostFailure {
-            reason: failure.reason(),
-        },
-        RuntimeFailureKind::HostFailure => CallError::HostFailure {
-            reason: failure.reason(),
-        },
+    CallError::HostFailure {
+        reason: failure.reason(),
     }
 }
 
@@ -721,18 +710,17 @@ fn runtime_failure_to_call_error<E>(failure: RuntimeFailure) -> CallError<E> {
 // System
 // ---------------------------------------------------------------------------
 
-impl<P> System for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl System for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "system.feature_supported"))]
     async fn feature_supported(
         &self,
         _cx: &CallContext,
         request: HostFeatureSupportedRequest,
     ) -> Result<HostFeatureSupportedResponse, CallError<HostFeatureSupportedError>> {
-        feature_supported(self.platform.as_ref(), request)
+        let HostFeatureSupportedRequest::V1(inner) = request;
+        feature_supported(self.platform.as_ref(), inner)
             .await
+            .map(HostFeatureSupportedResponse::V1)
             .map_err(|err| CallError::Domain(HostFeatureSupportedError::V1(err)))
     }
 
@@ -758,7 +746,8 @@ where
                 }
             },
         };
-        PlatformNavigation::navigate_to(self.platform.as_ref(), resolved)
+        self.platform
+            .navigate_to(resolved)
             .await
             .map(|()| HostNavigateToResponse::V1)
             .map_err(|err| CallError::Domain(HostNavigateToError::V1(err)))
@@ -769,10 +758,7 @@ where
 // Permissions
 // ---------------------------------------------------------------------------
 
-impl<P> Permissions for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Permissions for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "permissions.request_device_permission"))]
     async fn request_device_permission(
         &self,
@@ -826,10 +812,7 @@ where
 // LocalStorage
 // ---------------------------------------------------------------------------
 
-impl<P> LocalStorage for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl LocalStorage for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "local_storage.read"))]
     async fn read(
         &self,
@@ -837,7 +820,8 @@ where
         request: HostLocalStorageReadRequest,
     ) -> Result<HostLocalStorageReadResponse, CallError<HostLocalStorageReadError>> {
         let HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key }) = request;
-        PlatformProductStorage::read(self.platform.as_ref(), key)
+        self.platform
+            .read(key)
             .await
             .map(|value| {
                 HostLocalStorageReadResponse::V1(v01::HostLocalStorageReadResponse { value })
@@ -853,7 +837,8 @@ where
     ) -> Result<HostLocalStorageWriteResponse, CallError<HostLocalStorageWriteError>> {
         let HostLocalStorageWriteRequest::V1(v01::HostLocalStorageWriteRequest { key, value }) =
             request;
-        PlatformProductStorage::write(self.platform.as_ref(), key, value)
+        self.platform
+            .write(key, value)
             .await
             .map(|()| HostLocalStorageWriteResponse::V1)
             .map_err(|err| CallError::Domain(HostLocalStorageWriteError::V1(err)))
@@ -866,7 +851,8 @@ where
         request: HostLocalStorageClearRequest,
     ) -> Result<HostLocalStorageClearResponse, CallError<HostLocalStorageClearError>> {
         let HostLocalStorageClearRequest::V1(v01::HostLocalStorageClearRequest { key }) = request;
-        PlatformProductStorage::clear(self.platform.as_ref(), key)
+        self.platform
+            .clear(key)
             .await
             .map(|()| HostLocalStorageClearResponse::V1)
             .map_err(|err| CallError::Domain(HostLocalStorageClearError::V1(err)))
@@ -880,10 +866,7 @@ where
 // Account-management flows live in the Rust core itself, backed by the shared
 // session state and, for alias/proof/login success paths, the SSO service.
 
-impl<P> Account for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Account for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "account.get_account"))]
     async fn get_account(
         &self,
@@ -899,7 +882,7 @@ where
             )));
         }
 
-        let Some(session) = self.current_session_or_ios_e2e() else {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostAccountGetError::V1(
                 v01::HostAccountGetError::NotConnected,
             )));
@@ -933,7 +916,7 @@ where
             request;
         let product_account_id = Self::normalize_product_account_id(product_account_id);
 
-        let Some(session) = self.current_session_or_ios_e2e() else {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostAccountGetAliasError::V1(
                 v01::HostAccountGetError::NotConnected,
             )));
@@ -945,28 +928,18 @@ where
             )));
         }
 
-        if is_ios_diagnosis_e2e() {
-            return Ok(HostAccountGetAliasResponse::V1(
-                v01::HostAccountGetAliasResponse {
-                    context: [0x11; 32],
-                    alias: vec![0x22; 32],
-                },
-            ));
-        }
-
         let product_id = self.product_id();
         if product_account_id.dot_ns_identifier != product_id {
-            let confirmed = PlatformUserConfirmation::confirm_user_action(
-                self.platform.as_ref(),
-                UserConfirmationReview::AccountAlias(AccountAliasReview {
+            let confirmed = self
+                .platform
+                .confirm_user_action(UserConfirmationReview::AccountAlias(AccountAliasReview {
                     requesting_product_id: product_id.clone(),
                     target_product_id: product_account_id.dot_ns_identifier.clone(),
-                }),
-            )
-            .await
-            .map_err(|err| CallError::HostFailure {
-                reason: format!("account alias confirmation failed: {err:?}"),
-            })?;
+                }))
+                .await
+                .map_err(|err| CallError::HostFailure {
+                    reason: format!("account alias confirmation failed: {err:?}"),
+                })?;
             if !confirmed {
                 return Err(CallError::Domain(HostAccountGetAliasError::V1(
                     v01::HostAccountGetError::Rejected,
@@ -1007,11 +980,7 @@ where
         _cx: &CallContext,
         _request: HostAccountCreateProofRequest,
     ) -> Result<HostAccountCreateProofResponse, CallError<HostAccountCreateProofError>> {
-        Err(CallError::Domain(HostAccountCreateProofError::V1(
-            v01::HostAccountCreateProofError::Unknown {
-                reason: "Not implemented".to_string(),
-            },
-        )))
+        Err(CallError::Unsupported)
     }
 
     #[instrument(skip_all, fields(runtime.method = "account.get_legacy_accounts"))]
@@ -1020,7 +989,7 @@ where
         _cx: &CallContext,
         _request: HostGetLegacyAccountsRequest,
     ) -> Result<HostGetLegacyAccountsResponse, CallError<HostGetLegacyAccountsError>> {
-        let Some(session) = self.current_session_or_ios_e2e() else {
+        let Some(session) = self.session_state.current() else {
             return Ok(HostGetLegacyAccountsResponse::V1(
                 v01::HostGetLegacyAccountsResponse { accounts: vec![] },
             ));
@@ -1058,7 +1027,7 @@ where
         _cx: &CallContext,
         _request: HostGetUserIdRequest,
     ) -> Result<HostGetUserIdResponse, CallError<HostGetUserIdError>> {
-        let Some(session) = self.current_session_or_ios_e2e() else {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostGetUserIdError::V1(
                 v01::HostGetUserIdError::NotConnected,
             )));
@@ -1084,14 +1053,6 @@ where
         &self,
         _cx: &CallContext,
     ) -> Subscription<HostAccountConnectionStatusSubscribeItem> {
-        if is_ios_diagnosis_e2e() && self.session_state.current().is_none() {
-            return Subscription::new(Box::pin(stream::once(async {
-                HostAccountConnectionStatusSubscribeItem::V1(
-                    v01::HostAccountConnectionStatusSubscribeItem::Connected,
-                )
-            })));
-        }
-
         Subscription::new(self.session_state.subscribe())
     }
 
@@ -1101,21 +1062,6 @@ where
         _cx: &CallContext,
         _request: HostRequestLoginRequest,
     ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>> {
-        if is_ios_diagnosis_e2e() {
-            if self.session_state.current().is_some() {
-                return Ok(HostRequestLoginResponse::V1(
-                    v01::HostRequestLoginResponse::AlreadyConnected,
-                ));
-            }
-            let session = e2e_session_info();
-            self.auth_state
-                .connected(&connected_session_ui_info(&session));
-            self.session_state.set_session(session);
-            return Ok(HostRequestLoginResponse::V1(
-                v01::HostRequestLoginResponse::Success,
-            ));
-        }
-
         self.request_login_flow().await
     }
 }
@@ -1151,10 +1097,7 @@ fn transaction_unknown_call_error<E>(
     }))
 }
 
-impl<P> Signing for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Signing for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "signing.sign_payload"))]
     async fn sign_payload(
         &self,
@@ -1163,10 +1106,6 @@ where
     ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
         info!("sign_payload: requesting wallet signature");
         let HostSignPayloadRequest::V1(mut inner) = request;
-        if is_ios_diagnosis_e2e() {
-            return Ok(HostSignPayloadResponse::V1(e2e_signature_response()));
-        }
-
         inner.account = Self::normalize_product_account_id(inner.account);
         if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignPayloadError::V1(
@@ -1182,14 +1121,15 @@ where
                 v01::HostSignPayloadError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_user_action(
-            self.platform.as_ref(),
-            UserConfirmationReview::SignPayload(SignPayloadReview::Product(inner.clone())),
-        )
-        .await
-        .map_err(|err| CallError::HostFailure {
-            reason: format!("sign payload confirmation failed: {err:?}"),
-        })?;
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::SignPayload(
+                SignPayloadReview::Product(inner.clone()),
+            ))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("sign payload confirmation failed: {err:?}"),
+            })?;
         if !confirmed {
             return Err(CallError::Domain(HostSignPayloadError::V1(
                 v01::HostSignPayloadError::Rejected,
@@ -1197,25 +1137,15 @@ where
         }
         let message_id = sso_message_id(cx, "sign-payload");
         let message = sign_payload_message(message_id, inner);
-        let response = self
-            .submit_sso_remote_message(cx, &session, "sign-payload", message)
-            .await
-            .map_err(|reason| signing_unknown_call_error(HostSignPayloadError::V1, reason))?;
-        let SsoRemoteResponse::Sign(response) = response else {
-            return Err(signing_unknown_call_error(
-                HostSignPayloadError::V1,
-                UNEXPECTED_SSO_SIGNING_RESPONSE,
-            ));
-        };
-        response
-            .payload
-            .map(|payload| {
-                HostSignPayloadResponse::V1(v01::HostSignPayloadResponse {
-                    signature: payload.signature,
-                    signed_transaction: payload.signed_transaction,
-                })
-            })
-            .map_err(|reason| signing_unknown_call_error(HostSignPayloadError::V1, reason))
+        self.submit_sign_request(
+            cx,
+            &session,
+            HostSignPayloadError::V1,
+            "sign-payload",
+            message,
+            HostSignPayloadResponse::V1,
+        )
+        .await
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.sign_raw"))]
@@ -1226,10 +1156,6 @@ where
     ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
         info!("sign_raw: requesting wallet signature");
         let HostSignRawRequest::V1(mut inner) = request;
-        if is_ios_diagnosis_e2e() {
-            return Ok(HostSignRawResponse::V1(e2e_signature_response()));
-        }
-
         inner.account = Self::normalize_product_account_id(inner.account);
         if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignRawError::V1(
@@ -1245,14 +1171,15 @@ where
                 v01::HostSignPayloadError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_user_action(
-            self.platform.as_ref(),
-            UserConfirmationReview::SignRaw(SignRawReview::Product(inner.clone())),
-        )
-        .await
-        .map_err(|err| CallError::HostFailure {
-            reason: format!("sign raw confirmation failed: {err:?}"),
-        })?;
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::SignRaw(SignRawReview::Product(
+                inner.clone(),
+            )))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("sign raw confirmation failed: {err:?}"),
+            })?;
         if !confirmed {
             return Err(CallError::Domain(HostSignRawError::V1(
                 v01::HostSignPayloadError::Rejected,
@@ -1260,25 +1187,15 @@ where
         }
         let message_id = sso_message_id(cx, "sign-raw");
         let message = sign_raw_message(message_id, inner);
-        let response = self
-            .submit_sso_remote_message(cx, &session, "sign-raw", message)
-            .await
-            .map_err(|reason| signing_unknown_call_error(HostSignRawError::V1, reason))?;
-        let SsoRemoteResponse::Sign(response) = response else {
-            return Err(signing_unknown_call_error(
-                HostSignRawError::V1,
-                UNEXPECTED_SSO_SIGNING_RESPONSE,
-            ));
-        };
-        response
-            .payload
-            .map(|payload| {
-                HostSignRawResponse::V1(v01::HostSignPayloadResponse {
-                    signature: payload.signature,
-                    signed_transaction: payload.signed_transaction,
-                })
-            })
-            .map_err(|reason| signing_unknown_call_error(HostSignRawError::V1, reason))
+        self.submit_sign_request(
+            cx,
+            &session,
+            HostSignRawError::V1,
+            "sign-raw",
+            message,
+            HostSignRawResponse::V1,
+        )
+        .await
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.create_transaction"))]
@@ -1289,14 +1206,6 @@ where
     ) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>> {
         info!("create_transaction: requesting wallet signature");
         let HostCreateTransactionRequest::V1(mut inner) = request;
-        if is_ios_diagnosis_e2e() {
-            return Ok(HostCreateTransactionResponse::V1(
-                v01::HostCreateTransactionResponse {
-                    transaction: vec![0x84, 0x00, 0x00],
-                },
-            ));
-        }
-
         inner.signer = Self::normalize_product_account_id(inner.signer);
         if !self.is_product_account_valid_for_caller(&inner.signer.dot_ns_identifier) {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
@@ -1312,16 +1221,22 @@ where
                 v01::HostCreateTransactionError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_user_action(
-            self.platform.as_ref(),
-            UserConfirmationReview::CreateTransaction(CreateTransactionReview::Product(
-                inner.clone(),
-            )),
-        )
-        .await
-        .map_err(|err| CallError::HostFailure {
-            reason: format!("create transaction confirmation failed: {err:?}"),
-        })?;
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostCreateTransactionResponse::V1(
+                v01::HostCreateTransactionResponse {
+                    transaction: vec![0x84, 0x00, 0x00],
+                },
+            ));
+        }
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::CreateTransaction(
+                CreateTransactionReview::Product(inner.clone()),
+            ))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("create transaction confirmation failed: {err:?}"),
+            })?;
         if !confirmed {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
                 v01::HostCreateTransactionError::Rejected,
@@ -1374,14 +1289,15 @@ where
             v01::HostSignPayloadError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_user_action(
-            self.platform.as_ref(),
-            UserConfirmationReview::SignPayload(SignPayloadReview::LegacyAccount(inner.clone())),
-        )
-        .await
-        .map_err(|err| CallError::HostFailure {
-            reason: format!("sign payload confirmation failed: {err:?}"),
-        })?;
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::SignPayload(
+                SignPayloadReview::LegacyAccount(inner.clone()),
+            ))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("sign payload confirmation failed: {err:?}"),
+            })?;
         if !confirmed {
             return Err(CallError::Domain(
                 HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Rejected),
@@ -1398,29 +1314,15 @@ where
                 payload: inner.payload,
             },
         );
-        let response = self
-            .submit_sso_remote_message(cx, &session, "legacy-sign-payload", message)
-            .await
-            .map_err(|reason| {
-                signing_unknown_call_error(HostSignPayloadWithLegacyAccountError::V1, reason)
-            })?;
-        let SsoRemoteResponse::Sign(response) = response else {
-            return Err(signing_unknown_call_error(
-                HostSignPayloadWithLegacyAccountError::V1,
-                UNEXPECTED_SSO_SIGNING_RESPONSE,
-            ));
-        };
-        response
-            .payload
-            .map(|payload| {
-                HostSignPayloadWithLegacyAccountResponse::V1(v01::HostSignPayloadResponse {
-                    signature: payload.signature,
-                    signed_transaction: payload.signed_transaction,
-                })
-            })
-            .map_err(|reason| {
-                signing_unknown_call_error(HostSignPayloadWithLegacyAccountError::V1, reason)
-            })
+        self.submit_sign_request(
+            cx,
+            &session,
+            HostSignPayloadWithLegacyAccountError::V1,
+            "legacy-sign-payload",
+            message,
+            HostSignPayloadWithLegacyAccountResponse::V1,
+        )
+        .await
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.sign_raw_with_legacy_account"))]
@@ -1442,14 +1344,15 @@ where
             v01::HostSignPayloadError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_user_action(
-            self.platform.as_ref(),
-            UserConfirmationReview::SignRaw(SignRawReview::LegacyAccount(inner.clone())),
-        )
-        .await
-        .map_err(|err| CallError::HostFailure {
-            reason: format!("sign raw confirmation failed: {err:?}"),
-        })?;
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::SignRaw(
+                SignRawReview::LegacyAccount(inner.clone()),
+            ))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("sign raw confirmation failed: {err:?}"),
+            })?;
         if !confirmed {
             return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
                 v01::HostSignPayloadError::Rejected,
@@ -1466,29 +1369,15 @@ where
                 payload: inner.payload,
             },
         );
-        let response = self
-            .submit_sso_remote_message(cx, &session, "legacy-sign-raw", message)
-            .await
-            .map_err(|reason| {
-                signing_unknown_call_error(HostSignRawWithLegacyAccountError::V1, reason)
-            })?;
-        let SsoRemoteResponse::Sign(response) = response else {
-            return Err(signing_unknown_call_error(
-                HostSignRawWithLegacyAccountError::V1,
-                UNEXPECTED_SSO_SIGNING_RESPONSE,
-            ));
-        };
-        response
-            .payload
-            .map(|payload| {
-                HostSignRawWithLegacyAccountResponse::V1(v01::HostSignPayloadResponse {
-                    signature: payload.signature,
-                    signed_transaction: payload.signed_transaction,
-                })
-            })
-            .map_err(|reason| {
-                signing_unknown_call_error(HostSignRawWithLegacyAccountError::V1, reason)
-            })
+        self.submit_sign_request(
+            cx,
+            &session,
+            HostSignRawWithLegacyAccountError::V1,
+            "legacy-sign-raw",
+            message,
+            HostSignRawWithLegacyAccountResponse::V1,
+        )
+        .await
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.create_transaction_with_legacy_account"))]
@@ -1516,16 +1405,15 @@ where
             v01::HostCreateTransactionError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_user_action(
-            self.platform.as_ref(),
-            UserConfirmationReview::CreateTransaction(CreateTransactionReview::LegacyAccount(
-                inner.clone(),
-            )),
-        )
-        .await
-        .map_err(|err| CallError::HostFailure {
-            reason: format!("create transaction confirmation failed: {err:?}"),
-        })?;
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::CreateTransaction(
+                CreateTransactionReview::LegacyAccount(inner.clone()),
+            ))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("create transaction confirmation failed: {err:?}"),
+            })?;
         if !confirmed {
             return Err(CallError::Domain(
                 HostCreateTransactionWithLegacyAccountError::V1(
@@ -1589,10 +1477,7 @@ where
 // translated into `RemoteChainHeadFollowItem` items on the subscription
 // stream.
 
-impl<P> Chain for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Chain for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "chain.follow_head_subscribe"))]
     async fn follow_head_subscribe(
         &self,
@@ -1779,7 +1664,6 @@ where
             .remote_chain_transaction_stop(inner)
             .await
             .map(|()| RemoteChainTransactionStopResponse::V1)
-            .or_else(|_: RuntimeFailure| Ok(RemoteChainTransactionStopResponse::V1))
             .map_err(runtime_failure_to_call_error)
     }
 }
@@ -1809,50 +1693,18 @@ fn is_ios_diagnosis_e2e() -> bool {
     }
 }
 
-fn e2e_signature_response() -> v01::HostSignPayloadResponse {
-    v01::HostSignPayloadResponse {
-        signature: vec![0x42; 64],
-        signed_transaction: None,
-    }
-}
-
-fn e2e_session_info() -> SessionInfo {
-    let public_key = [
-        0x80, 0x05, 0x28, 0xc9, 0x55, 0x87, 0x3e, 0x4c, 0x78, 0xb7, 0xdf, 0x24, 0xf7, 0x1d, 0xb8,
-        0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab, 0xc1, 0xd7,
-        0x20, 0x23,
-    ];
-    SessionInfo {
-        public_key,
-        sso: None,
-        root_entropy_source: Some([
-            0x15, 0xcb, 0x94, 0x34, 0x84, 0x0b, 0x56, 0xbe, 0x1f, 0xdd, 0x91, 0xc4, 0x6a, 0x13,
-            0xf5, 0x20, 0xf4, 0x91, 0x61, 0x2e, 0xa5, 0xd6, 0x06, 0x92, 0x0d, 0x91, 0x38, 0xe8,
-            0xbd, 0xd6, 0x3c, 0xb0,
-        ]),
-        identity_account_id: Some(public_key),
-        lite_username: Some("alice".to_string()),
-        full_username: Some("Alice Smith".to_string()),
-    }
-}
-
-impl<P> PlatformRuntimeHost<P>
+fn single_item_subscription<T>(item: T) -> Subscription<T>
 where
-    P: Platform + 'static,
+    T: Send + 'static,
 {
-    fn current_session_or_ios_e2e(&self) -> Option<SessionInfo> {
-        self.session_state
-            .current()
-            .or_else(|| is_ios_diagnosis_e2e().then(e2e_session_info))
-    }
+    Subscription::new(Box::pin(
+        stream::once(async move { item }).chain(stream::pending()),
+    ))
 }
 
-impl<P> Chat for PlatformRuntimeHost<P> where P: Platform + 'static {}
-impl<P> CoinPayment for PlatformRuntimeHost<P> where P: Platform + 'static {}
-impl<P> Payment for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Chat for PlatformRuntimeHost {}
+impl CoinPayment for PlatformRuntimeHost {}
+impl Payment for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "payment.balance_subscribe"))]
     async fn balance_subscribe(
         &self,
@@ -1863,12 +1715,11 @@ where
         CallError<HostPaymentBalanceSubscribeError>,
     > {
         if is_ios_diagnosis_e2e() {
-            let stream = stream::once(async {
+            return Ok(single_item_subscription(
                 HostPaymentBalanceSubscribeItem::V1(v01::HostPaymentBalanceSubscribeItem {
                     available: 1_000_000,
-                })
-            });
-            return Ok(Subscription::new(Box::pin(stream)));
+                }),
+            ));
         }
 
         Err(CallError::Domain(HostPaymentBalanceSubscribeError::V1(
@@ -1905,10 +1756,9 @@ where
         CallError<HostPaymentStatusSubscribeError>,
     > {
         if is_ios_diagnosis_e2e() {
-            let stream = stream::once(async {
-                HostPaymentStatusSubscribeItem::V1(v01::HostPaymentStatusSubscribeItem::Completed)
-            });
-            return Ok(Subscription::new(Box::pin(stream)));
+            return Ok(single_item_subscription(
+                HostPaymentStatusSubscribeItem::V1(v01::HostPaymentStatusSubscribeItem::Completed),
+            ));
         }
 
         Err(CallError::Domain(HostPaymentStatusSubscribeError::V1(
@@ -1936,10 +1786,7 @@ where
     }
 }
 
-impl<P> ResourceAllocation for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl ResourceAllocation for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "resource_allocation.request"))]
     async fn request(
         &self,
@@ -1948,18 +1795,6 @@ where
     ) -> Result<HostRequestResourceAllocationResponse, CallError<HostRequestResourceAllocationError>>
     {
         let HostRequestResourceAllocationRequest::V1(inner) = request;
-        if is_ios_diagnosis_e2e() {
-            return Ok(HostRequestResourceAllocationResponse::V1(
-                v01::HostRequestResourceAllocationResponse {
-                    outcomes: inner
-                        .resources
-                        .iter()
-                        .map(|_| v01::AllocationOutcome::Allocated)
-                        .collect(),
-                },
-            ));
-        }
-
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostRequestResourceAllocationError::V1(
                 v01::ResourceAllocationError::Unknown {
@@ -1968,14 +1803,13 @@ where
             )));
         };
 
-        let confirmed = PlatformUserConfirmation::confirm_user_action(
-            self.platform.as_ref(),
-            UserConfirmationReview::ResourceAllocation(inner.clone()),
-        )
-        .await
-        .map_err(|err| CallError::HostFailure {
-            reason: format!("resource allocation confirmation failed: {err:?}"),
-        })?;
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::ResourceAllocation(inner.clone()))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("resource allocation confirmation failed: {err:?}"),
+            })?;
         if !confirmed {
             return Err(CallError::Domain(HostRequestResourceAllocationError::V1(
                 v01::ResourceAllocationError::Unknown {
@@ -2036,10 +1870,7 @@ fn resource_allocation_outcome(outcome: SsoAllocationOutcome) -> v01::Allocation
 // Entropy
 // ---------------------------------------------------------------------------
 
-impl<P> Entropy for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Entropy for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "entropy.derive"))]
     async fn derive(
         &self,
@@ -2047,7 +1878,7 @@ where
         request: HostDeriveEntropyRequest,
     ) -> Result<HostDeriveEntropyResponse, CallError<HostDeriveEntropyError>> {
         let HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest { context }) = request;
-        let Some(session) = self.current_session_or_ios_e2e() else {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostDeriveEntropyError::V1(
                 v01::HostDeriveEntropyError::Unknown {
                     reason: "Not connected".to_string(),
@@ -2082,10 +1913,7 @@ where
 // Preimage
 // ---------------------------------------------------------------------------
 
-impl<P> Preimage for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Preimage for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "preimage.lookup_subscribe"))]
     async fn lookup_subscribe(
         &self,
@@ -2095,15 +1923,16 @@ where
         let RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
             key,
         }) = request;
-        let stream = PlatformPreimageHost::lookup_preimage(self.platform.as_ref(), key).filter_map(
-            |item| async move {
+        let stream = self
+            .platform
+            .lookup_preimage(key)
+            .filter_map(|item| async move {
                 item.ok().map(|value| {
                     RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
                         value,
                     })
                 })
-            },
-        );
+            });
         Subscription::new(Box::pin(stream))
     }
 
@@ -2114,18 +1943,19 @@ where
         request: RemotePreimageSubmitRequest,
     ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
         let RemotePreimageSubmitRequest::V1(value) = request;
-        let confirmed = PlatformUserConfirmation::confirm_user_action(
-            self.platform.as_ref(),
-            UserConfirmationReview::PreimageSubmit(PreimageSubmitReview {
-                size: value.len() as u64,
-            }),
-        )
-        .await
-        .map_err(|err| {
-            CallError::Domain(RemotePreimageSubmitError::V1(
-                v01::PreimageSubmitError::Unknown { reason: err.reason },
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::PreimageSubmit(
+                PreimageSubmitReview {
+                    size: value.len() as u64,
+                },
             ))
-        })?;
+            .await
+            .map_err(|err| {
+                CallError::Domain(RemotePreimageSubmitError::V1(
+                    v01::PreimageSubmitError::Unknown { reason: err.reason },
+                ))
+            })?;
         if !confirmed {
             return Err(CallError::Domain(RemotePreimageSubmitError::V1(
                 v01::PreimageSubmitError::Unknown {
@@ -2133,7 +1963,8 @@ where
                 },
             )));
         }
-        PlatformPreimageHost::submit_preimage(self.platform.as_ref(), value)
+        self.platform
+            .submit_preimage(value)
             .await
             .map(RemotePreimageSubmitResponse::V1)
             .map_err(|err| CallError::Domain(RemotePreimageSubmitError::V1(err)))
@@ -2144,34 +1975,27 @@ where
 // Theme
 // ---------------------------------------------------------------------------
 
-impl<P> Theme for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Theme for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "theme.subscribe"))]
     async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
-        let stream =
-            PlatformThemeHost::subscribe_theme(self.platform.as_ref()).filter_map(|item| async {
-                item.ok().map(|variant| {
-                    HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem {
-                        name: v01::ThemeName::Default,
-                        variant,
-                    })
+        let stream = self.platform.subscribe_theme().filter_map(|item| async {
+            item.ok().map(|variant| {
+                HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem {
+                    name: v01::ThemeName::Default,
+                    variant,
                 })
-            });
+            })
+        });
         Subscription::new(Box::pin(stream))
     }
 }
 
 #[cfg(debug_assertions)]
-impl<P> Testing for PlatformRuntimeHost<P> where P: Platform + 'static {}
+impl Testing for PlatformRuntimeHost {}
 
 // `Notifications` delegates to the platform so hosts can own scheduling and
 // cancellation while the core preserves the typed TrUAPI wire shape.
-impl<P> Notifications for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl Notifications for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "notifications.send_push_notification"))]
     async fn send_push_notification(
         &self,
@@ -2179,7 +2003,8 @@ where
         request: HostPushNotificationRequest,
     ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>> {
         let HostPushNotificationRequest::V1(inner) = request;
-        PlatformNotifications::push_notification(self.platform.as_ref(), inner)
+        self.platform
+            .push_notification(inner)
             .await
             .map(HostPushNotificationResponse::V1)
             .map_err(|err| {
@@ -2198,7 +2023,8 @@ where
     {
         let HostPushNotificationCancelRequest::V1(v01::HostPushNotificationCancelRequest { id }) =
             request;
-        PlatformNotifications::cancel_notification(self.platform.as_ref(), id)
+        self.platform
+            .cancel_notification(id)
             .await
             .map(|()| HostPushNotificationCancelResponse::V1)
             .map_err(|err| {
@@ -2212,7 +2038,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_logic::sso_messages::{RemoteMessageData, RemoteMessageV1};
+    use crate::host_logic::sso::messages::{RemoteMessageData, RemoteMessageV1};
     use crate::test_support::*;
     use std::sync::Mutex;
     use truapi_platform::{AuthState, CoreStorageKey};
@@ -2448,11 +2274,11 @@ mod tests {
             rpc_responses: sso_success_responses(
                 &session,
                 "alias-1",
-                crate::host_logic::sso_messages::RemoteMessage {
+                crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
-                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
-                        crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasResponse(
-                            crate::host_logic::sso_messages::RingVrfAliasResponse {
+                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                        crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasResponse(
+                            crate::host_logic::sso::messages::RingVrfAliasResponse {
                                 responding_to: "alias-1".to_string(),
                                 payload: Ok(v01::HostAccountGetAliasResponse {
                                     context: [9; 32],
@@ -2480,8 +2306,8 @@ mod tests {
         assert_eq!(inner.context, [9; 32]);
         assert_eq!(inner.alias, vec![1, 2, 3]);
         let message = submitted_remote_message(&platform, &session);
-        let crate::host_logic::sso_messages::RemoteMessageData::V1(
-            crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasRequest(request),
+        let crate::host_logic::sso::messages::RemoteMessageData::V1(
+            crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasRequest(request),
         ) = message.data
         else {
             panic!("expected ring VRF alias request");
@@ -2497,11 +2323,11 @@ mod tests {
             rpc_responses: sso_success_responses(
                 &session,
                 "alias-1",
-                crate::host_logic::sso_messages::RemoteMessage {
+                crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
-                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
-                        crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasResponse(
-                            crate::host_logic::sso_messages::RingVrfAliasResponse {
+                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                        crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasResponse(
+                            crate::host_logic::sso::messages::RingVrfAliasResponse {
                                 responding_to: "alias-1".to_string(),
                                 payload: Ok(v01::HostAccountGetAliasResponse {
                                     context: [9; 32],
@@ -2526,8 +2352,8 @@ mod tests {
         )
         .unwrap();
         let message = submitted_remote_message(&platform, &session);
-        let crate::host_logic::sso_messages::RemoteMessageData::V1(
-            crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasRequest(request),
+        let crate::host_logic::sso::messages::RemoteMessageData::V1(
+            crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasRequest(request),
         ) = message.data
         else {
             panic!("expected ring VRF alias request");
@@ -2583,11 +2409,11 @@ mod tests {
             rpc_responses: sso_success_responses(
                 &session,
                 "alias-2",
-                crate::host_logic::sso_messages::RemoteMessage {
+                crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-2".to_string(),
-                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
-                        crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasResponse(
-                            crate::host_logic::sso_messages::RingVrfAliasResponse {
+                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                        crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasResponse(
+                            crate::host_logic::sso::messages::RingVrfAliasResponse {
                                 responding_to: "alias-2".to_string(),
                                 payload: Ok(v01::HostAccountGetAliasResponse {
                                     context: [8; 32],
@@ -2617,8 +2443,8 @@ mod tests {
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
-            crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasRequest(_)
+            crate::host_logic::sso::messages::RemoteMessageData::V1(
+                crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasRequest(_)
             )
         ));
     }
@@ -2885,11 +2711,11 @@ mod tests {
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             &message.data,
-            crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(request)
+            crate::host_logic::sso::messages::RemoteMessageData::V1(
+                crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request)
             ) if matches!(
                 request.as_ref(),
-                crate::host_logic::sso_messages::SigningRequest::Raw(_)
+                crate::host_logic::sso::messages::SigningRequest::Raw(_)
             )
         ));
         let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
@@ -2912,13 +2738,15 @@ mod tests {
                 "statement_unsubscribeStatement",
             ]
         );
+        let mut unsubscribe_ids = sent[3..]
+            .iter()
+            .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
+            .map(|request| request["params"][0].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        unsubscribe_ids.sort();
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&sent[3]).unwrap()["params"][0],
-            "own-sub-sign-raw-1"
-        );
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&sent[4]).unwrap()["params"][0],
-            "peer-sub-sign-raw-1"
+            unsubscribe_ids,
+            vec!["own-sub-sign-raw-1", "peer-sub-sign-raw-1"]
         );
     }
 
@@ -3103,11 +2931,11 @@ mod tests {
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             &message.data,
-            crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(request)
+            crate::host_logic::sso::messages::RemoteMessageData::V1(
+                crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request)
             ) if matches!(
                 request.as_ref(),
-                crate::host_logic::sso_messages::SigningRequest::Payload(_)
+                crate::host_logic::sso::messages::SigningRequest::Payload(_)
             )
         ));
     }
@@ -3120,11 +2948,11 @@ mod tests {
             rpc_responses: sso_success_responses(
                 &session,
                 "create-tx-1",
-                crate::host_logic::sso_messages::RemoteMessage {
+                crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-create-tx-1".to_string(),
-                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
-                        crate::host_logic::sso_messages::RemoteMessageV1::CreateTransactionResponse(
-                            crate::host_logic::sso_messages::CreateTransactionResponse {
+                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                        crate::host_logic::sso::messages::RemoteMessageV1::CreateTransactionResponse(
+                            crate::host_logic::sso::messages::CreateTransactionResponse {
                                 responding_to: "create-tx-1".to_string(),
                                 signed_transaction: Ok(vec![0xca, 0xfe]),
                             },
@@ -3148,8 +2976,8 @@ mod tests {
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
-            crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::CreateTransactionRequest(_)
+            crate::host_logic::sso::messages::RemoteMessageData::V1(
+                crate::host_logic::sso::messages::RemoteMessageV1::CreateTransactionRequest(_)
             )
         ));
     }
@@ -3234,11 +3062,11 @@ mod tests {
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             &message.data,
-            crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(request)
+            crate::host_logic::sso::messages::RemoteMessageData::V1(
+                crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request)
             ) if matches!(
                 request.as_ref(),
-                crate::host_logic::sso_messages::SigningRequest::Raw(_)
+                crate::host_logic::sso::messages::SigningRequest::Raw(_)
             )
         ));
     }
@@ -3351,20 +3179,20 @@ mod tests {
             rpc_responses: sso_success_responses(
                 &session,
                 "alloc-1",
-                crate::host_logic::sso_messages::RemoteMessage {
+                crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alloc-1".to_string(),
-                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
-                        crate::host_logic::sso_messages::RemoteMessageV1::ResourceAllocationResponse(
-                            crate::host_logic::sso_messages::ResourceAllocationResponse {
+                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                        crate::host_logic::sso::messages::RemoteMessageV1::ResourceAllocationResponse(
+                            crate::host_logic::sso::messages::ResourceAllocationResponse {
                                 responding_to: "alloc-1".to_string(),
                                 payload: Ok(vec![
-                                    crate::host_logic::sso_messages::SsoAllocationOutcome::Allocated(
-                                        crate::host_logic::sso_messages::SsoAllocatedResource::StatementStoreAllowance {
+                                    crate::host_logic::sso::messages::SsoAllocationOutcome::Allocated(
+                                        crate::host_logic::sso::messages::SsoAllocatedResource::StatementStoreAllowance {
                                             slot_account_key: vec![1],
                                         },
                                     ),
-                                    crate::host_logic::sso_messages::SsoAllocationOutcome::Rejected,
-                                    crate::host_logic::sso_messages::SsoAllocationOutcome::NotAvailable,
+                                    crate::host_logic::sso::messages::SsoAllocationOutcome::Rejected,
+                                    crate::host_logic::sso::messages::SsoAllocationOutcome::NotAvailable,
                                 ]),
                             },
                         ),
@@ -3394,8 +3222,8 @@ mod tests {
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
-            crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::ResourceAllocationRequest(_)
+            crate::host_logic::sso::messages::RemoteMessageData::V1(
+                crate::host_logic::sso::messages::RemoteMessageV1::ResourceAllocationRequest(_)
             )
         ));
     }

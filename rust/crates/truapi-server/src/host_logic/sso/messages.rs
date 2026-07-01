@@ -2,12 +2,19 @@
 //!
 //! These are the encrypted payloads carried inside statement-store
 //! `SsoStatementData::Request` / `Response` frames.
+//! The remote-message and signing codecs mirror host-papp:
+//! <https://github.com/paritytech/triangle-js-sdks/blob/2674746d3e92173fff900b24acb12d3f6ea8cfdc/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts#L18-L37>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/2674746d3e92173fff900b24acb12d3f6ea8cfdc/packages/host-papp/src/sso/sessionManager/scale/signing.ts#L6-L68>
 
-use parity_scale_codec::{Decode, Encode, Error, Input, Output};
-use truapi::v01;
+use parity_scale_codec::{Decode, Encode, OptionBool};
+use truapi::latest::{
+    AllocatableResource, HostAccountGetAliasResponse, ProductAccountId, ProductAccountTxPayload,
+    RawPayload,
+};
+use truapi::v01::{HostSignPayloadRequest, HostSignRawRequest};
 
 use crate::host_logic::session::SsoSessionInfo;
-use crate::host_logic::sso_pairing::{
+use crate::host_logic::sso::pairing::{
     AES_GCM_NONCE_LEN, SsoStatementData, decrypt_session_statement_data,
     encrypt_session_statement_data, encrypt_session_statement_data_with_nonce,
 };
@@ -30,46 +37,34 @@ pub struct RemoteMessage {
 /// Versioned remote message body.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemoteMessageData {
-    #[codec(index = 0)]
     V1(RemoteMessageV1),
 }
 
 /// Host-papp v1 remote message variants.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemoteMessageV1 {
-    #[codec(index = 0)]
     Disconnected,
-    #[codec(index = 1)]
     SignRequest(Box<SigningRequest>),
-    #[codec(index = 2)]
     SignResponse(SigningResponse),
-    #[codec(index = 3)]
     RingVrfAliasRequest(RingVrfAliasRequest),
-    #[codec(index = 4)]
     RingVrfAliasResponse(RingVrfAliasResponse),
-    #[codec(index = 5)]
     ResourceAllocationRequest(ResourceAllocationRequest),
-    #[codec(index = 6)]
     ResourceAllocationResponse(ResourceAllocationResponse),
-    #[codec(index = 7)]
     CreateTransactionRequest(CreateTransactionRequest),
-    #[codec(index = 8)]
     CreateTransactionResponse(CreateTransactionResponse),
 }
 
 /// Signing request flavor sent to the wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRequest {
-    #[codec(index = 0)]
     Payload(Box<SigningPayloadRequest>),
-    #[codec(index = 1)]
     Raw(SigningRawRequest),
 }
 
 /// Product-account payload signing request mirrored from host-papp.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadRequest {
-    pub product_account_id: v01::ProductAccountId,
+    pub product_account_id: ProductAccountId,
     pub block_hash: Vec<u8>,
     pub block_number: Vec<u8>,
     pub era: Vec<u8>,
@@ -87,8 +82,8 @@ pub struct SigningPayloadRequest {
     pub with_signed_transaction: OptionBool,
 }
 
-impl From<v01::HostSignPayloadRequest> for SigningPayloadRequest {
-    fn from(value: v01::HostSignPayloadRequest) -> Self {
+impl From<HostSignPayloadRequest> for SigningPayloadRequest {
+    fn from(value: HostSignPayloadRequest) -> Self {
         let payload = value.payload;
         Self {
             product_account_id: value.account,
@@ -106,7 +101,7 @@ impl From<v01::HostSignPayloadRequest> for SigningPayloadRequest {
             asset_id: payload.asset_id,
             metadata_hash: payload.metadata_hash,
             mode: payload.mode,
-            with_signed_transaction: payload.with_signed_transaction.into(),
+            with_signed_transaction: OptionBool(payload.with_signed_transaction),
         }
     }
 }
@@ -114,12 +109,12 @@ impl From<v01::HostSignPayloadRequest> for SigningPayloadRequest {
 /// Raw signing request mirrored from host-papp.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningRawRequest {
-    pub product_account_id: v01::ProductAccountId,
+    pub product_account_id: ProductAccountId,
     pub data: SigningRawPayload,
 }
 
-impl From<v01::HostSignRawRequest> for SigningRawRequest {
-    fn from(value: v01::HostSignRawRequest) -> Self {
+impl From<HostSignRawRequest> for SigningRawRequest {
+    fn from(value: HostSignRawRequest) -> Self {
         Self {
             product_account_id: value.account,
             data: value.payload.into(),
@@ -127,55 +122,18 @@ impl From<v01::HostSignRawRequest> for SigningRawRequest {
     }
 }
 
-/// Host-papp ternary optional-bool encoding (`none`, `false`, `true`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OptionBool(pub Option<bool>);
-
-impl From<Option<bool>> for OptionBool {
-    fn from(value: Option<bool>) -> Self {
-        Self(value)
-    }
-}
-
-impl Encode for OptionBool {
-    fn size_hint(&self) -> usize {
-        1
-    }
-
-    fn encode_to<T: Output + ?Sized>(&self, dest: &mut T) {
-        dest.push_byte(match self.0 {
-            None => 0,
-            Some(false) => 1,
-            Some(true) => 2,
-        });
-    }
-}
-
-impl Decode for OptionBool {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, Error> {
-        match u8::decode(input)? {
-            0 => Ok(Self(None)),
-            1 => Ok(Self(Some(false))),
-            2 => Ok(Self(Some(true))),
-            _ => Err("invalid OptionBool discriminant".into()),
-        }
-    }
-}
-
 /// Raw signing payload shape mirrored from host-papp.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRawPayload {
-    #[codec(index = 0)]
     Bytes(Vec<u8>),
-    #[codec(index = 1)]
     Payload(String),
 }
 
-impl From<v01::RawPayload> for SigningRawPayload {
-    fn from(value: v01::RawPayload) -> Self {
+impl From<RawPayload> for SigningRawPayload {
+    fn from(value: RawPayload) -> Self {
         match value {
-            v01::RawPayload::Bytes { bytes } => Self::Bytes(bytes),
-            v01::RawPayload::Payload { payload } => Self::Payload(payload),
+            RawPayload::Bytes { bytes } => Self::Bytes(bytes),
+            RawPayload::Payload { payload } => Self::Payload(payload),
         }
     }
 }
@@ -197,7 +155,7 @@ pub struct SigningPayloadResponseData {
 /// Wallet alias request for a product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasRequest {
-    pub product_account_id: v01::ProductAccountId,
+    pub product_account_id: ProductAccountId,
     pub product_id: String,
 }
 
@@ -205,7 +163,7 @@ pub struct RingVrfAliasRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasResponse {
     pub responding_to: String,
-    pub payload: Result<v01::HostAccountGetAliasResponse, String>,
+    pub payload: Result<HostAccountGetAliasResponse, String>,
 }
 
 /// Wallet resource-allocation request.
@@ -219,25 +177,21 @@ pub struct ResourceAllocationRequest {
 /// Resources the wallet may allocate for the calling product.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatableResource {
-    #[codec(index = 0)]
     StatementStoreAllowance,
-    #[codec(index = 1)]
     BulletInAllowance,
-    #[codec(index = 2)]
     SmartContractAllowance(u32),
-    #[codec(index = 3)]
     AutoSigning,
 }
 
-impl From<v01::AllocatableResource> for SsoAllocatableResource {
-    fn from(value: v01::AllocatableResource) -> Self {
+impl From<AllocatableResource> for SsoAllocatableResource {
+    fn from(value: AllocatableResource) -> Self {
         match value {
-            v01::AllocatableResource::StatementStoreAllowance => Self::StatementStoreAllowance,
-            v01::AllocatableResource::BulletinAllowance => Self::BulletInAllowance,
-            v01::AllocatableResource::SmartContractAllowance(index) => {
+            AllocatableResource::StatementStoreAllowance => Self::StatementStoreAllowance,
+            AllocatableResource::BulletinAllowance => Self::BulletInAllowance,
+            AllocatableResource::SmartContractAllowance(index) => {
                 Self::SmartContractAllowance(index)
             }
-            v01::AllocatableResource::AutoSigning => Self::AutoSigning,
+            AllocatableResource::AutoSigning => Self::AutoSigning,
         }
     }
 }
@@ -245,9 +199,7 @@ impl From<v01::AllocatableResource> for SsoAllocatableResource {
 /// Wallet policy for already-existing resource allowance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum OnExistingAllowancePolicy {
-    #[codec(index = 0)]
     Ignore,
-    #[codec(index = 1)]
     Increase,
 }
 
@@ -261,24 +213,21 @@ pub struct ResourceAllocationResponse {
 /// Per-resource allocation result from the wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocationOutcome {
-    #[codec(index = 0)]
     Allocated(SsoAllocatedResource),
-    #[codec(index = 1)]
     Rejected,
-    #[codec(index = 2)]
     NotAvailable,
 }
 
 /// Resource material allocated by the wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatedResource {
-    #[codec(index = 0)]
-    StatementStoreAllowance { slot_account_key: Vec<u8> },
-    #[codec(index = 1)]
-    BulletInAllowance { slot_account_key: Vec<u8> },
-    #[codec(index = 2)]
+    StatementStoreAllowance {
+        slot_account_key: Vec<u8>,
+    },
+    BulletInAllowance {
+        slot_account_key: Vec<u8>,
+    },
     SmartContractAllowance,
-    #[codec(index = 3)]
     AutoSigning {
         product_derivation_secret: String,
         product_root_private_key: Vec<u8>,
@@ -294,8 +243,7 @@ pub struct CreateTransactionRequest {
 /// Versioned transaction-creation payload.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CreateTransactionPayload {
-    #[codec(index = 0)]
-    V1(v01::ProductAccountTxPayload),
+    V1(ProductAccountTxPayload),
 }
 
 /// Wallet transaction-creation response.
@@ -347,14 +295,7 @@ pub fn decode_sso_session_statement(
                 request_id,
                 response_code,
             } if request_id == expected_statement_request_id => {
-                if response_code == SSO_RESPONSE_CODE_SUCCESS {
-                    Ok(Some(SsoSessionStatement::RequestAccepted))
-                } else {
-                    Err(format!(
-                        "SSO request {request_id} was rejected: {}",
-                        sso_response_code_name(response_code)
-                    ))
-                }
+                classify_response_ack(request_id, response_code).map(Some)
             }
             _ => Ok(None),
         };
@@ -367,14 +308,7 @@ pub fn decode_sso_session_statement(
             request_id,
             response_code,
         } if request_id == expected_statement_request_id => {
-            if response_code == SSO_RESPONSE_CODE_SUCCESS {
-                Ok(Some(SsoSessionStatement::RequestAccepted))
-            } else {
-                Err(format!(
-                    "SSO request {request_id} was rejected: {}",
-                    sso_response_code_name(response_code)
-                ))
-            }
+            classify_response_ack(request_id, response_code).map(Some)
         }
         SsoStatementData::Response { .. } => Ok(None),
         SsoStatementData::Request { data, .. } => {
@@ -395,6 +329,20 @@ pub fn decode_sso_session_statement(
             }
             Ok(None)
         }
+    }
+}
+
+fn classify_response_ack(
+    request_id: String,
+    response_code: u8,
+) -> Result<SsoSessionStatement, String> {
+    if response_code == SSO_RESPONSE_CODE_SUCCESS {
+        Ok(SsoSessionStatement::RequestAccepted)
+    } else {
+        Err(format!(
+            "SSO request {request_id} was rejected: {}",
+            sso_response_code_name(response_code)
+        ))
     }
 }
 
@@ -438,10 +386,7 @@ fn sso_response_code_name(code: u8) -> &'static str {
 }
 
 /// Build a wallet payload-signing request message.
-pub fn sign_payload_message(
-    message_id: String,
-    request: v01::HostSignPayloadRequest,
-) -> RemoteMessage {
+pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(
@@ -451,7 +396,7 @@ pub fn sign_payload_message(
 }
 
 /// Build a wallet raw-signing request message.
-pub fn sign_raw_message(message_id: String, request: v01::HostSignRawRequest) -> RemoteMessage {
+pub fn sign_raw_message(message_id: String, request: HostSignRawRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(SigningRequest::Raw(
@@ -463,7 +408,7 @@ pub fn sign_raw_message(message_id: String, request: v01::HostSignRawRequest) ->
 /// Build a wallet account-alias request message.
 pub fn alias_request_message(
     message_id: String,
-    product_account_id: v01::ProductAccountId,
+    product_account_id: ProductAccountId,
     product_id: String,
 ) -> RemoteMessage {
     RemoteMessage {
@@ -479,7 +424,7 @@ pub fn alias_request_message(
 pub fn resource_allocation_message(
     message_id: String,
     calling_product_id: String,
-    resources: Vec<v01::AllocatableResource>,
+    resources: Vec<AllocatableResource>,
     on_existing: OnExistingAllowancePolicy,
 ) -> RemoteMessage {
     RemoteMessage {
@@ -497,7 +442,7 @@ pub fn resource_allocation_message(
 /// Build a wallet transaction-creation request message.
 pub fn create_transaction_message(
     message_id: String,
-    payload: v01::ProductAccountTxPayload,
+    payload: ProductAccountTxPayload,
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
@@ -573,16 +518,17 @@ fn outgoing_request_data(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_logic::sso_pairing::decrypt_session_statement_data;
+    use crate::host_logic::sso::pairing::decrypt_session_statement_data;
     use crate::host_logic::statement_store::{
         StatementField, build_signed_statement, decode_statement_data,
     };
     use p256::SecretKey as P256SecretKey;
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
+    use truapi::latest::HostSignPayloadData;
 
-    fn account() -> v01::ProductAccountId {
-        v01::ProductAccountId {
+    fn account() -> ProductAccountId {
+        ProductAccountId {
             dot_ns_identifier: "myapp.dot".to_string(),
             derivation_index: 7,
         }
@@ -634,9 +580,9 @@ mod tests {
     fn raw_sign_request_uses_remote_message_variant_indices() {
         let message = sign_raw_message(
             "m1".to_string(),
-            v01::HostSignRawRequest {
+            HostSignRawRequest {
                 account: account(),
-                payload: v01::RawPayload::Bytes {
+                payload: RawPayload::Bytes {
                     bytes: vec![0xde, 0xad],
                 },
             },
@@ -651,9 +597,9 @@ mod tests {
 
     #[test]
     fn option_bool_matches_host_papp_option_bool_encoding() {
-        let mut request = v01::HostSignPayloadRequest {
+        let mut request = HostSignPayloadRequest {
             account: account(),
-            payload: v01::HostSignPayloadData {
+            payload: HostSignPayloadData {
                 block_hash: vec![],
                 block_number: vec![],
                 era: vec![],
@@ -677,8 +623,8 @@ mod tests {
         request.payload.with_signed_transaction = None;
         let none_encoded = SigningPayloadRequest::from(request).encode();
 
-        assert_eq!(true_encoded.last(), Some(&2));
-        assert_eq!(false_encoded.last(), Some(&1));
+        assert_eq!(true_encoded.last(), Some(&1));
+        assert_eq!(false_encoded.last(), Some(&2));
         assert_eq!(none_encoded.last(), Some(&0));
     }
 
@@ -688,10 +634,10 @@ mod tests {
             "alloc".to_string(),
             "myapp.dot".to_string(),
             vec![
-                v01::AllocatableResource::StatementStoreAllowance,
-                v01::AllocatableResource::BulletinAllowance,
-                v01::AllocatableResource::SmartContractAllowance(9),
-                v01::AllocatableResource::AutoSigning,
+                AllocatableResource::StatementStoreAllowance,
+                AllocatableResource::BulletinAllowance,
+                AllocatableResource::SmartContractAllowance(9),
+                AllocatableResource::AutoSigning,
             ],
             OnExistingAllowancePolicy::Increase,
         );
@@ -718,9 +664,9 @@ mod tests {
         let session = session();
         let remote_message = sign_raw_message(
             "remote-1".to_string(),
-            v01::HostSignRawRequest {
+            HostSignRawRequest {
                 account: account(),
-                payload: v01::RawPayload::Payload {
+                payload: RawPayload::Payload {
                     payload: "<Bytes>hello</Bytes>".to_string(),
                 },
             },
@@ -758,9 +704,9 @@ mod tests {
         let session = session();
         let remote_message = sign_raw_message(
             "remote-1".to_string(),
-            v01::HostSignRawRequest {
+            HostSignRawRequest {
                 account: account(),
-                payload: v01::RawPayload::Payload {
+                payload: RawPayload::Payload {
                     payload: "<Bytes>hello</Bytes>".to_string(),
                 },
             },

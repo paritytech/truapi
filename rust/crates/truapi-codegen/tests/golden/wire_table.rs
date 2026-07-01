@@ -461,15 +461,15 @@ pub const COIN_PAYMENT_LISTEN_FOR_PAYMENT: SubscriptionFrameIds = SubscriptionFr
 };
 
 #[cfg(debug_assertions)]
-/// Wire discriminants for `testing_probe`.
-pub const TESTING_PROBE: RequestFrameIds = RequestFrameIds {
+/// Wire discriminants for `testing_version_probe`.
+pub const TESTING_VERSION_PROBE: RequestFrameIds = RequestFrameIds {
     request_id: 164,
     response_id: 165,
 };
 
 #[cfg(debug_assertions)]
-/// Wire discriminants for `testing_framework_error`.
-pub const TESTING_FRAMEWORK_ERROR: RequestFrameIds = RequestFrameIds {
+/// Wire discriminants for `testing_echo_error`.
+pub const TESTING_ECHO_ERROR: RequestFrameIds = RequestFrameIds {
     request_id: 166,
     response_id: 167,
 };
@@ -735,12 +735,12 @@ pub const WIRE_TABLE: &[WireEntry] = &[
     },
     #[cfg(debug_assertions)]
     WireEntry {
-        method: "testing_probe",
-        kind: WireKind::Request(TESTING_PROBE),
+        method: "testing_version_probe",
+        kind: WireKind::Request(TESTING_VERSION_PROBE),
     },
     #[cfg(debug_assertions)]
     WireEntry {
-        method: "testing_framework_error",
-        kind: WireKind::Request(TESTING_FRAMEWORK_ERROR),
+        method: "testing_echo_error",
+        kind: WireKind::Request(TESTING_ECHO_ERROR),
     },
 ];

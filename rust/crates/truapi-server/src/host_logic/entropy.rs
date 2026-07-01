@@ -16,6 +16,7 @@ pub enum ProductEntropyError {
     MissingSecret,
 }
 
+/// Derive product-scoped entropy from the session root entropy secret.
 pub fn derive_product_entropy(
     entropy_secret: &[u8],
     product_id: &str,
@@ -25,6 +26,7 @@ pub fn derive_product_entropy(
     derive_product_entropy_from_source(&root_entropy_source, product_id, key)
 }
 
+/// Derive product-scoped entropy from an already normalized root entropy source.
 pub fn derive_product_entropy_from_source(
     root_entropy_source: &[u8; 32],
     product_id: &str,
@@ -63,42 +65,49 @@ mod tests {
     }
 
     #[test]
-    fn derives_dotli_entropy_single_byte_key_vector() {
-        let entropy = derive_product_entropy(&secret(), "myapp.dot", &[1]).unwrap();
-        assert_eq!(
-            hex::encode(entropy),
-            "4bafd6a34182959bad8914dcff88c6b6842d551d6f0067afbd407e9584223404"
-        );
-    }
+    fn product_entropy_cases() {
+        struct SuccessCase {
+            name: &'static str,
+            product_id: &'static str,
+            key: Vec<u8>,
+            expected_hex: &'static str,
+        }
 
-    #[test]
-    fn derives_dotli_entropy_text_key_vector() {
-        let entropy = derive_product_entropy(&secret(), "myapp.dot", b"product-key").unwrap();
-        assert_eq!(
-            hex::encode(entropy),
-            "ab1887248c9de3cf4b8c5a255782796d3d35a98c8eb2d7df61a410db8b14da36"
-        );
-    }
+        let success_cases = vec![
+            SuccessCase {
+                name: "single byte key",
+                product_id: "myapp.dot",
+                key: vec![1],
+                expected_hex: "4bafd6a34182959bad8914dcff88c6b6842d551d6f0067afbd407e9584223404",
+            },
+            SuccessCase {
+                name: "text key",
+                product_id: "myapp.dot",
+                key: b"product-key".to_vec(),
+                expected_hex: "ab1887248c9de3cf4b8c5a255782796d3d35a98c8eb2d7df61a410db8b14da36",
+            },
+            SuccessCase {
+                name: "localhost product",
+                product_id: "localhost:3000",
+                key: (0..32).map(|i| 255 - i).collect(),
+                expected_hex: "437d0a6236c51fe114cf6a16b79c9c2b5f95b1e105e2d5269cc254a8c593925f",
+            },
+        ];
 
-    #[test]
-    fn derives_dotli_entropy_localhost_vector() {
-        let key: Vec<u8> = (0..32).map(|i| 255 - i).collect();
-        let entropy = derive_product_entropy(&secret(), "localhost:3000", &key).unwrap();
-        assert_eq!(
-            hex::encode(entropy),
-            "437d0a6236c51fe114cf6a16b79c9c2b5f95b1e105e2d5269cc254a8c593925f"
-        );
-    }
+        for case in success_cases {
+            let entropy = derive_product_entropy(&secret(), case.product_id, &case.key).unwrap();
+            assert_eq!(hex::encode(entropy), case.expected_hex, "{}", case.name);
+        }
 
-    #[test]
-    fn rejects_empty_and_long_keys_like_dotli() {
-        assert_eq!(
-            derive_product_entropy(&secret(), "myapp.dot", &[]).unwrap_err(),
-            ProductEntropyError::InvalidKeyLength(0)
-        );
-        assert_eq!(
-            derive_product_entropy(&secret(), "myapp.dot", &[0u8; 33]).unwrap_err(),
-            ProductEntropyError::InvalidKeyLength(33)
-        );
+        let error_cases = vec![
+            (Vec::new(), ProductEntropyError::InvalidKeyLength(0)),
+            (vec![0u8; 33], ProductEntropyError::InvalidKeyLength(33)),
+        ];
+        for (key, expected) in error_cases {
+            assert_eq!(
+                derive_product_entropy(&secret(), "myapp.dot", &key).unwrap_err(),
+                expected,
+            );
+        }
     }
 }

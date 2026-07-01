@@ -1,20 +1,19 @@
 //! `StatementStore` surface: session-key statement proofs plus submit and
 //! subscribe flows over the people-chain statement store.
 
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use core::pin::Pin;
+use core::task::{Context, Poll};
 
 use super::PlatformRuntimeHost;
+use super::statement_store_rpc::{self, StatementStoreRpc};
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
-    parse_new_statements, parse_submit_ack, parse_subscribe_ack, sign_statement_fields,
-    signed_statement_to_scale, statement_fields_from_v01, statement_proof_to_v01,
-    submit_statement_request, subscribe_match_all_request, subscribe_match_any_request,
-    unsubscribe_request,
+    parse_new_statements_result, sign_statement_fields, signed_statement_to_scale,
+    statement_fields_from_v01, statement_proof_to_v01,
 };
 
-use futures::StreamExt;
-use futures::stream::BoxStream;
+use serde_json::Value;
+use subxt_rpcs::client::RpcSubscription;
 use tracing::instrument;
 use truapi::api::StatementStore;
 use truapi::v01;
@@ -28,16 +27,12 @@ use truapi::versioned::statement_store::{
     RemoteStatementStoreSubscribeRequest,
 };
 use truapi::{CallContext, CallError, Subscription};
-use truapi_platform::{ChainProvider as PlatformChainProvider, JsonRpcConnection, Platform};
 
-impl<P> StatementStore for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
+impl StatementStore for PlatformRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "statement_store.subscribe"))]
     async fn subscribe(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         request: RemoteStatementStoreSubscribeRequest,
     ) -> Result<
         Subscription<RemoteStatementStoreSubscribeItem>,
@@ -51,32 +46,31 @@ where
                 )));
             }
         };
-        let request_id = if cx.request_id().is_empty() {
-            "truapi:ss-subscribe".to_string()
-        } else {
-            cx.request_id().to_string()
+        let statement_store = self.statement_store_rpc();
+        let rpc_client = statement_store
+            .client("statement-store")
+            .await
+            .map_err(|reason| {
+                CallError::Domain(RemoteStatementStoreSubscribeError::V1(v01::GenericError {
+                    reason,
+                }))
+            })?;
+        let subscription = statement_store_rpc::subscribe(&rpc_client, kind, &topics)
+            .await
+            .map_err(|err| {
+                CallError::Domain(RemoteStatementStoreSubscribeError::V1(v01::GenericError {
+                    reason: format!("statement-store subscribe failed: {err}"),
+                }))
+            })?;
+        let Some(remote_subscription_id) = subscription.subscription_id().map(ToString::to_string)
+        else {
+            return Err(CallError::Domain(RemoteStatementStoreSubscribeError::V1(
+                v01::GenericError {
+                    reason: "statement-store subscribe returned no subscription id".to_string(),
+                },
+            )));
         };
-        let connection = match PlatformChainProvider::connect(
-            self.platform.as_ref(),
-            self.runtime_config.people_chain_genesis_hash.to_vec(),
-        )
-        .await
-        {
-            Ok(connection) => connection,
-            Err(err) => {
-                return Err(CallError::Domain(RemoteStatementStoreSubscribeError::V1(
-                    v01::GenericError {
-                        reason: format!("statement-store connect failed: {err:?}"),
-                    },
-                )));
-            }
-        };
-        connection.send(match kind {
-            TopicFilterKind::MatchAll => subscribe_match_all_request(&request_id, &topics),
-            TopicFilterKind::MatchAny => subscribe_match_any_request(&request_id, &topics),
-        });
-        let responses = connection.responses();
-        let stream = statement_store_subscription_stream(connection, responses, request_id);
+        let stream = statement_store_subscription_stream(subscription, remote_subscription_id);
         Ok(Subscription::new(Box::pin(stream)))
     }
 
@@ -125,40 +119,21 @@ where
     #[instrument(skip_all, fields(runtime.method = "statement_store.submit"))]
     async fn submit(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         request: RemoteStatementStoreSubmitRequest,
     ) -> Result<(), CallError<RemoteStatementStoreSubmitError>> {
         let RemoteStatementStoreSubmitRequest::V1(statement) = request;
-        if super::is_ios_diagnosis_e2e() {
-            return Ok(());
-        }
-
         let statement = signed_statement_to_scale(statement).map_err(|reason| {
             CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
                 reason,
             }))
         })?;
-        let request_id = if cx.request_id().is_empty() {
-            "truapi:ss-submit".to_string()
-        } else {
-            cx.request_id().to_string()
-        };
-        let connection = PlatformChainProvider::connect(
-            self.platform.as_ref(),
-            self.runtime_config.people_chain_genesis_hash.to_vec(),
-        )
-        .await
-        .map_err(|err| {
-            CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
-                reason: format!("statement-store connect failed: {err:?}"),
-            }))
-        })?;
-        connection.send(submit_statement_request(&request_id, &statement));
-        wait_for_statement_submit_ack(connection.responses(), &request_id)
+        self.statement_store_rpc()
+            .submit(statement, "statement-store")
             .await
             .map_err(|reason| {
                 CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
-                    reason,
+                    reason: format!("statement-store submit failed: {reason}"),
                 }))
             })
     }
@@ -195,45 +170,23 @@ fn statement_store_topic_filter(
     }
 }
 
-#[instrument(skip_all, fields(runtime.method = "statement_store.wait_submit_ack"))]
-async fn wait_for_statement_submit_ack(
-    mut responses: BoxStream<'static, String>,
-    request_id: &str,
-) -> Result<(), String> {
-    while let Some(frame) = responses.next().await {
-        if parse_submit_ack(&frame, request_id)
-            .map_err(|err| err.to_string())?
-            .is_some()
-        {
-            return Ok(());
-        }
-    }
-    Err("statement-store submit response stream ended".to_string())
-}
-
+#[instrument(skip_all, fields(runtime.method = "statement_store.subscription_stream"))]
 fn statement_store_subscription_stream(
-    connection: Box<dyn JsonRpcConnection>,
-    responses: BoxStream<'static, String>,
-    request_id: String,
+    subscription: RpcSubscription<Value>,
+    remote_subscription_id: String,
 ) -> impl futures::Stream<Item = RemoteStatementStoreSubscribeItem> + Send {
     StatementStoreSubscriptionStream {
-        connection,
-        responses,
-        request_id,
-        remote_subscription_id: None,
+        subscription,
+        remote_subscription_id,
         is_complete: false,
     }
 }
 
 struct StatementStoreSubscriptionStream {
-    connection: Box<dyn JsonRpcConnection>,
-    responses: BoxStream<'static, String>,
-    request_id: String,
-    remote_subscription_id: Option<String>,
+    subscription: RpcSubscription<Value>,
+    remote_subscription_id: String,
     is_complete: bool,
 }
-
-impl Unpin for StatementStoreSubscriptionStream {}
 
 impl futures::Stream for StatementStoreSubscriptionStream {
     type Item = RemoteStatementStoreSubscribeItem;
@@ -241,35 +194,18 @@ impl futures::Stream for StatementStoreSubscriptionStream {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let state = self.get_mut();
         loop {
-            let frame = match state.responses.as_mut().poll_next(cx) {
+            let value = match Pin::new(&mut state.subscription).poll_next(cx) {
                 Poll::Pending => return Poll::Pending,
-                Poll::Ready(Some(frame)) => frame,
-                Poll::Ready(None) => return Poll::Ready(None),
-            };
-
-            if state.remote_subscription_id.is_none() {
-                match parse_subscribe_ack(&frame, &state.request_id) {
-                    Ok(Some(id)) => {
-                        state.remote_subscription_id = Some(id);
-                        continue;
-                    }
-                    Ok(None) => {}
-                    Err(_) => return Poll::Ready(None),
+                Poll::Ready(Some(Ok(value))) => value,
+                Poll::Ready(Some(Err(_))) | Poll::Ready(None) => {
+                    return Poll::Ready(None);
                 }
-            }
-
-            let page = match parse_new_statements(&frame) {
-                Ok(Some(page)) => page,
-                Ok(None) => continue,
-                Err(_) => return Poll::Ready(None),
             };
-            // Only accept pages for the acked subscription id; pages that
-            // arrive before the subscribe ack cannot be attributed and are
-            // dropped.
-            if state.remote_subscription_id.as_deref() != Some(page.remote_subscription_id.as_str())
-            {
-                continue;
-            }
+            let page =
+                match parse_new_statements_result(state.remote_subscription_id.clone(), &value) {
+                    Ok(page) => page,
+                    Err(_) => continue,
+                };
 
             let was_complete = state.is_complete;
             let is_complete = was_complete || page.remaining == Some(0);
@@ -301,32 +237,20 @@ impl futures::Stream for StatementStoreSubscriptionStream {
     }
 }
 
-impl Drop for StatementStoreSubscriptionStream {
-    fn drop(&mut self) {
-        if let Some(remote_subscription_id) = self.remote_subscription_id.as_ref() {
-            self.connection.send(unsubscribe_request(
-                &format!("{}:unsubscribe", self.request_id),
-                remote_subscription_id,
-            ));
-        }
+impl PlatformRuntimeHost {
+    /// `StatementStoreRpc` bound to this runtime's people chain.
+    pub(super) fn statement_store_rpc(&self) -> StatementStoreRpc {
+        StatementStoreRpc::new(
+            self.platform.clone(),
+            self.runtime_config.people_chain_genesis_hash,
+            self.spawner.clone(),
+        )
     }
-}
 
-impl<P> PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
     fn create_statement_proof(
         &self,
         statement: v01::Statement,
     ) -> Result<v01::StatementProof, StatementProofFailure> {
-        if super::is_ios_diagnosis_e2e() {
-            return Ok(v01::StatementProof::Sr25519 {
-                signature: [0x42; 64],
-                signer: [0x11; 32],
-            });
-        }
-
         let session = self
             .session_state
             .current()
@@ -357,48 +281,34 @@ enum StatementProofFailure {
     UnableToSign(String),
 }
 
+fn statement_proof_v01_error(
+    failure: StatementProofFailure,
+) -> v01::RemoteStatementStoreCreateProofError {
+    match failure {
+        StatementProofFailure::NoSession => v01::RemoteStatementStoreCreateProofError::UnableToSign,
+        StatementProofFailure::UnableToSign(_reason) => {
+            v01::RemoteStatementStoreCreateProofError::UnableToSign
+        }
+        StatementProofFailure::InvalidStatement(reason) => {
+            v01::RemoteStatementStoreCreateProofError::Unknown { reason }
+        }
+    }
+}
+
 fn statement_proof_error(
     failure: StatementProofFailure,
 ) -> CallError<RemoteStatementStoreCreateProofError> {
-    match failure {
-        StatementProofFailure::NoSession => {
-            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
-                v01::RemoteStatementStoreCreateProofError::UnableToSign,
-            ))
-        }
-        StatementProofFailure::UnableToSign(_reason) => {
-            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
-                v01::RemoteStatementStoreCreateProofError::UnableToSign,
-            ))
-        }
-        StatementProofFailure::InvalidStatement(reason) => {
-            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
-                v01::RemoteStatementStoreCreateProofError::Unknown { reason },
-            ))
-        }
-    }
+    CallError::Domain(RemoteStatementStoreCreateProofError::V1(
+        statement_proof_v01_error(failure),
+    ))
 }
 
 fn statement_proof_authorized_error(
     failure: StatementProofFailure,
 ) -> CallError<RemoteStatementStoreCreateProofAuthorizedError> {
-    match failure {
-        StatementProofFailure::NoSession => {
-            CallError::Domain(RemoteStatementStoreCreateProofAuthorizedError::V1(
-                v01::RemoteStatementStoreCreateProofError::UnableToSign,
-            ))
-        }
-        StatementProofFailure::UnableToSign(_reason) => {
-            CallError::Domain(RemoteStatementStoreCreateProofAuthorizedError::V1(
-                v01::RemoteStatementStoreCreateProofError::UnableToSign,
-            ))
-        }
-        StatementProofFailure::InvalidStatement(reason) => {
-            CallError::Domain(RemoteStatementStoreCreateProofAuthorizedError::V1(
-                v01::RemoteStatementStoreCreateProofError::Unknown { reason },
-            ))
-        }
-    }
+    CallError::Domain(RemoteStatementStoreCreateProofAuthorizedError::V1(
+        statement_proof_v01_error(failure),
+    ))
 }
 
 #[cfg(test)]
@@ -408,6 +318,7 @@ mod tests {
         StubPlatform, account_id, new_statements_frame, runtime_config, signed_statement,
         sso_session_info, statement, stub_platform, subscribe_ack_frame, test_spawner,
     };
+    use futures::StreamExt;
     use parity_scale_codec::Encode;
     use std::sync::Arc;
 
@@ -486,7 +397,7 @@ mod tests {
     #[test]
     fn statement_store_submit_posts_signed_statement_and_waits_for_ack() {
         let platform = Arc::new(StubPlatform {
-            rpc_responses: vec![r#"{"jsonrpc":"2.0","id":"submit-1","result":"0xok"}"#.to_string()],
+            rpc_responses: vec![r#"{"jsonrpc":"2.0","id":"truapi:1","result":"0xok"}"#.to_string()],
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new(
@@ -524,7 +435,7 @@ mod tests {
         .encode();
         let platform = Arc::new(StubPlatform {
             rpc_responses: vec![
-                subscribe_ack_frame("sub-1", "remote-sub"),
+                subscribe_ack_frame("truapi:1", "remote-sub"),
                 new_statements_frame("remote-sub", vec![unsigned, signed]),
             ],
             ..Default::default()
@@ -558,11 +469,10 @@ mod tests {
         );
     }
 
-    /// Pages that arrive before the subscribe ack cannot be attributed to the
-    /// subscription and must be dropped, even when they carry the id the ack
-    /// will later confirm.
+    /// Pages that arrive before the subscribe ack are buffered by remote
+    /// subscription id and replayed once the ack confirms the subscription.
     #[test]
-    fn statement_store_subscribe_drops_pages_before_subscribe_ack() {
+    fn statement_store_subscribe_buffers_pages_before_subscribe_ack() {
         let rogue = crate::host_logic::statement_store::signed_statement_to_scale(
             signed_statement([9; 32]),
         )
@@ -574,7 +484,7 @@ mod tests {
         let platform = Arc::new(StubPlatform {
             rpc_responses: vec![
                 new_statements_frame("remote-sub-pre", vec![rogue]),
-                subscribe_ack_frame("sub-pre", "remote-sub-pre"),
+                subscribe_ack_frame("truapi:1", "remote-sub-pre"),
                 new_statements_frame("remote-sub-pre", vec![signed]),
             ],
             ..Default::default()
@@ -595,7 +505,7 @@ mod tests {
         assert_eq!(
             item,
             RemoteStatementStoreSubscribeItem::V1(v01::RemoteStatementStoreSubscribeItem {
-                statements: vec![signed_statement([7; 32])],
+                statements: vec![signed_statement([9; 32])],
                 is_complete: true,
             })
         );
@@ -609,7 +519,7 @@ mod tests {
         .unwrap();
         let platform = Arc::new(StubPlatform {
             rpc_responses: vec![
-                subscribe_ack_frame("sub-drop", "remote-sub-drop"),
+                subscribe_ack_frame("truapi:1", "remote-sub-drop"),
                 new_statements_frame("remote-sub-drop", vec![signed]),
             ],
             ..Default::default()
@@ -647,7 +557,7 @@ mod tests {
         .encode();
         let platform = Arc::new(StubPlatform {
             rpc_responses: vec![
-                subscribe_ack_frame("sub-empty-complete", "remote-sub-empty"),
+                subscribe_ack_frame("truapi:1", "remote-sub-empty"),
                 new_statements_frame("remote-sub-empty", vec![unsigned]),
             ],
             ..Default::default()

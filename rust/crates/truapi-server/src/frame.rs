@@ -52,6 +52,16 @@ pub fn encode_versioned_err_payload<T: Encode>(value: T, version: u8) -> Vec<u8>
     out
 }
 
+/// Encode `Result<(), _>` for unversioned methods whose success type is unit.
+pub fn encode_raw_unit_ok_payload() -> Vec<u8> {
+    Ok::<(), ()>(()).encode()
+}
+
+/// Encode `Result<(), Err>` for unversioned methods from an ordinary error value.
+pub fn encode_raw_err_payload<T: Encode>(value: T) -> Vec<u8> {
+    Err::<(), T>(value).encode()
+}
+
 /// Encode a versioned subscription interrupt payload from an ordinary error.
 pub fn encode_versioned_interrupt_payload<T: Encode>(value: T, version: u8) -> Vec<u8> {
     let encoded = value.encode();
