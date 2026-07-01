@@ -2,8 +2,9 @@
 //!
 //! This module owns the byte shape of the QR/deeplink payload described in
 //! `docs/design/host-contract-and-core-impl/H - sso-pairing-protocol.md`.
-//! The SCALE handshake codecs mirror host-papp's v2 handshake codec:
-//! <https://github.com/paritytech/triangle-js-sdks/blob/2674746d3e92173fff900b24acb12d3f6ea8cfdc/packages/host-papp/src/sso/auth/scale/handshakeV2.ts#L43-L115>
+//! The SCALE handshake codecs are kept wire-compatible with host-papp's v2
+//! handshake codec:
+//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/auth/scale/handshakeV2.ts#L43-L115>
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -134,7 +135,7 @@ pub struct HandshakeSuccessV2 {
 /// Encrypted statement-channel envelope shared with the wallet.
 ///
 /// Mirrors `@novasamatech/statement-store` session statement data:
-/// <https://github.com/paritytech/triangle-js-sdks/blob/2674746d3e92173fff900b24acb12d3f6ea8cfdc/packages/statement-store/src/session/scale/statementData.ts#L33-L46>
+/// <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/statement-store/src/session/scale/statementData.ts#L33-L46>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoStatementData {
     Request {
