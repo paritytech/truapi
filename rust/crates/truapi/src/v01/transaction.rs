@@ -1,3 +1,4 @@
+use super::ProductAccountId;
 use parity_scale_codec::{Decode, Encode};
 
 /// A 32-byte chain genesis hash used to identify the target chain.
@@ -19,14 +20,12 @@ pub struct TxPayloadExtension {
 
 /// Transaction payload for a product account.
 ///
-/// Contains everything the host needs to construct a signed extrinsic.
-/// The signer is identified by its derivation index within the caller's own
-/// product; the host resolves the corresponding key pair through its account
-/// management layer.
+/// Contains everything the host needs to construct a signed extrinsic. The host
+/// resolves the signer's key pair through its account management layer.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ProductAccountTxPayload {
-    /// Derivation index of the caller's product account that will sign the transaction.
-    pub derivation_index: u32,
+    /// Account that will sign the transaction.
+    pub signer: ProductAccountId,
     /// Chain where the transaction will execute.
     pub genesis_hash: GenesisHash,
     /// SCALE-encoded Call data.

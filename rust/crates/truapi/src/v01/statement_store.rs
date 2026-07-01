@@ -1,3 +1,4 @@
+use super::ProductAccountId;
 use parity_scale_codec::{Decode, Encode};
 
 /// Cryptographic proof for a statement.
@@ -63,8 +64,8 @@ pub struct SignedStatement {
 /// Request to create a cryptographic proof for a statement.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RemoteStatementStoreCreateProofRequest {
-    /// Derivation index of the caller's product account that should create the proof.
-    pub derivation_index: u32,
+    /// Account that should create the proof.
+    pub product_account_id: ProductAccountId,
     /// Statement to prove.
     pub statement: Statement,
 }

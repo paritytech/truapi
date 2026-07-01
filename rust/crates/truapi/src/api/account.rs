@@ -35,9 +35,16 @@ pub trait Account: Send + Sync {
     /// Retrieve a product-scoped account.
     ///
     /// ```ts
-    /// const result = await truapi.account.getAccount({ derivationIndex: 0 });
+    /// const result = await truapi.account.getAccount({ productAccountId: { derivationIndex: 0 } });
     /// assert(result.isOk(), "getAccount failed:", result);
     /// console.log("account retrieved:", result.value);
+    ///
+    /// // To read another product's account, pass its dotNS domain. This is cross-product
+    /// // access and requires the `ExternalAccount` permission — host-side enforcement is
+    /// // not yet implemented.
+    /// // await truapi.account.getAccount({
+    /// //   productAccountId: { dotNsIdentifier: "another-product.dot", derivationIndex: 0 },
+    /// // });
     /// ```
     #[wire(request_id = 22)]
     async fn get_account(
@@ -51,7 +58,7 @@ pub trait Account: Send + Sync {
     /// Retrieve a contextual alias for a product account.
     ///
     /// ```ts
-    /// const result = await truapi.account.getAccountAlias({ derivationIndex: 0 });
+    /// const result = await truapi.account.getAccountAlias({ productAccountId: { derivationIndex: 0 } });
     /// assert(result.isOk(), "getAccountAlias failed:", result);
     /// console.log("account alias:", result.value);
     /// ```
@@ -70,7 +77,7 @@ pub trait Account: Send + Sync {
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
     /// const result = await truapi.account.createAccountProof({
-    ///   derivationIndex: 0,
+    ///   productAccountId: { derivationIndex: 0 },
     ///   ringLocation: {
     ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",

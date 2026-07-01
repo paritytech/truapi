@@ -1,11 +1,17 @@
 use parity_scale_codec::{Decode, Encode};
 
-/// Identifies a product-specific account by combining a dotNS domain name with a
+/// Identifies a product-specific account by an optional dotNS domain name and a
 /// derivation index.
+///
+/// When `dot_ns_identifier` is `None`, the account resolves against the caller's
+/// own product. When it is `Some(domain)` naming a different product, the call is
+/// cross-product access and requires the
+/// [`ExternalAccount`](crate::v01::RemotePermission::ExternalAccount) permission.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ProductAccountId {
-    /// A dotNS domain name identifier (e.g., `"my-product.dot"`).
-    pub dot_ns_identifier: String,
+    /// Optional dotNS domain name identifier (e.g., `"my-product.dot"`). `None`
+    /// targets the caller's own product.
+    pub dot_ns_identifier: Option<String>,
     /// Key derivation index for generating product-specific accounts.
     pub derivation_index: u32,
 }
@@ -60,8 +66,8 @@ pub struct RingLocation {
 /// Request to create a ring VRF proof for a product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountCreateProofRequest {
-    /// Derivation index of the caller's product account that should create the proof.
-    pub derivation_index: u32,
+    /// Account that should create the proof.
+    pub product_account_id: ProductAccountId,
     /// Ring location to use for proof generation.
     pub ring_location: RingLocation,
     /// Context bytes bound to the proof.
@@ -127,8 +133,8 @@ pub enum HostAccountCreateProofError {
 /// Request to retrieve a product-scoped account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetRequest {
-    /// Derivation index of the caller's product account to retrieve.
-    pub derivation_index: u32,
+    /// Account to retrieve.
+    pub product_account_id: ProductAccountId,
 }
 
 /// Response containing a product-scoped account.
@@ -159,8 +165,8 @@ pub enum HostGetUserIdError {
 /// Request to retrieve a contextual alias for a product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetAliasRequest {
-    /// Derivation index of the caller's product account to derive the alias for.
-    pub derivation_index: u32,
+    /// Account to derive the alias for.
+    pub product_account_id: ProductAccountId,
 }
 
 /// Response containing a ring VRF proof.
