@@ -1,6 +1,5 @@
-use parity_scale_codec::{Decode, Encode};
-
 use super::ProductAccountId;
+use parity_scale_codec::{Decode, Encode};
 
 /// Full Substrate extrinsic signing payload with all fields needed for signature
 /// generation.
@@ -41,7 +40,7 @@ pub struct HostSignPayloadData {
 /// Request to sign an extrinsic payload with a product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignPayloadRequest {
-    /// Product account that will sign this payload.
+    /// Account that will sign this payload.
     pub account: ProductAccountId,
     /// The extrinsic payload to sign.
     pub payload: HostSignPayloadData,
@@ -65,7 +64,7 @@ pub enum RawPayload {
 /// A raw signing request pairing an account with the payload to sign.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignRawRequest {
-    /// Product account that will sign this payload.
+    /// Account that will sign this payload.
     pub account: ProductAccountId,
     /// The payload to sign.
     pub payload: RawPayload,

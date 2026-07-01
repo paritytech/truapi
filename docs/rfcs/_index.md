@@ -22,3 +22,4 @@ created: 2026-03-13
 | 0019   | [Scheduled Push Notifications](0019-scheduled-notifications.md) | accepted           | @johnthecat   | — |
 | 0020   | [Remove `context` from `create_transaction` and mirror in Accounts Protocol](0020-create-transaction.md) | accepted           | Valentin Sergeev | — |
 | 0021   | [Add Coins variant to PaymentTopUpSource](0021-payment-topup-coins.md) | accepted           | @filippovecchiato | — |
+| 0022   | [Optional `dotNsIdentifier` and permissioned external-account access](0022-remove-dotns-from-default-access.md) | draft              | Valentin Fernandez | [#245](https://github.com/paritytech/truapi/pull/245) |

@@ -23,10 +23,7 @@ pub trait Signing: Send + Sync {
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
     /// const result = await truapi.signing.createTransaction({
-    ///   signer: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
-    ///   },
+    ///   signer: { derivationIndex: 0 },
     ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   callData: "0x0000",
     ///   extensions: [],
@@ -34,6 +31,17 @@ pub trait Signing: Send + Sync {
     /// });
     /// assert(result.isOk(), "createTransaction failed:", result);
     /// console.log("transaction created:", result.value);
+    ///
+    /// // To sign with another product's account, set `signer.dotNsIdentifier`. This is
+    /// // cross-product access and requires the `ExternalAccount` permission — host-side
+    /// // enforcement is not yet implemented.
+    /// // await truapi.signing.createTransaction({
+    /// //   signer: { dotNsIdentifier: "another-product.dot", derivationIndex: 0 },
+    /// //   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    /// //   callData: "0x0000",
+    /// //   extensions: [],
+    /// //   txExtVersion: 0,
+    /// // });
     /// ```
     #[wire(request_id = 30)]
     async fn create_transaction(
@@ -138,7 +146,7 @@ pub trait Signing: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.signing.signRaw({
-    ///   account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
+    ///   account: { derivationIndex: 0 },
     ///   payload: {
     ///     tag: "Bytes",
     ///     value: {
@@ -148,6 +156,14 @@ pub trait Signing: Send + Sync {
     /// });
     /// assert(result.isOk(), "signRaw failed:", result);
     /// console.log("raw bytes signed:", result.value);
+    ///
+    /// // To sign with another product's account, set `account.dotNsIdentifier`. This is
+    /// // cross-product access and requires the `ExternalAccount` permission — host-side
+    /// // enforcement is not yet implemented.
+    /// // await truapi.signing.signRaw({
+    /// //   account: { dotNsIdentifier: "another-product.dot", derivationIndex: 0 },
+    /// //   payload: { tag: "Bytes", value: { bytes: "0x48656c6c6f2c20776f726c6421" } },
+    /// // });
     /// ```
     #[wire(request_id = 114)]
     async fn sign_raw(
@@ -164,7 +180,7 @@ pub trait Signing: Send + Sync {
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
     /// const result = await truapi.signing.signPayload({
-    ///   account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
+    ///   account: { derivationIndex: 0 },
     ///   payload: {
     ///     blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     blockNumber: "0x00000000",
