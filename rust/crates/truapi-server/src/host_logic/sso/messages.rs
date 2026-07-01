@@ -1,17 +1,22 @@
-//! SCALE codecs for host-papp 0.7.9 SSO session-channel messages.
+//! SCALE codecs for host-papp SSO session-channel messages.
 //!
 //! These are the encrypted payloads carried inside statement-store
 //! `SsoStatementData::Request` / `Response` frames.
-//! The remote-message and signing codecs mirror host-papp:
-//! <https://github.com/paritytech/triangle-js-sdks/blob/2674746d3e92173fff900b24acb12d3f6ea8cfdc/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts#L18-L37>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/2674746d3e92173fff900b24acb12d3f6ea8cfdc/packages/host-papp/src/sso/sessionManager/scale/signing.ts#L6-L68>
+//! The runtime builds them when forwarding TrUAPI account, signing, resource
+//! allocation, and transaction requests to the paired wallet, then decodes the
+//! wallet's responses while waiting on the SSO statement-store channels.
+//! Field order and enum variant order are kept wire-compatible with host-papp:
+//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts#L23-L35>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/signing.ts#L6-L68>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/ringVrf.ts#L5-L15>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/createTransaction.ts#L6-L25>
 
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
-    AllocatableResource, HostAccountGetAliasResponse, ProductAccountId, ProductAccountTxPayload,
+    AccountId, AllocatableResource, HostAccountGetAliasResponse, HostSignPayloadRequest,
+    HostSignRawRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload,
     RawPayload,
 };
-use truapi::v01::{HostSignPayloadRequest, HostSignRawRequest};
 
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::pairing::{
@@ -40,7 +45,10 @@ pub enum RemoteMessageData {
     V1(RemoteMessageV1),
 }
 
-/// Host-papp v1 remote message variants.
+/// v1 messages exchanged with the paired wallet over the encrypted SSO channel.
+///
+/// The variant order is part of the SCALE wire protocol used inside
+/// statement-store session statements.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemoteMessageV1 {
     Disconnected,
@@ -52,6 +60,9 @@ pub enum RemoteMessageV1 {
     ResourceAllocationResponse(ResourceAllocationResponse),
     CreateTransactionRequest(CreateTransactionRequest),
     CreateTransactionResponse(CreateTransactionResponse),
+    CreateTransactionLegacyRequest(CreateTransactionLegacyRequest),
+    SignRawLegacyRequest(SignRawLegacyRequest),
+    SignRawLegacyResponse(SignRawLegacyResponse),
 }
 
 /// Signing request flavor sent to the wallet.
@@ -61,7 +72,12 @@ pub enum SigningRequest {
     Raw(SigningRawRequest),
 }
 
-/// Product-account payload signing request mirrored from host-papp.
+/// Request sent when a product asks the paired wallet to sign a Substrate
+/// payload with a product-derived account.
+///
+/// Built from [`HostSignPayloadRequest`] and wrapped in
+/// [`RemoteMessageV1::SignRequest`] before being encrypted into an SSO session
+/// statement.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadRequest {
     pub product_account_id: ProductAccountId,
@@ -82,47 +98,63 @@ pub struct SigningPayloadRequest {
     pub with_signed_transaction: OptionBool,
 }
 
-impl From<HostSignPayloadRequest> for SigningPayloadRequest {
-    fn from(value: HostSignPayloadRequest) -> Self {
-        let payload = value.payload;
-        Self {
-            product_account_id: value.account,
-            block_hash: payload.block_hash,
-            block_number: payload.block_number,
-            era: payload.era,
-            genesis_hash: payload.genesis_hash,
-            method: payload.method,
-            nonce: payload.nonce,
-            spec_version: payload.spec_version,
-            tip: payload.tip,
-            transaction_version: payload.transaction_version,
-            signed_extensions: payload.signed_extensions,
-            version: payload.version,
-            asset_id: payload.asset_id,
-            metadata_hash: payload.metadata_hash,
-            mode: payload.mode,
-            with_signed_transaction: OptionBool(payload.with_signed_transaction),
-        }
+fn signing_payload_request_from(value: HostSignPayloadRequest) -> SigningPayloadRequest {
+    let payload = value.payload;
+    SigningPayloadRequest {
+        product_account_id: value.account,
+        block_hash: payload.block_hash,
+        block_number: payload.block_number,
+        era: payload.era,
+        genesis_hash: payload.genesis_hash,
+        method: payload.method,
+        nonce: payload.nonce,
+        spec_version: payload.spec_version,
+        tip: payload.tip,
+        transaction_version: payload.transaction_version,
+        signed_extensions: payload.signed_extensions,
+        version: payload.version,
+        asset_id: payload.asset_id,
+        metadata_hash: payload.metadata_hash,
+        mode: payload.mode,
+        with_signed_transaction: OptionBool(payload.with_signed_transaction),
     }
 }
 
-/// Raw signing request mirrored from host-papp.
+/// Request sent when a product asks the paired wallet to sign raw bytes or a
+/// string message with a product-derived account.
+///
+/// Built from [`HostSignRawRequest`] and wrapped in
+/// [`RemoteMessageV1::SignRequest`] before being encrypted into an SSO session
+/// statement.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningRawRequest {
     pub product_account_id: ProductAccountId,
     pub data: SigningRawPayload,
 }
 
-impl From<HostSignRawRequest> for SigningRawRequest {
-    fn from(value: HostSignRawRequest) -> Self {
-        Self {
-            product_account_id: value.account,
-            data: value.payload.into(),
-        }
+fn signing_raw_request_from(value: HostSignRawRequest) -> SigningRawRequest {
+    SigningRawRequest {
+        product_account_id: value.account,
+        data: value.payload.into(),
     }
 }
 
-/// Raw signing payload shape mirrored from host-papp.
+/// Request sent when a product asks the paired wallet to sign raw data with a
+/// user-imported legacy account.
+///
+/// Unlike product-account signing, the signer is the raw account id selected
+/// from the user's legacy accounts.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct SignRawLegacyRequest {
+    pub account: AccountId,
+    pub data: SigningRawPayload,
+}
+
+/// Raw data accepted by SSO signing requests.
+///
+/// Used by both product-account raw signing and legacy-account raw signing to
+/// distinguish binary payloads from string messages on the session-channel
+/// wire.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRawPayload {
     Bytes(Vec<u8>),
@@ -138,35 +170,56 @@ impl From<RawPayload> for SigningRawPayload {
     }
 }
 
-/// Wallet response to a signing request.
+/// Response returned by the wallet for a product-account signing request.
+///
+/// Decoded from [`RemoteMessageV1::SignResponse`] while the runtime is waiting
+/// for a matching SSO remote message id.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningResponse {
     pub responding_to: String,
     pub payload: Result<SigningPayloadResponseData, String>,
 }
 
-/// Successful signing response payload.
+/// Successful product-account signing result returned by the wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadResponseData {
     pub signature: Vec<u8>,
     pub signed_transaction: Option<Vec<u8>>,
 }
 
-/// Wallet alias request for a product account.
+/// Response returned by the wallet for a legacy-account raw signing request.
+///
+/// Decoded from [`RemoteMessageV1::SignRawLegacyResponse`] and mapped back to
+/// the public raw-signing response shape.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct SignRawLegacyResponse {
+    pub responding_to: String,
+    pub signature: Result<Vec<u8>, String>,
+}
+
+/// Request sent when a product asks the wallet for a ring-VRF alias.
+///
+/// Used by `Account::get_account_alias`; the product account identifies the
+/// alias target, while `product_id` identifies the caller that the wallet is
+/// authorizing over the SSO channel.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasRequest {
     pub product_account_id: ProductAccountId,
     pub product_id: String,
 }
 
-/// Wallet alias response.
+/// Response returned by the wallet for a ring-VRF alias request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasResponse {
     pub responding_to: String,
     pub payload: Result<HostAccountGetAliasResponse, String>,
 }
 
-/// Wallet resource-allocation request.
+/// Request sent when a product asks the wallet to allocate SSO-backed
+/// resources.
+///
+/// Used by `ResourceAllocation::request` for capabilities such as statement
+/// store allowance and auto-signing material.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ResourceAllocationRequest {
     pub calling_product_id: String,
@@ -203,7 +256,7 @@ pub enum OnExistingAllowancePolicy {
     Increase,
 }
 
-/// Wallet resource-allocation response.
+/// Response returned by the wallet for a resource-allocation request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ResourceAllocationResponse {
     pub responding_to: String,
@@ -234,7 +287,8 @@ pub enum SsoAllocatedResource {
     },
 }
 
-/// Wallet transaction-creation request.
+/// Request sent when a product asks the wallet to create a signed transaction
+/// for a product-derived account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionRequest {
     pub payload: CreateTransactionPayload,
@@ -246,7 +300,21 @@ pub enum CreateTransactionPayload {
     V1(ProductAccountTxPayload),
 }
 
-/// Wallet transaction-creation response.
+/// Request sent when a product asks the wallet to create a signed transaction
+/// for a user-imported legacy account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct CreateTransactionLegacyRequest {
+    pub payload: CreateTransactionLegacyPayload,
+}
+
+/// Versioned legacy transaction-creation payload.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum CreateTransactionLegacyPayload {
+    V1(LegacyAccountTxPayload),
+}
+
+/// Response returned by the wallet for either product-account or legacy-account
+/// transaction creation.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionResponse {
     pub responding_to: String,
@@ -265,6 +333,7 @@ pub enum SsoSessionStatement {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SsoRemoteResponse {
     Sign(SigningResponse),
+    SignRawLegacy(SignRawLegacyResponse),
     RingVrfAlias(RingVrfAliasResponse),
     ResourceAllocation(ResourceAllocationResponse),
     CreateTransaction(CreateTransactionResponse),
@@ -362,6 +431,11 @@ fn remote_response_for_message(
         {
             Some(SsoRemoteResponse::RingVrfAlias(response))
         }
+        RemoteMessageV1::SignRawLegacyResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::SignRawLegacy(response))
+        }
         RemoteMessageV1::ResourceAllocationResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
@@ -378,10 +452,9 @@ fn remote_response_for_message(
 
 fn sso_response_code_name(code: u8) -> &'static str {
     match code {
-        1 => "decodingFailed",
-        2 => "decryptionFailed",
-        3 => "unknown",
-        _ => "unrecognized response code",
+        1 => "decryptionFailed",
+        2 => "decodingFailed",
+        _ => "unknown",
     }
 }
 
@@ -390,7 +463,7 @@ pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest)
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(
-            SigningRequest::Payload(Box::new(request.into())),
+            SigningRequest::Payload(Box::new(signing_payload_request_from(request))),
         ))),
     }
 }
@@ -400,8 +473,25 @@ pub fn sign_raw_message(message_id: String, request: HostSignRawRequest) -> Remo
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(SigningRequest::Raw(
-            request.into(),
+            signing_raw_request_from(request),
         )))),
+    }
+}
+
+/// Build a wallet legacy raw-signing request message.
+pub fn sign_raw_legacy_message(
+    message_id: String,
+    account: AccountId,
+    payload: RawPayload,
+) -> RemoteMessage {
+    RemoteMessage {
+        message_id,
+        data: RemoteMessageData::V1(RemoteMessageV1::SignRawLegacyRequest(
+            SignRawLegacyRequest {
+                account,
+                data: payload.into(),
+            },
+        )),
     }
 }
 
@@ -449,6 +539,21 @@ pub fn create_transaction_message(
         data: RemoteMessageData::V1(RemoteMessageV1::CreateTransactionRequest(
             CreateTransactionRequest {
                 payload: CreateTransactionPayload::V1(payload),
+            },
+        )),
+    }
+}
+
+/// Build a wallet legacy-account transaction-creation request message.
+pub fn create_transaction_legacy_message(
+    message_id: String,
+    payload: LegacyAccountTxPayload,
+) -> RemoteMessage {
+    RemoteMessage {
+        message_id,
+        data: RemoteMessageData::V1(RemoteMessageV1::CreateTransactionLegacyRequest(
+            CreateTransactionLegacyRequest {
+                payload: CreateTransactionLegacyPayload::V1(payload),
             },
         )),
     }
@@ -526,6 +631,7 @@ mod tests {
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
     use truapi::latest::HostSignPayloadData;
+    use truapi::v01;
 
     fn account() -> ProductAccountId {
         ProductAccountId {
@@ -596,6 +702,157 @@ mod tests {
     }
 
     #[test]
+    fn late_remote_message_variants_match_host_papp_order() {
+        let legacy_tx = create_transaction_legacy_message(
+            String::new(),
+            v01::LegacyAccountTxPayload {
+                signer: [1; 32],
+                genesis_hash: [2; 32],
+                call_data: Vec::new(),
+                extensions: Vec::new(),
+                tx_ext_version: 0,
+            },
+        )
+        .encode();
+        let legacy_raw =
+            sign_raw_legacy_message(String::new(), [1; 32], RawPayload::Bytes { bytes: vec![] })
+                .encode();
+
+        assert_eq!(legacy_tx[..3], [0, 0, 9]);
+        assert_eq!(legacy_raw[..3], [0, 0, 10]);
+    }
+
+    fn sequential_bytes<const N: usize>(start: u8) -> [u8; N] {
+        std::array::from_fn(|index| start.wrapping_add(index as u8))
+    }
+
+    fn assert_host_papp_0_8_8_fixture(message: RemoteMessage, expected: &str) {
+        assert_eq!(
+            hex::encode(message.encode()),
+            expected.trim_start_matches("0x")
+        );
+    }
+
+    #[test]
+    fn resource_allocation_message_matches_host_papp_0_8_8_fixture() {
+        let message = resource_allocation_message(
+            "m-resource".to_string(),
+            "truapi-playground.dot".to_string(),
+            vec![
+                AllocatableResource::StatementStoreAllowance,
+                AllocatableResource::BulletinAllowance,
+                AllocatableResource::SmartContractAllowance(9),
+                AllocatableResource::AutoSigning,
+            ],
+            OnExistingAllowancePolicy::Increase,
+        );
+
+        assert_host_papp_0_8_8_fixture(
+            message,
+            "0x286d2d7265736f757263650005547472756170692d706c617967726f756e642e646f7410000102090000000301",
+        );
+    }
+
+    #[test]
+    fn create_transaction_message_matches_host_papp_0_8_8_fixture() {
+        let message = create_transaction_message(
+            "m-product-tx".to_string(),
+            v01::ProductAccountTxPayload {
+                signer: v01::ProductAccountId {
+                    dot_ns_identifier: "truapi-playground.dot".to_string(),
+                    derivation_index: 0,
+                },
+                genesis_hash: sequential_bytes(32),
+                call_data: vec![0, 0],
+                extensions: vec![v01::TxPayloadExtension {
+                    id: "CheckNonce".to_string(),
+                    extra: vec![1],
+                    additional_signed: vec![2, 3],
+                }],
+                tx_ext_version: 0,
+            },
+        );
+
+        assert_host_papp_0_8_8_fixture(
+            message,
+            "0x306d2d70726f647563742d7478000700547472756170692d706c617967726f756e642e646f7400000000202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
+        );
+    }
+
+    #[test]
+    fn playground_create_transaction_message_matches_host_papp_0_8_8_fixture() {
+        let message = create_transaction_message(
+            "create-transaction-1".to_string(),
+            v01::ProductAccountTxPayload {
+                signer: v01::ProductAccountId {
+                    dot_ns_identifier: "truapi-playground.dot".to_string(),
+                    derivation_index: 0,
+                },
+                genesis_hash: [
+                    0xbf, 0x04, 0x88, 0xdb, 0xe9, 0xda, 0xa1, 0xde, 0x1c, 0x08, 0xc5, 0xf7, 0x43,
+                    0xe2, 0x6f, 0xdc, 0x2a, 0x4e, 0xcd, 0x74, 0xcf, 0x87, 0xdd, 0x1b, 0x4b, 0x1e,
+                    0xeb, 0x99, 0xae, 0x4e, 0xf1, 0x9f,
+                ],
+                call_data: vec![0, 0],
+                extensions: vec![],
+                tx_ext_version: 0,
+            },
+        );
+
+        assert_host_papp_0_8_8_fixture(
+            message,
+            "0x506372656174652d7472616e73616374696f6e2d31000700547472756170692d706c617967726f756e642e646f7400000000bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f0800000000",
+        );
+    }
+
+    #[test]
+    fn create_transaction_legacy_message_matches_host_papp_0_8_8_fixture() {
+        let message = create_transaction_legacy_message(
+            "m-legacy-tx".to_string(),
+            v01::LegacyAccountTxPayload {
+                signer: sequential_bytes(0),
+                genesis_hash: sequential_bytes(32),
+                call_data: vec![0, 0],
+                extensions: vec![v01::TxPayloadExtension {
+                    id: "CheckNonce".to_string(),
+                    extra: vec![1],
+                    additional_signed: vec![2, 3],
+                }],
+                tx_ext_version: 0,
+            },
+        );
+
+        assert_host_papp_0_8_8_fixture(
+            message,
+            "0x2c6d2d6c65676163792d7478000900000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
+        );
+    }
+
+    #[test]
+    fn sign_raw_legacy_messages_match_host_papp_0_8_8_fixtures() {
+        assert_host_papp_0_8_8_fixture(
+            sign_raw_legacy_message(
+                "m-legacy-raw".to_string(),
+                sequential_bytes(0),
+                RawPayload::Bytes {
+                    bytes: b"Hi".to_vec(),
+                },
+            ),
+            "0x306d2d6c65676163792d726177000a000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f00084869",
+        );
+        assert_host_papp_0_8_8_fixture(
+            sign_raw_legacy_message(
+                "m-legacy-raw-payload".to_string(),
+                sequential_bytes(0),
+                RawPayload::Payload {
+                    payload: "<Bytes>Hi</Bytes>".to_string(),
+                },
+            ),
+            "0x506d2d6c65676163792d7261772d7061796c6f6164000a000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f01443c42797465733e48693c2f42797465733e",
+        );
+    }
+
+    #[test]
     fn option_bool_matches_host_papp_option_bool_encoding() {
         let mut request = HostSignPayloadRequest {
             account: account(),
@@ -617,11 +874,11 @@ mod tests {
                 with_signed_transaction: Some(true),
             },
         };
-        let true_encoded = SigningPayloadRequest::from(request.clone()).encode();
+        let true_encoded = signing_payload_request_from(request.clone()).encode();
         request.payload.with_signed_transaction = Some(false);
-        let false_encoded = SigningPayloadRequest::from(request.clone()).encode();
+        let false_encoded = signing_payload_request_from(request.clone()).encode();
         request.payload.with_signed_transaction = None;
-        let none_encoded = SigningPayloadRequest::from(request).encode();
+        let none_encoded = signing_payload_request_from(request).encode();
 
         assert_eq!(true_encoded.last(), Some(&1));
         assert_eq!(false_encoded.last(), Some(&2));
