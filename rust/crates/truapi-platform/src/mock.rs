@@ -29,8 +29,8 @@ use futures::StreamExt;
 use futures::stream::{self, BoxStream};
 
 use truapi::v01;
-use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 
+use crate::async_trait;
 use crate::{
     AuthPresenter, AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features,
     JsonRpcConnection, Navigation, Notifications, Permissions, PreimageHost, ProductStorage,
@@ -254,9 +254,10 @@ fn core_key(key: &CoreStorageKey) -> String {
     match key {
         CoreStorageKey::AuthSession => "core:auth-session".to_string(),
         CoreStorageKey::PairingDeviceIdentity => "core:pairing-device-identity".to_string(),
-        CoreStorageKey::PermissionAuthorization { storage_key } => {
-            format!("core:permission:{storage_key}")
-        }
+        CoreStorageKey::PermissionAuthorization {
+            product_id,
+            request,
+        } => format!("core:permission:{product_id}:{request:?}"),
     }
 }
 
@@ -268,6 +269,7 @@ fn preimage_key(value: &[u8]) -> Vec<u8> {
     hasher.finish().to_le_bytes().to_vec()
 }
 
+#[async_trait]
 impl ProductStorage for MockPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         if let Some(reason) = &self.config.faults.storage_error {
@@ -314,6 +316,7 @@ impl ProductStorage for MockPlatform {
     }
 }
 
+#[async_trait]
 impl CoreStorage for MockPlatform {
     async fn read_core_storage(
         &self,
@@ -363,6 +366,7 @@ impl CoreStorage for MockPlatform {
     }
 }
 
+#[async_trait]
 impl Navigation for MockPlatform {
     async fn navigate_to(&self, url: String) -> Result<(), v01::HostNavigateToError> {
         if let Some(reason) = &self.config.faults.navigate_error {
@@ -378,6 +382,7 @@ impl Navigation for MockPlatform {
     }
 }
 
+#[async_trait]
 impl Notifications for MockPlatform {
     async fn push_notification(
         &self,
@@ -405,6 +410,7 @@ impl Notifications for MockPlatform {
     }
 }
 
+#[async_trait]
 impl Permissions for MockPlatform {
     async fn device_permission(
         &self,
@@ -425,17 +431,15 @@ impl Permissions for MockPlatform {
     }
 }
 
+#[async_trait]
 impl Features for MockPlatform {
     async fn feature_supported(
         &self,
-        request: HostFeatureSupportedRequest,
-    ) -> Result<HostFeatureSupportedResponse, v01::GenericError> {
-        let HostFeatureSupportedRequest::V1(_) = request;
-        Ok(HostFeatureSupportedResponse::V1(
-            v01::HostFeatureSupportedResponse {
-                supported: self.config.feature_supported,
-            },
-        ))
+        _request: v01::HostFeatureSupportedRequest,
+    ) -> Result<v01::HostFeatureSupportedResponse, v01::GenericError> {
+        Ok(v01::HostFeatureSupportedResponse {
+            supported: self.config.feature_supported,
+        })
     }
 }
 
@@ -457,8 +461,11 @@ impl JsonRpcConnection for MockConnection {
             Some(frames) => Box::pin(stream::iter(frames.clone())),
         }
     }
+
+    fn close(&self) {}
 }
 
+#[async_trait]
 impl ChainProvider for MockPlatform {
     async fn connect(
         &self,
@@ -493,6 +500,7 @@ impl AuthPresenter for MockPlatform {
     }
 }
 
+#[async_trait]
 impl UserConfirmation for MockPlatform {
     async fn confirm_user_action(
         &self,
@@ -519,6 +527,7 @@ impl ThemeHost for MockPlatform {
     }
 }
 
+#[async_trait]
 impl PreimageHost for MockPlatform {
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         if let Some(reason) = &self.config.faults.preimage_submit_error {
@@ -610,12 +619,7 @@ mod tests {
         // ...and a product key must not be visible through core storage.
         block_on(p.write("x".into(), vec![2])).unwrap();
         assert_eq!(
-            block_on(
-                p.read_core_storage(CoreStorageKey::PermissionAuthorization {
-                    storage_key: "x".into()
-                })
-            )
-            .unwrap(),
+            block_on(p.read_core_storage(CoreStorageKey::PairingDeviceIdentity)).unwrap(),
             None
         );
     }
@@ -744,11 +748,11 @@ mod tests {
             feature_supported: false,
             ..Default::default()
         });
-        let HostFeatureSupportedResponse::V1(response) = block_on(p.feature_supported(
-            HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
+        let response = block_on(
+            p.feature_supported(v01::HostFeatureSupportedRequest::Chain {
                 genesis_hash: vec![0; 32],
             }),
-        ))
+        )
         .unwrap();
         assert!(!response.supported);
     }
