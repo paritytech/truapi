@@ -211,7 +211,7 @@ impl ProductStorage for WasmPlatform {
 impl ChainProvider for WasmPlatform {
     async fn connect(
         &self,
-        genesis_hash: Vec<u8>,
+        genesis_hash: [u8; 32],
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
         let chain_connect = match self.bridge.chain_connect.clone() {
             Some(f) => f,
@@ -317,7 +317,9 @@ impl UserConfirmation for WasmPlatform {
         review: UserConfirmationReview,
     ) -> Result<bool, v01::GenericError> {
         let Some(fn_) = self.bridge.confirm_user_action.as_ref() else {
-            return Ok(false);
+            return Err(generic(
+                "confirmUserAction callback not provided by host".to_string(),
+            ));
         };
         invoke_bool(fn_, review.encode()).await.map_err(generic)
     }

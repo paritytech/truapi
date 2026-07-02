@@ -28,6 +28,7 @@ use url::Url;
 
 /// Static runtime configuration supplied by the embedding host before the
 /// core handles product-scoped calls.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeConfig {
     /// Canonical product identifier used for account derivation.
@@ -47,7 +48,7 @@ pub struct RuntimeConfig {
 pub struct HostInfo {
     /// Host name shown by the wallet during SSO pairing.
     pub name: String,
-    /// Optional host icon URL/CID shown by the wallet during SSO pairing.
+    /// Optional absolute HTTPS host icon URL shown by the wallet during SSO pairing.
     pub icon: Option<String>,
     /// Optional host version shown by the wallet during SSO pairing.
     pub version: Option<String>,
@@ -123,7 +124,7 @@ pub enum RuntimeConfigValidationError {
         /// Field name.
         field: &'static str,
     },
-    /// Host icon URL could not be parsed as an absolute URL.
+    /// Host icon URL could not be parsed as an absolute HTTPS URL.
     #[display("host_info.icon must be an absolute HTTPS URL: {reason}")]
     InvalidHostIcon {
         /// Parse failure reason.
@@ -289,7 +290,7 @@ pub trait ChainProvider: Send + Sync {
     /// Drop the returned connection to disconnect.
     async fn connect(
         &self,
-        genesis_hash: Vec<u8>,
+        genesis_hash: [u8; 32],
     ) -> Result<Box<dyn JsonRpcConnection>, GenericError>;
 }
 
@@ -459,10 +460,7 @@ pub trait UserConfirmation: Send + Sync {
     async fn confirm_user_action(
         &self,
         review: UserConfirmationReview,
-    ) -> Result<bool, GenericError> {
-        let _ = review;
-        Ok(false)
-    }
+    ) -> Result<bool, GenericError>;
 }
 
 /// Host theme source.

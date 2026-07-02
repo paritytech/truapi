@@ -195,17 +195,18 @@ impl PlatformRuntimeHost {
     fn new_compat(platform: Arc<dyn Platform>, spawner: Spawner) -> Self {
         Self::new(
             platform,
-            RuntimeConfig {
-                product_id: "unknown.dot".to_string(),
-                host_info: truapi_platform::HostInfo {
+            RuntimeConfig::new(
+                "unknown.dot".to_string(),
+                truapi_platform::HostInfo {
                     name: "Polkadot Web".to_string(),
                     icon: Some("https://example.invalid/dotli.png".to_string()),
                     version: None,
                 },
-                platform_info: truapi_platform::PlatformInfo::default(),
-                people_chain_genesis_hash: [0; 32],
-                pairing_deeplink_scheme: "polkadotapp".to_string(),
-            },
+                truapi_platform::PlatformInfo::default(),
+                [0; 32],
+                "polkadotapp".to_string(),
+            )
+            .expect("compat runtime config is valid"),
             spawner,
         )
     }
@@ -703,6 +704,12 @@ impl RuntimeChainProvider for HostChainProvider {
         &self,
         genesis_hash: Vec<u8>,
     ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
+        let genesis_hash: [u8; 32] = genesis_hash.try_into().map_err(|genesis_hash: Vec<u8>| {
+            RuntimeFailure::host_failure(
+                "remote_chain_connect",
+                format!("genesis_hash must be 32 bytes, got {}", genesis_hash.len()),
+            )
+        })?;
         self.platform
             .connect(genesis_hash)
             .await

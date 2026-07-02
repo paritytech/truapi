@@ -162,17 +162,18 @@ pub(crate) fn stub_platform() -> Arc<StubPlatform> {
 
 /// Runtime configuration used by platform-backed runtime tests.
 pub(crate) fn runtime_config(product_id: &str) -> RuntimeConfig {
-    RuntimeConfig {
-        product_id: product_id.to_string(),
-        host_info: HostInfo {
+    RuntimeConfig::new(
+        product_id.to_string(),
+        HostInfo {
             name: "Polkadot Web".to_string(),
             icon: Some("https://example.invalid/dotli.png".to_string()),
             version: None,
         },
-        platform_info: PlatformInfo::default(),
-        people_chain_genesis_hash: [0; 32],
-        pairing_deeplink_scheme: "polkadotapp".to_string(),
-    }
+        PlatformInfo::default(),
+        [0; 32],
+        "polkadotapp".to_string(),
+    )
+    .expect("test runtime config is valid")
 }
 
 /// Basic connected session fixture without SSO channel material.
@@ -984,7 +985,7 @@ fn json_rpc_id(frame: &str) -> Option<String> {
 impl ChainProvider for StubPlatform {
     async fn connect(
         &self,
-        _genesis_hash: Vec<u8>,
+        _genesis_hash: [u8; 32],
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
         if let Some(reason) = self.chain_connect_error {
             return Err(v01::GenericError {

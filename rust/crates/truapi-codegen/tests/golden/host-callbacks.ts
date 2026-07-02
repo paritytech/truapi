@@ -488,7 +488,7 @@ export interface UserConfirmation {
   /**
    * Confirm a reviewed action before the core asks the SSO peer.
    */
-  confirmUserAction?(review: UserConfirmationReview): Promise<boolean>;
+  confirmUserAction(review: UserConfirmationReview): Promise<boolean>;
 }
 
 /**

@@ -47,17 +47,18 @@ pub fn test_spawner() -> truapi_server::subscription::Spawner {
 
 /// Runtime configuration shared by integration tests.
 pub fn test_runtime_config() -> RuntimeConfig {
-    RuntimeConfig {
-        product_id: "dotli.dot".to_string(),
-        host_info: HostInfo {
+    RuntimeConfig::new(
+        "dotli.dot".to_string(),
+        HostInfo {
             name: "Polkadot Web".to_string(),
             icon: Some("https://dot.li/dotli.png".to_string()),
             version: None,
         },
-        platform_info: PlatformInfo::default(),
-        people_chain_genesis_hash: [0xa2; 32],
-        pairing_deeplink_scheme: "polkadotapp".to_string(),
-    }
+        PlatformInfo::default(),
+        [0xa2; 32],
+        "polkadotapp".to_string(),
+    )
+    .expect("test runtime config is valid")
 }
 
 pub struct WireShapePlatform;
@@ -140,7 +141,7 @@ impl JsonRpcConnection for DeadConnection {
 impl ChainProvider for WireShapePlatform {
     async fn connect(
         &self,
-        _genesis_hash: Vec<u8>,
+        _genesis_hash: [u8; 32],
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
         Ok(Box::new(DeadConnection))
     }
