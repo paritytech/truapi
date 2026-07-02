@@ -3,39 +3,65 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground dev matrix explorer
+.PHONY: help setup build codegen test check playground wasm wasm-crypto-test dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
+JS_PACKAGES := js/packages
 EXPLORER := explorer
 DOTLI := hosts/dotli
+HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host-wasm
+HOST_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
+HOST_WASM_ADAPTER_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks-adapter.ts
+HOST_WASM_WORKER_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/worker-callbacks.ts
+HOST_WASM_WEB := $(HOST_WASM_PKG)/dist/wasm/web/truapi_server.js
+DOTLI_UI := $(DOTLI)/packages/ui
+DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host-wasm
+SIGNER_BOT_BASE_URL ?= https://signing-bot-dev.novasama-tech.org/
+SIGNER_BOT_NETWORK ?= paseo-next-v2
+VITE_NETWORKS ?= paseo-next-v2,previewnet
+export SIGNER_BOT_BASE_URL
+export SIGNER_BOT_NETWORK
+export VITE_NETWORKS
 
-# `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
-DOTLI_PREVIEW := preview
-ifdef DEBUG
-DOTLI_PREVIEW := preview:debug
-endif
+# Local product URLs (`http://localhost:5173/localhost:3000`) are intentionally
+# gated behind dotli's debug build flag, so the dev target must run the debug
+# preview by default. Override with `DOTLI_PREVIEW=preview` to test production
+# preview behavior.
+DOTLI_PREVIEW ?= preview:debug
 
 help: ## Show this help.
 	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n" } \
-	      /^[a-zA-Z_-]+:.*?##/ { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	      /^[a-zA-Z0-9_-]+:.*?##/ { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-setup: ## First-time setup: submodules + JS dependencies.
+setup: ## First-time setup: submodules, JS dependencies, generated artifacts.
 	git submodule update --init --recursive
-	cd $(TRUAPI_PKG) && npm install
+	# --ignore-scripts: the workspace `prepare` builds need generated sources
+	# that only exist after codegen.sh, which also builds the packages.
+	npm ci --ignore-scripts
+	./scripts/codegen.sh
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
+	cd $(DOTLI) && bun install --frozen-lockfile
 
 build: ## Build the Rust workspace and the TypeScript client.
 	cargo build --workspace
 	cd $(TRUAPI_PKG) && npm run build
+	cd $(HOST_WASM_PKG) && npm run build
 
-codegen: ## Regenerate the TypeScript client from the Rust crate.
+codegen: ## Regenerate generated TS/Rust artifacts from the Rust crates.
 	./scripts/codegen.sh
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
+
+wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-wasm/dist/wasm/.
+	cd $(HOST_WASM_PKG) && npm run build:wasm
+
+wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
+	wasm-pack test --node rust/crates/truapi-server --test wasm_crypto_vectors --no-default-features
 
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace
 	cd $(TRUAPI_PKG) && npm test
+	cd $(JS_PACKAGES)/truapi-host-wasm && npm test
 
 check: ## Full verification suite (build, fmt, clippy, test, TS tests, playground build + lint).
 	cargo build --workspace
@@ -43,6 +69,7 @@ check: ## Full verification suite (build, fmt, clippy, test, TS tests, playgroun
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
 	cargo test --workspace
 	cd $(TRUAPI_PKG) && npm run build && npm test
+	cd $(JS_PACKAGES)/truapi-host-wasm && npm install --no-fund --no-audit && npm test
 	cd $(PLAYGROUND) && yarn build && yarn lint
 
 playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.
@@ -50,11 +77,47 @@ playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 	cd $(PLAYGROUND) && yarn build
 
-dev: ## Start dotli host (:5173) + playground (:3000) together; open http://localhost:5173/localhost:3000. DEBUG=1 logs wire frames.
+dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli preview.
+	git submodule update --init --recursive
+	# --ignore-scripts: the workspace `prepare` builds need generated sources
+	# that only exist after codegen.sh, which also builds the packages.
+	if [ ! -d node_modules ]; then npm ci --ignore-scripts; fi
+	if [ ! -f "$(HOST_CALLBACKS_GENERATED)" ] || [ ! -f "$(HOST_WASM_ADAPTER_GENERATED)" ] || [ ! -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" ]; then ./scripts/codegen.sh; fi
+	cd $(HOST_WASM_PKG) && npm run build
+	TRUAPI_WASM_PROFILE=dev $(MAKE) wasm
+	cd $(PLAYGROUND) && yarn install --frozen-lockfile
+	cd $(DOTLI) && bun install --frozen-lockfile
+	$(MAKE) dev-link-check
+
+dev-link-check: ## Verify dotli can resolve the local @parity/truapi-host-wasm package.
+	@test -f "$(HOST_CALLBACKS_GENERATED)" || (echo "Missing generated host callbacks. Run: make codegen"; exit 1)
+	@test -f "$(HOST_WASM_ADAPTER_GENERATED)" || (echo "Missing generated host callbacks WASM adapter. Run: make codegen"; exit 1)
+	@test -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" || (echo "Missing generated host callbacks worker bridge. Run: make codegen"; exit 1)
+	@test -f "$(HOST_WASM_PKG)/dist/index.js" || (echo "Missing @parity/truapi-host-wasm dist. Run: npm run build --prefix $(HOST_WASM_PKG)"; exit 1)
+	@test -f "$(HOST_WASM_WEB)" || (echo "Missing @parity/truapi-host-wasm web WASM glue. Run: make wasm"; exit 1)
+	@test -e "$(DOTLI_HOST_WASM_LINK)/package.json" || (echo "dotli cannot resolve @parity/truapi-host-wasm. Run top-level: make dev"; exit 1)
+	cd $(DOTLI_UI) && bun -e 'await import("@parity/truapi-host-wasm"); await import("@parity/truapi-host-wasm/web");'
+
+dev: dev-bootstrap ## Start dotli host (:5173) + playground (:3000) together; open http://localhost:5173/localhost:3000. DEBUG=1 logs wire frames.
 	@trap 'kill 0' EXIT; \
 	( cd $(DOTLI) && bun run $(DOTLI_PREVIEW) ) & \
 	( cd $(PLAYGROUND) && yarn dev ) & \
+	( until curl -fsS http://localhost:3000/ >/dev/null 2>&1; do sleep 1; done; curl -fsS http://localhost:3000/diagnostics >/dev/null 2>&1 || true ) & \
 	wait
+
+e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_BOT_SVC_TOKEN unless E2E_DOTLI_SMOKE=1.
+	@SIGNER_BOT_SVC_TOKEN_ENV="$$SIGNER_BOT_SVC_TOKEN"; \
+	SIGNER_BOT_BASE_URL_ENV="$$SIGNER_BOT_BASE_URL"; \
+	SIGNER_BOT_NETWORK_ENV="$$SIGNER_BOT_NETWORK"; \
+	set -a; \
+	if [ -f .env ]; then . ./.env; fi; \
+	set +a; \
+	if [ -n "$$SIGNER_BOT_SVC_TOKEN_ENV" ]; then SIGNER_BOT_SVC_TOKEN="$$SIGNER_BOT_SVC_TOKEN_ENV"; export SIGNER_BOT_SVC_TOKEN; fi; \
+	if [ -n "$$SIGNER_BOT_BASE_URL_ENV" ]; then SIGNER_BOT_BASE_URL="$$SIGNER_BOT_BASE_URL_ENV"; export SIGNER_BOT_BASE_URL; fi; \
+	if [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
+	if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_SVC_TOKEN" || (echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi; \
+	$(MAKE) dev-bootstrap; \
+	cd $(DOTLI)/apps/host && bun tests/e2e/playground-diagnosis.ts
 
 matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
 	cd $(EXPLORER) && npm run generate-matrix
