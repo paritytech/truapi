@@ -136,6 +136,9 @@ fn generate_playground_services_code(
             {
                 writeln!(out, "        errorType: {},", ts_string_literal(&id)).unwrap();
             }
+            if let Some(perms) = &docs.permissions {
+                emit_permissions(&mut out, perms);
+            }
             writeln!(out, "      }},").unwrap();
         }
 
@@ -158,6 +161,16 @@ fn generate_playground_services_code(
 pub(super) struct PlaygroundDocs {
     pub(super) description: Option<String>,
     pub(super) client_example: Option<String>,
+    pub(super) permissions: Option<MethodPermissions>,
+}
+
+/// Structured permission requirements extracted from a `# Permissions` doc section.
+#[derive(Debug)]
+pub(super) struct MethodPermissions {
+    pub(super) auth: Option<String>,
+    pub(super) prompt: Option<String>,
+    pub(super) permission_type: Option<String>,
+    pub(super) denial_error: Option<String>,
 }
 
 pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs> {
@@ -165,16 +178,20 @@ pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs
         return Ok(PlaygroundDocs {
             description: None,
             client_example: None,
+            permissions: None,
         });
     };
 
     let mut description = Vec::new();
     let mut client_example = Vec::new();
+    let mut permission_lines = Vec::new();
     let mut in_client_example = false;
+    let mut in_permissions = false;
     for line in docs.lines() {
         let trimmed = line.trim();
         if trimmed == "```ts" {
             in_client_example = true;
+            in_permissions = false;
             continue;
         }
         if in_client_example && trimmed == "```" {
@@ -183,6 +200,17 @@ pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs
         }
         if in_client_example {
             client_example.push(line);
+            continue;
+        }
+        if trimmed == "# Permissions" {
+            in_permissions = true;
+            continue;
+        }
+        if in_permissions && trimmed.starts_with("# ") {
+            in_permissions = false;
+        }
+        if in_permissions {
+            permission_lines.push(trimmed);
         } else {
             description.push(line);
         }
@@ -190,10 +218,51 @@ pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs
 
     let description = trim_doc_lines(&description);
     let client_example = trim_doc_lines(&client_example);
+    let permissions = parse_permissions(&permission_lines);
 
     Ok(PlaygroundDocs {
         description,
         client_example,
+        permissions,
+    })
+}
+
+/// Parses `- **key**: value` lines from a `# Permissions` section.
+fn parse_permissions(lines: &[&str]) -> Option<MethodPermissions> {
+    let mut auth = None;
+    let mut prompt = None;
+    let mut permission_type = None;
+    let mut denial_error = None;
+
+    for line in lines {
+        let Some(rest) = line.strip_prefix("- **") else {
+            continue;
+        };
+        let Some((key, value)) = rest.split_once("**:") else {
+            continue;
+        };
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        match key {
+            "auth" => auth = Some(value.to_string()),
+            "prompt" => prompt = Some(value.to_string()),
+            "permission" => permission_type = Some(value.to_string()),
+            "denial_error" => denial_error = Some(value.to_string()),
+            _ => {}
+        }
+    }
+
+    if auth.is_none() && prompt.is_none() && permission_type.is_none() && denial_error.is_none() {
+        return None;
+    }
+
+    Some(MethodPermissions {
+        auth,
+        prompt,
+        permission_type,
+        denial_error,
     })
 }
 
@@ -236,6 +305,28 @@ fn validate_example_docs(trait_name: &str, method_name: &str, docs: Option<&str>
         );
     }
     Ok(())
+}
+
+fn emit_permissions(out: &mut String, perms: &MethodPermissions) {
+    writeln!(out, "        permissions: {{").unwrap();
+    if let Some(auth) = &perms.auth {
+        writeln!(out, "          auth: {},", ts_string_literal(auth)).unwrap();
+    }
+    if let Some(prompt) = &perms.prompt {
+        writeln!(out, "          prompt: {},", ts_string_literal(prompt)).unwrap();
+    }
+    if let Some(ptype) = &perms.permission_type {
+        writeln!(
+            out,
+            "          permissionType: {},",
+            ts_string_literal(ptype)
+        )
+        .unwrap();
+    }
+    if let Some(denial) = &perms.denial_error {
+        writeln!(out, "          denialError: {},", ts_string_literal(denial)).unwrap();
+    }
+    writeln!(out, "        }},").unwrap();
 }
 
 pub(super) fn playground_type_name(value: &str) -> String {

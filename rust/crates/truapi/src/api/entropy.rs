@@ -10,6 +10,10 @@ use crate::{CallContext, CallError};
 pub trait Entropy: Send + Sync {
     /// Derive deterministic entropy.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    ///
     /// ```ts
     /// const result = await truapi.entropy.derive({
     ///   context: "0x70726f647563742d6b6579",

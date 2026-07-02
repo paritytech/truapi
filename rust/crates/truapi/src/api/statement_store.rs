@@ -70,6 +70,12 @@ pub trait StatementStore: Send + Sync {
     /// instead, which uses a pre-allocated allowance account and does not
     /// require a per-call signing prompt.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: signing confirmation
+    /// - **denial_error**: Rejected
+    ///
     /// ```ts
     /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
     /// // keeps the statement unexpired when it is submitted.
@@ -102,6 +108,10 @@ pub trait StatementStore: Send + Sync {
     /// Create a proof for a statement using a pre-allocated allowance account,
     /// bypassing the per-call signing prompt.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    ///
     /// ```ts
     /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
     /// // keeps the statement unexpired when it is submitted.
@@ -129,6 +139,10 @@ pub trait StatementStore: Send + Sync {
     /// Submit a signed statement to the network. The request body is the
     /// [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
     /// struct), matching upstream `triangle-js-sdks`.
+    ///
+    /// # Permissions
+    ///
+    /// - **permission**: RemotePermission::StatementSubmit
     ///
     /// ```ts
     /// const bytes = crypto.getRandomValues(new Uint8Array(32));

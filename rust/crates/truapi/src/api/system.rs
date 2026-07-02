@@ -57,6 +57,10 @@ pub trait System: Send + Sync {
 
     /// Request the host to open a URL.
     ///
+    /// # Permissions
+    ///
+    /// - **permission**: DevicePermission::OpenUrl
+    ///
     /// ```ts
     /// const result = await truapi.system.navigateTo({
     ///   url: "https://example.com",

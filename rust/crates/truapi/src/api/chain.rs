@@ -335,6 +335,10 @@ pub trait Chain: Send + Sync {
 
     /// Broadcast a signed transaction.
     ///
+    /// # Permissions
+    ///
+    /// - **permission**: RemotePermission::ChainSubmit
+    ///
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
@@ -358,6 +362,10 @@ pub trait Chain: Send + Sync {
     }
 
     /// Stop a transaction broadcast.
+    ///
+    /// # Permissions
+    ///
+    /// - **permission**: RemotePermission::ChainSubmit
     ///
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";

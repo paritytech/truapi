@@ -14,6 +14,15 @@ export interface MethodInfo {
   responseType?: string;
   /** DataType id of the method's error. */
   errorType?: string;
+  /** Permission requirements for the method. Absent means no permissions needed. */
+  permissions?: MethodPermissions;
+}
+
+export interface MethodPermissions {
+  auth?: string;
+  prompt?: string;
+  permissionType?: string;
+  denialError?: string;
 }
 
 export interface ServiceInfo {

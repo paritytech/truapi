@@ -20,6 +20,10 @@ pub trait Notifications: Send + Sync {
     ///
     /// [RFC 0019]: https://github.com/paritytech/truapi/blob/main/docs/rfcs/0019-scheduled-notifications.md
     ///
+    /// # Permissions
+    ///
+    /// - **permission**: DevicePermission::Notifications
+    ///
     /// ```ts
     /// const result = await truapi.notifications.sendPushNotification({
     ///   text: "Hello!",
@@ -40,6 +44,10 @@ pub trait Notifications: Send + Sync {
     /// still pending, already fired, or was never issued. See [RFC 0019].
     ///
     /// [RFC 0019]: https://github.com/paritytech/truapi/blob/main/docs/rfcs/0019-scheduled-notifications.md
+    ///
+    /// # Permissions
+    ///
+    /// - **permission**: DevicePermission::Notifications
     ///
     /// ```ts
     /// const result = await truapi.notifications.cancelPushNotification({
