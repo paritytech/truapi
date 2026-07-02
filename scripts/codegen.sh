@@ -7,6 +7,10 @@
 #                                     --output js/packages/truapi/src/generated
 #                                     --playground-output js/packages/truapi/src/playground
 #                                     --client-examples-output playground/test/generated/examples
+#                                     --rust-output rust/crates/truapi-server/src/generated
+#                                     --platform-input target/doc/truapi_platform.json
+#                                     --platform-ts-output js/packages/truapi-host-wasm/src/generated
+#                                     --platform-wasm-adapter-output js/packages/truapi-host-wasm/src/generated
 #                                     --codec-version 1
 #
 # The client surface defaults to the latest wire version any versioned
@@ -20,11 +24,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
+cargo +nightly rustdoc -p truapi-platform -- -Z unstable-options --output-format json
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
   --output js/packages/truapi/src/generated \
   --playground-output js/packages/truapi/src/playground \
   --client-examples-output playground/test/generated/examples \
+  --rust-output rust/crates/truapi-server/src/generated \
+  --platform-input target/doc/truapi_platform.json \
+  --platform-ts-output js/packages/truapi-host-wasm/src/generated \
+  --platform-wasm-adapter-output js/packages/truapi-host-wasm/src/generated \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
 
@@ -34,7 +43,8 @@ npm exec --yes -- prettier --write \
   "js/packages/truapi/src/generated/**/*.ts" \
   "js/packages/truapi/src/playground/**/*.ts" \
   "js/packages/truapi/src/explorer/**/*.ts" \
-  "playground/test/generated/examples/**/*.ts"
+  "playground/test/generated/examples/**/*.ts" \
+  "js/packages/truapi-host-wasm/src/generated/**/*.ts"
 
 # Rebuild dist/ so downstream consumers (in particular the playground,
 # which picks up @parity/truapi via yarn 1.x file: snapshot) see the
@@ -58,3 +68,5 @@ fi
 echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"
 echo "Generated client examples at playground/test/generated/examples/"
+echo "Generated Rust dispatcher at rust/crates/truapi-server/src/generated/"
+echo "Generated host-callbacks WASM adapter at js/packages/truapi-host-wasm/src/generated/"
