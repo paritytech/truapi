@@ -130,7 +130,10 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
       : `core:${key.tag}`;
   const granted = (policy: PermissionPolicy): boolean => policy === "allow-all";
 
-  const callbacks: HostCallbacks = {
+  // `Required<HostCallbacks>` (not bare `HostCallbacks`): every optional callback
+  // must be present, so a capability added to the generated surface fails `tsc`
+  // here until the mock covers it. This is the load-bearing coverage guarantee.
+  const callbacks: Required<HostCallbacks> = {
     // ProductStorage
     async read(key) {
       return storage.get(productKey(key));
@@ -196,7 +199,10 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
             await new Promise<never>(() => {});
           }
         },
-        // The mock holds no real transport; releasing the lease is a no-op.
+        // The mock holds no real transport, so releasing the lease is a no-op.
+        // Note: a Silent connection whose `responses()` stream is already parked
+        // stays parked after close() — tests that need the stream to terminate use
+        // `chainClosed` (or scripted frames), not close().
         close() {},
       };
     },

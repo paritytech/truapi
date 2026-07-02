@@ -462,6 +462,8 @@ impl JsonRpcConnection for MockConnection {
         }
     }
 
+    // No real transport to release. A `None` (silent) `responses()` stream stays
+    // pending after close(); scripted/`Closed` behaviors terminate on their own.
     fn close(&self) {}
 }
 
