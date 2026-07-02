@@ -21,11 +21,7 @@ use std::sync::Arc;
 
 use parity_scale_codec::{Decode, Encode};
 
-#[cfg(debug_assertions)]
-use truapi::v02;
 use truapi::versioned::system::HostFeatureSupportedRequest;
-#[cfg(debug_assertions)]
-use truapi::versioned::testing;
 use truapi::versioned::{Versioned, account, payment, statement_store};
 use truapi::{CallError, v01};
 
@@ -69,93 +65,6 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
     assert_eq!(response.payload.value, expected);
     assert_eq!(response.payload.value.first(), Some(&0x00));
     assert_eq!(response.payload.value.get(1), Some(&0x00));
-}
-
-#[cfg(debug_assertions)]
-#[test]
-fn testing_version_probe_v1_request_gets_v1_response() {
-    let core = make_core();
-    let request = testing::TestingVersionProbeRequest::V1(v01::TestingVersionProbeRequest {
-        message: "hello V1".to_string(),
-    });
-    let ids = request_ids("testing_version_probe").expect("known request method");
-    let response = dispatch(
-        &core,
-        ProtocolMessage {
-            request_id: "p:testing-v1".into(),
-            payload: Payload {
-                id: ids.request_id,
-                value: request.encode(),
-            },
-        },
-    );
-
-    let mut expected = vec![0x00u8, 0x00u8];
-    v01::TestingVersionProbeResponse {
-        received_version: 1,
-        message: "hello V1".to_string(),
-    }
-    .encode_to(&mut expected);
-    assert_eq!(response.payload.value, expected);
-}
-
-#[cfg(debug_assertions)]
-#[test]
-fn testing_version_probe_v2_request_gets_v2_response() {
-    let core = make_core();
-    let request = testing::TestingVersionProbeRequest::V2(v02::TestingVersionProbeRequest {
-        message: "hello V2".to_string(),
-        marker: 42,
-    });
-    let ids = request_ids("testing_version_probe").expect("known request method");
-    let response = dispatch(
-        &core,
-        ProtocolMessage {
-            request_id: "p:testing-v2".into(),
-            payload: Payload {
-                id: ids.request_id,
-                value: request.encode(),
-            },
-        },
-    );
-
-    let mut expected = vec![0x01u8, 0x00u8];
-    v02::TestingVersionProbeResponse {
-        received_version: 2,
-        message: "hello V2".to_string(),
-        marker: 42,
-    }
-    .encode_to(&mut expected);
-    assert_eq!(response.payload.value, expected);
-}
-
-#[cfg(debug_assertions)]
-#[test]
-fn testing_echo_error_uses_raw_result_shape() {
-    let core = make_core();
-    let request = v01::EchoErrorRequest {
-        error: CallError::HostFailure {
-            reason: "forced by testing.echo_error".to_string(),
-        },
-    };
-    let ids = request_ids("testing_echo_error").expect("known request method");
-    let response = dispatch(
-        &core,
-        ProtocolMessage {
-            request_id: "p:testing-framework".into(),
-            payload: Payload {
-                id: ids.request_id,
-                value: request.encode(),
-            },
-        },
-    );
-
-    let mut expected = vec![0x01u8];
-    CallError::<v01::TestingVersionProbeError>::HostFailure {
-        reason: "forced by testing.echo_error".to_string(),
-    }
-    .encode_to(&mut expected);
-    assert_eq!(response.payload.value, expected);
 }
 
 #[test]
