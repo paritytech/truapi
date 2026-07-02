@@ -10,6 +10,9 @@ crate-type = ["rlib", "cdylib"]
 
 [features]
 default = []
+# Deterministic in-process mock wallet (dev/test only; never in the default
+# production WASM build). Pulls in truapi-platform's MockPlatform.
+mock = ["truapi-platform/mock"]
 
 [lints.rust]
 unsafe_code = "forbid"

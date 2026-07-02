@@ -23,6 +23,12 @@ pub mod transport;
 #[cfg(test)]
 pub(crate) mod test_support;
 
+/// Deterministic in-process mock wallet (SSO/statement-store seam) composed with
+/// `truapi-platform`'s `MockPlatform`. Available in tests, or under the `mock`
+/// feature for out-of-crate consumers (browser E2E). Never in the default build.
+#[cfg(any(test, feature = "mock"))]
+pub mod mock_wallet;
+
 pub mod generated;
 
 #[cfg(target_arch = "wasm32")]
