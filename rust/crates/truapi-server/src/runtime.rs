@@ -49,8 +49,6 @@ use futures::{FutureExt, StreamExt};
 #[cfg(test)]
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument};
-#[cfg(debug_assertions)]
-use truapi::api::Testing;
 use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
     Preimage, ResourceAllocation, Signing, System, Theme,
@@ -1948,9 +1946,6 @@ impl Theme for PlatformRuntimeHost {
         Subscription::new(Box::pin(stream))
     }
 }
-
-#[cfg(debug_assertions)]
-impl Testing for PlatformRuntimeHost {}
 
 // `Notifications` delegates to the platform so hosts can own scheduling and
 // cancellation while the core preserves the typed TrUAPI wire shape.
