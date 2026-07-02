@@ -20,7 +20,7 @@ describe("createMockHost callbacks", () => {
         const { callbacks } = createMockHost();
         const key: CoreStorageKey = {
             tag: "PermissionAuthorization",
-            value: { storageKey: "cam" },
+            value: { productId: "p", request: { tag: "Device", value: "Camera" } },
         };
         await callbacks.writeCoreStorage(key, new Uint8Array([9]));
         expect(await callbacks.readCoreStorage(key)).toEqual(new Uint8Array([9]));

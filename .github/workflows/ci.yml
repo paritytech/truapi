@@ -171,7 +171,7 @@ jobs:
           npm run build --prefix js/packages/truapi
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
+        run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Build WASM
         run: npm run build:wasm --prefix js/packages/truapi-host-wasm
@@ -179,6 +179,10 @@ jobs:
       - name: Test
         run: bun test
         working-directory: js/packages/truapi-host-wasm
+        # Fail loudly if the WASM artifact is missing so the bridge test can't
+        # silently skip green after a build:wasm drift.
+        env:
+          REQUIRE_WASM: "1"
 
   playground:
     name: Playground (build + lint)

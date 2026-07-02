@@ -382,7 +382,7 @@ mod tests {
             response.payload.value
         };
 
-        // Default mock supports the feature: [Ok 0x00][V1 0x00][supported=1].
+        // Default mock supports the feature: [V1 0x00][Ok 0x00][supported=1].
         assert_eq!(dispatch(MockPlatform::new()), vec![0x00, 0x00, 0x01]);
         // A configured "unsupported" answer flows through the same dispatcher.
         let unsupported = MockPlatform::with_config(MockConfig {
@@ -441,7 +441,7 @@ mod tests {
             key: "k".into(),
             value: vec![1, 2, 3],
         });
-        // Ok 0x00, V1 0x00.
+        // V1 0x00, Ok 0x00.
         assert_eq!(
             run_request(&core, "local_storage_write", write.encode()),
             vec![0x00, 0x00]
@@ -449,7 +449,7 @@ mod tests {
 
         let read =
             HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
-        // Ok 0x00, V1 0x00, Some 0x01, compact-len(3) 0x0c, bytes.
+        // V1 0x00, Ok 0x00, Some 0x01, compact-len(3) 0x0c, bytes.
         assert_eq!(
             run_request(&core, "local_storage_read", read.encode()),
             vec![0x00, 0x00, 0x01, 0x0c, 1, 2, 3]
@@ -462,7 +462,7 @@ mod tests {
             vec![0x00, 0x00]
         );
 
-        // After clear the read misses: Ok 0x00, V1 0x00, None 0x00.
+        // After clear the read misses: V1 0x00, Ok 0x00, None 0x00.
         let read_again =
             HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
         assert_eq!(
@@ -483,7 +483,7 @@ mod tests {
         let request =
             || HostDevicePermissionRequest::V1(v01::HostDevicePermissionRequest::Camera).encode();
 
-        // AllowAll (default): Ok 0x00, V1 0x00, granted=1.
+        // AllowAll (default): V1 0x00, Ok 0x00, granted=1.
         let allow = make_mock_core(MockConfig::default());
         assert_eq!(
             run_request(&allow, "permissions_request_device_permission", request()),
@@ -501,9 +501,10 @@ mod tests {
         );
     }
 
-    /// Preimage submit flows through the core's confirm gate to the platform:
-    /// the default mock auto-confirms (Ok envelope), and a `confirm = false`
-    /// mock is rejected by the core before reaching the platform (Err envelope).
+    /// Preimage submit flows through the core's confirm gate: the default mock
+    /// auto-confirms (Ok envelope), and a `confirm = false` mock is rejected by
+    /// the core after the confirmation prompt but before the preimage backend
+    /// (`PreimageHost::submit_preimage`) is reached (Err envelope).
     #[test]
     fn from_mock_platform_preimage_submit_through_core() {
         use truapi::versioned::preimage::RemotePreimageSubmitRequest;
@@ -523,8 +524,8 @@ mod tests {
         assert_eq!(ok_payload.first(), Some(&0x00));
         assert_eq!(ok_payload.get(1), Some(&0x00));
 
-        // confirm_user_actions = false: the core rejects before the platform
-        // (V1 index 0x00, Err 0x01).
+        // confirm_user_actions = false: the core rejects after the confirmation
+        // prompt, before the preimage backend (V1 index 0x00, Err 0x01).
         let rejected = make_mock_core(MockConfig {
             confirm_user_actions: false,
             ..Default::default()
