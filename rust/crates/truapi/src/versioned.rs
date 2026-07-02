@@ -44,8 +44,6 @@ pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
 pub mod system;
-#[cfg(debug_assertions)]
-pub mod testing;
 pub mod theme;
 
 #[cfg(test)]
