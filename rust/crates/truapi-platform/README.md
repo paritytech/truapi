@@ -37,3 +37,20 @@ traits above.
 `CoreAdmin` is not part of the host-provided `Platform` callback surface. It is
 the core-owned control API exposed to host UI for logout, pairing cancellation,
 session-store refresh, and permission administration.
+
+## Mock platform (`mock` feature)
+
+The `mock` feature — a dev-dependency, excluded from the default and production
+builds — provides `MockPlatform`, a config-driven, in-memory implementation of all
+the capability traits above. It is the canonical seam mock: plug it into the real
+`truapi-server` core (via `TrUApiCore::from_platform_with_config`) to exercise the
+production dispatcher without a device or a paired wallet.
+
+`MockConfig` drives its behavior — `PermissionPolicy` (`AllowAll`/`DenyAll`, device
+and remote separately), `ChainBehavior` (`Silent` | `Scripted` | `Closed` |
+`ConnectError`), `MockFaults` for fault injection, and confirmation control — and it
+records what the core asked the device to do (navigations, notifications,
+confirmations, auth-state transitions, sent RPC) for assertions. Storage is
+namespaced in-memory (`product:` / `core:`); preimages round-trip via submit → lookup.
+See the `from_mock_platform_*` through-core tests in `truapi-server` for end-to-end
+usage.

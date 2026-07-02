@@ -12,6 +12,16 @@ const wasmUrl = new URL("../../dist/wasm/web/truapi_server_bg.wasm", import.meta
 const glueUrl = new URL("../../dist/wasm/web/truapi_server.js", import.meta.url);
 const built = existsSync(wasmUrl);
 
+// The `host-wasm` CI job builds the WASM first and sets REQUIRE_WASM=1, so a
+// missing artifact (a silent `build:wasm` path/output drift) fails loudly here
+// instead of skipping green. A plain local `bun test` leaves REQUIRE_WASM unset
+// and skips this suite cleanly on a fresh checkout.
+if (process.env.REQUIRE_WASM === "1" && !built) {
+    throw new Error(
+        `REQUIRE_WASM=1 but the WASM artifact is missing at ${wasmUrl.pathname} — run \`npm run build:wasm\` first.`,
+    );
+}
+
 const suite = built ? describe : describe.skip;
 
 suite("real WASM core ↔ createMockHost bridge", () => {
