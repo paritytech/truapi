@@ -40,7 +40,7 @@ enum MethodEntry {
 
 /// Emit the contents of `wire_table.rs`.
 pub fn generate_wire_table(api: &ApiDefinition) -> Result<String> {
-    let mut method_entries: Vec<(String, MethodEntry, bool)> = Vec::new();
+    let mut method_entries: Vec<(String, MethodEntry)> = Vec::new();
     let mut seen: BTreeMap<u8, String> = BTreeMap::new();
     let mut seen_methods: BTreeMap<String, String> = BTreeMap::new();
 
@@ -59,11 +59,11 @@ pub fn generate_wire_table(api: &ApiDefinition) -> Result<String> {
                 );
             }
             insert_entry(&mut seen, &wire_method, entry)?;
-            method_entries.push((wire_method, entry, trait_def.name == "Testing"));
+            method_entries.push((wire_method, entry));
         }
     }
 
-    method_entries.sort_by_key(|(_, entry, _)| match entry {
+    method_entries.sort_by_key(|(_, entry)| match entry {
         MethodEntry::Request(WireEntry { request_id, .. }) => *request_id,
         MethodEntry::Subscription(SubEntry { start_id, .. }) => *start_id,
     });
@@ -169,7 +169,7 @@ fn insert_entry(
     Ok(())
 }
 
-fn render(methods: &[(String, MethodEntry, bool)]) -> Result<String> {
+fn render(methods: &[(String, MethodEntry)]) -> Result<String> {
     let mut out = String::new();
     writedoc!(
         out,
@@ -226,12 +226,8 @@ fn render(methods: &[(String, MethodEntry, bool)]) -> Result<String> {
     .unwrap();
 
     // Per-method consts: the single source of truth for each method's ids.
-    for (name, entry, debug_only) in methods {
+    for (name, entry) in methods {
         let konst = const_name(name);
-        if *debug_only {
-            out.push('\n');
-            out.push_str("#[cfg(debug_assertions)]");
-        }
         let block = match entry {
             MethodEntry::Request(WireEntry {
                 request_id,
@@ -276,7 +272,7 @@ fn render(methods: &[(String, MethodEntry, bool)]) -> Result<String> {
         "#
     )
     .unwrap();
-    for (name, entry, debug_only) in methods {
+    for (name, entry) in methods {
         let konst = const_name(name);
         let variant = match entry {
             MethodEntry::Request(_) => "Request",
@@ -290,9 +286,6 @@ fn render(methods: &[(String, MethodEntry, bool)]) -> Result<String> {
             }},
             "#
         };
-        if *debug_only {
-            writeln!(out, "    #[cfg(debug_assertions)]").unwrap();
-        }
         for line in block.lines() {
             writeln!(out, "    {line}").unwrap();
         }
