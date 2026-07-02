@@ -371,11 +371,6 @@
   resolved "https://registry.yarnpkg.com/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-15.5.18.tgz#beac6228e60e3ee08ce7a20b7f61b3dc516d4b10"
   integrity sha512-LIu5me6QTANCd25E7I5uIEfvgQ06RK7tvHAbYo3zCb3VpxQEPvMcSpd87NwUABDT6MbGPdEGR5VRiK4PPTJhQg==
 
-"@noble/hashes@^1.8.0":
-  version "1.8.0"
-  resolved "https://registry.yarnpkg.com/@noble/hashes/-/hashes-1.8.0.tgz#cee43d801fcef9644b11b8194857695acd5f815a"
-  integrity sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==
-
 "@noble/hashes@^2.2.0":
   version "2.2.0"
   resolved "https://registry.yarnpkg.com/@noble/hashes/-/hashes-2.2.0.tgz#22da1d16a469954fce877055d559900a6c73b63b"
@@ -408,10 +403,8 @@
   integrity sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==
 
 "@parity/truapi@link:../js/packages/truapi":
-  version "0.3.1"
-  dependencies:
-    neverthrow "^8.2.0"
-    scale-ts "^1.6.1"
+  version "0.0.0"
+  uid ""
 
 "@playwright/test@^1.49.1":
   version "1.59.1"
@@ -420,20 +413,28 @@
   dependencies:
     playwright "1.59.1"
 
-"@polkadot-api/substrate-bindings@^0.12.0":
-  version "0.12.0"
-  resolved "https://registry.yarnpkg.com/@polkadot-api/substrate-bindings/-/substrate-bindings-0.12.0.tgz#2b9cd9ba1b7e29c4a1d0be0575504c02cb435c78"
-  integrity sha512-cIjDeJRHW6g3z+/55UzpoG4LG1N0HbT4x3NvZsQkYg4eoio9Sw7Pw2aZZX86pWemxc7vQbNw7WSz2Gz+ckdX6Q==
+"@polkadot-api/metadata-builders@0.14.2":
+  version "0.14.2"
+  resolved "https://registry.yarnpkg.com/@polkadot-api/metadata-builders/-/metadata-builders-0.14.2.tgz#b7081728eb6451ae7cc5d56061b301058b1d4af2"
+  integrity sha512-nhsFfti0M5tE0LR8++0wHqbP54I/QSFXP/uF5I82MYVSKY0NqIDkIFvr27oLo/ltF+o3vcN44ZJQqvi1k6l9mA==
   dependencies:
-    "@noble/hashes" "^1.8.0"
-    "@polkadot-api/utils" "0.1.2"
-    "@scure/base" "^1.2.5"
+    "@polkadot-api/substrate-bindings" "0.20.2"
+    "@polkadot-api/utils" "0.4.0"
+
+"@polkadot-api/substrate-bindings@0.20.2":
+  version "0.20.2"
+  resolved "https://registry.yarnpkg.com/@polkadot-api/substrate-bindings/-/substrate-bindings-0.20.2.tgz#d0a74935e1b78583375202fb560b22b2d8001ecf"
+  integrity sha512-js5UTREoI+FlrPRXMhtKimVWmOqwfNFBnhyshsdloSZHNx/Hulg2RQZNvrVTscyZTf8LyxlGJaH5dsitOUoFKw==
+  dependencies:
+    "@noble/hashes" "^2.2.0"
+    "@polkadot-api/utils" "0.4.0"
+    "@scure/base" "^2.2.0"
     scale-ts "^1.6.1"
 
-"@polkadot-api/utils@0.1.2":
-  version "0.1.2"
-  resolved "https://registry.yarnpkg.com/@polkadot-api/utils/-/utils-0.1.2.tgz#45471371183efaa2fc52f40d84326d84e49c7297"
-  integrity sha512-yhs5k2a8N1SBJcz7EthZoazzLQUkZxbf+0271Xzu42C5AEM9K9uFLbsB+ojzHEM72O5X8lPtSwGKNmS7WQyDyg==
+"@polkadot-api/utils@0.4.0":
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/@polkadot-api/utils/-/utils-0.4.0.tgz#6ee6476aa40dbdb92e4ded39d2feb9002b5b509a"
+  integrity sha512-9b/hwRM0UloLWV7SfpNaSD/4k8UQAHoaACAk7Xe+1MlfAm2JtnmPiB1GfGrfTyBlsrJVUIBCZpEmbmxVMaIqBA==
 
 "@rollup/rollup-linux-x64-gnu@^4.24.0":
   version "4.60.4"
@@ -450,10 +451,10 @@
   resolved "https://registry.npmjs.org/@rushstack/eslint-patch/-/eslint-patch-1.16.1.tgz"
   integrity sha512-TvZbIpeKqGQQ7X0zSCvPH9riMSFQFSggnfBjFZ1mEoILW+UuXCKwOoPcgjMwiUtRqFZ8jWhPJc4um14vC6I4ag==
 
-"@scure/base@^1.2.5":
-  version "1.2.6"
-  resolved "https://registry.yarnpkg.com/@scure/base/-/base-1.2.6.tgz#ca917184b8231394dd8847509c67a0be522e59f6"
-  integrity sha512-g/nm5FgUa//MCj1gV09zTJTaM6KBAHqLN907YVQqf7zC49+DcO4B1so4ZX07Ef10Twr6nuqYEH9GEggFXA4Fmg==
+"@scure/base@^2.2.0":
+  version "2.2.0"
+  resolved "https://registry.yarnpkg.com/@scure/base/-/base-2.2.0.tgz#1311378ed247df6d58f8eb8941921965e97e5747"
+  integrity sha512-b8XEupJibegiXV+tDUseI8oLQc8ei3d/4Jkb2RpbHh3MfE054ov3uIz2dhFkB3FI8iwYkEh0gGCApkrYggkPNg==
 
 "@swc/helpers@0.5.15":
   version "0.5.15"
