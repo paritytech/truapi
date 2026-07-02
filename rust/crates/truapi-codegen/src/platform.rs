@@ -7,7 +7,7 @@
 //! module walks the rustdoc index for every public trait in the platform crate
 //! and produces a [`PlatformDefinition`] the TS emitter can render directly.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Context, Result, bail};
 
@@ -175,6 +175,28 @@ fn collect_referenced_local_types(
         }
     }
 
+    let mut local_type_candidates = BTreeMap::new();
+    for (item_id, item_path) in &krate.paths {
+        if item_path.crate_id != 0 || !matches!(item_path.kind.as_str(), "struct" | "enum") {
+            continue;
+        }
+        let Some(name) = item_path.path.last() else {
+            continue;
+        };
+        local_type_candidates
+            .entry(name.clone())
+            .or_insert_with(Vec::new)
+            .push((item_id, item_path));
+    }
+    for candidates in local_type_candidates.values_mut() {
+        candidates.sort_by(|(left_id, left_path), (right_id, right_path)| {
+            left_path
+                .path
+                .cmp(&right_path.path)
+                .then_with(|| left_id.cmp(right_id))
+        });
+    }
+
     // Local types can reference further local types from their fields or
     // variant payloads (e.g. `AuthState::Connected(SessionUiInfo)`), so keep
     // extracting until the referenced set stops growing.
@@ -182,16 +204,24 @@ fn collect_referenced_local_types(
     let mut extracted: BTreeSet<String> = BTreeSet::new();
     loop {
         let mut grew = false;
-        for (item_id, item_path) in &krate.paths {
-            if item_path.crate_id != 0 || !matches!(item_path.kind.as_str(), "struct" | "enum") {
-                continue;
-            }
-            let Some(name) = item_path.path.last() else {
+        let pending = referenced
+            .iter()
+            .filter(|name| !extracted.contains(*name))
+            .cloned()
+            .collect::<Vec<_>>();
+        for name in pending {
+            let Some(candidates) = local_type_candidates.get(&name) else {
                 continue;
             };
-            if !referenced.contains(name) || extracted.contains(name) {
-                continue;
+            if candidates.len() > 1 {
+                let paths = candidates
+                    .iter()
+                    .map(|(_, item_path)| item_path.path.join("::"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                bail!("platform type name `{name}` is ambiguous: defined by {paths}");
             }
+            let (item_id, item_path) = candidates[0];
             let item = krate.index.get(item_id).with_context(|| {
                 format!(
                     "Missing rustdoc item `{item_id}` for {} `{name}`",
@@ -205,7 +235,7 @@ fn collect_referenced_local_types(
                 extract_enum(item_id, item, krate, names, module_path)?
             };
             collect_type_def_references(&type_def, &mut referenced);
-            extracted.insert(name.clone());
+            extracted.insert(name);
             types.push(type_def);
             grew = true;
         }
@@ -614,7 +644,11 @@ fn value_to_id(value: &serde_json::Value) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use serde_json::json;
+
+    use crate::rustdoc::ItemPath;
 
     use super::*;
 
@@ -685,6 +719,73 @@ mod tests {
         assert_eq!(
             extract_async_trait_future_output(&output),
             Some(json!({ "primitive": "u8" }))
+        );
+    }
+
+    #[test]
+    fn referenced_platform_type_names_must_be_unambiguous() {
+        let krate = Crate {
+            format_version: Some(57),
+            index: HashMap::new(),
+            paths: HashMap::from([
+                (
+                    "1".to_string(),
+                    ItemPath {
+                        crate_id: 0,
+                        path: vec![
+                            "truapi_platform".to_string(),
+                            "one".to_string(),
+                            "Shared".to_string(),
+                        ],
+                        kind: "struct".to_string(),
+                    },
+                ),
+                (
+                    "2".to_string(),
+                    ItemPath {
+                        crate_id: 0,
+                        path: vec![
+                            "truapi_platform".to_string(),
+                            "two".to_string(),
+                            "Shared".to_string(),
+                        ],
+                        kind: "enum".to_string(),
+                    },
+                ),
+            ]),
+        };
+        let traits = [PlatformTrait {
+            name: "Storage".to_string(),
+            docs: None,
+            methods: vec![PlatformMethod {
+                name: "write".to_string(),
+                docs: None,
+                params: vec![PlatformParam {
+                    name: "value".to_string(),
+                    type_ref: TypeRef::Named {
+                        name: "Shared".to_string(),
+                        args: Vec::new(),
+                    },
+                }],
+                return_shape: PlatformReturn {
+                    is_async: false,
+                    inner: PlatformInner::Unit,
+                },
+                has_default: false,
+            }],
+        }];
+
+        let err =
+            collect_referenced_local_types(&krate, &traits, &NameContext::default()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("platform type name `Shared` is ambiguous"),
+            "unexpected error: {msg}"
+        );
+        assert!(
+            msg.contains("truapi_platform::one::Shared")
+                && msg.contains("truapi_platform::two::Shared"),
+            "unexpected error: {msg}"
         );
     }
 }

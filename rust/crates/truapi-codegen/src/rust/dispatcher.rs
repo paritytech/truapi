@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use indoc::{formatdoc, indoc, writedoc};
 
 use crate::rustdoc::*;
@@ -128,7 +128,7 @@ fn build_module(api: &ApiDefinition, trait_def: &TraitDef) -> Result<ModuleEmiss
     let last = methods.len().saturating_sub(1);
     for (idx, method) in methods.iter().enumerate() {
         let host_expr = if idx == last { "host" } else { "host.clone()" };
-        method.write(&mut code, host_expr);
+        method.write(&mut code, host_expr)?;
     }
     writeln!(code, "}}").unwrap();
 
@@ -243,7 +243,7 @@ impl MethodEmission {
         })
     }
 
-    fn write(&self, out: &mut String, host_expr: &str) {
+    fn write(&self, out: &mut String, host_expr: &str) -> Result<()> {
         match self.kind {
             MethodKind::Request => self.write_request(out, host_expr),
             MethodKind::Subscription | MethodKind::ResultSubscription => {
@@ -262,7 +262,7 @@ impl MethodEmission {
             && matches!(self.error_payload, WirePayload::Raw(_))
     }
 
-    fn write_request(&self, out: &mut String, host_expr: &str) {
+    fn write_request(&self, out: &mut String, host_expr: &str) -> Result<()> {
         let module = &self.module;
         let method = &self.name;
         let ids = const_name(&self.wire_name);
@@ -282,10 +282,9 @@ impl MethodEmission {
         );
         let (call_args, target_version_expr) = match &self.request_payload {
             Some(WirePayload::Versioned(request)) => {
-                let error = self
-                    .error_payload
-                    .versioned_name()
-                    .expect("versioned request methods must use versioned errors");
+                let Some(error) = self.error_payload.versioned_name() else {
+                    bail!("Method `{method}`: versioned request methods must use versioned errors");
+                };
                 write_indented(
                     out,
                     16,
@@ -312,11 +311,15 @@ impl MethodEmission {
                 )
             }
             Some(WirePayload::Raw(request)) => {
-                let request_ty = rust_type_ref(request).expect("raw request type");
+                let request_ty = rust_type_ref(request).with_context(|| {
+                    format!("Method `{method}`: raw request type cannot be emitted")
+                })?;
                 let error_ty = self
                     .error_payload
                     .rust_error_type(module)
-                    .expect("raw request methods must have error type");
+                    .with_context(|| {
+                        format!("Method `{method}`: raw request methods must have error type")
+                    })?;
                 write_indented(
                     out,
                     16,
@@ -351,9 +354,9 @@ impl MethodEmission {
         .unwrap();
         match &self.response_wrapper {
             Some(response) => {
-                let target_version_expr = target_version_expr
-                    .as_deref()
-                    .expect("versioned responses require a target version");
+                let Some(target_version_expr) = target_version_expr.as_deref() else {
+                    bail!("Method `{method}`: versioned responses require a target version");
+                };
                 write_indented(
                     out,
                     16,
@@ -401,7 +404,9 @@ impl MethodEmission {
                         },
                     );
                 }
-                (WirePayload::Versioned(_), None) => unreachable!("missing versioned target"),
+                (WirePayload::Versioned(_), None) => {
+                    bail!("Method `{method}`: versioned unit responses require a target version")
+                }
             },
         }
         write_indented(
@@ -415,16 +420,16 @@ impl MethodEmission {
                 "#
             },
         );
+        Ok(())
     }
 
-    fn write_subscription(&self, out: &mut String, host_expr: &str) {
+    fn write_subscription(&self, out: &mut String, host_expr: &str) -> Result<()> {
         let module = &self.module;
         let method = &self.name;
         let ids = const_name(&self.wire_name);
-        let item = self
-            .item_wrapper
-            .as_deref()
-            .expect("subscription methods must have an item wrapper");
+        let Some(item) = self.item_wrapper.as_deref() else {
+            bail!("Method `{method}`: subscription methods must have an item wrapper");
+        };
         let error = self.error_payload.versioned_name();
 
         let is_result_sub = matches!(self.kind, MethodKind::ResultSubscription);
@@ -502,7 +507,9 @@ impl MethodEmission {
         )
         .unwrap();
         if is_result_sub {
-            let _ = error.expect("result subscription methods must have an error wrapper");
+            if error.is_none() {
+                bail!("Method `{method}`: result subscription methods must have an error wrapper");
+            }
             write_indented(
                 out,
                 16,
@@ -540,6 +547,7 @@ impl MethodEmission {
                 "#
             },
         );
+        Ok(())
     }
 }
 
