@@ -126,7 +126,7 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
   const productKey = (key: string): string => `product:${key}`;
   const coreKey = (key: CoreStorageKey): string =>
     key.tag === "PermissionAuthorization"
-      ? `core:permission:${key.value.storageKey}`
+      ? `core:permission:${key.value.productId}:${JSON.stringify(key.value.request)}`
       : `core:${key.tag}`;
   const granted = (policy: PermissionPolicy): boolean => policy === "allow-all";
 
@@ -196,6 +196,8 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
             await new Promise<never>(() => {});
           }
         },
+        // The mock holds no real transport; releasing the lease is a no-op.
+        close() {},
       };
     },
 
