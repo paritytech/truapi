@@ -489,11 +489,18 @@ impl ChainRuntime {
     ) -> Result<(), RuntimeFailure> {
         let method = "remote_chain_transaction_stop";
         let connection = self.connection_for(method, &request.genesis_hash).await?;
-        connection
+        if let Err(err) = connection
             .methods
             .transaction_v1_stop(&request.operation_id)
             .await
-            .map_err(|err| rpc_failure(method, err))
+        {
+            tracing::debug!(
+                ?err,
+                operation_id = request.operation_id,
+                "ignoring transaction stop failure"
+            );
+        }
+        Ok(())
     }
 
     #[instrument(skip_all, fields(runtime.method = "chain_runtime.connection_for", method = method))]

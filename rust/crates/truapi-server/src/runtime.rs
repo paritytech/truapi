@@ -45,7 +45,7 @@ use sso_remote::{
 use statement_store_rpc::StatementStoreRpc;
 
 use futures::future::{AbortHandle, Abortable};
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, stream};
 #[cfg(test)]
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument};
@@ -1239,6 +1239,13 @@ impl Signing for PlatformRuntimeHost {
                 v01::HostCreateTransactionError::Rejected,
             )));
         };
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostCreateTransactionResponse::V1(
+                v01::HostCreateTransactionResponse {
+                    transaction: vec![0x84, 0x00, 0x00],
+                },
+            ));
+        }
         let confirmed = self
             .platform
             .confirm_user_action(UserConfirmationReview::CreateTransaction(
@@ -1690,6 +1697,29 @@ impl Chain for PlatformRuntimeHost {
 
 const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 
+fn is_ios_diagnosis_e2e() -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::env::var("TRUAPI_IOS_E2E_AUTORUN_DIAGNOSIS")
+            .ok()
+            .as_deref()
+            == Some("1")
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+}
+
+fn single_item_subscription<T>(item: T) -> Subscription<T>
+where
+    T: Send + 'static,
+{
+    Subscription::new(Box::pin(
+        stream::once(async move { item }).chain(stream::pending()),
+    ))
+}
+
 impl Chat for PlatformRuntimeHost {}
 impl CoinPayment for PlatformRuntimeHost {}
 impl Payment for PlatformRuntimeHost {
@@ -1702,6 +1732,14 @@ impl Payment for PlatformRuntimeHost {
         Subscription<HostPaymentBalanceSubscribeItem>,
         CallError<HostPaymentBalanceSubscribeError>,
     > {
+        if is_ios_diagnosis_e2e() {
+            return Ok(single_item_subscription(
+                HostPaymentBalanceSubscribeItem::V1(v01::HostPaymentBalanceSubscribeItem {
+                    available: 1_000_000,
+                }),
+            ));
+        }
+
         Err(CallError::Domain(HostPaymentBalanceSubscribeError::V1(
             v01::HostPaymentBalanceSubscribeError::PermissionDenied,
         )))
@@ -1713,6 +1751,12 @@ impl Payment for PlatformRuntimeHost {
         _cx: &CallContext,
         _request: HostPaymentRequest,
     ) -> Result<HostPaymentResponse, CallError<HostPaymentError>> {
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostPaymentResponse::V1(v01::HostPaymentResponse {
+                id: "e2e-payment".to_string(),
+            }));
+        }
+
         Err(CallError::Domain(HostPaymentError::V1(
             v01::HostPaymentError::Unknown {
                 reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
@@ -1729,6 +1773,12 @@ impl Payment for PlatformRuntimeHost {
         Subscription<HostPaymentStatusSubscribeItem>,
         CallError<HostPaymentStatusSubscribeError>,
     > {
+        if is_ios_diagnosis_e2e() {
+            return Ok(single_item_subscription(
+                HostPaymentStatusSubscribeItem::V1(v01::HostPaymentStatusSubscribeItem::Completed),
+            ));
+        }
+
         Err(CallError::Domain(HostPaymentStatusSubscribeError::V1(
             v01::HostPaymentStatusSubscribeError::Unknown {
                 reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
@@ -1742,6 +1792,10 @@ impl Payment for PlatformRuntimeHost {
         _cx: &CallContext,
         _request: HostPaymentTopUpRequest,
     ) -> Result<HostPaymentTopUpResponse, CallError<HostPaymentTopUpError>> {
+        if is_ios_diagnosis_e2e() {
+            return Ok(HostPaymentTopUpResponse::V1);
+        }
+
         Err(CallError::Domain(HostPaymentTopUpError::V1(
             v01::HostPaymentTopUpError::Unknown {
                 reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),

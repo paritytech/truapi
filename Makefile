@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm wasm-crypto-test dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
+.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -57,6 +57,32 @@ wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-
 
 wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
 	wasm-pack test --node rust/crates/truapi-server --test wasm_crypto_vectors --no-default-features
+
+UNIFFI_CDYLIB_DIR := target/release
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.dylib
+else
+UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.so
+endif
+
+UNIFFI_SWIFT_TMP := target/uniffi-swift-out
+
+uniffi: ## Regenerate Swift bindings from truapi-server cdylib.
+	cargo build -p truapi-server --release --features ws-bridge
+	rm -rf $(UNIFFI_SWIFT_TMP)
+	mkdir -p $(UNIFFI_SWIFT_TMP)
+	cargo run -p uniffi-bindgen-cli -- generate \
+		--library $(UNIFFI_CDYLIB) \
+		--language swift \
+		--out-dir $(UNIFFI_SWIFT_TMP)
+	mkdir -p ios/truapi-host/Sources/truapi_serverFFI/include
+	cp $(UNIFFI_SWIFT_TMP)/truapi_server.swift \
+		ios/truapi-host/Sources/TrUAPIHost/truapi_server.swift
+	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.h \
+		ios/truapi-host/Sources/truapi_serverFFI/include/truapi_serverFFI.h
+	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.modulemap \
+		ios/truapi-host/Sources/truapi_serverFFI/include/module.modulemap
 
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace

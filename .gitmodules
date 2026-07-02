@@ -2,3 +2,7 @@
 	path = hosts/dotli
 	url = https://github.com/paritytech/dotli-community
 	branch = main
+[submodule "hosts/ios"]
+	path = hosts/ios
+	url = https://github.com/paritytech/polkadot-app-ios-v2
+	branch = codex/truapi-rust-core
