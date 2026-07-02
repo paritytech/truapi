@@ -70,7 +70,7 @@ impl StatementStoreRpc {
 
     async fn connect(&self, label: &'static str) -> Result<Arc<dyn JsonRpcConnection>, String> {
         self.platform
-            .connect(self.people_chain_genesis_hash.to_vec())
+            .connect(self.people_chain_genesis_hash)
             .await
             .map(Arc::from)
             .map_err(|err| format!("{label} connect failed: {err:?}"))
