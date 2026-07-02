@@ -601,4 +601,107 @@ mod tests {
             "unexpected error message: {msg}",
         );
     }
+
+    #[test]
+    fn dispatcher_versioned_request_with_raw_error_errors() {
+        let mut method = make_request_method("alpha", 10);
+        method.return_type = ReturnType::Result {
+            ok: TypeRef::Named {
+                name: "RespWrapper".to_string(),
+                args: vec![],
+            },
+            err: TypeRef::Named {
+                name: "CallError".to_string(),
+                args: vec![TypeRef::Named {
+                    name: "RawError".to_string(),
+                    args: vec![],
+                }],
+            },
+        };
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Permissions".to_string(),
+                module_path: Vec::new(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Permissions".to_string()],
+            types: vec![
+                versioned_test_type("ReqWrapper"),
+                versioned_test_type("RespWrapper"),
+            ],
+        };
+
+        let err = generate_dispatcher(&api).expect_err("raw error wrapper must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("versioned request methods must use versioned errors"),
+            "unexpected error message: {msg}",
+        );
+    }
+
+    #[test]
+    fn dispatcher_raw_request_with_versioned_response_errors() {
+        let mut method = make_request_method("alpha", 10);
+        method.params[0].type_ref = TypeRef::Named {
+            name: "RawRequest".to_string(),
+            args: vec![],
+        };
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Permissions".to_string(),
+                module_path: Vec::new(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Permissions".to_string()],
+            types: vec![
+                versioned_test_type("RespWrapper"),
+                versioned_test_type("ErrWrapper"),
+            ],
+        };
+
+        let err = generate_dispatcher(&api).expect_err("missing target version must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("versioned responses require a target version"),
+            "unexpected error message: {msg}",
+        );
+    }
+
+    #[test]
+    fn dispatcher_result_subscription_with_raw_error_errors() {
+        let mut method = make_subscription_method("alpha_subscribe", 20);
+        method.kind = MethodKind::ResultSubscription;
+        method.return_type = ReturnType::ResultSubscription {
+            item: TypeRef::Named {
+                name: "ItemWrapper".to_string(),
+                args: vec![],
+            },
+            err: TypeRef::Named {
+                name: "CallError".to_string(),
+                args: vec![TypeRef::Named {
+                    name: "RawError".to_string(),
+                    args: vec![],
+                }],
+            },
+        };
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Account".to_string(),
+                module_path: Vec::new(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Account".to_string()],
+            types: vec![versioned_test_type("ItemWrapper")],
+        };
+
+        let err = generate_dispatcher(&api).expect_err("raw result subscription error must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("result subscription methods must have an error wrapper"),
+            "unexpected error message: {msg}",
+        );
+    }
 }
