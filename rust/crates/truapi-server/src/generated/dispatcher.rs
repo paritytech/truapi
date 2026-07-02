@@ -14,16 +14,12 @@ use truapi::api::{
 use truapi::versioned::{self, Versioned};
 
 use crate::dispatcher::Dispatcher;
-use crate::frame::encode_raw_err_payload;
-use crate::frame::encode_raw_unit_ok_payload;
 use crate::frame::encode_versioned_err_payload;
 use crate::frame::encode_versioned_interrupt_payload;
 use crate::frame::encode_versioned_ok_payload;
 use crate::frame::encode_versioned_unit_ok_payload;
 use crate::generated::wire_table;
 use crate::subscription::subscription_stream;
-#[cfg(debug_assertions)]
-use truapi::api::Testing;
 
 /// Register every TrUAPI method with the dispatcher.
 pub fn register<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
@@ -44,8 +40,6 @@ where
     register_signing(dispatcher, host.clone());
     register_statement_store(dispatcher, host.clone());
     register_system(dispatcher, host.clone());
-    #[cfg(debug_assertions)]
-    register_testing(dispatcher, host.clone());
     register_theme(dispatcher, host);
 }
 
@@ -2080,77 +2074,6 @@ where
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
-                })
-            },
-        );
-    }
-}
-
-#[cfg(debug_assertions)]
-fn register_testing<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
-where
-    P: Testing + Send + Sync + 'static,
-{
-    {
-        let host = host.clone();
-        dispatcher.on_request(
-            wire_table::TESTING_VERSION_PROBE,
-            move |request_id: String, bytes: Vec<u8>| {
-                let host = host.clone();
-                Box::pin(async move {
-                    let request: versioned::testing::TestingVersionProbeRequest =
-                        match Decode::decode(&mut &bytes[..]) {
-                            Ok(request) => request,
-                            Err(err) => {
-                                let error: truapi::CallError<
-                                    versioned::testing::TestingVersionProbeError,
-                                > = truapi::CallError::MalformedFrame {
-                                    reason: err.to_string(),
-                                };
-                                return Ok(encode_versioned_err_payload(
-                            error,
-                            <versioned::testing::TestingVersionProbeError as Versioned>::LATEST,
-                        ));
-                            }
-                        };
-                    let target_version = request.version();
-                    let cx = CallContext::with_request_id(request_id.clone());
-                    let response: versioned::testing::TestingVersionProbeResponse =
-                        match host.version_probe(&cx, request).await {
-                            Ok(value) => value,
-                            Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
-                            }
-                        };
-                    Ok(encode_versioned_ok_payload(response))
-                })
-            },
-        );
-    }
-    {
-        let host = host;
-        dispatcher.on_request(
-            wire_table::TESTING_ECHO_ERROR,
-            move |request_id: String, bytes: Vec<u8>| {
-                let host = host.clone();
-                Box::pin(async move {
-                    let request: truapi::v01::EchoErrorRequest =
-                        match Decode::decode(&mut &bytes[..]) {
-                            Ok(request) => request,
-                            Err(err) => {
-                                let error: truapi::CallError<
-                                    truapi::v01::TestingVersionProbeError,
-                                > = truapi::CallError::MalformedFrame {
-                                    reason: err.to_string(),
-                                };
-                                return Ok(encode_raw_err_payload(error));
-                            }
-                        };
-                    let cx = CallContext::with_request_id(request_id.clone());
-                    match host.echo_error(&cx, request).await {
-                        Ok(()) => Ok(encode_raw_unit_ok_payload()),
-                        Err(err) => Ok(encode_raw_err_payload(err)),
-                    }
                 })
             },
         );

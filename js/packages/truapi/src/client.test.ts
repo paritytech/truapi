@@ -82,14 +82,6 @@ function accountGetResponsePayload(
     ).enc({ tag: "V1", value });
 }
 
-/** Encode a raw testing echo error response payload. */
-function testingEchoErrorPayload(reason: string): Uint8Array {
-    return ScaleResult(_void, CallError(T.V01TestingVersionProbeError)).enc({
-        success: false,
-        value: { tag: "HostFailure", value: { reason } },
-    });
-}
-
 describe("generated client transport", () => {
     it("encodes unit-only enums as a single-byte SCALE discriminant", () => {
         // Unit-only enums expose a string union on the public API while
@@ -112,29 +104,6 @@ describe("generated client transport", () => {
         const expectedFrame = new Uint8Array(str.enc("p:1").length + 1 + expectedPayload.length);
         expectedFrame.set(str.enc("p:1"), 0);
         expectedFrame[str.enc("p:1").length] = 22;
-        expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
-
-        expect(toHex(fixture.sent[0])).toBe(toHex(expectedFrame));
-    });
-
-    it("uses the latest generated request version for testing probes", () => {
-        const fixture = providerFixture();
-        const transport = createTransport(fixture.provider);
-        const client = createClient(transport);
-
-        const request = {
-            message: "hello from test",
-            marker: 42,
-        };
-        void client.testing.versionProbe(request);
-
-        const expectedPayload = T.VersionedTestingVersionProbeRequest.enc({
-            tag: "V2",
-            value: request,
-        });
-        const expectedFrame = new Uint8Array(str.enc("p:1").length + 1 + expectedPayload.length);
-        expectedFrame.set(str.enc("p:1"), 0);
-        expectedFrame[str.enc("p:1").length] = W.TESTING_VERSION_PROBE.request;
         expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
 
         expect(toHex(fixture.sent[0])).toBe(toHex(expectedFrame));
@@ -208,34 +177,6 @@ describe("generated client transport", () => {
         const result = await response;
         expect(result.isErr()).toBe(true);
         expect(result._unsafeUnwrapErr()).toEqual({ tag: "Domain", value: reason });
-    });
-
-    it("returns framework call errors as typed Err values", async () => {
-        const fixture = providerFixture();
-        const transport = createTransport(fixture.provider);
-        const client = createClient(transport);
-
-        const response = client.testing.echoError({
-            error: { tag: "HostFailure", value: { reason: "forced by test" } },
-        });
-        const frame = unwrap(
-            encodeWireMessage({
-                requestId: "p:1",
-                payload: {
-                    id: W.TESTING_ECHO_ERROR.response,
-                    value: testingEchoErrorPayload("forced by test"),
-                },
-            }),
-            "encode testing framework error response",
-        );
-        fixture.receive(frame);
-
-        const result = await response;
-        expect(result.isErr()).toBe(true);
-        expect(result._unsafeUnwrapErr()).toEqual({
-            tag: "HostFailure",
-            value: { reason: "forced by test" },
-        });
     });
 
     it("auto-responds to an inbound handshake with the versioned-result shape", () => {

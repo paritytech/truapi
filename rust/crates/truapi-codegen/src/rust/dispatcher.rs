@@ -45,13 +45,23 @@ pub fn generate_dispatcher(api: &ApiDefinition) -> Result<String> {
     }
 
     let mut modules = Vec::with_capacity(traits.len());
+    let mut uses_raw_err_payload = false;
+    let mut uses_raw_unit_ok_payload = false;
     for trait_def in &traits {
-        modules.push(build_module(api, trait_def)?);
+        let module = build_module(api, trait_def)?;
+        uses_raw_err_payload |= module.uses_raw_err_payload;
+        uses_raw_unit_ok_payload |= module.uses_raw_unit_ok_payload;
+        modules.push(module.code);
     }
 
     let mut out = String::new();
     write_header(&mut out);
-    write_imports(&mut out, &traits);
+    write_imports(
+        &mut out,
+        &traits,
+        uses_raw_err_payload,
+        uses_raw_unit_ok_payload,
+    );
     writeln!(out).unwrap();
     write_top_register(&mut out, &traits);
 
@@ -84,8 +94,14 @@ fn order_traits(api: &ApiDefinition) -> Result<Vec<&TraitDef>> {
     Ok(ordered)
 }
 
+struct ModuleEmission {
+    code: String,
+    uses_raw_err_payload: bool,
+    uses_raw_unit_ok_payload: bool,
+}
+
 /// Emit the `register_{module}` function for a single trait.
-fn build_module(api: &ApiDefinition, trait_def: &TraitDef) -> Result<String> {
+fn build_module(api: &ApiDefinition, trait_def: &TraitDef) -> Result<ModuleEmission> {
     let module = module_for_trait(&trait_def.name);
 
     let mut methods = Vec::with_capacity(trait_def.methods.len());
@@ -93,13 +109,12 @@ fn build_module(api: &ApiDefinition, trait_def: &TraitDef) -> Result<String> {
         let wire_method = wire_method_name(&trait_def.name, &method.name);
         methods.push(MethodEmission::build(api, &module, &wire_method, method)?);
     }
+    let uses_raw_err_payload = methods.iter().any(MethodEmission::uses_raw_err_payload);
+    let uses_raw_unit_ok_payload = methods.iter().any(MethodEmission::uses_raw_unit_ok_payload);
 
     let fn_name = format!("register_{module}");
     let trait_name = &trait_def.name;
     let mut code = String::new();
-    if trait_name == "Testing" {
-        writeln!(code, "#[cfg(debug_assertions)]").unwrap();
-    }
     writedoc!(
         code,
         r#"
@@ -117,7 +132,11 @@ fn build_module(api: &ApiDefinition, trait_def: &TraitDef) -> Result<String> {
     }
     writeln!(code, "}}").unwrap();
 
-    Ok(code)
+    Ok(ModuleEmission {
+        code,
+        uses_raw_err_payload,
+        uses_raw_unit_ok_payload,
+    })
 }
 
 struct MethodEmission {
@@ -231,6 +250,16 @@ impl MethodEmission {
                 self.write_subscription(out, host_expr)
             }
         }
+    }
+
+    fn uses_raw_err_payload(&self) -> bool {
+        matches!(self.request_payload, Some(WirePayload::Raw(_))) || self.uses_raw_unit_ok_payload()
+    }
+
+    fn uses_raw_unit_ok_payload(&self) -> bool {
+        matches!(self.kind, MethodKind::Request)
+            && self.response_wrapper.is_none()
+            && matches!(self.error_payload, WirePayload::Raw(_))
     }
 
     fn write_request(&self, out: &mut String, host_expr: &str) {
@@ -671,8 +700,12 @@ fn write_header(out: &mut String) {
     .unwrap();
 }
 
-fn write_imports(out: &mut String, traits: &[&TraitDef]) {
-    let has_testing = traits.iter().any(|trait_def| trait_def.name == "Testing");
+fn write_imports(
+    out: &mut String,
+    traits: &[&TraitDef],
+    uses_raw_err_payload: bool,
+    uses_raw_unit_ok_payload: bool,
+) {
     writedoc!(
         out,
         r#"
@@ -686,9 +719,6 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
     )
     .unwrap();
     for trait_def in traits {
-        if trait_def.name == "Testing" {
-            continue;
-        }
         writeln!(out, "    {},", trait_def.name).unwrap();
     }
     writedoc!(
@@ -698,8 +728,6 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
         use truapi::versioned::{{self, Versioned}};
 
         use crate::dispatcher::Dispatcher;
-        use crate::frame::encode_raw_err_payload;
-        use crate::frame::encode_raw_unit_ok_payload;
         use crate::frame::encode_versioned_err_payload;
         use crate::frame::encode_versioned_interrupt_payload;
         use crate::frame::encode_versioned_ok_payload;
@@ -709,9 +737,11 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
         "#
     )
     .unwrap();
-    if has_testing {
-        writeln!(out, "#[cfg(debug_assertions)]").unwrap();
-        writeln!(out, "use truapi::api::Testing;").unwrap();
+    if uses_raw_err_payload {
+        writeln!(out, "use crate::frame::encode_raw_err_payload;").unwrap();
+    }
+    if uses_raw_unit_ok_payload {
+        writeln!(out, "use crate::frame::encode_raw_unit_ok_payload;").unwrap();
     }
 }
 
@@ -731,9 +761,6 @@ fn write_top_register(out: &mut String, traits: &[&TraitDef]) {
     for (idx, trait_def) in traits.iter().enumerate() {
         let host_expr = if idx == last { "host" } else { "host.clone()" };
         let module = module_for_trait(&trait_def.name);
-        if trait_def.name == "Testing" {
-            writeln!(out, "    #[cfg(debug_assertions)]").unwrap();
-        }
         writeln!(out, "    register_{module}(dispatcher, {host_expr});").unwrap();
     }
     writeln!(out, "}}").unwrap();
