@@ -5,6 +5,10 @@ edition.workspace = true
 description = "Platform capability traits for TrUAPI host implementations"
 license = "MIT"
 
+[features]
+# In-memory `MockPlatform` for tests and host simulators.
+mock = []
+
 [dependencies]
 truapi = { path = "../truapi" }
 async-trait = "0.1"

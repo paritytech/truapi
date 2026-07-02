@@ -346,6 +346,52 @@ mod tests {
         assert_eq!(response.payload.value, vec![0x00, 0x00, 0x01]);
     }
 
+    /// The canonical config-driven `MockPlatform` drives the real core
+    /// end-to-end: a configured answer flows through the production dispatcher
+    /// and out the wire, proving the mock is faithful by construction rather
+    /// than merely trait-complete.
+    #[test]
+    fn from_mock_platform_dispatches_configured_feature_supported() {
+        use truapi_platform::mock::{MockConfig, MockPlatform};
+
+        let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
+            genesis_hash: vec![0u8; 32],
+        });
+        let ids = request_ids("system_feature_supported").expect("known request method");
+        let encoded = ProtocolMessage {
+            request_id: "p:1".into(),
+            payload: Payload {
+                id: ids.request_id,
+                value: request.encode(),
+            },
+        }
+        .encode();
+
+        let dispatch = |platform: MockPlatform| {
+            let core = TrUApiCore::from_platform_with_config(
+                Arc::new(platform),
+                runtime_config("dotli.dot"),
+                test_spawner(),
+            );
+            let response_bytes = core
+                .receive_from_product(&encoded)
+                .expect("dispatcher should emit a response");
+            let response =
+                ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
+            assert_eq!(response.payload.id, ids.response_id);
+            response.payload.value
+        };
+
+        // Default mock supports the feature: [V1 0x00][Ok 0x00][supported=1].
+        assert_eq!(dispatch(MockPlatform::new()), vec![0x00, 0x00, 0x01]);
+        // A configured "unsupported" answer flows through the same dispatcher.
+        let unsupported = MockPlatform::with_config(MockConfig {
+            feature_supported: false,
+            ..Default::default()
+        });
+        assert_eq!(dispatch(unsupported), vec![0x00, 0x00, 0x00]);
+    }
+
     /// Drive a request frame through `TrUApiCore::receive_from_product`,
     /// decode the response envelope, and return its payload bytes (without
     /// the wrapping ProtocolMessage). Shared by the runtime-delegation
@@ -374,6 +420,145 @@ mod tests {
             runtime_config("dotli.dot"),
             test_spawner(),
         )
+    }
+
+    fn make_mock_core(config: truapi_platform::mock::MockConfig) -> TrUApiCore {
+        TrUApiCore::from_platform_with_config(
+            Arc::new(truapi_platform::mock::MockPlatform::with_config(config)),
+            runtime_config("dotli.dot"),
+            test_spawner(),
+        )
+    }
+
+    /// MockPlatform product storage round-trips through the real dispatcher:
+    /// a value written over the wire reads back, then misses after clear.
+    /// Proves the seam works end-to-end, not just in the mock's own unit tests.
+    #[test]
+    fn from_mock_platform_storage_round_trips_through_core() {
+        let core = make_mock_core(truapi_platform::mock::MockConfig::default());
+
+        let write = HostLocalStorageWriteRequest::V1(v01::HostLocalStorageWriteRequest {
+            key: "k".into(),
+            value: vec![1, 2, 3],
+        });
+        // V1 0x00, Ok 0x00.
+        assert_eq!(
+            run_request(&core, "local_storage_write", write.encode()),
+            vec![0x00, 0x00]
+        );
+
+        let read =
+            HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
+        // V1 0x00, Ok 0x00, Some 0x01, compact-len(3) 0x0c, bytes.
+        assert_eq!(
+            run_request(&core, "local_storage_read", read.encode()),
+            vec![0x00, 0x00, 0x01, 0x0c, 1, 2, 3]
+        );
+
+        let clear =
+            HostLocalStorageClearRequest::V1(v01::HostLocalStorageClearRequest { key: "k".into() });
+        assert_eq!(
+            run_request(&core, "local_storage_clear", clear.encode()),
+            vec![0x00, 0x00]
+        );
+
+        // After clear the read misses: V1 0x00, Ok 0x00, None 0x00.
+        let read_again =
+            HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
+        assert_eq!(
+            run_request(&core, "local_storage_read", read_again.encode()),
+            vec![0x00, 0x00, 0x00]
+        );
+    }
+
+    /// The mock's per-capability permission policy surfaces through the real
+    /// permission service and wire: a `DenyAll` device policy yields
+    /// `granted: false`, an `AllowAll` policy yields `granted: true`. Closes the
+    /// "allow-all hiding a denied path" gap.
+    #[test]
+    fn from_mock_platform_device_permission_policy_through_core() {
+        use truapi::versioned::permissions::HostDevicePermissionRequest;
+        use truapi_platform::mock::{MockConfig, PermissionPolicy};
+
+        let request =
+            || HostDevicePermissionRequest::V1(v01::HostDevicePermissionRequest::Camera).encode();
+
+        // AllowAll (default): V1 0x00, Ok 0x00, granted=1.
+        let allow = make_mock_core(MockConfig::default());
+        assert_eq!(
+            run_request(&allow, "permissions_request_device_permission", request()),
+            vec![0x00, 0x00, 0x01]
+        );
+
+        // DenyAll: granted=0.
+        let deny = make_mock_core(MockConfig {
+            device_permissions: PermissionPolicy::DenyAll,
+            ..Default::default()
+        });
+        assert_eq!(
+            run_request(&deny, "permissions_request_device_permission", request()),
+            vec![0x00, 0x00, 0x00]
+        );
+    }
+
+    /// Preimage submit flows through the core's confirm gate: the default mock
+    /// auto-confirms (Ok envelope), and a `confirm = false` mock is rejected by
+    /// the core after the confirmation prompt but before the preimage backend
+    /// (`PreimageHost::submit_preimage`) is reached (Err envelope).
+    #[test]
+    fn from_mock_platform_preimage_submit_through_core() {
+        use truapi::versioned::preimage::RemotePreimageSubmitRequest;
+        use truapi_platform::mock::MockConfig;
+
+        // Versioned envelope layout is [version_index, result_discriminant, ..].
+        // For a V1 response the version index is 0, so the Ok/Err distinction
+        // lives at byte index 1: 0x00 = Ok, 0x01 = Err.
+
+        // Default mock auto-confirms: submit succeeds (V1 index 0x00, Ok 0x00).
+        let confirmed = make_mock_core(MockConfig::default());
+        let ok_payload = run_request(
+            &confirmed,
+            "preimage_submit",
+            RemotePreimageSubmitRequest::V1(vec![1, 2, 3]).encode(),
+        );
+        assert_eq!(ok_payload.first(), Some(&0x00));
+        assert_eq!(ok_payload.get(1), Some(&0x00));
+
+        // confirm_user_actions = false: the core rejects after the confirmation
+        // prompt, before the preimage backend (V1 index 0x00, Err 0x01).
+        let rejected = make_mock_core(MockConfig {
+            confirm_user_actions: false,
+            ..Default::default()
+        });
+        let err_payload = run_request(
+            &rejected,
+            "preimage_submit",
+            RemotePreimageSubmitRequest::V1(vec![1, 2, 3]).encode(),
+        );
+        assert_eq!(err_payload.first(), Some(&0x00));
+        assert_eq!(err_payload.get(1), Some(&0x01));
+    }
+
+    /// A MockPlatform storage fault surfaces through the real core as a wire
+    /// `Err` envelope — proving fault injection propagates through the dispatcher.
+    #[test]
+    fn from_mock_platform_storage_fault_surfaces_through_core() {
+        use truapi_platform::mock::{MockConfig, MockFaults};
+
+        let core = make_mock_core(MockConfig {
+            faults: MockFaults {
+                storage_error: Some("disk full".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let read =
+            HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key: "k".into() });
+        // Versioned wire layout is [version_index=0x00 (V1)][result_index][inner];
+        // the Err discriminant is byte 1, not byte 0 (byte 0 is the V1 version index).
+        let payload = run_request(&core, "local_storage_read", read.encode());
+        assert_eq!(payload.first(), Some(&0x00)); // V1 version index
+        assert_eq!(payload.get(1), Some(&0x01)); // Result::Err discriminant
     }
 
     #[test]

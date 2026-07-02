@@ -26,6 +26,10 @@ use truapi::latest::{
 };
 use url::Url;
 
+/// In-memory mock platform for tests and host simulators (enable the `mock` feature).
+#[cfg(feature = "mock")]
+pub mod mock;
+
 /// Static runtime configuration supplied by the embedding host before the
 /// core handles product-scoped calls.
 #[derive(Debug, Clone, PartialEq, Eq)]

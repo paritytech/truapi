@@ -43,6 +43,37 @@ const provider = await createWebWorkerProvider(new HostWorker(), callbacks, {
 `@parity/truapi-host-wasm/web` also exports `createIframeHost` for the protocol-iframe
 MessageChannel handshake.
 
+## Testing — `createMockHost`
+
+`@parity/truapi-host-wasm/web` exports `createMockHost`, an in-memory implementation of the
+full generated `HostCallbacks` surface — the JS sibling of `truapi-platform`'s `MockPlatform`.
+Feed its callbacks to `createWebWorkerProvider` to run the **real WASM core** against a mocked
+OS seam: storage is in-memory, permissions answer from a fixed policy, navigation and
+notifications are recorded, and the chain connection is silent (or replays canned frames).
+
+```ts
+import {
+  createMockHost,
+  mockRuntimeConfig,
+} from "@parity/truapi-host-wasm/web";
+
+const mock = createMockHost(); // optional MockHostConfig
+const provider = await createWebWorkerProvider(
+  new HostWorker(),
+  mock.callbacks,
+  {
+    runtimeConfig: mockRuntimeConfig(),
+  },
+);
+// the real WASM core now talks to a mocked OS; assert via mock.navigations(), etc.
+```
+
+Coverage of the callback surface is `tsc`-enforced: the callbacks object is typed
+`Required<HostCallbacks>`, so a capability added to the generated surface fails the type
+check until the mock covers it. `wasm-bridge.test.ts` drives the real WASM core against the
+mock headlessly (no browser, no worker). Public API: `createMockHost`, `mockRuntimeConfig`,
+`MockHost`, `MockHostConfig`, `PermissionPolicy`.
+
 ## Publishing
 
 The npm publish workflow is not wired yet. A release-process discussion is needed before adding a
