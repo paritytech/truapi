@@ -13,13 +13,11 @@ flows, permission state, and auth state transitions.
 Host-facing wire types are imported from `truapi::latest` by this crate and are
 exposed through the trait signatures below.
 
-## Traits
+## Host Callback Traits
 
 - `ProductStorage`: product-scoped key-value storage.
 - `CoreStorage`: typed core-owned storage slots such as auth session, pairing
   identity, and permission authorization state.
-- `CoreAdmin`: host UI controls for logout, pairing cancellation, session-store
-  refresh, and permission administration.
 - `Navigation`: open URLs in the system browser.
 - `Notifications`: deliver and cancel push notifications.
 - `Permissions`: prompt for device and remote authorizations.
@@ -33,3 +31,9 @@ exposed through the trait signatures below.
 
 `Platform` is a blanket-implemented supertrait that combines the capability
 traits above.
+
+## Core-Owned Admin API
+
+`CoreAdmin` is not part of the host-provided `Platform` callback surface. It is
+the core-owned control API exposed to host UI for logout, pairing cancellation,
+session-store refresh, and permission administration.
