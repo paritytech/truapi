@@ -1,0 +1,29 @@
+{
+  "name": "@parity/truapi-mock-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser E2E harness: the real truapi-server WASM core in a Web Worker with a product in an iframe, driven against the mock host. Not published.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4319 --strictPort",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@parity/truapi": "file:../truapi",
+    "@parity/truapi-host-wasm": "file:../truapi-host-wasm",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7",
+    "vite": "^5.4.11"
+  }
+}

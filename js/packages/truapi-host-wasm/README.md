@@ -80,6 +80,28 @@ check until the mock covers it. `wasm-bridge.test.ts` drives the real WASM core 
 mock headlessly (no browser, no worker). Public API: `createMockHost`, `mockRuntimeConfig`,
 `MockHost`, `MockHostConfig`, `PermissionPolicy`.
 
+### One call — `createMockClient`
+
+`@parity/truapi-host-wasm/testing` exports `createMockClient`, which collapses
+`createMockHost` + `createWebWorkerProvider` + `createClient` into a single call. It returns
+the exact product client a product uses in production, plus the mock for assertions. Pass the
+core Worker so your bundler owns how it is produced.
+
+```ts
+// `?worker` is a Vite/bundler-specific suffix; other bundlers use their own form.
+import HostWorker from "@parity/truapi-host-wasm/worker-runtime?worker";
+import { createMockClient } from "@parity/truapi-host-wasm/testing";
+
+const { client, mock } = await createMockClient(new HostWorker(), {
+  devicePermissions: "allow-all",
+});
+await client.system.handshake();
+// ... drive the product client; assert via mock.navigations(), etc.
+```
+
+The full browser end-to-end harness that exercises this across a Web Worker and an iframe
+lives in the `@parity/truapi-mock-e2e` package.
+
 ## Publishing
 
 The npm publish workflow is not wired yet. A release-process discussion is needed before adding a

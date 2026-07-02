@@ -19,6 +19,7 @@ js/packages/
 	                           `.` (shared host types), `/web` (iframe + Web
 	                           Worker), `/worker-runtime` (Worker entry).
 	                           WASM bundle (gitignored) under dist/wasm/web/, built via `make wasm`
+  truapi-mock-e2e/         @parity/truapi-mock-e2e: browser E2E harness (private; real WASM core + product-in-iframe vs the mock host)
 playground/                Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/               dotli submodule
 docs/                      design docs, RFCs, feature proposals

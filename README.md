@@ -63,7 +63,9 @@ js/packages/
   truapi/                  @parity/truapi TypeScript client
   truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime; entries `.`
                            (shared host types), `/web` (iframe + Web Worker),
-                           `/worker-runtime`
+                           `/worker-runtime`, `/testing` (createMockClient)
+  truapi-mock-e2e/         @parity/truapi-mock-e2e: browser E2E harness (real WASM core +
+                           product-in-iframe, driven against the mock host); private
 playground/                Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/               dotli host, vendored as a submodule
 docs/                      Design docs, RFCs, feature proposals
@@ -80,6 +82,8 @@ a single package with tree-shakeable subpath entries:
   MessageChannel handshake (`createIframeHost`) plus `createWebWorkerProvider`.
 - `@parity/truapi-host-wasm/worker-runtime` is the Web Worker entrypoint so the WASM core can
   run off the page main thread.
+- `@parity/truapi-host-wasm/testing` exposes `createMockClient`, which wires a product client to
+  the real core running against the mock host in one call (for tests and product "mock mode").
 
 ## How it works
 
