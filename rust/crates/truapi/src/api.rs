@@ -14,8 +14,6 @@ pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
 pub mod system;
-#[cfg(debug_assertions)]
-pub mod testing;
 pub mod theme;
 
 pub use account::Account;
@@ -32,35 +30,9 @@ pub use resource_allocation::ResourceAllocation;
 pub use signing::Signing;
 pub use statement_store::StatementStore;
 pub use system::System;
-#[cfg(debug_assertions)]
-pub use testing::Testing;
 pub use theme::Theme;
 
 /// The unified TrUAPI contract.
-#[cfg(debug_assertions)]
-pub trait TrUApi:
-    Account
-    + Chain
-    + Chat
-    + CoinPayment
-    + Entropy
-    + LocalStorage
-    + Notifications
-    + Payment
-    + Permissions
-    + Preimage
-    + ResourceAllocation
-    + Signing
-    + StatementStore
-    + System
-    + Testing
-    + Theme
-    + Send
-    + Sync
-{
-}
-
-#[cfg(not(debug_assertions))]
 pub trait TrUApi:
     Account
     + Chain
@@ -82,30 +54,6 @@ pub trait TrUApi:
 {
 }
 
-#[cfg(debug_assertions)]
-impl<T> TrUApi for T where
-    T: Account
-        + Chain
-        + Chat
-        + CoinPayment
-        + Entropy
-        + LocalStorage
-        + Notifications
-        + Payment
-        + Permissions
-        + Preimage
-        + ResourceAllocation
-        + Signing
-        + StatementStore
-        + System
-        + Testing
-        + Theme
-        + Send
-        + Sync
-{
-}
-
-#[cfg(not(debug_assertions))]
 impl<T> TrUApi for T where
     T: Account
         + Chain

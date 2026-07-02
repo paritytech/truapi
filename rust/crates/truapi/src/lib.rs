@@ -17,8 +17,6 @@ use parity_scale_codec::{Decode, Encode};
 
 pub mod api;
 pub mod v01;
-#[cfg(debug_assertions)]
-pub mod v02;
 pub mod versioned;
 
 pub mod latest {
