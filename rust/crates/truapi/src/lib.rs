@@ -124,6 +124,7 @@ impl CancellationToken {
 pub struct CallContext {
     request_id: RequestId,
     cancel: CancellationToken,
+    caller_product_id: Option<String>,
 }
 
 impl CallContext {
@@ -137,12 +138,30 @@ impl CallContext {
         Self {
             request_id,
             cancel: CancellationToken::new(),
+            caller_product_id: None,
         }
     }
 
     /// Construct a context from explicit `request_id` and `cancel` parts.
     pub fn with_parts(request_id: RequestId, cancel: CancellationToken) -> Self {
-        Self { request_id, cancel }
+        Self {
+            request_id,
+            cancel,
+            caller_product_id: None,
+        }
+    }
+
+    /// Construct a context with all fields.
+    pub fn with_caller(
+        request_id: RequestId,
+        cancel: CancellationToken,
+        caller_product_id: Option<String>,
+    ) -> Self {
+        Self {
+            request_id,
+            cancel,
+            caller_product_id,
+        }
     }
 
     /// Return the request id this context is associated with.
@@ -153,6 +172,18 @@ impl CallContext {
     /// Return the cancellation token that signals when the call should abort.
     pub fn cancel(&self) -> &CancellationToken {
         &self.cancel
+    }
+
+    /// The DotNS identifier of the calling product, if known.
+    ///
+    /// Hosts set this from the product's registered identity. When present,
+    /// handlers can compare it against a requested [`ProductAccountId`]'s
+    /// `dot_ns_identifier` to implement the same-domain optimization
+    /// described in RFC 0012.
+    ///
+    /// [`ProductAccountId`]: crate::v01::ProductAccountId
+    pub fn caller_product_id(&self) -> Option<&str> {
+        self.caller_product_id.as_deref()
     }
 }
 
