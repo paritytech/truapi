@@ -12,4 +12,7 @@ truapi_macros::versioned_type! {
     pub enum HostNavigateToRequest { V1 => v01::HostNavigateToRequest }
     pub enum HostNavigateToResponse { V1 }
     pub enum HostNavigateToError { V1 => v01::HostNavigateToError }
+    pub enum HostInfoRequest { V1 }
+    pub enum HostInfoResponse { V1 => v01::HostInfo }
+    pub enum HostInfoError { V1 => v01::GenericError }
 }

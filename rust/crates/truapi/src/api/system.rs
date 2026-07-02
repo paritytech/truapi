@@ -2,8 +2,9 @@
 
 use crate::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
-    HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostNavigateToError,
-    HostNavigateToRequest, HostNavigateToResponse,
+    HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostInfoError,
+    HostInfoRequest, HostInfoResponse, HostNavigateToError, HostNavigateToRequest,
+    HostNavigateToResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
@@ -70,4 +71,24 @@ pub trait System: Send + Sync {
         cx: &CallContext,
         request: HostNavigateToRequest,
     ) -> Result<HostNavigateToResponse, CallError<HostNavigateToError>>;
+
+    /// Report the host's identity and version.
+    ///
+    /// Returns the host's platform, name, and version so a product knows
+    /// exactly which host — and which build of it — is running it: for
+    /// adapting to the host, telemetry, and attributing behaviour to a
+    /// concrete build in diagnostics and bug reports.
+    ///
+    /// ```ts
+    /// const result = await truapi.system.info();
+    /// assert(result.isOk(), "info failed:", result);
+    /// const info = result.value;
+    /// console.log(`${info.name} ${info.version} on ${info.platform}`);
+    /// ```
+    #[wire(request_id = 164)]
+    async fn host_info(
+        &self,
+        cx: &CallContext,
+        request: HostInfoRequest,
+    ) -> Result<HostInfoResponse, CallError<HostInfoError>>;
 }
