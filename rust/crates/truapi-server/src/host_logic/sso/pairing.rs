@@ -509,20 +509,21 @@ mod tests {
     ];
 
     fn runtime_config() -> RuntimeConfig {
-        RuntimeConfig {
-            product_id: "myapp.dot".to_string(),
-            host_info: HostInfo {
+        RuntimeConfig::new(
+            "myapp.dot".to_string(),
+            HostInfo {
                 name: "Polkadot Web".to_string(),
                 icon: Some("https://example.invalid/dotli.png".to_string()),
                 version: Some("1.2.3".to_string()),
             },
-            platform_info: PlatformInfo {
+            PlatformInfo {
                 kind: Some("Firefox".to_string()),
                 version: Some("192.32".to_string()),
             },
-            people_chain_genesis_hash: [0; 32],
-            pairing_deeplink_scheme: "polkadotapp".to_string(),
-        }
+            [0; 32],
+            "polkadotapp".to_string(),
+        )
+        .expect("test runtime config is valid")
     }
 
     #[test]
