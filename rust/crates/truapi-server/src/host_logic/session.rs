@@ -2,6 +2,13 @@
 //! unpairing with a signing host changes the inter-host session, and
 //! account-management methods read it instead of round-tripping host callbacks
 //! on every product call.
+//!
+//! Host-spec B.1.5 and B.3.1 define the remote account keys and session topics:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L85-L103>
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L119-L131>
+//! The persisted blob is core-owned and host-local; storage.md captures current
+//! cross-host persistence status quo:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L58-L98>
 
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, StreamExt};
