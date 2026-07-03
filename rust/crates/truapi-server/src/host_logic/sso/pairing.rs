@@ -2,6 +2,12 @@
 //!
 //! This module owns the byte shape of the QR/deeplink payload described in
 //! `docs/design/host-contract-and-core-impl/H - sso-pairing-protocol.md`.
+//! The inter-host pairing flow is specified in host-spec B.1:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L10-L103>
+//! The deeplink route and hex construction rules are specified in host-spec L:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/L-url-schemes.md?plain=1#L17-L33>
+//! Session crypto and statement-store framing are specified in host-spec B.2-B.4:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L105-L183>
 //! The SCALE handshake codecs are kept wire-compatible with host-papp's v2
 //! handshake codec:
 //! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/auth/scale/handshakeV2.ts#L43-L115>
@@ -62,6 +68,9 @@ pub enum PairingBootstrapError {
 }
 
 /// Versioned SCALE payload embedded in the pairing deeplink.
+///
+/// Host-spec B.1.1 defines the deeplink as lowercase hex of this SCALE payload:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L12-L22>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum VersionedHandshakeProposal {
     #[codec(index = 1)]
@@ -69,6 +78,9 @@ pub enum VersionedHandshakeProposal {
 }
 
 /// Versioned encrypted response posted by the wallet to the pairing topic.
+///
+/// Host-spec B.1.4 defines the encrypted answer statement and matching topic:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L62-L83>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum VersionedHandshakeResponse {
     #[codec(index = 1)]
@@ -82,6 +94,9 @@ pub enum VersionedHandshakeResponse {
 pub mod v2;
 
 /// Encrypted statement-channel envelope shared with the wallet.
+///
+/// Host-spec B.4.1 defines this request/response wrapper:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L151-L175>
 ///
 /// Mirrors `@novasamatech/statement-store` session statement data:
 /// <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/statement-store/src/session/scale/statementData.ts#L33-L46>
