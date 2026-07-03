@@ -1,4 +1,8 @@
 //! Host-papp v2 handshake wire types.
+//!
+//! Host-spec B.1 defines the pairing handshake shape that this deployed v2
+//! codec implements as a wire-compatible host-papp dialect:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L24-L103>
 
 use parity_scale_codec::{Decode, Encode};
 
