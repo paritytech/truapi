@@ -138,8 +138,8 @@ impl RuntimeFailure {
     }
 
     /// Method tag the failure originated from.
-    #[allow(dead_code)]
-    pub fn method(&self) -> &'static str {
+    #[cfg(test)]
+    fn method(&self) -> &'static str {
         self.method
     }
 
@@ -161,8 +161,7 @@ impl RuntimeFailure {
 }
 
 /// Provider of `JsonRpcConnection` instances keyed by chain genesis hash.
-/// The default [`UnavailableChainProvider`] makes every call fail; real
-/// hosts plug in the platform-side `ChainProvider`.
+/// Hosts plug in the platform-side `ChainProvider`.
 #[async_trait::async_trait]
 pub trait RuntimeChainProvider: Send + Sync {
     /// Open or reuse a JSON-RPC connection for the chain identified by
@@ -171,22 +170,6 @@ pub trait RuntimeChainProvider: Send + Sync {
         &self,
         genesis_hash: Vec<u8>,
     ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure>;
-}
-
-/// Default provider: every `connect` call fails with `Unavailable`, so each
-/// chain RPC surfaces a typed "unavailable" error to the product.
-#[allow(dead_code)]
-#[derive(Default)]
-pub struct UnavailableChainProvider;
-
-#[async_trait::async_trait]
-impl RuntimeChainProvider for UnavailableChainProvider {
-    async fn connect(
-        &self,
-        _genesis_hash: Vec<u8>,
-    ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
-        Err(RuntimeFailure::unavailable("remote_chain_connect"))
-    }
 }
 
 /// chainHead-v1 state machine on top of a [`RuntimeChainProvider`].
@@ -1145,6 +1128,19 @@ mod tests {
         #[cfg(target_arch = "wasm32")]
         {
             Arc::new(futures::executor::block_on)
+        }
+    }
+
+    #[derive(Default)]
+    struct UnavailableChainProvider;
+
+    #[async_trait]
+    impl RuntimeChainProvider for UnavailableChainProvider {
+        async fn connect(
+            &self,
+            _genesis_hash: Vec<u8>,
+        ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
+            Err(RuntimeFailure::unavailable("remote_chain_connect"))
         }
     }
 
