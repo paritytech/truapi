@@ -5,6 +5,8 @@
 //! it builds that storage key and decodes the leading username fields from the
 //! SCALE value. The record begins with a fixed identifier public key; credibility
 //! and statement-store slots are intentionally ignored.
+//! Host-spec G defines the cross-host identity model and lookup behavior:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/G-identity.md?plain=1#L5-L47>
 
 use parity_scale_codec::Decode;
 use sp_crypto_hashing::{blake2_128, twox_128};

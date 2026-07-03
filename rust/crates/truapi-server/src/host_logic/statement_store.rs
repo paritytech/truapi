@@ -4,6 +4,8 @@
 //! `ChainProvider` JSON-RPC connection. Transport mechanics live in
 //! `HostRpcClient`; this module owns statement-store payload encoding,
 //! proof verification, and subscription-result parsing.
+//! Host-spec N.5 names the statement-store JSON-RPC methods hosts use:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/N-shared-infrastructure.md?plain=1#L79-L89>
 
 use thiserror::Error;
 

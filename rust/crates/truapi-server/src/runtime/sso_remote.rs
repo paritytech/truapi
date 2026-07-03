@@ -28,6 +28,8 @@ use subxt_rpcs::client::RpcSubscription;
 use tracing::instrument;
 use truapi::CallContext;
 
+/// Host-spec B.3.3 recommends seven-day statement expiry for session traffic:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L143-L145>
 const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
 /// Disconnect reason reported when the local session logs out mid-request.
 pub(super) const SSO_LOCAL_DISCONNECT_REASON: &str = "SSO session disconnected";
