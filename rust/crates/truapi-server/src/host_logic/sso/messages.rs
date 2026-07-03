@@ -33,6 +33,8 @@ use crate::host_logic::statement_store::{
     statement_expiry_elapsed,
 };
 
+pub mod v1;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, derive_more::Display)]
 enum SsoResponseCode {
     #[codec(index = 0)]
@@ -71,27 +73,7 @@ pub struct RemoteMessage {
 /// Versioned remote message body.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemoteMessageData {
-    V1(RemoteMessageV1),
-}
-
-/// v1 messages exchanged with the paired signing host over the encrypted SSO channel.
-///
-/// The variant order is part of the SCALE wire protocol used inside
-/// statement-store session statements.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum RemoteMessageV1 {
-    Disconnected,
-    SignRequest(Box<SigningRequest>),
-    SignResponse(SigningResponse),
-    RingVrfAliasRequest(RingVrfAliasRequest),
-    RingVrfAliasResponse(RingVrfAliasResponse),
-    ResourceAllocationRequest(ResourceAllocationRequest),
-    ResourceAllocationResponse(ResourceAllocationResponse),
-    CreateTransactionRequest(CreateTransactionRequest),
-    CreateTransactionResponse(CreateTransactionResponse),
-    CreateTransactionLegacyRequest(CreateTransactionLegacyRequest),
-    SignRawLegacyRequest(SignRawLegacyRequest),
-    SignRawLegacyResponse(SignRawLegacyResponse),
+    V1(v1::RemoteMessage),
 }
 
 /// Signing request flavor sent to the signing host.
@@ -155,7 +137,7 @@ impl From<truapi::v01::HostSignPayloadRequest> for SigningPayloadRequest {
 /// string message with a product-derived account.
 ///
 /// Built from [`HostSignRawRequest`] and wrapped in
-/// [`RemoteMessageV1::SignRequest`] before being encrypted into an SSO session
+/// [`v1::RemoteMessage::SignRequest`] before being encrypted into an SSO session
 /// statement.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningRawRequest {
@@ -205,7 +187,7 @@ impl From<RawPayload> for SigningRawPayload {
 
 /// Response returned by the signing host for a product-account signing request.
 ///
-/// Decoded from [`RemoteMessageV1::SignResponse`] while the runtime is waiting
+/// Decoded from [`v1::RemoteMessage::SignResponse`] while the runtime is waiting
 /// for a matching SSO remote message id.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningResponse {
@@ -222,7 +204,7 @@ pub struct SigningPayloadResponseData {
 
 /// Response returned by the signing host for a legacy-account raw signing request.
 ///
-/// Decoded from [`RemoteMessageV1::SignRawLegacyResponse`] and mapped back to
+/// Decoded from [`v1::RemoteMessage::SignRawLegacyResponse`] and mapped back to
 /// the public raw-signing response shape.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SignRawLegacyResponse {
@@ -419,7 +401,7 @@ pub fn decode_sso_session_statement(
                     .map_err(|err| format!("invalid SSO remote message: {err}"))?;
                 if matches!(
                     &message.data,
-                    RemoteMessageData::V1(RemoteMessageV1::Disconnected)
+                    RemoteMessageData::V1(v1::RemoteMessage::Disconnected)
                 ) {
                     return Ok(Some(SsoSessionStatement::Disconnected));
                 }
@@ -451,27 +433,27 @@ fn remote_response_for_message(
 ) -> Option<SsoRemoteResponse> {
     let RemoteMessageData::V1(data) = message.data;
     match data {
-        RemoteMessageV1::SignResponse(response)
+        v1::RemoteMessage::SignResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
             Some(SsoRemoteResponse::Sign(response))
         }
-        RemoteMessageV1::RingVrfAliasResponse(response)
+        v1::RemoteMessage::RingVrfAliasResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
             Some(SsoRemoteResponse::RingVrfAlias(response))
         }
-        RemoteMessageV1::SignRawLegacyResponse(response)
+        v1::RemoteMessage::SignRawLegacyResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
             Some(SsoRemoteResponse::SignRawLegacy(response))
         }
-        RemoteMessageV1::ResourceAllocationResponse(response)
+        v1::RemoteMessage::ResourceAllocationResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
             Some(SsoRemoteResponse::ResourceAllocation(response))
         }
-        RemoteMessageV1::CreateTransactionResponse(response)
+        v1::RemoteMessage::CreateTransactionResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
             Some(SsoRemoteResponse::CreateTransaction(response))
@@ -484,7 +466,7 @@ fn remote_response_for_message(
 pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(
+        data: RemoteMessageData::V1(v1::RemoteMessage::SignRequest(Box::new(
             SigningRequest::Payload(Box::new(request.into())),
         ))),
     }
@@ -494,9 +476,9 @@ pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest)
 pub fn sign_raw_message(message_id: String, request: HostSignRawRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(SigningRequest::Raw(
-            request.into(),
-        )))),
+        data: RemoteMessageData::V1(v1::RemoteMessage::SignRequest(Box::new(
+            SigningRequest::Raw(request.into()),
+        ))),
     }
 }
 
@@ -508,7 +490,7 @@ pub fn sign_raw_legacy_message(
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::SignRawLegacyRequest(
+        data: RemoteMessageData::V1(v1::RemoteMessage::SignRawLegacyRequest(
             SignRawLegacyRequest {
                 account,
                 data: payload.into(),
@@ -525,10 +507,12 @@ pub fn alias_request_message(
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::RingVrfAliasRequest(RingVrfAliasRequest {
-            product_account_id,
-            product_id,
-        })),
+        data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasRequest(
+            RingVrfAliasRequest {
+                product_account_id,
+                product_id,
+            },
+        )),
     }
 }
 
@@ -541,7 +525,7 @@ pub fn resource_allocation_message(
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::ResourceAllocationRequest(
+        data: RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationRequest(
             ResourceAllocationRequest {
                 calling_product_id,
                 resources: resources.into_iter().map(Into::into).collect(),
@@ -558,7 +542,7 @@ pub fn create_transaction_message(
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::CreateTransactionRequest(
+        data: RemoteMessageData::V1(v1::RemoteMessage::CreateTransactionRequest(
             CreateTransactionRequest {
                 payload: CreateTransactionPayload::V1(payload),
             },
@@ -573,7 +557,7 @@ pub fn create_transaction_legacy_message(
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::CreateTransactionLegacyRequest(
+        data: RemoteMessageData::V1(v1::RemoteMessage::CreateTransactionLegacyRequest(
             CreateTransactionLegacyRequest {
                 payload: CreateTransactionLegacyPayload::V1(payload),
             },
@@ -698,7 +682,7 @@ mod tests {
     fn disconnected_message_matches_host_papp_variant_order() {
         let message = RemoteMessage {
             message_id: String::new(),
-            data: RemoteMessageData::V1(RemoteMessageV1::Disconnected),
+            data: RemoteMessageData::V1(v1::RemoteMessage::Disconnected),
         };
 
         assert_eq!(message.encode(), vec![0, 0, 0]);
@@ -920,7 +904,7 @@ mod tests {
             ],
             OnExistingAllowancePolicy::Increase,
         );
-        let RemoteMessageData::V1(RemoteMessageV1::ResourceAllocationRequest(request)) =
+        let RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationRequest(request)) =
             message.data
         else {
             panic!("expected resource allocation request");
