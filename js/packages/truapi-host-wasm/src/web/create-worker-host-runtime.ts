@@ -1,11 +1,11 @@
 import type {
   ChainConnection,
   HostCallbacks,
+  ProductRuntimeConfig,
   LogLevel,
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
-  TrUApiHostCoreProvider,
-  HostCoreRuntimeConfig,
+  TrUApiProductProvider,
 } from "../index.js";
 import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec } from "../generated/host-callbacks.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
@@ -20,11 +20,53 @@ import { bytesToHex } from "@parity/truapi/scale";
 import { startRawSubscription } from "../generated/worker-callbacks.js";
 import { errorMessage } from "../error.js";
 
-interface WorkerProviderState {
-  worker: Worker;
-  rawCallbacks: RawCallbacks;
+export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId">;
+
+export interface WorkerPairingHostRuntime {
+  createProvider(product: {
+    productId: string;
+  }): Promise<TrUApiProductProvider>;
+  disconnectSession(): Promise<void>;
+  cancelPairing(): void;
+  notifySessionStoreChanged(): void;
+  getPermissionAuthorizationStatus(
+    productId: string,
+    request: PermissionAuthorizationRequest,
+  ): Promise<PermissionAuthorizationStatus>;
+  getPermissionAuthorizationStatuses(
+    productId: string,
+    requests: PermissionAuthorizationRequest[],
+  ): Promise<PermissionAuthorizationStatus[]>;
+  setPermissionAuthorizationStatus(
+    productId: string,
+    request: PermissionAuthorizationRequest,
+    status: PermissionAuthorizationStatus,
+  ): Promise<void>;
+  setLogLevel(level: LogLevel): void;
+  dispose(): void;
+}
+
+interface CoreState {
+  coreId: number;
+  productId: string;
   listeners: Set<(message: Uint8Array) => void>;
   closeListeners: Set<(error: Error) => void>;
+  closedError: Error | null;
+  disposed: boolean;
+}
+
+interface RuntimeState {
+  worker: Worker;
+  rawCallbacks: RawCallbacks;
+  cores: Map<number, CoreState>;
+  pendingCores: Map<
+    number,
+    {
+      productId: string;
+      resolve: (provider: TrUApiProductProvider) => void;
+      reject: (error: Error) => void;
+    }
+  >;
   subscriptionDisposers: Map<number, () => void>;
   chainConnections: Map<number, ChainConnection>;
   pendingDisconnects: Map<
@@ -52,9 +94,10 @@ interface WorkerProviderState {
   closedError: Error | null;
   logLevel: LogLevel;
   disposed: boolean;
+  nextCoreId: number;
 }
 
-function debugLoggingEnabled(state: WorkerProviderState): boolean {
+function debugLoggingEnabled(state: RuntimeState): boolean {
   return state.logLevel === "debug" || state.logLevel === "trace";
 }
 
@@ -67,36 +110,31 @@ function encodePermissionAuthorizationRequest(
   return PermissionAuthorizationRequestCodec.enc(request);
 }
 
-/** localStorage key the dev log level is persisted under, so it survives reloads. */
 const DEV_LOG_LEVEL_KEY = "truapi:logLevel";
 
-/** Read the persisted dev log level. Returns null when unset. */
 function readPersistedLogLevel(): LogLevel | null {
   return globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
 }
 
-/** Persist the dev log level so it re-applies on the next reload. */
 function persistLogLevel(level: LogLevel): void {
   globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
 }
 
 let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();
-const devGlobalProviders = new Set<TrUApiHostCoreProvider>();
+const devGlobalTargets = new Set<{ setLogLevel?: (level: LogLevel) => void }>();
 interface TrUApiDevConsole {
   setLogLevel(level: LogLevel): void;
   getLogLevel(): LogLevel | null;
 }
 
 function handleCallbackRequest(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg: {
     requestId: number;
     name: CallbackName;
     args: readonly unknown[];
   },
 ): void {
-  // Own-property guard: `msg.name` is worker-supplied, never walk the
-  // prototype chain with it.
   const fn = Object.hasOwn(state.rawCallbacks, msg.name)
     ? (
         state.rawCallbacks as unknown as Record<
@@ -106,41 +144,38 @@ function handleCallbackRequest(
       )[msg.name]
     : undefined;
   if (!fn) {
-    const reply: MainToWorker = {
+    state.worker.postMessage({
       kind: "callbackResponse",
       requestId: msg.requestId,
       ok: false,
       error: `unknown callback: ${msg.name}`,
-    };
-    state.worker.postMessage(reply);
+    } satisfies MainToWorker);
     return;
   }
   Promise.resolve()
     .then(() => fn(...msg.args))
     .then(
       (value) => {
-        const reply: MainToWorker = {
+        state.worker.postMessage({
           kind: "callbackResponse",
           requestId: msg.requestId,
           ok: true,
           value,
-        };
-        state.worker.postMessage(reply);
+        } satisfies MainToWorker);
       },
       (err) => {
-        const reply: MainToWorker = {
+        state.worker.postMessage({
           kind: "callbackResponse",
           requestId: msg.requestId,
           ok: false,
           error: errorMessage(err),
-        };
-        state.worker.postMessage(reply);
+        } satisfies MainToWorker);
       },
     );
 }
 
 function handleSubscriptionStart(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg: {
     subId: number;
     name: SubscriptionName;
@@ -149,12 +184,11 @@ function handleSubscriptionStart(
 ): void {
   const sendItem = (value?: unknown): void => {
     if (state.disposed) return;
-    const post: MainToWorker = {
+    state.worker.postMessage({
       kind: "subscriptionItem",
       subId: msg.subId,
       value,
-    };
-    state.worker.postMessage(post);
+    } satisfies MainToWorker);
   };
   let dispose: (() => void) | void = undefined;
   try {
@@ -174,7 +208,7 @@ function handleSubscriptionStart(
 }
 
 function handleSubscriptionStop(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg: { subId: number },
 ): void {
   const dispose = state.subscriptionDisposers.get(msg.subId);
@@ -188,51 +222,47 @@ function handleSubscriptionStop(
 }
 
 async function handleChainConnectStart(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg: { connId: number; genesisHash: string },
 ): Promise<void> {
   const chainConnect = state.rawCallbacks.chainConnect;
   const onResponse = (json: string): void => {
     if (state.disposed) return;
-    const post: MainToWorker = {
+    state.worker.postMessage({
       kind: "chainResponse",
       connId: msg.connId,
       json,
-    };
-    state.worker.postMessage(post);
+    } satisfies MainToWorker);
   };
   try {
     const conn = await chainConnect(msg.genesisHash, onResponse);
     if (!conn) {
-      const reply: MainToWorker = {
+      state.worker.postMessage({
         kind: "chainConnectAck",
         connId: msg.connId,
         ok: false,
         error: `chainConnect returned null for genesisHash ${msg.genesisHash}`,
-      };
-      state.worker.postMessage(reply);
+      } satisfies MainToWorker);
       return;
     }
     state.chainConnections.set(msg.connId, conn);
-    const reply: MainToWorker = {
+    state.worker.postMessage({
       kind: "chainConnectAck",
       connId: msg.connId,
       ok: true,
-    };
-    state.worker.postMessage(reply);
+    } satisfies MainToWorker);
   } catch (err) {
-    const reply: MainToWorker = {
+    state.worker.postMessage({
       kind: "chainConnectAck",
       connId: msg.connId,
       ok: false,
       error: errorMessage(err),
-    };
-    state.worker.postMessage(reply);
+    } satisfies MainToWorker);
   }
 }
 
 function handleChainSend(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg: { connId: number; request: string },
 ): void {
   const conn = state.chainConnections.get(msg.connId);
@@ -247,10 +277,7 @@ function handleChainSend(
   }
 }
 
-function handleChainClose(
-  state: WorkerProviderState,
-  msg: { connId: number },
-): void {
+function handleChainClose(state: RuntimeState, msg: { connId: number }): void {
   const conn = state.chainConnections.get(msg.connId);
   if (!conn) return;
   state.chainConnections.delete(msg.connId);
@@ -266,7 +293,6 @@ interface PendingEntry<T> {
   reject: (error: Error) => void;
 }
 
-/** Settle and remove the pending entry for `requestId`, no-op if already gone. */
 function settlePending<T>(
   map: Map<number, PendingEntry<T>>,
   requestId: number,
@@ -275,14 +301,10 @@ function settlePending<T>(
   const pending = map.get(requestId);
   if (!pending) return;
   map.delete(requestId);
-  if (result.ok) {
-    pending.resolve(result.value);
-  } else {
-    pending.reject(new Error(result.error));
-  }
+  if (result.ok) pending.resolve(result.value);
+  else pending.reject(new Error(result.error));
 }
 
-/** Reject every pending entry in `map` with `error`, then drain the map. */
 function rejectAll<T>(map: Map<number, PendingEntry<T>>, error: Error): void {
   for (const pending of map.values()) {
     pending.reject(error);
@@ -291,7 +313,7 @@ function rejectAll<T>(map: Map<number, PendingEntry<T>>, error: Error): void {
 }
 
 function handleDisconnectResponse(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg:
     | { requestId: number; ok: true }
     | { requestId: number; ok: false; error: string },
@@ -304,7 +326,7 @@ function handleDisconnectResponse(
 }
 
 function handlePermissionAuthorizationStatusResponse(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg:
     | {
         requestId: number;
@@ -321,7 +343,7 @@ function handlePermissionAuthorizationStatusResponse(
 }
 
 function handlePermissionAuthorizationStatusesResponse(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg:
     | {
         requestId: number;
@@ -340,7 +362,7 @@ function handlePermissionAuthorizationStatusesResponse(
 }
 
 function handleSetPermissionAuthorizationStatusResponse(
-  state: WorkerProviderState,
+  state: RuntimeState,
   msg:
     | { requestId: number; ok: true }
     | { requestId: number; ok: false; error: string },
@@ -352,29 +374,19 @@ function handleSetPermissionAuthorizationStatusResponse(
   );
 }
 
-function rejectPendingDisconnects(
-  state: WorkerProviderState,
-  error: Error,
-): void {
+function rejectPendingRuntimeRequests(state: RuntimeState, error: Error): void {
   rejectAll(state.pendingDisconnects, error);
-}
-
-function rejectPendingPermissionAuthorizationRequests(
-  state: WorkerProviderState,
-  error: Error,
-): void {
   rejectAll(state.pendingPermissionAuthorizationStatuses, error);
   rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
   rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
+  for (const pending of state.pendingCores.values()) {
+    pending.reject(error);
+  }
+  state.pendingCores.clear();
 }
 
-/**
- * Register a pending request, post its message to the worker, and resolve when
- * the matching response arrives. Short-circuits to `disposedFallback` once the
- * provider is disposed; rolls back the pending entry if `postMessage` throws.
- */
 function sendWorkerRequest<T>(
-  state: WorkerProviderState,
+  state: RuntimeState,
   pending: Map<number, PendingEntry<T>>,
   nextId: () => number,
   disposedFallback: T,
@@ -393,21 +405,24 @@ function sendWorkerRequest<T>(
   });
 }
 
-/**
- * Shared terminal teardown for both `dispose()` and worker faults: rejects
- * pending disconnects, runs subscription disposers, closes chain connections,
- * and terminates the worker. A fault additionally notifies close listeners.
- */
-function teardown(
-  state: WorkerProviderState,
-  error: Error,
-  fault: boolean,
-): void {
+function closeCoreState(core: CoreState, error: Error): void {
+  if (core.disposed) return;
+  core.disposed = true;
+  core.closedError = error;
+  for (const listener of [...core.closeListeners]) listener(error);
+  core.listeners.clear();
+  core.closeListeners.clear();
+}
+
+function teardown(state: RuntimeState, error: Error, fault: boolean): void {
   if (state.disposed) return;
   state.disposed = true;
   state.closedError = error;
-  rejectPendingDisconnects(state, error);
-  rejectPendingPermissionAuthorizationRequests(state, error);
+  rejectPendingRuntimeRequests(state, error);
+  for (const core of state.cores.values()) {
+    closeCoreState(core, error);
+  }
+  state.cores.clear();
   for (const fn of state.subscriptionDisposers.values()) {
     try {
       fn();
@@ -428,64 +443,35 @@ function teardown(
     state.worker.terminate();
   } else {
     try {
-      const post: MainToWorker = { kind: "dispose" };
-      state.worker.postMessage(post);
+      state.worker.postMessage({ kind: "dispose" } satisfies MainToWorker);
     } catch {
       // ignore if worker already gone
     }
-    // Give the worker a tick to free the core before terminating.
     setTimeout(() => state.worker.terminate(), 0);
   }
-  for (const listener of [...state.closeListeners]) listener(error);
-  state.listeners.clear();
-  state.closeListeners.clear();
 }
 
-export interface CreateWebWorkerProviderOptions {
-  /** Wasm core log level. Default: `"off"`. */
+export interface CreateWebWorkerPairingHostRuntimeOptions {
   logLevel?: LogLevel;
-  /** Static product/pairing config passed to the Rust core. */
-  runtimeConfig: HostCoreRuntimeConfig;
-  /**
-   * Milliseconds to wait for the worker to report `ready` before rejecting
-   * and terminating it. Default: 30000.
-   */
+  hostConfig: WebWorkerHostConfig;
   initTimeoutMs?: number;
 }
 
 export type WebWorkerHostCallbacks = Required<HostCallbacks>;
 
-/**
- * Spawn the truapi-server WASM in `worker` and bridge it into a
- * `WireProvider`.
- *
- * The caller is responsible for instantiating the Worker, Vite users
- * typically import the worker entry-point with `?worker`:
- *
- * ```ts
- * import HostWorker from "@parity/truapi-host-wasm/worker-runtime?worker";
- * const worker = new HostWorker();
- * const provider = await createWebWorkerProvider(worker, callbacks, {
- *   runtimeConfig,
- * });
- * ```
- *
- * Resolves once the worker reports `ready` and rejects if the WASM
- * fails to load.
- */
-export function createWebWorkerProvider(
+export function createWebWorkerPairingHostRuntime(
   worker: Worker,
   host: WebWorkerHostCallbacks,
-  options: CreateWebWorkerProviderOptions,
-): Promise<TrUApiHostCoreProvider> {
+  options: CreateWebWorkerPairingHostRuntimeOptions,
+): Promise<WorkerPairingHostRuntime> {
   const callbacks = createWasmRawCallbacks(host);
 
   return new Promise((resolve, reject) => {
-    const state: WorkerProviderState = {
+    const state: RuntimeState = {
       worker,
       rawCallbacks: callbacks,
-      listeners: new Set(),
-      closeListeners: new Set(),
+      cores: new Map(),
+      pendingCores: new Map(),
       subscriptionDisposers: new Map(),
       chainConnections: new Map(),
       pendingDisconnects: new Map(),
@@ -495,32 +481,46 @@ export function createWebWorkerProvider(
       closedError: null,
       logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
       disposed: false,
+      nextCoreId: 0,
+    };
+
+    let runtime: WorkerPairingHostRuntime | null = null;
+
+    const notifyFault = (error: Error): void => {
+      teardown(state, error, true);
     };
 
     const onMessage = (ev: MessageEvent<WorkerToMain>): void => {
       const msg = ev.data;
       switch (msg.kind) {
         case "loaded":
-          break;
         case "ready":
+          break;
+        case "coreReady":
+          handleCoreReady(state, msg.coreId, runtime);
+          break;
+        case "coreError":
+          handleCoreError(state, msg.coreId, msg.error);
           break;
         case "fatalError":
           console.error("[truapi worker]", msg.error);
           notifyFault(new Error(`worker fatal error: ${msg.error}`));
           break;
         case "frameError":
-          console.error("[truapi worker]", msg.error);
-          notifyFault(new Error(`worker frame error: ${msg.error}`));
+          handleFrameError(state, msg.coreId, msg.error);
           break;
         case "disposeError":
           console.warn("[truapi worker] dispose:", msg.error);
           break;
-        case "frame":
+        case "frame": {
+          const core = state.cores.get(msg.coreId);
+          if (!core || core.disposed) break;
           if (debugLoggingEnabled(state)) {
             console.debug("[truapi worker] frame <-", bytesToHex(msg.bytes));
           }
-          for (const listener of [...state.listeners]) listener(msg.bytes);
+          for (const listener of [...core.listeners]) listener(msg.bytes);
           break;
+        }
         case "disconnectSessionResponse":
           handleDisconnectResponse(state, msg);
           break;
@@ -566,10 +566,6 @@ export function createWebWorkerProvider(
       }
     };
 
-    const notifyFault = (error: Error): void => {
-      teardown(state, error, true);
-    };
-
     const onError = (e: ErrorEvent): void => {
       cleanupInit();
       worker.terminate();
@@ -594,22 +590,19 @@ export function createWebWorkerProvider(
     const onInitMessage = (ev: MessageEvent<WorkerToMain>): void => {
       const msg = ev.data;
       if (msg.kind === "loaded") {
-        const init: MainToWorker = {
+        worker.postMessage({
           kind: "init",
           logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
-          runtimeConfig: options.runtimeConfig,
-        };
-        worker.postMessage(init);
+          hostConfig: options.hostConfig,
+        } satisfies MainToWorker);
       } else if (msg.kind === "ready") {
         cleanupInit();
         worker.addEventListener("message", onMessage);
-        // Surface a post-init worker fault (uncaught throw, OOM, killed
-        // worker) to close listeners for the provider's lifetime.
         worker.addEventListener("error", onRuntimeError);
         worker.addEventListener("messageerror", onMessageError);
-        const provider = buildProvider(state);
-        exposeDevGlobal(provider);
-        resolve(provider);
+        runtime = buildRuntime(state);
+        exposeDevGlobal(runtime);
+        resolve(runtime);
       } else if (msg.kind === "fatalError") {
         cleanupInit();
         worker.terminate();
@@ -637,31 +630,83 @@ export function createWebWorkerProvider(
   });
 }
 
-function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
-  const provider: TrUApiHostCoreProvider = {
-    postMessage(bytes: Uint8Array): void {
-      if (state.disposed) return;
-      const post: MainToWorker = { kind: "frame", bytes };
-      if (debugLoggingEnabled(state)) {
-        console.debug("[truapi worker] frame ->", bytesToHex(bytes));
+function handleCoreReady(
+  state: RuntimeState,
+  coreId: number,
+  runtime: WorkerPairingHostRuntime | null,
+): void {
+  const pending = state.pendingCores.get(coreId);
+  if (!pending || !runtime) return;
+  state.pendingCores.delete(coreId);
+  const core: CoreState = {
+    coreId,
+    productId: pending.productId,
+    listeners: new Set(),
+    closeListeners: new Set(),
+    closedError: null,
+    disposed: false,
+  };
+  state.cores.set(coreId, core);
+  pending.resolve(buildProvider(state, core, runtime));
+}
+
+function handleCoreError(
+  state: RuntimeState,
+  coreId: number,
+  error: string,
+): void {
+  const pending = state.pendingCores.get(coreId);
+  if (!pending) return;
+  state.pendingCores.delete(coreId);
+  pending.reject(new Error(error));
+}
+
+function handleFrameError(
+  state: RuntimeState,
+  coreId: number,
+  error: string,
+): void {
+  console.error("[truapi worker]", error);
+  const core = state.cores.get(coreId);
+  if (!core) return;
+  closeCoreState(core, new Error(`worker frame error: ${error}`));
+  state.cores.delete(coreId);
+  try {
+    state.worker.postMessage({
+      kind: "disposeCore",
+      coreId,
+    } satisfies MainToWorker);
+  } catch {
+    // ignore if worker is already gone
+  }
+}
+
+function buildRuntime(state: RuntimeState): WorkerPairingHostRuntime {
+  const runtime: WorkerPairingHostRuntime = {
+    createProvider(product): Promise<TrUApiProductProvider> {
+      if (state.disposed) {
+        return Promise.reject(
+          state.closedError ?? new Error("runtime disposed"),
+        );
       }
-      state.worker.postMessage(post);
-    },
-    subscribe(callback) {
-      state.listeners.add(callback);
-      return () => {
-        state.listeners.delete(callback);
-      };
-    },
-    subscribeClose(callback) {
-      if (state.closedError) {
-        callback(state.closedError);
-        return () => {};
-      }
-      state.closeListeners.add(callback);
-      return () => {
-        state.closeListeners.delete(callback);
-      };
+      return new Promise((resolve, reject) => {
+        const coreId = ++state.nextCoreId;
+        state.pendingCores.set(coreId, {
+          productId: product.productId,
+          resolve,
+          reject,
+        });
+        try {
+          state.worker.postMessage({
+            kind: "createCore",
+            coreId,
+            product,
+          } satisfies MainToWorker);
+        } catch (err) {
+          state.pendingCores.delete(coreId);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      });
     },
     disconnectSession(): Promise<void> {
       return sendWorkerRequest<void>(
@@ -674,17 +719,17 @@ function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
     },
     cancelPairing(): void {
       if (state.disposed) return;
-      const post: MainToWorker = { kind: "cancelPairing" };
-      state.worker.postMessage(post);
+      state.worker.postMessage({
+        kind: "cancelPairing",
+      } satisfies MainToWorker);
     },
     notifySessionStoreChanged(): void {
       if (state.disposed) return;
-      const post: MainToWorker = { kind: "notifySessionStoreChanged" };
-      state.worker.postMessage(post);
+      state.worker.postMessage({
+        kind: "notifySessionStoreChanged",
+      } satisfies MainToWorker);
     },
-    getPermissionAuthorizationStatus(
-      request: PermissionAuthorizationRequest,
-    ): Promise<PermissionAuthorizationStatus> {
+    getPermissionAuthorizationStatus(productId, request) {
       return sendWorkerRequest<PermissionAuthorizationStatus>(
         state,
         state.pendingPermissionAuthorizationStatuses,
@@ -692,14 +737,13 @@ function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
         "NotDetermined",
         (requestId) => ({
           kind: "getPermissionAuthorizationStatus",
+          productId,
           requestId,
           request: encodePermissionAuthorizationRequest(request),
         }),
       );
     },
-    getPermissionAuthorizationStatuses(
-      requests: PermissionAuthorizationRequest[],
-    ): Promise<PermissionAuthorizationStatus[]> {
+    getPermissionAuthorizationStatuses(productId, requests) {
       return sendWorkerRequest<PermissionAuthorizationStatus[]>(
         state,
         state.pendingPermissionAuthorizationStatusBatches,
@@ -707,15 +751,13 @@ function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
         requests.map(() => "NotDetermined"),
         (requestId) => ({
           kind: "getPermissionAuthorizationStatuses",
+          productId,
           requestId,
           requests: requests.map(encodePermissionAuthorizationRequest),
         }),
       );
     },
-    setPermissionAuthorizationStatus(
-      request: PermissionAuthorizationRequest,
-      status: PermissionAuthorizationStatus,
-    ): Promise<void> {
+    setPermissionAuthorizationStatus(productId, request, status) {
       return sendWorkerRequest<void>(
         state,
         state.pendingSetPermissionAuthorizationStatuses,
@@ -723,37 +765,111 @@ function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
         undefined,
         (requestId) => ({
           kind: "setPermissionAuthorizationStatus",
+          productId,
           requestId,
           request: encodePermissionAuthorizationRequest(request),
           status,
         }),
       );
     },
-    setLogLevel(level: LogLevel): void {
+    setLogLevel(level): void {
       if (state.disposed) return;
       state.logLevel = level;
-      const post: MainToWorker = { kind: "setLogLevel", level };
-      state.worker.postMessage(post);
+      state.worker.postMessage({
+        kind: "setLogLevel",
+        level,
+      } satisfies MainToWorker);
     },
-    dispose() {
-      devGlobalProviders.delete(provider);
-      teardown(state, new Error("provider disposed"), false);
+    dispose(): void {
+      devGlobalTargets.delete(runtime);
+      teardown(state, new Error("runtime disposed"), false);
+    },
+  };
+  return runtime;
+}
+
+function buildProvider(
+  state: RuntimeState,
+  core: CoreState,
+  runtime: WorkerPairingHostRuntime,
+): TrUApiProductProvider {
+  const provider: TrUApiProductProvider = {
+    postMessage(bytes: Uint8Array): void {
+      if (state.disposed || core.disposed) return;
+      if (debugLoggingEnabled(state)) {
+        console.debug("[truapi worker] frame ->", bytesToHex(bytes));
+      }
+      state.worker.postMessage({
+        kind: "frame",
+        coreId: core.coreId,
+        bytes,
+      } satisfies MainToWorker);
+    },
+    subscribe(callback) {
+      core.listeners.add(callback);
+      return () => {
+        core.listeners.delete(callback);
+      };
+    },
+    subscribeClose(callback) {
+      const closed = core.closedError ?? state.closedError;
+      if (closed) {
+        callback(closed);
+        return () => {};
+      }
+      core.closeListeners.add(callback);
+      return () => {
+        core.closeListeners.delete(callback);
+      };
+    },
+    disconnectSession(): Promise<void> {
+      if (core.disposed) return Promise.resolve();
+      return runtime.disconnectSession();
+    },
+    getPermissionAuthorizationStatus(request) {
+      if (core.disposed) return Promise.resolve("NotDetermined");
+      return runtime.getPermissionAuthorizationStatus(core.productId, request);
+    },
+    getPermissionAuthorizationStatuses(requests) {
+      if (core.disposed) {
+        return Promise.resolve(requests.map(() => "NotDetermined"));
+      }
+      return runtime.getPermissionAuthorizationStatuses(
+        core.productId,
+        requests,
+      );
+    },
+    setPermissionAuthorizationStatus(request, status) {
+      if (core.disposed) return Promise.resolve();
+      return runtime.setPermissionAuthorizationStatus(
+        core.productId,
+        request,
+        status,
+      );
+    },
+    setLogLevel(level): void {
+      if (core.disposed) return;
+      runtime.setLogLevel(level);
+    },
+    dispose(): void {
+      if (core.disposed) return;
+      closeCoreState(core, new Error("provider disposed"));
+      state.cores.delete(core.coreId);
+      state.worker.postMessage({
+        kind: "disposeCore",
+        coreId: core.coreId,
+      } satisfies MainToWorker);
     },
   };
   return provider;
 }
 
-/**
- * Publish `globalThis.__truapi.setLogLevel(level)` so a developer can re-tune
- * the wasm core's verbosity live from the browser console without a reload. The
- * level is persisted to `localStorage["truapi:logLevel"]` and re-applied on the
- * next load, so it survives refreshes. Pair with the DevTools console "Verbose"
- * level to surface debug/trace.
- */
-function exposeDevGlobal(provider: TrUApiHostCoreProvider): void {
-  devGlobalProviders.add(provider);
+function exposeDevGlobal(target: {
+  setLogLevel?: (level: LogLevel) => void;
+}): void {
+  devGlobalTargets.add(target);
   if (devLogLevelOverride !== null) {
-    provider.setLogLevel?.(devLogLevelOverride);
+    target.setLogLevel?.(devLogLevelOverride);
   }
   publishDevGlobal();
 }
@@ -766,7 +882,7 @@ function publishDevGlobal(): void {
     setLogLevel(level: LogLevel): void {
       devLogLevelOverride = level;
       persistLogLevel(level);
-      for (const provider of [...devGlobalProviders]) {
+      for (const provider of [...devGlobalTargets]) {
         provider.setLogLevel?.(level);
       }
       console.info(`[truapi worker] logLevel=${level}`);

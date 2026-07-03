@@ -11,13 +11,15 @@ use std::time::Duration;
 use web_time::Duration;
 
 use super::auth_state::AuthStateMachine;
-use super::statement_store_rpc::{self, StatementStoreRpc};
-use super::{PlatformRuntimeHost, connected_session_ui_info};
+use super::identity::resolve_session_identity_with_chain;
+use super::pairing_host::PairingHost;
+use super::statement_store_rpc;
 use crate::host_logic::session::{SessionInfo, encode_persisted_session};
 use crate::host_logic::sso::pairing::{
-    EncryptedHandshakeResponseV2, PairingBootstrap, PairingDeviceIdentity,
-    VersionedHandshakeResponse, create_pairing_bootstrap_from_identity, decode_app_handshake_data,
+    PairingBootstrap, PairingDeviceIdentity, VersionedHandshakeResponse,
+    create_pairing_bootstrap_from_identity, decode_app_handshake_data,
     decrypt_v2_handshake_response, establish_sso_session_info, generate_pairing_device_identity,
+    v2,
 };
 use crate::host_logic::statement_store::{
     decode_verified_statement_data, parse_new_statements_result,
@@ -33,7 +35,9 @@ use subxt_rpcs::client::RpcSubscription;
 use tracing::{debug, info, instrument};
 use truapi::CallError;
 use truapi::v01;
-use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
+use truapi::versioned::account::HostRequestLoginError;
+#[cfg(test)]
+use truapi::versioned::account::HostRequestLoginResponse;
 use truapi_platform::{CoreStorage, CoreStorageKey};
 
 #[cfg(not(test))]
@@ -45,8 +49,8 @@ const PAIRING_QUERY_TIMEOUT_TICKS: u8 = 15;
 #[cfg(test)]
 const PAIRING_QUERY_TIMEOUT_TICKS: u8 = 10;
 
-/// Terminal outcome of [`PlatformRuntimeHost::run_pairing_flow`].
-enum PairingFlowOutcome {
+/// Terminal outcome of [`SsoPairingFlow::request_session`].
+pub(super) enum SsoPairingOutcome {
     /// The login was cancelled (host `cancel_login`, `disconnect`, or a
     /// cross-tab session win).
     Cancelled,
@@ -60,40 +64,50 @@ enum PairingFlowOutcome {
 struct AbandonedPairingGuard {
     auth_state: AuthStateMachine,
     epoch: u64,
+    active: bool,
+}
+
+impl AbandonedPairingGuard {
+    fn disarm(&mut self) {
+        self.active = false;
+    }
 }
 
 impl Drop for AbandonedPairingGuard {
     fn drop(&mut self) {
-        self.auth_state.reset_abandoned_pairing(self.epoch);
+        if self.active {
+            self.auth_state.reset_abandoned_pairing(self.epoch);
+        }
     }
 }
 
-impl PlatformRuntimeHost {
-    /// `request_login` pairing flow: emits `AuthState::Pairing` for the host
-    /// to present, then races host cancellation against the wallet handshake
-    /// arriving on the statement store; on success resolves identity and
-    /// persists the new session.
-    pub(super) async fn request_login_flow(
-        &self,
-    ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>> {
-        if let Some(session) = self.session_state.current() {
-            debug!("request_login: already connected, returning early");
-            self.auth_state
-                .connected(&connected_session_ui_info(&session));
-            return Ok(HostRequestLoginResponse::V1(
-                v01::HostRequestLoginResponse::AlreadyConnected,
-            ));
-        }
+pub(super) struct SsoPairingFlow<'a> {
+    host: &'a PairingHost,
+}
 
-        let pairing_identity = create_fresh_pairing_device_identity(self.platform.as_ref())
+impl<'a> SsoPairingFlow<'a> {
+    pub(super) fn new(host: &'a PairingHost) -> Self {
+        Self { host }
+    }
+
+    /// `request_session` pairing flow: emits `AuthState::Pairing` for the host
+    /// to present, then races host cancellation against the wallet handshake
+    /// arriving on the statement store; on success it resolves identity,
+    /// persists the new session, and returns it to the pairing host.
+    pub(super) async fn request_session(
+        &self,
+    ) -> Result<SsoPairingOutcome, CallError<HostRequestLoginError>> {
+        let pairing_identity = create_fresh_pairing_device_identity(self.host.platform.as_ref())
             .await
             .map_err(|reason| self.fail_before_pairing(reason))?;
         let bootstrap =
-            create_pairing_bootstrap_from_identity(&self.runtime_config, pairing_identity)
+            create_pairing_bootstrap_from_identity(&self.host.host_config, pairing_identity)
                 .map_err(|err| self.fail_before_pairing(err.to_string()))?;
 
-        let Some((cancel_rx, pairing_epoch)) =
-            self.auth_state.pairing_started(bootstrap.deeplink.clone())
+        let Some((cancel_rx, pairing_epoch)) = self
+            .host
+            .auth_state
+            .pairing_started(bootstrap.deeplink.clone())
         else {
             return Err(CallError::Domain(HostRequestLoginError::V1(
                 v01::HostRequestLoginError::Unknown {
@@ -102,42 +116,23 @@ impl PlatformRuntimeHost {
             )));
         };
         info!("presenting pairing QR, waiting for wallet handshake");
-        let _reset_guard = AbandonedPairingGuard {
-            auth_state: self.auth_state.clone(),
+        let mut reset_guard = AbandonedPairingGuard {
+            auth_state: self.host.auth_state.clone(),
             epoch: pairing_epoch,
+            active: true,
         };
 
         match self.run_pairing_flow(&bootstrap, cancel_rx).await {
-            Ok(PairingFlowOutcome::Cancelled) => {
-                // `cancel_login` (or the cross-tab `connected` transition)
-                // already moved the auth state; only the call result is left
-                // to map. A session appearing mid-flow means another runtime
-                // won the login.
-                if self.session_state.current().is_some() {
-                    info!("login cancelled by a cross-runtime session win");
-                    Ok(HostRequestLoginResponse::V1(
-                        v01::HostRequestLoginResponse::AlreadyConnected,
-                    ))
-                } else {
-                    info!("login cancelled before handshake, login rejected");
-                    Ok(HostRequestLoginResponse::V1(
-                        v01::HostRequestLoginResponse::Rejected,
-                    ))
-                }
+            Ok(outcome @ SsoPairingOutcome::Cancelled) => {
+                reset_guard.disarm();
+                Ok(outcome)
             }
-            Ok(PairingFlowOutcome::Success(session)) => {
-                let session = *session;
-                self.auth_state
-                    .connected(&connected_session_ui_info(&session));
-                self.session_state.set_session(session.clone());
-                self.start_sso_disconnect_monitor(&session);
-                info!("login succeeded, SSO session established");
-                Ok(HostRequestLoginResponse::V1(
-                    v01::HostRequestLoginResponse::Success,
-                ))
+            Ok(outcome @ SsoPairingOutcome::Success(_)) => {
+                reset_guard.disarm();
+                Ok(outcome)
             }
             Err(reason) => {
-                self.auth_state.login_failed(reason.clone());
+                self.host.auth_state.login_failed(reason.clone());
                 Err(CallError::HostFailure { reason })
             }
         }
@@ -146,7 +141,9 @@ impl PlatformRuntimeHost {
     /// Emit `LoginFailed` for an error raised before the pairing was entered
     /// and map it onto the `request_login` error shape.
     fn fail_before_pairing(&self, reason: String) -> CallError<HostRequestLoginError> {
-        self.auth_state.login_failed_before_pairing(reason.clone());
+        self.host
+            .auth_state
+            .login_failed_before_pairing(reason.clone());
         CallError::Domain(HostRequestLoginError::V1(
             v01::HostRequestLoginError::Unknown { reason },
         ))
@@ -154,23 +151,19 @@ impl PlatformRuntimeHost {
 
     /// Everything between the `Pairing` emission and a terminal outcome.
     /// Every error returned here maps to `AuthState::LoginFailed` at the
-    /// single exit in [`Self::request_login_flow`].
+    /// single exit in [`Self::request_login`].
     async fn run_pairing_flow(
         &self,
         bootstrap: &PairingBootstrap,
         cancel_rx: oneshot::Receiver<()>,
-    ) -> Result<PairingFlowOutcome, String> {
+    ) -> Result<SsoPairingOutcome, String> {
         let mut cancel = cancel_rx.fuse();
-        let statement_store = StatementStoreRpc::new(
-            self.platform.clone(),
-            self.runtime_config.people_chain_genesis_hash,
-            self.spawner.clone(),
-        );
+        let statement_store = self.host.statement_store.clone();
         let statement_store_connect = statement_store.client("pairing statement-store").fuse();
         pin_mut!(statement_store_connect);
 
         let rpc_client = futures::select! {
-            _ = cancel => return Ok(PairingFlowOutcome::Cancelled),
+            _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
             connect_result = statement_store_connect => connect_result?,
         };
         let subscribe_client = rpc_client.clone();
@@ -179,7 +172,7 @@ impl PlatformRuntimeHost {
             statement_store_rpc::subscribe_match_all(&subscribe_client, &live_topics).fuse();
         pin_mut!(live_subscription);
         let live_subscription = futures::select! {
-            _ = cancel => return Ok(PairingFlowOutcome::Cancelled),
+            _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
             subscribe_result = live_subscription => subscribe_result
                 .map_err(|err| format!("pairing statement-store subscribe failed: {err}"))?,
         };
@@ -189,13 +182,13 @@ impl PlatformRuntimeHost {
             live_subscription,
             bootstrap.topic,
             bootstrap.encryption_secret_key,
-            self.spawner.clone(),
+            self.host.spawner.clone(),
         )
         .fuse();
         pin_mut!(pairing_response);
 
         let response = futures::select! {
-            _ = cancel => return Ok(PairingFlowOutcome::Cancelled),
+            _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
             response_result = pairing_response => response_result?,
         };
         let sso = establish_sso_session_info(
@@ -211,15 +204,32 @@ impl PlatformRuntimeHost {
             lite_username: None,
             full_username: None,
         };
-        let session = self.resolve_session_identity(session).await;
-        self.platform
+        let resolve_session = resolve_session_identity_with_chain(
+            &self.host.chain,
+            self.host.host_config.people_chain_genesis_hash,
+            session,
+        )
+        .fuse();
+        pin_mut!(resolve_session);
+        let session = futures::select! {
+            _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
+            session = resolve_session => session,
+        };
+        let persist_session = self
+            .host
+            .platform
             .write_core_storage(
                 CoreStorageKey::AuthSession,
                 encode_persisted_session(&session),
             )
-            .await
-            .map_err(|err| format!("session persist failed: {err:?}"))?;
-        Ok(PairingFlowOutcome::Success(Box::new(session)))
+            .fuse();
+        pin_mut!(persist_session);
+        futures::select! {
+            _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
+            persist_result = persist_session => persist_result
+                .map_err(|err| format!("session persist failed: {err:?}"))?,
+        };
+        Ok(SsoPairingOutcome::Success(Box::new(session)))
     }
 }
 
@@ -238,7 +248,34 @@ async fn create_fresh_pairing_device_identity(
 
 struct PairingSuccess {
     peer_statement_account_id: [u8; 32],
-    success: crate::host_logic::sso::pairing::HandshakeSuccessV2,
+    success: v2::Success,
+}
+
+impl PairingSuccess {
+    #[instrument(skip_all, fields(runtime.method = "sso.pairing.decode_statement"))]
+    fn from_v2_statement(
+        statement: &[u8],
+        core_encryption_secret_key: [u8; 32],
+    ) -> Result<Option<Self>, String> {
+        let verified =
+            decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
+        let VersionedHandshakeResponse::V2 {
+            encrypted_message,
+            public_key,
+        } = decode_app_handshake_data(&verified.data)?;
+        match decrypt_v2_handshake_response(
+            core_encryption_secret_key,
+            public_key,
+            &encrypted_message,
+        )? {
+            v2::EncryptedResponse::Pending(_) => Ok(None),
+            v2::EncryptedResponse::Failed(reason) => Err(reason),
+            v2::EncryptedResponse::Success(success) => Ok(Some(Self {
+                peer_statement_account_id: verified.signer,
+                success: *success,
+            })),
+        }
+    }
 }
 
 #[instrument(skip_all, fields(runtime.method = "sso.pairing.wait_success"))]
@@ -337,7 +374,8 @@ fn handle_v2_pairing_result(
     let page =
         parse_new_statements_result("pairing".to_string(), value).map_err(|err| err.to_string())?;
     for statement in page.statements {
-        if let Some(success) = decode_v2_pairing_statement(&statement, core_encryption_secret_key)?
+        if let Some(success) =
+            PairingSuccess::from_v2_statement(&statement, core_encryption_secret_key)?
         {
             return Ok(Some(success));
         }
@@ -346,30 +384,10 @@ fn handle_v2_pairing_result(
     Ok(None)
 }
 
-#[instrument(skip_all, fields(runtime.method = "sso.pairing.decode_statement"))]
-fn decode_v2_pairing_statement(
-    statement: &[u8],
-    core_encryption_secret_key: [u8; 32],
-) -> Result<Option<PairingSuccess>, String> {
-    let verified =
-        decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
-    let VersionedHandshakeResponse::V2 {
-        encrypted_message,
-        public_key,
-    } = decode_app_handshake_data(&verified.data)?;
-    match decrypt_v2_handshake_response(core_encryption_secret_key, public_key, &encrypted_message)?
-    {
-        EncryptedHandshakeResponseV2::Pending(_) => Ok(None),
-        EncryptedHandshakeResponseV2::Failed(reason) => Err(reason),
-        EncryptedHandshakeResponseV2::Success(success) => Ok(Some(PairingSuccess {
-            peer_statement_account_id: verified.signer,
-            success: *success,
-        })),
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::connected_session_ui_info;
+    use super::super::{PairingHostRole, ProductRuntimeHost};
     use super::*;
     use crate::test_support::{
         StubPlatform, core_storage_test_key, pairing_device_from_deeplink, peer_statement_keypair,
@@ -385,14 +403,13 @@ mod tests {
 
     /// Cancel the login as soon as the host observes the `Pairing` state,
     /// mimicking a user dismissing the pairing UI immediately.
-    fn cancel_on_pairing(platform: &StubPlatform, host: &Arc<PlatformRuntimeHost>) {
-        let host = host.clone();
+    fn cancel_on_pairing(platform: &StubPlatform, pairing_host: Arc<PairingHostRole>) {
         *platform
             .on_auth_state
             .lock()
             .expect("auth state hook mutex poisoned") = Some(Arc::new(move |state| {
             if matches!(state, AuthState::Pairing { .. }) {
-                host.cancel_login();
+                pairing_host.cancel_login();
             }
         }));
     }
@@ -400,11 +417,10 @@ mod tests {
     #[test]
     fn request_login_presents_pairing_and_rejects_when_cancelled() {
         let platform = stub_platform();
-        let host = Arc::new(PlatformRuntimeHost::new_compat(
-            platform.clone(),
-            test_spawner(),
-        ));
-        cancel_on_pairing(&platform, &host);
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let host = Arc::new(host);
+        cancel_on_pairing(&platform, pairing_host);
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
@@ -440,11 +456,10 @@ mod tests {
     #[test]
     fn request_login_rotates_pairing_device_identity_between_attempts() {
         let platform = stub_platform();
-        let host = Arc::new(PlatformRuntimeHost::new_compat(
-            platform.clone(),
-            test_spawner(),
-        ));
-        cancel_on_pairing(&platform, &host);
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let host = Arc::new(host);
+        cancel_on_pairing(&platform, pairing_host);
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
 
@@ -491,7 +506,7 @@ mod tests {
         let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
         let mut wallet_ephemeral_public_bytes = [0u8; 65];
         wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
-        let handshake = crate::host_logic::sso::pairing::VersionedHandshakeResponse::V2 {
+        let handshake = VersionedHandshakeResponse::V2 {
             encrypted_message: vec![0xde, 0xad],
             public_key: wallet_ephemeral_public_bytes,
         };
@@ -507,7 +522,7 @@ mod tests {
             ],
             ..Default::default()
         });
-        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
@@ -546,12 +561,12 @@ mod tests {
             session_writes: session_writes.clone(),
             ..Default::default()
         });
-        let host = PlatformRuntimeHost::new(
+        let host = ProductRuntimeHost::new(
             platform.clone(),
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let mut statuses = host.session_state().subscribe();
+        let mut statuses = host.test_session_state().subscribe();
         assert_eq!(
             futures::executor::block_on(statuses.next()).unwrap(),
             HostAccountConnectionStatusSubscribeItem::V1(
@@ -575,7 +590,7 @@ mod tests {
         );
 
         let session = host
-            .session_state()
+            .test_session_state()
             .current()
             .expect("paired session should be active");
         assert_eq!(session.public_key, session_info().public_key);
@@ -626,6 +641,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn request_login_connected_callback_can_clear_session_without_reinstalling_it() {
+        let platform = Arc::new(StubPlatform {
+            pairing_success_response: true,
+            ..Default::default()
+        });
+        let host = Arc::new(ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        ));
+        let disconnect_host = host.clone();
+        *platform
+            .on_auth_state
+            .lock()
+            .expect("auth state hook mutex poisoned") = Some(Arc::new(move |state| {
+            if matches!(state, AuthState::Connected(_)) {
+                disconnect_host.test_session_state().clear_session();
+            }
+        }));
+
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Success)
+        );
+        assert!(host.test_session_state().current().is_none());
+
+        let auth_states = platform
+            .auth_states
+            .lock()
+            .expect("auth state list mutex poisoned");
+        assert!(matches!(&auth_states[0], AuthState::Pairing { .. }));
+        assert!(matches!(&auth_states[1], AuthState::Connected(_)));
+    }
+
     /// The pairing success must also be reachable through the core's own 2s
     /// snapshot queries: the live subscription stays silent and the wallet
     /// statement is delivered only on a query subscription page.
@@ -635,7 +689,7 @@ mod tests {
             pairing_success_via_query: true,
             ..Default::default()
         });
-        let host = PlatformRuntimeHost::new(
+        let host = ProductRuntimeHost::new(
             platform.clone(),
             runtime_config("myapp.dot"),
             test_spawner(),
@@ -649,7 +703,7 @@ mod tests {
             HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Success)
         );
         assert_eq!(
-            host.session_state()
+            host.test_session_state()
                 .current()
                 .map(|session| session.public_key),
             Some(session_info().public_key)
@@ -685,7 +739,7 @@ mod tests {
             local_storage_error: Some("identity storage unavailable"),
             ..Default::default()
         });
-        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
@@ -709,11 +763,10 @@ mod tests {
             )),
             ..Default::default()
         });
-        let host = Arc::new(PlatformRuntimeHost::new_compat(
-            platform.clone(),
-            test_spawner(),
-        ));
-        cancel_on_pairing(&platform, &host);
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let host = Arc::new(host);
+        cancel_on_pairing(&platform, pairing_host);
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
@@ -722,7 +775,7 @@ mod tests {
             response,
             HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
         );
-        assert!(host.session_state().current().is_none());
+        assert!(host.test_session_state().current().is_none());
     }
 
     #[test]
@@ -733,11 +786,10 @@ mod tests {
             session_clears: session_clears.clone(),
             ..Default::default()
         });
-        let host = Arc::new(PlatformRuntimeHost::new_compat(
-            platform.clone(),
-            test_spawner(),
-        ));
-        cancel_on_pairing(&platform, &host);
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let host = Arc::new(host);
+        cancel_on_pairing(&platform, pairing_host);
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
@@ -746,7 +798,7 @@ mod tests {
             response,
             HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
         );
-        assert!(host.session_state().current().is_none());
+        assert!(host.test_session_state().current().is_none());
         assert_eq!(*session_clears.lock().unwrap(), 0);
     }
 
@@ -756,11 +808,10 @@ mod tests {
             session_error: Some("storage failed"),
             ..Default::default()
         });
-        let host = Arc::new(PlatformRuntimeHost::new_compat(
-            platform.clone(),
-            test_spawner(),
-        ));
-        cancel_on_pairing(&platform, &host);
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let host = Arc::new(host);
+        cancel_on_pairing(&platform, pairing_host);
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
@@ -769,13 +820,13 @@ mod tests {
             response,
             HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
         );
-        assert!(host.session_state().current().is_none());
+        assert!(host.test_session_state().current().is_none());
     }
 
     #[test]
     fn request_login_returns_already_connected_when_session_exists() {
-        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
-        host.session_state().set_session(session_info());
+        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();

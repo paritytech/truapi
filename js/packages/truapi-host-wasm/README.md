@@ -8,12 +8,12 @@ counterpart to the native Android/iOS host shells.
 
 The package exposes tree-shakeable subpath exports — import only what your environment needs:
 
-| Import                                    | Provides                                                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `@parity/truapi-host-wasm`                | Shared runtime types plus generated typed host callback contracts.                                                  |
-| `@parity/truapi-host-wasm/web`            | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                   |
-| `@parity/truapi-host-wasm/worker-runtime` | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread. |
-| `@parity/truapi-host-wasm/wasm/web`       | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                  |
+| Import                                    | Provides                                                                                                                                       |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@parity/truapi-host-wasm`                | Shared runtime types plus generated typed host callback contracts.                                                                             |
+| `@parity/truapi-host-wasm/web`            | Browser pairing host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerPairingHostRuntime`. |
+| `@parity/truapi-host-wasm/worker-runtime` | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread.                            |
+| `@parity/truapi-host-wasm/wasm/web`       | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                                             |
 
 ## Generated WASM artefacts
 
@@ -33,15 +33,21 @@ npm run build:wasm   # or `make wasm` from the repo root
 
 ```ts
 import HostWorker from "@parity/truapi-host-wasm/worker-runtime?worker";
-import { createWebWorkerProvider } from "@parity/truapi-host-wasm/web";
+import { createWebWorkerPairingHostRuntime } from "@parity/truapi-host-wasm/web";
 
-const provider = await createWebWorkerProvider(new HostWorker(), callbacks, {
-  runtimeConfig,
+const runtime = await createWebWorkerPairingHostRuntime(new HostWorker(), callbacks, {
+  hostConfig,
+});
+
+const firstProvider = await runtime.createProvider({ productId: "first.dot" });
+const secondProvider = await runtime.createProvider({
+  productId: "second.dot",
 });
 ```
 
-`@parity/truapi-host-wasm/web` also exports `createIframeHost` for the protocol-iframe
-MessageChannel handshake.
+`@parity/truapi-host-wasm/web` also exports `createIframeHost` for the
+protocol-iframe MessageChannel handshake. Host code creates one worker runtime
+and then opens one provider per product id.
 
 ## Publishing
 
@@ -57,8 +63,10 @@ JS host code
   (types from @parity/truapi-host-wasm)
        |
        v
-createWebWorkerProvider
-                                                                        |
-                                                                        v
-                                                            truapi-server WASM core
+createWebWorkerPairingHostRuntime
+  shared worker runtime: pairing session, chain runtime, WASM instance
+       |
+       +-- createProvider({ productId }) -> product core / WireProvider
+       |
+       +-- createProvider({ productId }) -> product core / WireProvider
 ```

@@ -1,4 +1,4 @@
-//! ChainHead v1 state machine used by `PlatformRuntimeHost`.
+//! ChainHead v1 state machine used by `ProductRuntimeHost`.
 //!
 //! [`ChainRuntime`] keeps one [`ChainConnection`] per chain (keyed by genesis
 //! hash) on top of the platform-provided [`JsonRpcConnection`]. The generic
@@ -94,7 +94,7 @@ type ConnectionSetup = Shared<BoxFuture<'static, Result<Arc<ChainConnection>, Ru
 
 /// Classification of framework-level chain failures separate from JSON-RPC
 /// domain errors. Maps cleanly to [`truapi::CallError`] variants at the
-/// `PlatformRuntimeHost` boundary.
+/// `ProductRuntimeHost` boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeFailureKind {
     /// Backend is not wired or refused the request for plumbing reasons.

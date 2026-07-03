@@ -9,6 +9,7 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
+use crate::host_logic::sso::pairing;
 use crate::subscription::Spawner;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::subscription::thread_per_subscription_spawner;
@@ -30,9 +31,9 @@ use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest
 use truapi_platform::{
     AuthPresenter, AuthState, ChainProvider, CoreStorage as PlatformCoreStorage, CoreStorageKey,
     Features as PlatformFeatures, HostInfo, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Permissions as PlatformPermissions, PlatformInfo,
-    PreimageHost, ProductStorage as PlatformProductStorage, RuntimeConfig, ThemeHost,
-    UserConfirmation, UserConfirmationReview,
+    Notifications as PlatformNotifications, PairingHostConfig, Permissions as PlatformPermissions,
+    PlatformInfo, PreimageHost, ProductContext, ProductStorage as PlatformProductStorage,
+    ThemeHost, UserConfirmation, UserConfirmationReview,
 };
 
 /// Test spawner that matches the current target.
@@ -47,20 +48,21 @@ pub(crate) fn test_spawner() -> Spawner {
     }
 }
 
-#[allow(dead_code)]
 /// Synchronous spawner for tests that should complete work immediately.
+#[cfg(target_arch = "wasm32")]
 pub(crate) fn immediate_spawner() -> Spawner {
     Arc::new(futures::executor::block_on)
 }
 
 /// Test hook invoked after each recorded auth state.
-pub(crate) type AuthStateHook = Arc<dyn Fn(&AuthState) + Send + Sync>;
+pub type AuthStateHook = Arc<dyn Fn(&AuthState) + Send + Sync>;
 
 /// Minimal Platform impl that only answers `feature_supported`. Every
 /// other callback returns a unit value or empty stream, so the runtime
 /// can exercise its delegation paths without pulling in a real backend.
+#[derive(Default)]
 pub(crate) struct StubPlatform {
-    pub(crate) remote_permission_granted: bool,
+    pub(crate) remote_permission_denied: bool,
     pub(crate) account_alias_confirmed: bool,
     pub(crate) account_alias_error: Option<&'static str>,
     pub(crate) sign_payload_confirmed: bool,
@@ -99,42 +101,6 @@ pub(crate) struct StubPlatform {
     pub(crate) local_storage_error: Option<&'static str>,
 }
 
-impl Default for StubPlatform {
-    fn default() -> Self {
-        Self {
-            remote_permission_granted: true,
-            account_alias_confirmed: false,
-            account_alias_error: None,
-            sign_payload_confirmed: false,
-            sign_payload_error: None,
-            sign_raw_confirmed: false,
-            sign_raw_error: None,
-            create_transaction_confirmed: false,
-            create_transaction_error: None,
-            resource_allocation_confirmed: false,
-            resource_allocation_error: None,
-            session_blob: None,
-            session_error: None,
-            session_clears: Arc::new(Mutex::new(0)),
-            session_writes: Arc::new(Mutex::new(Vec::new())),
-            auth_states: Arc::new(Mutex::new(Vec::new())),
-            on_auth_state: Arc::new(Mutex::new(None)),
-            pending_connect_dropped: Arc::new(AtomicBool::new(false)),
-            pairing_success_response: false,
-            pairing_success_via_query: false,
-            notification_id: 0,
-            pushed_notifications: Arc::new(Mutex::new(Vec::new())),
-            cancelled_notifications: Arc::new(Mutex::new(Vec::new())),
-            sent_rpc: Arc::new(Mutex::new(Vec::new())),
-            rpc_responses: Vec::new(),
-            chain_connect_error: None,
-            chain_connect_pending: false,
-            local_storage: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            local_storage_error: None,
-        }
-    }
-}
-
 struct DropFlagGuard(Arc<AtomicBool>);
 
 impl Drop for DropFlagGuard {
@@ -161,19 +127,21 @@ pub(crate) fn stub_platform() -> Arc<StubPlatform> {
 }
 
 /// Runtime configuration used by platform-backed runtime tests.
-pub(crate) fn runtime_config(product_id: &str) -> RuntimeConfig {
-    RuntimeConfig::new(
-        product_id.to_string(),
-        HostInfo {
-            name: "Polkadot Web".to_string(),
-            icon: Some("https://example.invalid/dotli.png".to_string()),
-            version: None,
-        },
-        PlatformInfo::default(),
-        [0; 32],
-        "polkadotapp".to_string(),
+pub(crate) fn runtime_config(product_id: &str) -> (PairingHostConfig, ProductContext) {
+    (
+        PairingHostConfig::new(
+            HostInfo {
+                name: "Polkadot Web".to_string(),
+                icon: Some("https://example.invalid/dotli.png".to_string()),
+                version: None,
+            },
+            PlatformInfo::default(),
+            [0; 32],
+            "polkadotapp".to_string(),
+        )
+        .expect("test host runtime config is valid"),
+        ProductContext::new(product_id.to_string()).expect("test product context is valid"),
     )
-    .expect("test runtime config is valid")
 }
 
 /// Basic connected session fixture without SSO channel material.
@@ -261,12 +229,9 @@ pub(crate) fn submitted_remote_message(
     let statement = hex::decode(statement_hex.strip_prefix("0x").unwrap_or(statement_hex)).unwrap();
     let encrypted = crate::host_logic::statement_store::decode_statement_data(&statement)
         .expect("statement data should decode");
-    let data = crate::host_logic::sso::pairing::decrypt_session_statement_data(
-        session.sso.as_ref().unwrap(),
-        &encrypted,
-    )
-    .expect("statement data should decrypt");
-    let crate::host_logic::sso::pairing::SsoStatementData::Request { data, .. } = data else {
+    let data = pairing::decrypt_session_statement_data(session.sso.as_ref().unwrap(), &encrypted)
+        .expect("statement data should decrypt");
+    let pairing::SsoStatementData::Request { data, .. } = data else {
         panic!("expected request statement data");
     };
     crate::host_logic::sso::messages::RemoteMessage::decode(&mut data[0].as_slice())
@@ -309,7 +274,7 @@ pub(crate) fn sso_success_responses(
             &own_subscription_id,
             vec![sso_statement(
                 session,
-                crate::host_logic::sso::pairing::SsoStatementData::Response {
+                pairing::SsoStatementData::Response {
                     request_id: message_id.to_string(),
                     response_code: 0,
                 },
@@ -320,7 +285,7 @@ pub(crate) fn sso_success_responses(
             &peer_subscription_id,
             vec![sso_statement(
                 session,
-                crate::host_logic::sso::pairing::SsoStatementData::Request {
+                pairing::SsoStatementData::Request {
                     request_id: format!("wallet-response-{message_id}"),
                     data: vec![response.encode()],
                 },
@@ -345,7 +310,7 @@ pub(crate) fn sso_peer_disconnect_responses(
             &own_subscription_id,
             vec![sso_statement(
                 session,
-                crate::host_logic::sso::pairing::SsoStatementData::Response {
+                pairing::SsoStatementData::Response {
                     request_id: message_id.to_string(),
                     response_code: 0,
                 },
@@ -356,7 +321,7 @@ pub(crate) fn sso_peer_disconnect_responses(
             &peer_subscription_id,
             vec![sso_statement(
                 session,
-                crate::host_logic::sso::pairing::SsoStatementData::Request {
+                pairing::SsoStatementData::Request {
                     request_id: format!("wallet-disconnect-{message_id}"),
                     data: vec![
                         crate::host_logic::sso::messages::RemoteMessage {
@@ -385,7 +350,7 @@ pub(crate) fn sso_peer_disconnect_monitor_responses(
             subscription_id,
             vec![sso_statement(
                 session,
-                crate::host_logic::sso::pairing::SsoStatementData::Request {
+                pairing::SsoStatementData::Request {
                     request_id: "wallet-disconnect-monitor".to_string(),
                     data: vec![
                         crate::host_logic::sso::messages::RemoteMessage {
@@ -447,12 +412,12 @@ pub(crate) fn new_statements_frame(subscription_id: &str, statements: Vec<Vec<u8
 
 fn sso_statement(
     session: &crate::host_logic::session::SessionInfo,
-    data: crate::host_logic::sso::pairing::SsoStatementData,
+    data: pairing::SsoStatementData,
     nonce_seed: u8,
 ) -> Vec<u8> {
-    let mut nonce = [0; crate::host_logic::sso::pairing::AES_GCM_NONCE_LEN];
+    let mut nonce = [0; pairing::AES_GCM_NONCE_LEN];
     nonce[0] = nonce_seed;
-    let encrypted = crate::host_logic::sso::pairing::encrypt_session_statement_data_with_nonce(
+    let encrypted = pairing::encrypt_session_statement_data_with_nonce(
         session.sso.as_ref().unwrap(),
         &data,
         nonce,
@@ -472,11 +437,9 @@ pub(crate) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65
         .nth(1)
         .expect("pairing deeplink should include handshake");
     let handshake = hex::decode(encoded).expect("handshake should be hex");
-    let decoded = crate::host_logic::sso::pairing::VersionedHandshakeProposal::decode(
-        &mut handshake.as_slice(),
-    )
-    .expect("handshake should decode");
-    let crate::host_logic::sso::pairing::VersionedHandshakeProposal::V2(proposal) = decoded;
+    let decoded = pairing::VersionedHandshakeProposal::decode(&mut handshake.as_slice())
+        .expect("handshake should decode");
+    let pairing::VersionedHandshakeProposal::V2(proposal) = decoded;
     (
         proposal.device.statement_account_id,
         proposal.device.encryption_public_key,
@@ -498,16 +461,14 @@ fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
         .as_bytes()
         .try_into()
         .unwrap();
-    let answer = crate::host_logic::sso::pairing::EncryptedHandshakeResponseV2::Success(Box::new(
-        crate::host_logic::sso::pairing::HandshakeSuccessV2 {
-            identity_account_id: peer_statement_keypair().1,
-            root_account_id: session_info().public_key,
-            identity_chat_private_key: [0x77; 32],
-            sso_enc_pub_key: wallet_persistent_public,
-            device_enc_pub_key: wallet_persistent_public,
-            root_entropy_source: [0x66; 32],
-        },
-    ));
+    let answer = pairing::v2::EncryptedResponse::Success(Box::new(pairing::v2::Success {
+        identity_account_id: peer_statement_keypair().1,
+        root_account_id: session_info().public_key,
+        identity_chat_private_key: [0x77; 32],
+        sso_enc_pub_key: wallet_persistent_public,
+        device_enc_pub_key: wallet_persistent_public,
+        root_entropy_source: [0x66; 32],
+    }));
     let shared_secret = diffie_hellman(
         wallet_ephemeral_secret.to_nonzero_scalar(),
         core_public_key.as_affine(),
@@ -515,7 +476,7 @@ fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
     let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
     let mut aes_key = [0u8; 32];
     hkdf.expand(&[], &mut aes_key).unwrap();
-    let nonce = [0x44; crate::host_logic::sso::pairing::AES_GCM_NONCE_LEN];
+    let nonce = [0x44; pairing::AES_GCM_NONCE_LEN];
     let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
     let mut encrypted_message = nonce.to_vec();
     encrypted_message.extend(
@@ -523,7 +484,7 @@ fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
             .encrypt(Nonce::from_slice(&nonce), answer.encode().as_slice())
             .unwrap(),
     );
-    let handshake = crate::host_logic::sso::pairing::VersionedHandshakeResponse::V2 {
+    let handshake = pairing::VersionedHandshakeResponse::V2 {
         encrypted_message,
         public_key: wallet_ephemeral_public_bytes,
     };
@@ -813,7 +774,7 @@ impl PlatformPermissions for StubPlatform {
         _request: v01::RemotePermissionRequest,
     ) -> Result<v01::RemotePermissionResponse, v01::GenericError> {
         Ok(v01::RemotePermissionResponse {
-            granted: self.remote_permission_granted,
+            granted: !self.remote_permission_denied,
         })
     }
 }

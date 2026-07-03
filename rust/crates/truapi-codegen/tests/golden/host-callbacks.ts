@@ -305,17 +305,6 @@ export interface CoreAdmin {
   disconnectSession(): Promise<void>;
 
   /**
-   * Cancel any in-flight pairing request.
-   */
-  cancelPairing(): void;
-
-  /**
-   * Notify the core that the host-global auth session slot may have
-   * changed. The core re-reads storage and emits any resulting auth state.
-   */
-  notifySessionStoreChanged(): void;
-
-  /**
    * Read a stored permission authorization status without prompting.
    */
   getPermissionAuthorizationStatus(request: PermissionAuthorizationRequest): Promise<PermissionAuthorizationStatus>;
@@ -418,6 +407,24 @@ export interface Notifications {
 }
 
 /**
+ * Pairing-host-only administration API exposed to host UI.
+ */
+export interface PairingHostAdmin {
+  /**
+   * Cancel any in-flight pairing request.
+   */
+  cancelPairing(): void;
+
+  /**
+   * Notify the core that the persisted auth-session blob may have changed.
+   *
+   * The host owns persistence and change detection. The pairing core owns
+   * decoding that blob into live `SessionState` / `AuthState`.
+   */
+  notifySessionStoreChanged(): void;
+}
+
+/**
  * Permission prompts. v0.1 keeps device permissions (camera, mic, NFC, ...)
  * separate from remote permissions (domain access, chain submit, ...), so the
  * platform surface mirrors that split.
@@ -451,8 +458,10 @@ export interface PreimageHost {
 }
 
 /**
- * Product-scoped key-value storage. The platform namespaces keys so different
- * products cannot read each other's data.
+ * Product-scoped key-value storage.
+ *
+ * The core namespaces product keys before calling this trait. Host
+ * implementations should treat `key` as an opaque OS-style storage key.
  */
 export interface ProductStorage {
   /**

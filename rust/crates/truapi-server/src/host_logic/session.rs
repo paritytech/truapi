@@ -1,7 +1,7 @@
-//! Core-owned active-session state. Platform entrypoints notify the core when
-//! pairing or unpairing changes the session, and account-management methods
-//! read this state instead of round-tripping a host callback on every product
-//! call.
+//! Pairing-host active-session state. The runtime updates this when pairing or
+//! unpairing with a signing host changes the inter-host session, and
+//! account-management methods read it instead of round-tripping host callbacks
+//! on every product call.
 
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, StreamExt};
@@ -11,14 +11,15 @@ use std::sync::{Arc, Mutex};
 use truapi::v01::HostAccountConnectionStatusSubscribeItem;
 use truapi::versioned::account::HostAccountConnectionStatusSubscribeItem as VersionedItem;
 
-/// Session info pushed by the host. The 32-byte sr25519 public key plus
-/// optional usernames sourced from the People-Chain identity record.
+/// Session info for a pairing host's active signing-host session. The 32-byte
+/// sr25519 public key plus optional usernames are sourced from the signing host
+/// and People-chain identity record.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SessionInfo {
-    /// 32-byte sr25519 root public key of the paired session.
+    /// 32-byte sr25519 root public key owned by the signing host.
     pub public_key: [u8; 32],
-    /// Core-owned SSO channel state. Core-run pairing fills this; unavailable
-    /// sessions restored from older test fixtures may leave it empty.
+    /// SSO channel state negotiated by this pairing host with the signing host.
+    /// Sessions restored from older test fixtures may leave it empty.
     pub sso: Option<SsoSessionInfo>,
     /// Wallet-provided source for deterministic product entropy.
     pub root_entropy_source: Option<[u8; 32]>,
@@ -30,54 +31,62 @@ pub struct SessionInfo {
     pub full_username: Option<String>,
 }
 
-/// Core-owned SSO session material negotiated with the wallet during pairing.
+/// SSO session material negotiated by the pairing host with the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SsoSessionInfo {
-    /// Core's own 64-byte expanded sr25519 statement-store secret.
+    /// Pairing host's own 64-byte expanded sr25519 statement-store secret.
     pub ss_secret: [u8; 64],
-    /// Core's own session sr25519 statement-store public key.
+    /// Pairing host's own session sr25519 statement-store public key.
     pub ss_public_key: [u8; 32],
-    /// Core's P-256 ECDH private key.
+    /// Pairing host's P-256 ECDH private key.
     pub enc_secret: [u8; 32],
-    /// Wallet persistent P-256 public key.
+    /// Signing host's persistent P-256 public key.
     pub peer_enc_pubkey: [u8; 65],
-    /// Wallet identity sr25519 account id.
+    /// Signing host's identity sr25519 account id.
     pub identity_account_id: [u8; 32],
-    /// Core -> wallet topic id.
+    /// Pairing host -> signing host topic id.
     pub session_id_own: [u8; 32],
-    /// Wallet -> core topic id.
+    /// Signing host -> pairing host topic id.
     pub session_id_peer: [u8; 32],
-    /// Statement channel for core requests.
+    /// Statement channel for pairing-host requests.
     pub request_channel: [u8; 32],
-    /// Statement channel for wallet responses to core requests.
+    /// Statement channel for signing-host responses to pairing-host requests.
     pub response_channel: [u8; 32],
-    /// Statement channel for wallet-initiated requests.
+    /// Statement channel for signing-host initiated requests.
     pub peer_request_channel: [u8; 32],
 }
 
-const PERSISTED_SESSION_VERSION: u8 = 3;
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+enum PersistedSessionBlob {
+    #[codec(index = 3)]
+    V3(SessionInfo),
+}
 
 /// Encode the active-session fields the core currently understands into an
 /// opaque host-global session blob. Later SSO channel state should bump
-/// `PERSISTED_SESSION_VERSION` instead of extending this layout silently.
+/// the enum variant instead of extending this layout silently.
 pub fn encode_persisted_session(info: &SessionInfo) -> Vec<u8> {
-    (PERSISTED_SESSION_VERSION, info).encode()
+    PersistedSessionBlob::V3(info.clone()).encode()
 }
 
 /// Decode a core-owned persisted session blob.
 pub fn decode_persisted_session(blob: &[u8]) -> Result<SessionInfo, String> {
-    let mut input = blob;
-    let version = u8::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?;
-    let info = match version {
-        PERSISTED_SESSION_VERSION => {
-            SessionInfo::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?
-        }
-        _ => return Err(format!("unsupported session blob version {version}")),
+    let Some(version) = blob.first() else {
+        return Err("invalid session blob: missing version".to_string());
     };
+    if *version != 3 {
+        return Err(format!("unsupported session blob version {version}"));
+    }
+
+    let mut input = blob;
+    let decoded = PersistedSessionBlob::decode(&mut input)
+        .map_err(|err| format!("invalid session blob: {err}"))?;
     if !input.is_empty() {
         return Err("invalid session blob: trailing bytes".to_string());
     }
-    Ok(info)
+    match decoded {
+        PersistedSessionBlob::V3(info) => Ok(info),
+    }
 }
 
 /// Holds the currently-active session and broadcasts connection-status
@@ -152,6 +161,7 @@ impl SessionState {
     }
 }
 
+/// Broadcast one connection-status transition and prune dropped subscribers.
 fn broadcast(
     subscribers: &mut Vec<mpsc::UnboundedSender<VersionedItem>>,
     status: HostAccountConnectionStatusSubscribeItem,

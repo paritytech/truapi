@@ -24,13 +24,17 @@ pub mod latest {
 
     pub use crate::v01::{
         AccountId, AllocatableResource, GenericError, HostSignPayloadData, NotificationId,
-        ProductAccountId, RawPayload, RemotePermission, ThemeVariant,
+        OperationStartedResult, ProductAccountId, RawPayload, RemotePermission, RuntimeApi,
+        RuntimeSpec, RuntimeType, StorageQueryItem, StorageQueryType, StorageResultItem,
+        ThemeVariant,
     };
 
     pub type LatestOf<T> = <T as Versioned>::Latest;
 
     pub type HostAccountGetAliasResponse =
         LatestOf<versioned::account::HostAccountGetAliasResponse>;
+    pub type HostCreateTransactionResponse =
+        LatestOf<versioned::signing::HostCreateTransactionResponse>;
     pub type HostDevicePermissionRequest =
         LatestOf<versioned::permissions::HostDevicePermissionRequest>;
     pub type HostDevicePermissionResponse =
@@ -45,9 +49,14 @@ pub mod latest {
         LatestOf<versioned::notifications::HostPushNotificationRequest>;
     pub type HostPushNotificationResponse =
         LatestOf<versioned::notifications::HostPushNotificationResponse>;
+    pub type HostRequestLoginError = LatestOf<versioned::account::HostRequestLoginError>;
+    pub type HostRequestLoginResponse = LatestOf<versioned::account::HostRequestLoginResponse>;
     pub type HostRequestResourceAllocationRequest =
         LatestOf<versioned::resource_allocation::HostRequestResourceAllocationRequest>;
+    pub type HostRequestResourceAllocationResponse =
+        LatestOf<versioned::resource_allocation::HostRequestResourceAllocationResponse>;
     pub type HostSignPayloadRequest = LatestOf<versioned::signing::HostSignPayloadRequest>;
+    pub type HostSignPayloadResponse = LatestOf<versioned::signing::HostSignPayloadResponse>;
     pub type HostSignPayloadWithLegacyAccountRequest =
         LatestOf<versioned::signing::HostSignPayloadWithLegacyAccountRequest>;
     pub type HostSignRawRequest = LatestOf<versioned::signing::HostSignRawRequest>;
@@ -57,6 +66,13 @@ pub mod latest {
         LatestOf<versioned::signing::HostCreateTransactionWithLegacyAccountRequest>;
     pub type PreimageSubmitError = LatestOf<versioned::preimage::RemotePreimageSubmitError>;
     pub type ProductAccountTxPayload = LatestOf<versioned::signing::HostCreateTransactionRequest>;
+    pub type RemoteChainHeadFollowItem = LatestOf<versioned::chain::RemoteChainHeadFollowItem>;
+    pub type RemoteChainHeadFollowRequest =
+        LatestOf<versioned::chain::RemoteChainHeadFollowRequest>;
+    pub type RemoteChainHeadStorageRequest =
+        LatestOf<versioned::chain::RemoteChainHeadStorageRequest>;
+    pub type RemoteChainHeadStorageResponse =
+        LatestOf<versioned::chain::RemoteChainHeadStorageResponse>;
     pub type RemotePermissionRequest = LatestOf<versioned::permissions::RemotePermissionRequest>;
     pub type RemotePermissionResponse = LatestOf<versioned::permissions::RemotePermissionResponse>;
 }

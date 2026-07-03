@@ -16,7 +16,7 @@ use crate::subscription::Spawner;
 
 /// People-chain statement-store RPC client factory.
 #[derive(Clone)]
-pub(super) struct StatementStoreRpc {
+pub(crate) struct StatementStoreRpc {
     platform: Arc<dyn Platform>,
     people_chain_genesis_hash: [u8; 32],
     spawner: Spawner,
@@ -64,7 +64,10 @@ impl StatementStoreRpc {
     ) -> Result<(), String> {
         let connection = self.connect(label).await?;
         HostRpcClient::new(connection, self.spawner.clone())
-            .send_fire_and_forget(SUBMIT_STATEMENT_METHOD, statement_submit_params(statement))
+            .send_fire_and_forget(
+                SUBMIT_STATEMENT_METHOD,
+                rpc_params![format!("0x{}", hex::encode(&statement))].build(),
+            )
             .map_err(rpc_error_message)
     }
 
@@ -105,7 +108,7 @@ pub(super) async fn submit(rpc_client: &RpcClient, statement: Vec<u8>) -> Result
     rpc_client
         .request::<Value>(
             SUBMIT_STATEMENT_METHOD,
-            rpc_params![statement_hex(&statement)],
+            rpc_params![format!("0x{}", hex::encode(&statement))],
         )
         .await
         .map(|_| ())
@@ -128,12 +131,4 @@ pub(super) fn rpc_error_message(error: subxt_rpcs::Error) -> String {
         subxt_rpcs::Error::User(error) => error.message,
         other => other.to_string(),
     }
-}
-
-fn statement_submit_params(statement: Vec<u8>) -> Option<Box<serde_json::value::RawValue>> {
-    rpc_params![statement_hex(&statement)].build()
-}
-
-fn statement_hex(statement: &[u8]) -> String {
-    format!("0x{}", hex::encode(statement))
 }

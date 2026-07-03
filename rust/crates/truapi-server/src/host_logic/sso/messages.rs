@@ -3,8 +3,9 @@
 //! These are the encrypted payloads carried inside statement-store
 //! `SsoStatementData::Request` / `Response` frames.
 //! The runtime builds them when forwarding TrUAPI account, signing, resource
-//! allocation, and transaction requests to the paired wallet, then decodes the
-//! wallet's responses while waiting on the SSO statement-store channels.
+//! allocation, and transaction requests to the paired signing host, then
+//! decodes the signing host's responses while waiting on the SSO
+//! statement-store channels.
 //! Field order and enum variant order are kept wire-compatible with host-papp:
 //! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts#L23-L35>
 //! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/signing.ts#L6-L68>
@@ -28,12 +29,36 @@ use crate::host_logic::statement_store::{
     statement_expiry_elapsed,
 };
 
-const SSO_RESPONSE_CODE_SUCCESS: u8 = 0;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, derive_more::Display)]
+enum SsoResponseCode {
+    #[codec(index = 0)]
+    #[display("success")]
+    Success,
+    #[codec(index = 1)]
+    #[display("decryptionFailed")]
+    DecryptionFailed,
+    #[codec(index = 2)]
+    #[display("decodingFailed")]
+    DecodingFailed,
+}
 
-/// Top-level wallet remote message sent over the encrypted SSO channel.
+impl TryFrom<u8> for SsoResponseCode {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Success),
+            1 => Ok(Self::DecryptionFailed),
+            2 => Ok(Self::DecodingFailed),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Top-level remote message sent over the encrypted SSO channel.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RemoteMessage {
-    /// Correlation id used to match wallet responses to host requests.
+    /// Correlation id used to match signing-host responses to pairing-host requests.
     pub message_id: String,
     /// Versioned remote message body.
     pub data: RemoteMessageData,
@@ -45,7 +70,7 @@ pub enum RemoteMessageData {
     V1(RemoteMessageV1),
 }
 
-/// v1 messages exchanged with the paired wallet over the encrypted SSO channel.
+/// v1 messages exchanged with the paired signing host over the encrypted SSO channel.
 ///
 /// The variant order is part of the SCALE wire protocol used inside
 /// statement-store session statements.
@@ -65,19 +90,19 @@ pub enum RemoteMessageV1 {
     SignRawLegacyResponse(SignRawLegacyResponse),
 }
 
-/// Signing request flavor sent to the wallet.
+/// Signing request flavor sent to the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRequest {
     Payload(Box<SigningPayloadRequest>),
     Raw(SigningRawRequest),
 }
 
-/// Request sent when a product asks the paired wallet to sign a Substrate
+/// Request sent when a product asks the paired signing host to sign a Substrate
 /// payload with a product-derived account.
 ///
-/// Built from [`HostSignPayloadRequest`] and wrapped in
-/// [`RemoteMessageV1::SignRequest`] before being encrypted into an SSO session
-/// statement.
+/// Built from [`HostSignPayloadRequest`] but kept as a dedicated wire type
+/// because the host-papp SSO dialect flattens the public request payload and
+/// encodes `with_signed_transaction` as `OptionBool`.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadRequest {
     pub product_account_id: ProductAccountId,
@@ -98,29 +123,31 @@ pub struct SigningPayloadRequest {
     pub with_signed_transaction: OptionBool,
 }
 
-fn signing_payload_request_from(value: HostSignPayloadRequest) -> SigningPayloadRequest {
-    let payload = value.payload;
-    SigningPayloadRequest {
-        product_account_id: value.account,
-        block_hash: payload.block_hash,
-        block_number: payload.block_number,
-        era: payload.era,
-        genesis_hash: payload.genesis_hash,
-        method: payload.method,
-        nonce: payload.nonce,
-        spec_version: payload.spec_version,
-        tip: payload.tip,
-        transaction_version: payload.transaction_version,
-        signed_extensions: payload.signed_extensions,
-        version: payload.version,
-        asset_id: payload.asset_id,
-        metadata_hash: payload.metadata_hash,
-        mode: payload.mode,
-        with_signed_transaction: OptionBool(payload.with_signed_transaction),
+impl From<truapi::v01::HostSignPayloadRequest> for SigningPayloadRequest {
+    fn from(value: truapi::v01::HostSignPayloadRequest) -> Self {
+        let payload = value.payload;
+        Self {
+            product_account_id: value.account,
+            block_hash: payload.block_hash,
+            block_number: payload.block_number,
+            era: payload.era,
+            genesis_hash: payload.genesis_hash,
+            method: payload.method,
+            nonce: payload.nonce,
+            spec_version: payload.spec_version,
+            tip: payload.tip,
+            transaction_version: payload.transaction_version,
+            signed_extensions: payload.signed_extensions,
+            version: payload.version,
+            asset_id: payload.asset_id,
+            metadata_hash: payload.metadata_hash,
+            mode: payload.mode,
+            with_signed_transaction: OptionBool(payload.with_signed_transaction),
+        }
     }
 }
 
-/// Request sent when a product asks the paired wallet to sign raw bytes or a
+/// Request sent when a product asks the paired signing host to sign raw bytes or a
 /// string message with a product-derived account.
 ///
 /// Built from [`HostSignRawRequest`] and wrapped in
@@ -132,14 +159,16 @@ pub struct SigningRawRequest {
     pub data: SigningRawPayload,
 }
 
-fn signing_raw_request_from(value: HostSignRawRequest) -> SigningRawRequest {
-    SigningRawRequest {
-        product_account_id: value.account,
-        data: value.payload.into(),
+impl From<truapi::v01::HostSignRawRequest> for SigningRawRequest {
+    fn from(value: truapi::v01::HostSignRawRequest) -> Self {
+        Self {
+            product_account_id: value.account,
+            data: value.payload.into(),
+        }
     }
 }
 
-/// Request sent when a product asks the paired wallet to sign raw data with a
+/// Request sent when a product asks the paired signing host to sign raw data with a
 /// user-imported legacy account.
 ///
 /// Unlike product-account signing, the signer is the raw account id selected
@@ -170,7 +199,7 @@ impl From<RawPayload> for SigningRawPayload {
     }
 }
 
-/// Response returned by the wallet for a product-account signing request.
+/// Response returned by the signing host for a product-account signing request.
 ///
 /// Decoded from [`RemoteMessageV1::SignResponse`] while the runtime is waiting
 /// for a matching SSO remote message id.
@@ -180,14 +209,14 @@ pub struct SigningResponse {
     pub payload: Result<SigningPayloadResponseData, String>,
 }
 
-/// Successful product-account signing result returned by the wallet.
+/// Successful product-account signing result returned by the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadResponseData {
     pub signature: Vec<u8>,
     pub signed_transaction: Option<Vec<u8>>,
 }
 
-/// Response returned by the wallet for a legacy-account raw signing request.
+/// Response returned by the signing host for a legacy-account raw signing request.
 ///
 /// Decoded from [`RemoteMessageV1::SignRawLegacyResponse`] and mapped back to
 /// the public raw-signing response shape.
@@ -197,10 +226,10 @@ pub struct SignRawLegacyResponse {
     pub signature: Result<Vec<u8>, String>,
 }
 
-/// Request sent when a product asks the wallet for a ring-VRF alias.
+/// Request sent when a product asks the signing host for a ring-VRF alias.
 ///
 /// Used by `Account::get_account_alias`; the product account identifies the
-/// alias target, while `product_id` identifies the caller that the wallet is
+/// alias target, while `product_id` identifies the caller that the signing host is
 /// authorizing over the SSO channel.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasRequest {
@@ -208,14 +237,14 @@ pub struct RingVrfAliasRequest {
     pub product_id: String,
 }
 
-/// Response returned by the wallet for a ring-VRF alias request.
+/// Response returned by the signing host for a ring-VRF alias request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasResponse {
     pub responding_to: String,
     pub payload: Result<HostAccountGetAliasResponse, String>,
 }
 
-/// Request sent when a product asks the wallet to allocate SSO-backed
+/// Request sent when a product asks the signing host to allocate SSO-backed
 /// resources.
 ///
 /// Used by `ResourceAllocation::request` for capabilities such as statement
@@ -227,7 +256,7 @@ pub struct ResourceAllocationRequest {
     pub on_existing: OnExistingAllowancePolicy,
 }
 
-/// Resources the wallet may allocate for the calling product.
+/// Resources the signing host may allocate for the calling product.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatableResource {
     StatementStoreAllowance,
@@ -249,21 +278,21 @@ impl From<AllocatableResource> for SsoAllocatableResource {
     }
 }
 
-/// Wallet policy for already-existing resource allowance.
+/// Signing-host policy for already-existing resource allowance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum OnExistingAllowancePolicy {
     Ignore,
     Increase,
 }
 
-/// Response returned by the wallet for a resource-allocation request.
+/// Response returned by the signing host for a resource-allocation request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ResourceAllocationResponse {
     pub responding_to: String,
     pub payload: Result<Vec<SsoAllocationOutcome>, String>,
 }
 
-/// Per-resource allocation result from the wallet.
+/// Per-resource allocation result from the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocationOutcome {
     Allocated(SsoAllocatedResource),
@@ -271,7 +300,7 @@ pub enum SsoAllocationOutcome {
     NotAvailable,
 }
 
-/// Resource material allocated by the wallet.
+/// Resource material allocated by the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatedResource {
     StatementStoreAllowance {
@@ -287,7 +316,7 @@ pub enum SsoAllocatedResource {
     },
 }
 
-/// Request sent when a product asks the wallet to create a signed transaction
+/// Request sent when a product asks the signing host to create a signed transaction
 /// for a product-derived account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionRequest {
@@ -300,7 +329,7 @@ pub enum CreateTransactionPayload {
     V1(ProductAccountTxPayload),
 }
 
-/// Request sent when a product asks the wallet to create a signed transaction
+/// Request sent when a product asks the signing host to create a signed transaction
 /// for a user-imported legacy account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionLegacyRequest {
@@ -313,7 +342,7 @@ pub enum CreateTransactionLegacyPayload {
     V1(LegacyAccountTxPayload),
 }
 
-/// Response returned by the wallet for either product-account or legacy-account
+/// Response returned by the signing host for either product-account or legacy-account
 /// transaction creation.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionResponse {
@@ -329,7 +358,7 @@ pub enum SsoSessionStatement {
     Disconnected,
 }
 
-/// Wallet response variants that can satisfy a pending remote request.
+/// Signing-host response variants that can satisfy a pending remote request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SsoRemoteResponse {
     Sign(SigningResponse),
@@ -405,13 +434,10 @@ fn classify_response_ack(
     request_id: String,
     response_code: u8,
 ) -> Result<SsoSessionStatement, String> {
-    if response_code == SSO_RESPONSE_CODE_SUCCESS {
-        Ok(SsoSessionStatement::RequestAccepted)
-    } else {
-        Err(format!(
-            "SSO request {request_id} was rejected: {}",
-            sso_response_code_name(response_code)
-        ))
+    match SsoResponseCode::try_from(response_code) {
+        Ok(SsoResponseCode::Success) => Ok(SsoSessionStatement::RequestAccepted),
+        Ok(code) => Err(format!("SSO request {request_id} was rejected: {code}")),
+        Err(()) => Err(format!("SSO request {request_id} was rejected: unknown")),
     }
 }
 
@@ -450,35 +476,27 @@ fn remote_response_for_message(
     }
 }
 
-fn sso_response_code_name(code: u8) -> &'static str {
-    match code {
-        1 => "decryptionFailed",
-        2 => "decodingFailed",
-        _ => "unknown",
-    }
-}
-
-/// Build a wallet payload-signing request message.
+/// Build a signing-host payload-signing request message.
 pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(
-            SigningRequest::Payload(Box::new(signing_payload_request_from(request))),
+            SigningRequest::Payload(Box::new(request.into())),
         ))),
     }
 }
 
-/// Build a wallet raw-signing request message.
+/// Build a signing-host raw-signing request message.
 pub fn sign_raw_message(message_id: String, request: HostSignRawRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(SigningRequest::Raw(
-            signing_raw_request_from(request),
+            request.into(),
         )))),
     }
 }
 
-/// Build a wallet legacy raw-signing request message.
+/// Build a signing-host legacy raw-signing request message.
 pub fn sign_raw_legacy_message(
     message_id: String,
     account: AccountId,
@@ -495,7 +513,7 @@ pub fn sign_raw_legacy_message(
     }
 }
 
-/// Build a wallet account-alias request message.
+/// Build a signing-host account-alias request message.
 pub fn alias_request_message(
     message_id: String,
     product_account_id: ProductAccountId,
@@ -510,7 +528,7 @@ pub fn alias_request_message(
     }
 }
 
-/// Build a wallet resource-allocation request message.
+/// Build a signing-host resource-allocation request message.
 pub fn resource_allocation_message(
     message_id: String,
     calling_product_id: String,
@@ -529,7 +547,7 @@ pub fn resource_allocation_message(
     }
 }
 
-/// Build a wallet transaction-creation request message.
+/// Build a signing-host transaction-creation request message.
 pub fn create_transaction_message(
     message_id: String,
     payload: ProductAccountTxPayload,
@@ -544,7 +562,7 @@ pub fn create_transaction_message(
     }
 }
 
-/// Build a wallet legacy-account transaction-creation request message.
+/// Build a signing-host legacy-account transaction-creation request message.
 pub fn create_transaction_legacy_message(
     message_id: String,
     payload: LegacyAccountTxPayload,
@@ -874,11 +892,11 @@ mod tests {
                 with_signed_transaction: Some(true),
             },
         };
-        let true_encoded = signing_payload_request_from(request.clone()).encode();
+        let true_encoded = SigningPayloadRequest::from(request.clone()).encode();
         request.payload.with_signed_transaction = Some(false);
-        let false_encoded = signing_payload_request_from(request.clone()).encode();
+        let false_encoded = SigningPayloadRequest::from(request.clone()).encode();
         request.payload.with_signed_transaction = None;
-        let none_encoded = signing_payload_request_from(request).encode();
+        let none_encoded = SigningPayloadRequest::from(request).encode();
 
         assert_eq!(true_encoded.last(), Some(&1));
         assert_eq!(false_encoded.last(), Some(&2));
@@ -988,7 +1006,7 @@ mod tests {
             session,
             &SsoStatementData::Response {
                 request_id: "statement-1".to_string(),
-                response_code: SSO_RESPONSE_CODE_SUCCESS,
+                response_code: 0,
             },
             [9; AES_GCM_NONCE_LEN],
         )

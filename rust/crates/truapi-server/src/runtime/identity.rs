@@ -8,7 +8,6 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
-use super::PlatformRuntimeHost;
 use crate::chain_runtime::ChainRuntime;
 use crate::host_logic::identity::{
     PeopleIdentity, decode_people_identity, resources_consumers_storage_key,
@@ -18,25 +17,13 @@ use crate::host_logic::session::SessionInfo;
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt, pin_mut};
 use tracing::{debug, instrument, warn};
-use truapi::v01;
-use truapi::v01::{
-    OperationStartedResult, RemoteChainHeadFollowItem as V01RemoteChainHeadFollowItem,
-    StorageQueryType,
+use truapi::latest::{
+    OperationStartedResult, RemoteChainHeadFollowItem, RemoteChainHeadFollowRequest,
+    RemoteChainHeadStorageRequest, StorageQueryItem, StorageQueryType,
 };
 
-impl PlatformRuntimeHost {
-    /// Resolve usernames for `session` against this runtime's people chain.
-    #[instrument(skip_all, fields(runtime.method = "session.identity.resolve"))]
-    pub(super) async fn resolve_session_identity(&self, session: SessionInfo) -> SessionInfo {
-        resolve_session_identity_with_chain(
-            &self.chain,
-            self.runtime_config.people_chain_genesis_hash,
-            session,
-        )
-        .await
-    }
-}
-
+/// Monotonic salt for local identity lookup follow ids, avoiding collisions
+/// between concurrent People-chain identity lookups.
 static IDENTITY_LOOKUP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Fill in missing usernames by querying the people chain; returns the
@@ -147,7 +134,7 @@ async fn lookup_people_identity(
     );
     let mut follow = chain.remote_chain_head_follow(
         follow_id.clone(),
-        v01::RemoteChainHeadFollowRequest {
+        RemoteChainHeadFollowRequest {
             genesis_hash: genesis_hash.clone(),
             with_runtime: false,
         },
@@ -155,11 +142,11 @@ async fn lookup_people_identity(
 
     let hash = wait_for_identity_follow_hash(&mut follow).await?;
     let response = chain
-        .remote_chain_head_storage(v01::RemoteChainHeadStorageRequest {
+        .remote_chain_head_storage(RemoteChainHeadStorageRequest {
             genesis_hash,
             follow_subscription_id: follow_id,
             hash,
-            items: vec![v01::StorageQueryItem {
+            items: vec![StorageQueryItem {
                 key: key.clone(),
                 query_type: StorageQueryType::Value,
             }],
@@ -183,7 +170,7 @@ async fn lookup_people_identity(
 
 #[instrument(skip_all, fields(runtime.method = "session.identity.wait_follow_hash"))]
 async fn wait_for_identity_follow_hash(
-    follow: &mut BoxStream<'static, V01RemoteChainHeadFollowItem>,
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
 ) -> Result<Vec<u8>, String> {
     let timeout = futures_timer::Delay::new(Duration::from_secs(10)).fuse();
     pin_mut!(timeout);
@@ -192,14 +179,14 @@ async fn wait_for_identity_follow_hash(
         pin_mut!(next);
         futures::select! {
             item = next => match item {
-                Some(V01RemoteChainHeadFollowItem::Initialized { finalized_block_hashes, .. }) => {
+                Some(RemoteChainHeadFollowItem::Initialized { finalized_block_hashes, .. }) => {
                     let fallback = finalized_block_hashes.last().cloned();
                     return wait_for_identity_best_hash(follow, fallback).await;
                 }
-                Some(V01RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
                     return Ok(best_block_hash);
                 }
-                Some(V01RemoteChainHeadFollowItem::Stop) | None => {
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
                     return Err("People-chain follow stopped before initialization".to_string());
                 }
                 _ => {}
@@ -210,7 +197,7 @@ async fn wait_for_identity_follow_hash(
 }
 
 async fn wait_for_identity_best_hash(
-    follow: &mut BoxStream<'static, V01RemoteChainHeadFollowItem>,
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
     fallback: Option<Vec<u8>>,
 ) -> Result<Vec<u8>, String> {
     let timeout = futures_timer::Delay::new(Duration::from_secs(2)).fuse();
@@ -221,13 +208,13 @@ async fn wait_for_identity_best_hash(
         pin_mut!(next);
         futures::select! {
             item = next => match item {
-                Some(V01RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
                     return Ok(best_block_hash);
                 }
-                Some(V01RemoteChainHeadFollowItem::NewBlock { block_hash, .. }) => {
+                Some(RemoteChainHeadFollowItem::NewBlock { block_hash, .. }) => {
                     candidate = Some(block_hash);
                 }
-                Some(V01RemoteChainHeadFollowItem::Stop) | None => {
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
                     return candidate.ok_or_else(|| {
                         "People-chain follow stopped before best block".to_string()
                     });
@@ -245,7 +232,7 @@ async fn wait_for_identity_best_hash(
 
 #[instrument(skip_all, fields(runtime.method = "session.identity.wait_storage_value"))]
 async fn wait_for_identity_storage_value(
-    follow: &mut BoxStream<'static, V01RemoteChainHeadFollowItem>,
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
     operation_id: &str,
     key: &[u8],
 ) -> Result<Option<Vec<u8>>, String> {
@@ -257,7 +244,7 @@ async fn wait_for_identity_storage_value(
         pin_mut!(next);
         futures::select! {
             item = next => match item {
-                Some(V01RemoteChainHeadFollowItem::OperationStorageItems { operation_id: item_operation_id, items })
+                Some(RemoteChainHeadFollowItem::OperationStorageItems { operation_id: item_operation_id, items })
                     if item_operation_id == operation_id =>
                 {
                     for item in items {
@@ -266,22 +253,22 @@ async fn wait_for_identity_storage_value(
                         }
                     }
                 }
-                Some(V01RemoteChainHeadFollowItem::OperationStorageDone { operation_id: item_operation_id })
+                Some(RemoteChainHeadFollowItem::OperationStorageDone { operation_id: item_operation_id })
                     if item_operation_id == operation_id =>
                 {
                     return Ok(value);
                 }
-                Some(V01RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
+                Some(RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
                     if item_operation_id == operation_id =>
                 {
                     return Ok(None);
                 }
-                Some(V01RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
+                Some(RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
                     if item_operation_id == operation_id =>
                 {
                     return Err(error);
                 }
-                Some(V01RemoteChainHeadFollowItem::Stop) | None => {
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
                     return Err("People-chain follow stopped during storage lookup".to_string());
                 }
                 _ => {}
@@ -299,11 +286,11 @@ mod tests {
     #[test]
     fn identity_follow_prefers_best_block_after_initialization() {
         let mut follow = stream::iter(vec![
-            V01RemoteChainHeadFollowItem::Initialized {
+            RemoteChainHeadFollowItem::Initialized {
                 finalized_block_hashes: vec![vec![0x01]],
                 finalized_block_runtime: None,
             },
-            V01RemoteChainHeadFollowItem::BestBlockChanged {
+            RemoteChainHeadFollowItem::BestBlockChanged {
                 best_block_hash: vec![0x02],
             },
         ])
@@ -318,16 +305,16 @@ mod tests {
     #[test]
     fn identity_follow_uses_new_block_before_stale_finalized_fallback() {
         let mut follow = stream::iter(vec![
-            V01RemoteChainHeadFollowItem::Initialized {
+            RemoteChainHeadFollowItem::Initialized {
                 finalized_block_hashes: vec![vec![0x01]],
                 finalized_block_runtime: None,
             },
-            V01RemoteChainHeadFollowItem::NewBlock {
+            RemoteChainHeadFollowItem::NewBlock {
                 block_hash: vec![0x03],
                 parent_block_hash: vec![0x01],
                 new_runtime: None,
             },
-            V01RemoteChainHeadFollowItem::Stop,
+            RemoteChainHeadFollowItem::Stop,
         ])
         .boxed();
 

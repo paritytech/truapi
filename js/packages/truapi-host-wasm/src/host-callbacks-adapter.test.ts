@@ -68,7 +68,8 @@ describe("createWasmRawCallbacks", () => {
                 featureSupported: async (request) => ({
                     supported: request.tag === "Chain" && request.value.genesisHash === GENESIS,
                 }),
-                read: async (key) => new TextEncoder().encode(`read:${key}`),
+                read: async (key) =>
+                    new TextEncoder().encode(`read:${key}`),
                 write: async (key, value) => {
                     writes.push([key, [...value]]);
                 },
@@ -113,7 +114,9 @@ describe("createWasmRawCallbacks", () => {
                 ),
             ).supported,
         ).toBe(true);
-        expect(await raw.read!("session")).toEqual(new TextEncoder().encode("read:session"));
+        expect(await raw.read!("session")).toEqual(
+            new TextEncoder().encode("read:session"),
+        );
 
         await raw.write!("session", new Uint8Array([1, 2, 3]));
         await raw.clear!("session");

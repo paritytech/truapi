@@ -1,14 +1,12 @@
 //! TrUAPI server runtime: dispatcher, frames, SCALE encoding, stream management.
 //!
-//! The host embedding path is [`HostCore::from_platform_with_config`]. It
-//! wraps a [`truapi_platform::Platform`] implementation and exposes a stable
-//! byte-frame API that target adapters can use from WASM, native mobile, or
-//! desktop shells.
+//! Hosts instantiate a role runtime around a [`truapi_platform::Platform`]
+//! implementation, then create product-scoped [`ProductRuntime`] endpoints that
+//! expose the stable byte-frame API used from WASM, native mobile, or desktop
+//! shells.
 //!
 //! Host-facing bridges:
-//! - [`wasm`] (wasm32 only): wasm-bindgen surface exposing `WasmHostCore`.
-
-#![forbid(unsafe_code)]
+//! - [`wasm`] (wasm32 only): wasm-bindgen surface exposing `WasmProductRuntime`.
 
 pub(crate) mod chain_runtime;
 pub mod core;
@@ -30,9 +28,13 @@ pub mod generated;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
-pub use host_core::{FrameSink, HostCore, HostCoreError};
+pub use host_core::{
+    FrameSink, HostAdmin, PairingHostRuntime, ProductRuntime, ProductRuntimeError,
+    SigningHostRuntime,
+};
 pub use truapi_platform::{
-    PermissionAuthorizationRequest, PermissionAuthorizationStatus, Platform, RuntimeConfig,
+    HostRuntimeConfig, PairingHostConfig, PermissionAuthorizationRequest,
+    PermissionAuthorizationStatus, Platform, ProductContext, SigningHostConfig,
 };
 
 #[cfg(target_arch = "wasm32")]

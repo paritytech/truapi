@@ -26,7 +26,8 @@ pub fn derive_product_entropy(
     derive_product_entropy_from_source(&root_entropy_source, product_id, key)
 }
 
-/// Derive product-scoped entropy from an already normalized root entropy source.
+/// Derive product-scoped entropy when the session already stores the
+/// pre-hashed root entropy source.
 pub fn derive_product_entropy_from_source(
     root_entropy_source: &[u8; 32],
     product_id: &str,
@@ -36,7 +37,7 @@ pub fn derive_product_entropy_from_source(
         return Err(ProductEntropyError::InvalidKeyLength(key.len()));
     }
 
-    let product_id_hash = blake2b256(product_id.as_bytes());
+    let product_id_hash = blake2b256_keyed(product_id.as_bytes(), &[]);
     let per_product_entropy = blake2b256_keyed(root_entropy_source, &product_id_hash);
     Ok(blake2b256_keyed(&per_product_entropy, key))
 }
@@ -46,10 +47,6 @@ fn blake2b256_keyed(message: &[u8], key: &[u8]) -> [u8; 32] {
     hash.as_bytes()
         .try_into()
         .expect("BLAKE2b-256 returns 32 bytes")
-}
-
-fn blake2b256(message: &[u8]) -> [u8; 32] {
-    blake2b256_keyed(message, &[])
 }
 
 #[cfg(test)]
@@ -97,6 +94,35 @@ mod tests {
         for case in success_cases {
             let entropy = derive_product_entropy(&secret(), case.product_id, &case.key).unwrap();
             assert_eq!(hex::encode(entropy), case.expected_hex, "{}", case.name);
+        }
+
+        // Byte-for-byte vectors from polkadot-app-ios-v2
+        // (ProductRootEntropyDeriverTests): raw BIP-39 entropy of 16 * 0xAB.
+        let ios_entropy = [0xABu8; 16];
+        let ios_cases = [
+            (
+                "test.product.dot",
+                b"my-key".as_slice(),
+                "479d5b9ecce19615397c9f160ee95e2f00c579837a5afb111132dd0da5fd472a",
+            ),
+            (
+                "test.product.dot",
+                b"other-key".as_slice(),
+                "0d576d5d77cb179bf94b85cb1d644b7879315e74d9e69791fb9cbe94df3c7c39",
+            ),
+            (
+                "other.product.dot",
+                b"my-key".as_slice(),
+                "e2f25271c106593c2977d5965f52fa1d2227da0fc110d682c8cb8f30b2ba21c8",
+            ),
+        ];
+        for (product_id, key, expected_hex) in ios_cases {
+            let entropy = derive_product_entropy(&ios_entropy, product_id, key).unwrap();
+            assert_eq!(
+                hex::encode(entropy),
+                expected_hex,
+                "ios vector {product_id}"
+            );
         }
 
         let error_cases = vec![

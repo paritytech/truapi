@@ -11,6 +11,9 @@ crate-type = ["rlib", "cdylib"]
 [features]
 default = []
 
+[lints.rust]
+unsafe_code = "forbid"
+
 [dependencies]
 truapi = { path = "../truapi" }
 truapi-platform = { path = "../truapi-platform" }
@@ -30,6 +33,8 @@ blake2-rfc = { version = "0.2", default-features = false }
 sp-crypto-hashing = { version = "0.1", default-features = false }
 bs58 = { version = "0.5", default-features = false, features = ["alloc"] }
 schnorrkel = { version = "0.11.5", default-features = false, features = ["alloc", "getrandom"] }
+substrate-bip39 = { version = "0.6", default-features = false }
+zeroize = { version = "1", default-features = false, features = ["alloc"] }
 getrandom = { version = "0.2", features = ["js"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdh"] }
 hkdf = "0.12"

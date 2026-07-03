@@ -1,13 +1,16 @@
 import type { WireProvider } from "@parity/truapi";
 import { CoreStorageKey as GeneratedCoreStorageKey } from "./generated/host-callbacks.js";
-import type { CoreAdmin, CoreStorageKey } from "./generated/host-callbacks.js";
+import type {
+  CoreAdmin,
+  CoreStorageKey,
+} from "./generated/host-callbacks.js";
 
 // The typed capability interfaces below come straight from the
 // `truapi-platform` Rust crate via `truapi-codegen --platform-ts-output`.
 // They are the host-author-facing surface: each method takes/returns
 // typed wrappers (`HostDevicePermissionRequest`, etc.) rather than raw
-// SCALE bytes. `createWebWorkerProvider` adapts this typed surface into
-// the byte-oriented callback bridge consumed by the WASM core.
+// SCALE bytes. The web worker pairing-host runtime adapts this typed surface
+// into the byte-oriented callback bridge consumed by the WASM core.
 export type {
   AuthState,
   ChainProvider,
@@ -19,6 +22,7 @@ export type {
   JsonRpcConnection as PlatformJsonRpcConnection,
   Navigation,
   Notifications,
+  PairingHostAdmin,
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
   Permissions,
@@ -66,7 +70,7 @@ export interface ChainConnection {
  */
 export type LogLevel = string;
 
-export interface HostCoreRuntimeConfig {
+export interface ProductRuntimeConfig {
   productId: string;
   host: {
     name: string;
@@ -85,7 +89,7 @@ export interface HostCoreRuntimeConfig {
   };
 }
 
-export interface TrUApiHostCoreProvider extends WireProvider, CoreAdmin {
+export interface TrUApiProductProvider extends WireProvider, CoreAdmin {
   /**
    * Re-tune the wasm core's log level at runtime. Present on runtimes that
    * keep a live channel to the core (e.g. the Web Worker provider); absent on

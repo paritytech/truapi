@@ -3,9 +3,8 @@ use schnorrkel::{PublicKey, SecretKey, Signature};
 use truapi::v01;
 
 use super::StatementStoreParseError;
+use crate::host_logic::product_account::SR25519_SIGNING_CONTEXT;
 use crate::host_logic::session::SsoSessionInfo;
-
-const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
 
 /// Verified statement payload plus the sr25519 signer recovered from proof.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -281,7 +280,7 @@ fn verify_statement_proof(
 pub fn statement_fields_from_v01(statement: v01::Statement) -> Result<Vec<StatementField>, String> {
     let mut fields = Vec::new();
     if let Some(proof) = statement.proof {
-        fields.push(StatementField::Proof(statement_proof_from_v01(proof)));
+        fields.push(StatementField::Proof(proof.into()));
     }
     if let Some(decryption_key) = statement.decryption_key {
         fields.push(StatementField::DecryptionKey(decryption_key));
@@ -301,13 +300,7 @@ pub fn statement_fields_from_v01(statement: v01::Statement) -> Result<Vec<Statem
 
 /// Convert a public v01 signed statement into SCALE bytes.
 pub fn signed_statement_to_scale(statement: v01::SignedStatement) -> Result<Vec<u8>, String> {
-    Ok(signed_statement_fields(statement)?.encode())
-}
-
-fn signed_statement_fields(statement: v01::SignedStatement) -> Result<Vec<StatementField>, String> {
-    let mut fields = vec![StatementField::Proof(statement_proof_from_v01(
-        statement.proof,
-    ))];
+    let mut fields = vec![StatementField::Proof(statement.proof.into())];
     if let Some(decryption_key) = statement.decryption_key {
         fields.push(StatementField::DecryptionKey(decryption_key));
     }
@@ -322,9 +315,10 @@ fn signed_statement_fields(statement: v01::SignedStatement) -> Result<Vec<Statem
         fields.push(StatementField::Data(data));
     }
     fields.sort_by_key(statement_field_sort_index);
-    Ok(fields)
+    Ok(fields.encode())
 }
 
+/// Convert decoded statement fields into the public signed-statement shape.
 fn signed_statement_from_fields(
     fields: Vec<StatementField>,
 ) -> Result<v01::SignedStatement, StatementStoreParseError> {
@@ -338,7 +332,7 @@ fn signed_statement_from_fields(
     for field in fields {
         match field {
             StatementField::Proof(value) => {
-                if proof.replace(statement_proof_to_v01(value)).is_some() {
+                if proof.replace(value.into()).is_some() {
                     return Err(StatementStoreParseError::Malformed(
                         "statement has duplicate proof".to_string(),
                     ));
@@ -393,48 +387,56 @@ fn signed_statement_from_fields(
 
 /// Convert an internal proof into the public v01 proof shape.
 pub fn statement_proof_to_v01(proof: StatementProof) -> v01::StatementProof {
-    match proof {
-        StatementProof::Sr25519 { signature, signer } => {
-            v01::StatementProof::Sr25519 { signature, signer }
+    proof.into()
+}
+
+impl From<StatementProof> for v01::StatementProof {
+    fn from(proof: StatementProof) -> Self {
+        match proof {
+            StatementProof::Sr25519 { signature, signer } => {
+                v01::StatementProof::Sr25519 { signature, signer }
+            }
+            StatementProof::Ed25519 { signature, signer } => {
+                v01::StatementProof::Ed25519 { signature, signer }
+            }
+            StatementProof::Ecdsa { signature, signer } => {
+                v01::StatementProof::Ecdsa { signature, signer }
+            }
+            StatementProof::OnChain {
+                who,
+                block_hash,
+                event,
+            } => v01::StatementProof::OnChain {
+                who,
+                block_hash,
+                event,
+            },
         }
-        StatementProof::Ed25519 { signature, signer } => {
-            v01::StatementProof::Ed25519 { signature, signer }
-        }
-        StatementProof::Ecdsa { signature, signer } => {
-            v01::StatementProof::Ecdsa { signature, signer }
-        }
-        StatementProof::OnChain {
-            who,
-            block_hash,
-            event,
-        } => v01::StatementProof::OnChain {
-            who,
-            block_hash,
-            event,
-        },
     }
 }
 
-fn statement_proof_from_v01(proof: v01::StatementProof) -> StatementProof {
-    match proof {
-        v01::StatementProof::Sr25519 { signature, signer } => {
-            StatementProof::Sr25519 { signature, signer }
+impl From<v01::StatementProof> for StatementProof {
+    fn from(proof: v01::StatementProof) -> Self {
+        match proof {
+            v01::StatementProof::Sr25519 { signature, signer } => {
+                StatementProof::Sr25519 { signature, signer }
+            }
+            v01::StatementProof::Ed25519 { signature, signer } => {
+                StatementProof::Ed25519 { signature, signer }
+            }
+            v01::StatementProof::Ecdsa { signature, signer } => {
+                StatementProof::Ecdsa { signature, signer }
+            }
+            v01::StatementProof::OnChain {
+                who,
+                block_hash,
+                event,
+            } => StatementProof::OnChain {
+                who,
+                block_hash,
+                event,
+            },
         }
-        v01::StatementProof::Ed25519 { signature, signer } => {
-            StatementProof::Ed25519 { signature, signer }
-        }
-        v01::StatementProof::Ecdsa { signature, signer } => {
-            StatementProof::Ecdsa { signature, signer }
-        }
-        v01::StatementProof::OnChain {
-            who,
-            block_hash,
-            event,
-        } => StatementProof::OnChain {
-            who,
-            block_hash,
-            event,
-        },
     }
 }
 

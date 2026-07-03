@@ -17,7 +17,7 @@ use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
 use thiserror::Error;
-use truapi_platform::RuntimeConfig;
+use truapi_platform::PairingHostConfig;
 #[cfg(test)]
 use truapi_platform::{HostInfo, PlatformInfo};
 
@@ -65,36 +65,7 @@ pub enum PairingBootstrapError {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum VersionedHandshakeProposal {
     #[codec(index = 1)]
-    V2(HandshakeProposalV2),
-}
-
-/// Host-papp v2 handshake proposal sent by the host.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HandshakeProposalV2 {
-    pub device: HandshakeDevice,
-    pub metadata: Vec<HandshakeMetadataEntry>,
-}
-
-/// Device keys advertised in the v2 handshake proposal.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HandshakeDevice {
-    pub statement_account_id: [u8; 32],
-    pub encryption_public_key: [u8; 65],
-}
-
-/// Metadata key/value entry attached to a v2 handshake proposal.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HandshakeMetadataEntry(pub HandshakeMetadataKey, pub String);
-
-/// Metadata keys understood by the mobile SSO pairing flow.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum HandshakeMetadataKey {
-    Custom(String),
-    HostName,
-    HostVersion,
-    HostIcon,
-    PlatformType,
-    PlatformVersion,
+    V2(v2::Proposal),
 }
 
 /// Versioned encrypted response posted by the wallet to the pairing topic.
@@ -107,30 +78,8 @@ pub enum VersionedHandshakeResponse {
     },
 }
 
-/// Plaintext v2 wallet response after decrypting the pairing statement.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum EncryptedHandshakeResponseV2 {
-    Pending(HandshakeStatusV2),
-    Success(Box<HandshakeSuccessV2>),
-    Failed(String),
-}
-
-/// Intermediate v2 handshake status emitted before success/failure.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum HandshakeStatusV2 {
-    AllowanceAllocation,
-}
-
-/// Successful v2 handshake payload used to establish the SSO session.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HandshakeSuccessV2 {
-    pub identity_account_id: [u8; 32],
-    pub root_account_id: [u8; 32],
-    pub identity_chat_private_key: [u8; 32],
-    pub sso_enc_pub_key: [u8; 65],
-    pub device_enc_pub_key: [u8; 65],
-    pub root_entropy_source: [u8; 32],
-}
+/// Host-papp v2 handshake wire types.
+pub mod v2;
 
 /// Encrypted statement-channel envelope shared with the wallet.
 ///
@@ -164,14 +113,14 @@ pub fn decrypt_v2_handshake_response(
     core_encryption_secret_key: [u8; 32],
     wallet_ephemeral_public_key: [u8; 65],
     encrypted_message: &[u8],
-) -> Result<EncryptedHandshakeResponseV2, String> {
+) -> Result<v2::EncryptedResponse, String> {
     let plaintext = decrypt_p256_hkdf_aes_gcm(
         core_encryption_secret_key,
         wallet_ephemeral_public_key,
         encrypted_message,
     )?;
     let mut input = plaintext.as_slice();
-    let value = EncryptedHandshakeResponseV2::decode(&mut input)
+    let value = v2::EncryptedResponse::decode(&mut input)
         .map_err(|err| format!("invalid SSO V2 handshake response: {err}"))?;
     if !input.is_empty() {
         return Err("invalid SSO V2 handshake response: trailing bytes".to_string());
@@ -256,6 +205,7 @@ pub fn decrypt_session_statement_data(
     Ok(data)
 }
 
+/// Decrypt an SSO handshake answer using P-256 ECDH, HKDF-SHA256, and AES-GCM.
 fn decrypt_p256_hkdf_aes_gcm(
     own_secret_key: [u8; 32],
     peer_public_key: [u8; 65],
@@ -281,6 +231,7 @@ fn decrypt_session_message(
     )
 }
 
+/// Decrypt a nonce-prefixed AES-GCM payload with the already-derived channel key.
 fn decrypt_aes_gcm_with_key(
     aes_key: [u8; 32],
     encrypted_message: &[u8],
@@ -297,11 +248,13 @@ fn decrypt_aes_gcm_with_key(
         .map_err(|err| format!("failed to decrypt SSO {label}: {err}"))
 }
 
+/// Derive the AES-GCM session key for encrypted statement-channel messages.
 fn session_aes_key(session: &SsoSessionInfo) -> Result<[u8; 32], String> {
     let shared_secret = shared_secret(session.enc_secret, session.peer_enc_pubkey)?;
     aes_key_from_shared_secret(&shared_secret)
 }
 
+/// Expand a P-256 ECDH shared secret into a 32-byte AES-GCM key.
 fn aes_key_from_shared_secret(
     shared_secret: &p256::ecdh::SharedSecret,
 ) -> Result<[u8; 32], String> {
@@ -312,6 +265,7 @@ fn aes_key_from_shared_secret(
     Ok(aes_key)
 }
 
+/// Compute the P-256 ECDH shared secret from our private key and the peer public key.
 fn shared_secret(
     own_secret_key: [u8; 32],
     peer_public_key: [u8; 65],
@@ -349,7 +303,7 @@ fn keyed_hash(key: [u8; 32], message: &[u8]) -> [u8; 32] {
 
 /// Create one-shot pairing bootstrap material from runtime config.
 pub fn create_pairing_bootstrap(
-    config: &RuntimeConfig,
+    config: &PairingHostConfig,
 ) -> Result<PairingBootstrap, PairingBootstrapError> {
     create_pairing_bootstrap_from_identity(config, generate_pairing_device_identity()?)
 }
@@ -369,7 +323,7 @@ pub fn generate_pairing_device_identity() -> Result<PairingDeviceIdentity, Pairi
 
 /// Create pairing bootstrap material from an existing device identity.
 pub fn create_pairing_bootstrap_from_identity(
-    config: &RuntimeConfig,
+    config: &PairingHostConfig,
     identity: PairingDeviceIdentity,
 ) -> Result<PairingBootstrap, PairingBootstrapError> {
     let deeplink = build_pairing_deeplink(
@@ -398,10 +352,10 @@ pub fn build_pairing_deeplink(
     scheme: &str,
     statement_store_public_key: [u8; 32],
     encryption_public_key: [u8; 65],
-    config: &RuntimeConfig,
+    config: &PairingHostConfig,
 ) -> String {
-    let handshake = VersionedHandshakeProposal::V2(HandshakeProposalV2 {
-        device: HandshakeDevice {
+    let handshake = VersionedHandshakeProposal::V2(v2::Proposal {
+        device: v2::Device {
             statement_account_id: statement_store_public_key,
             encryption_public_key,
         },
@@ -413,32 +367,29 @@ pub fn build_pairing_deeplink(
     )
 }
 
-fn handshake_metadata(config: &RuntimeConfig) -> Vec<HandshakeMetadataEntry> {
-    let mut entries = vec![HandshakeMetadataEntry(
-        HandshakeMetadataKey::HostName,
-        config.host_info.name.clone(),
+fn handshake_metadata(config: &PairingHostConfig) -> Vec<v2::MetadataEntry> {
+    let mut entries = vec![v2::MetadataEntry(
+        v2::MetadataKey::HostName,
+        config.host.host_info.name.clone(),
     )];
-    if let Some(value) = &config.host_info.version {
-        entries.push(HandshakeMetadataEntry(
-            HandshakeMetadataKey::HostVersion,
+    if let Some(value) = &config.host.host_info.version {
+        entries.push(v2::MetadataEntry(
+            v2::MetadataKey::HostVersion,
             value.clone(),
         ));
     }
-    if let Some(value) = &config.host_info.icon {
-        entries.push(HandshakeMetadataEntry(
-            HandshakeMetadataKey::HostIcon,
+    if let Some(value) = &config.host.host_info.icon {
+        entries.push(v2::MetadataEntry(v2::MetadataKey::HostIcon, value.clone()));
+    }
+    if let Some(value) = &config.host.platform_info.kind {
+        entries.push(v2::MetadataEntry(
+            v2::MetadataKey::PlatformType,
             value.clone(),
         ));
     }
-    if let Some(value) = &config.platform_info.kind {
-        entries.push(HandshakeMetadataEntry(
-            HandshakeMetadataKey::PlatformType,
-            value.clone(),
-        ));
-    }
-    if let Some(value) = &config.platform_info.version {
-        entries.push(HandshakeMetadataEntry(
-            HandshakeMetadataKey::PlatformVersion,
+    if let Some(value) = &config.host.platform_info.version {
+        entries.push(v2::MetadataEntry(
+            v2::MetadataKey::PlatformVersion,
             value.clone(),
         ));
     }
@@ -508,9 +459,8 @@ mod tests {
         0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
     ];
 
-    fn runtime_config() -> RuntimeConfig {
-        RuntimeConfig::new(
-            "myapp.dot".to_string(),
+    fn runtime_config() -> PairingHostConfig {
+        PairingHostConfig::new(
             HostInfo {
                 name: "Polkadot Web".to_string(),
                 icon: Some("https://example.invalid/dotli.png".to_string()),
@@ -537,8 +487,8 @@ mod tests {
         let VersionedHandshakeProposal::V2(proposal) = decoded;
         assert_eq!(proposal.device.statement_account_id, SS_PUBLIC);
         assert_eq!(proposal.device.encryption_public_key, ENC_PUBLIC);
-        assert!(proposal.metadata.contains(&HandshakeMetadataEntry(
-            HandshakeMetadataKey::HostName,
+        assert!(proposal.metadata.contains(&v2::MetadataEntry(
+            v2::MetadataKey::HostName,
             "Polkadot Web".to_string()
         )));
     }
@@ -621,7 +571,7 @@ mod tests {
         let mut aes_key = [0u8; 32];
         hkdf.expand(&[], &mut aes_key).unwrap();
 
-        let sensitive = EncryptedHandshakeResponseV2::Success(Box::new(HandshakeSuccessV2 {
+        let sensitive = v2::EncryptedResponse::Success(Box::new(v2::Success {
             identity_account_id: [8; 32],
             root_account_id: [7; 32],
             identity_chat_private_key: [6; 32],

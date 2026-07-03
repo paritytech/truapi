@@ -15,32 +15,48 @@ import {
 } from "./generated/worker-callbacks.js";
 import { errorMessage } from "./error.js";
 
-type PermissionAuthorizationStatus =
-  | "NotDetermined"
-  | "Denied"
-  | "Authorized";
+type PermissionAuthorizationStatus = "NotDetermined" | "Denied" | "Authorized";
 
-interface WorkerHostCore {
+interface WorkerProductRuntime {
   receiveFrame(frame: Uint8Array): Promise<void>;
+  dispose(): void;
+  free(): void;
+}
+
+interface WorkerPairingHostRuntime {
+  productRuntime(
+    product: unknown,
+    coreCallbacks: unknown,
+  ): WorkerProductRuntime;
   disconnectSession(): Promise<void>;
   cancelPairing(): void;
   notifySessionStoreChanged(): void;
-  permissionAuthorizationStatus(request: Uint8Array): Promise<string>;
-  permissionAuthorizationStatuses(requests: Uint8Array[]): Promise<string[]>;
+  permissionAuthorizationStatus(
+    productId: string,
+    request: Uint8Array,
+  ): Promise<string>;
+  permissionAuthorizationStatuses(
+    productId: string,
+    requests: Uint8Array[],
+  ): Promise<string[]>;
   setPermissionAuthorizationStatus(
+    productId: string,
     request: Uint8Array,
     status: string,
   ): Promise<void>;
-  dispose(): void;
   free(): void;
 }
 
 interface WasmModuleShape {
   default: (input?: unknown) => Promise<unknown>;
-  WasmHostCore: new (
+  WasmPairingHostRuntime: new (
+    callbacks: unknown,
+    hostConfig: unknown,
+  ) => WorkerPairingHostRuntime;
+  WasmProductRuntime: new (
     callbacks: unknown,
     runtimeConfig: unknown,
-  ) => WorkerHostCore;
+  ) => WorkerProductRuntime;
   setLogLevel?: (level: string) => void;
 }
 
@@ -160,27 +176,28 @@ function chainConnect(
   });
 }
 
-/**
- * Build the callback object passed to the WASM core. Most entries are
- * generated proxy functions that bounce from the worker to the main window;
- * `emitFrame` is filled here because it is the core-to-provider data path.
- */
+/** Build the host-level callback object passed to the WASM runtime. */
 function buildRawCallbacks() {
-  const callbacks = createWorkerRawCallbacks({
+  return createWorkerRawCallbacks({
     callbackRequest,
     startSubscription,
     chainConnect,
   });
-  callbacks.emitFrame = (frame: Uint8Array): void => {
-    postToMain({ kind: "frame", bytes: frame });
-  };
-  callbacks.dispose = (): void => {
-    // Main thread terminates the worker, no separate cleanup needed here.
-  };
-  return callbacks;
 }
 
-let core: WorkerHostCore | null = null;
+function buildCoreCallbacks(coreId: number) {
+  return {
+    emitFrame(frame: Uint8Array): void {
+      postToMain({ kind: "frame", coreId, bytes: frame });
+    },
+    dispose(): void {
+      // Main thread owns lifecycle and disposes explicitly.
+    },
+  };
+}
+
+let runtime: WorkerPairingHostRuntime | null = null;
+const cores = new Map<number, WorkerProductRuntime>();
 let wasm: WasmModuleShape | null = null;
 
 (async () => {
@@ -204,47 +221,80 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         });
         break;
       }
-      if (core) {
+      if (runtime) {
         postToMain({
           kind: "fatalError",
-          error: "init: core already initialized",
+          error: "init: runtime already initialized",
         });
         break;
       }
       wasm.setLogLevel?.(msg.logLevel);
       try {
-        core = new wasm.WasmHostCore(buildRawCallbacks(), msg.runtimeConfig);
+        runtime = new wasm.WasmPairingHostRuntime(
+          buildRawCallbacks(),
+          msg.hostConfig,
+        );
         postToMain({ kind: "ready" });
       } catch (err) {
         postToMain({ kind: "fatalError", error: `init: ${errorMessage(err)}` });
+      }
+      break;
+    case "createCore":
+      if (!runtime) {
+        postToMain({
+          kind: "coreError",
+          coreId: msg.coreId,
+          error: "createCore received before runtime is ready",
+        });
+        break;
+      }
+      try {
+        const core = runtime.productRuntime(
+          msg.product,
+          buildCoreCallbacks(msg.coreId),
+        );
+        cores.set(msg.coreId, core);
+        postToMain({ kind: "coreReady", coreId: msg.coreId });
+      } catch (err) {
+        postToMain({
+          kind: "coreError",
+          coreId: msg.coreId,
+          error: errorMessage(err),
+        });
       }
       break;
     case "setLogLevel":
       wasm?.setLogLevel?.(msg.level);
       break;
     case "frame":
-      void handleFrame(msg.bytes);
+      void handleFrame(msg.coreId, msg.bytes);
       break;
     case "disconnectSession":
       void handleDisconnectSession(msg.requestId);
       break;
     case "cancelPairing":
-      core?.cancelPairing();
+      runtime?.cancelPairing();
       break;
     case "notifySessionStoreChanged":
-      core?.notifySessionStoreChanged();
+      runtime?.notifySessionStoreChanged();
       break;
     case "getPermissionAuthorizationStatus":
-      void handleGetPermissionAuthorizationStatus(msg.requestId, msg.request);
+      void handleGetPermissionAuthorizationStatus(
+        msg.productId,
+        msg.requestId,
+        msg.request,
+      );
       break;
     case "getPermissionAuthorizationStatuses":
       void handleGetPermissionAuthorizationStatuses(
+        msg.productId,
         msg.requestId,
         msg.requests,
       );
       break;
     case "setPermissionAuthorizationStatus":
       void handleSetPermissionAuthorizationStatus(
+        msg.productId,
         msg.requestId,
         msg.request,
         msg.status,
@@ -280,14 +330,19 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       if (listener) listener(msg.json);
       break;
     }
+    case "disposeCore":
+      disposeCore(msg.coreId);
+      break;
     case "dispose":
       try {
-        core?.dispose();
-        core?.free();
+        for (const coreId of [...cores.keys()]) {
+          disposeCore(coreId);
+        }
+        runtime?.free();
       } catch (err) {
         postToMain({ kind: "disposeError", error: errorMessage(err) });
       }
-      core = null;
+      runtime = null;
       break;
     default: {
       const { kind } = msg as { kind?: unknown };
@@ -298,18 +353,30 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
   }
 });
 
+function disposeCore(coreId: number): void {
+  const core = cores.get(coreId);
+  if (!core) return;
+  cores.delete(coreId);
+  try {
+    core.dispose();
+    core.free();
+  } catch (err) {
+    postToMain({ kind: "disposeError", error: errorMessage(err) });
+  }
+}
+
 async function handleDisconnectSession(requestId: number): Promise<void> {
-  if (!core) {
+  if (!runtime) {
     postToMain({
       kind: "disconnectSessionResponse",
       requestId,
       ok: false,
-      error: "disconnectSession received before core is ready",
+      error: "disconnectSession received before runtime is ready",
     });
     return;
   }
   try {
-    await core.disconnectSession();
+    await runtime.disconnectSession();
     postToMain({ kind: "disconnectSessionResponse", requestId, ok: true });
   } catch (err) {
     postToMain({
@@ -322,20 +389,24 @@ async function handleDisconnectSession(requestId: number): Promise<void> {
 }
 
 async function handleGetPermissionAuthorizationStatus(
+  productId: string,
   requestId: number,
   request: Uint8Array,
 ): Promise<void> {
-  if (!core) {
+  if (!runtime) {
     postToMain({
       kind: "permissionAuthorizationStatusResponse",
       requestId,
       ok: false,
-      error: "permissionAuthorizationStatus received before core is ready",
+      error: "permissionAuthorizationStatus received before runtime is ready",
     });
     return;
   }
   try {
-    const status = await core.permissionAuthorizationStatus(request);
+    const status = await runtime.permissionAuthorizationStatus(
+      productId,
+      request,
+    );
     postToMain({
       kind: "permissionAuthorizationStatusResponse",
       requestId,
@@ -353,20 +424,24 @@ async function handleGetPermissionAuthorizationStatus(
 }
 
 async function handleGetPermissionAuthorizationStatuses(
+  productId: string,
   requestId: number,
   requests: Uint8Array[],
 ): Promise<void> {
-  if (!core) {
+  if (!runtime) {
     postToMain({
       kind: "permissionAuthorizationStatusesResponse",
       requestId,
       ok: false,
-      error: "permissionAuthorizationStatuses received before core is ready",
+      error: "permissionAuthorizationStatuses received before runtime is ready",
     });
     return;
   }
   try {
-    const statuses = await core.permissionAuthorizationStatuses(requests);
+    const statuses = await runtime.permissionAuthorizationStatuses(
+      productId,
+      requests,
+    );
     postToMain({
       kind: "permissionAuthorizationStatusesResponse",
       requestId,
@@ -384,21 +459,23 @@ async function handleGetPermissionAuthorizationStatuses(
 }
 
 async function handleSetPermissionAuthorizationStatus(
+  productId: string,
   requestId: number,
   request: Uint8Array,
   status: PermissionAuthorizationStatus,
 ): Promise<void> {
-  if (!core) {
+  if (!runtime) {
     postToMain({
       kind: "setPermissionAuthorizationStatusResponse",
       requestId,
       ok: false,
-      error: "setPermissionAuthorizationStatus received before core is ready",
+      error:
+        "setPermissionAuthorizationStatus received before runtime is ready",
     });
     return;
   }
   try {
-    await core.setPermissionAuthorizationStatus(request, status);
+    await runtime.setPermissionAuthorizationStatus(productId, request, status);
     postToMain({
       kind: "setPermissionAuthorizationStatusResponse",
       requestId,
@@ -414,11 +491,13 @@ async function handleSetPermissionAuthorizationStatus(
   }
 }
 
-async function handleFrame(bytes: Uint8Array): Promise<void> {
+async function handleFrame(coreId: number, bytes: Uint8Array): Promise<void> {
+  const core = cores.get(coreId);
   if (!core) {
     postToMain({
       kind: "frameError",
-      error: "frame received before core is ready",
+      coreId,
+      error: `frame received for unknown core ${coreId}`,
     });
     return;
   }
@@ -427,6 +506,7 @@ async function handleFrame(bytes: Uint8Array): Promise<void> {
   } catch (err) {
     postToMain({
       kind: "frameError",
+      coreId,
       error: errorMessage(err),
     });
   }

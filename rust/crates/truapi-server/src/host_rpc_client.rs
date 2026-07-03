@@ -482,7 +482,7 @@ fn client_error(reason: impl Into<String>) -> RpcError {
     RpcError::Client(Box::new(HostRpcClientError(reason.into())))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;

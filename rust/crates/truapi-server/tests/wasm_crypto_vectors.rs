@@ -9,15 +9,14 @@ use p256::elliptic_curve::sec1::ToEncodedPoint;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
-use truapi_platform::{HostInfo, PlatformInfo, RuntimeConfig};
+use truapi_platform::{HostInfo, PairingHostConfig, PlatformInfo};
 use truapi_server::host_logic::entropy::derive_product_entropy;
 use truapi_server::host_logic::product_account::{
     derive_product_public_key, product_public_key_to_address,
 };
 use truapi_server::host_logic::session::SsoSessionInfo;
-use truapi_server::host_logic::sso_pairing::{
-    AES_GCM_NONCE_LEN, EncryptedHandshakeResponseV2, HandshakeMetadataEntry, HandshakeMetadataKey,
-    HandshakeSuccessV2, PairingBootstrap, SsoStatementData, VersionedHandshakeProposal,
+use truapi_server::host_logic::sso::pairing::{
+    self, AES_GCM_NONCE_LEN, PairingBootstrap, SsoStatementData, VersionedHandshakeProposal,
     VersionedHandshakeResponse, bootstrap_topic, build_pairing_deeplink, decode_app_handshake_data,
     decrypt_session_statement_data, decrypt_v2_handshake_response,
     encrypt_session_statement_data_with_nonce, establish_sso_session_info,
@@ -49,9 +48,8 @@ fn entropy_secret() -> [u8; 32] {
     std::array::from_fn(|i| i as u8)
 }
 
-fn runtime_config() -> RuntimeConfig {
-    RuntimeConfig::new(
-        "dotli.dot".to_string(),
+fn runtime_config() -> PairingHostConfig {
+    PairingHostConfig::new(
         HostInfo {
             name: "Polkadot Web".to_string(),
             icon: Some("https://example.invalid/dotli.png".to_string()),
@@ -132,17 +130,15 @@ fn pairing_deeplink_topic_and_scale_vectors_match_dotli() {
     assert!(deeplink.starts_with("polkadotapp://pair?handshake=01"));
     let encoded = hex::decode(deeplink.split("handshake=").nth(1).unwrap()).unwrap();
     let decoded = VersionedHandshakeProposal::decode(&mut &encoded[..]).unwrap();
-    let VersionedHandshakeProposal::V2(proposal) = decoded else {
-        panic!("expected V2 proposal");
-    };
+    let VersionedHandshakeProposal::V2(proposal) = decoded;
     assert_eq!(proposal.device.statement_account_id, SS_PUBLIC);
     assert_eq!(proposal.device.encryption_public_key, ENC_PUBLIC);
-    assert!(proposal.metadata.contains(&HandshakeMetadataEntry(
-        HandshakeMetadataKey::HostName,
+    assert!(proposal.metadata.contains(&pairing::v2::MetadataEntry(
+        pairing::v2::MetadataKey::HostName,
         "Polkadot Web".to_string()
     )));
-    assert!(proposal.metadata.contains(&HandshakeMetadataEntry(
-        HandshakeMetadataKey::HostIcon,
+    assert!(proposal.metadata.contains(&pairing::v2::MetadataEntry(
+        pairing::v2::MetadataKey::HostIcon,
         "https://example.invalid/dotli.png".to_string()
     )));
     assert_eq!(
@@ -171,14 +167,14 @@ fn p256_hkdf_aes_gcm_vectors_work_on_wasm() {
     let mut aes_key = [0u8; 32];
     hkdf.expand(&[], &mut aes_key).unwrap();
 
-    let sensitive = EncryptedHandshakeResponseV2::Success(HandshakeSuccessV2 {
+    let sensitive = pairing::v2::EncryptedResponse::Success(Box::new(pairing::v2::Success {
         identity_account_id: [8; 32],
         root_account_id: [7; 32],
         identity_chat_private_key: [6; 32],
         sso_enc_pub_key: ENC_PUBLIC,
         device_enc_pub_key: ENC_PUBLIC,
         root_entropy_source: [5; 32],
-    });
+    }));
     let nonce = [9u8; AES_GCM_NONCE_LEN];
     let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
     let mut encrypted = nonce.to_vec();
