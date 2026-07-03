@@ -12,6 +12,9 @@
 //! (`Unsupported`, `HostFailure`, ...). This avoids leaking json-rpc plumbing
 //! into the public API.
 
+// Temporary for this stack layer: runtime wiring lands in the next child PR.
+#![allow(dead_code)]
+
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use std::collections::HashMap;
