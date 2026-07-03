@@ -1,66 +1,27 @@
 //! Internal dispatcher/runtime core.
 //!
-//! Public host adapters should wrap this through [`crate::HostCore`], which
+//! Public host adapters should wrap this through [`crate::ProductRuntime`], which
 //! owns the stable byte-frame ingress/egress and lifecycle API.
 
 use std::sync::{Arc, Mutex};
 
-use futures::future::BoxFuture;
 use parity_scale_codec::{Decode, Encode};
 use tracing::instrument;
 use truapi::api::TrUApi;
-use truapi::v01;
-use truapi_platform::{Platform, RuntimeConfig};
+use truapi_platform::{PairingHostConfig, Platform, ProductContext};
 
 use crate::dispatcher::Dispatcher;
 use crate::frame::ProtocolMessage;
 use crate::generated::dispatcher;
 use crate::host_logic::session::SessionState;
-use crate::host_logic::session_store::SessionStoreChangeNotifier;
-use crate::runtime::PlatformRuntimeHost;
+use crate::runtime::{PairingHostRole, ProductAuthority, ProductRuntimeHost, RuntimeServices};
 use crate::subscription::Spawner;
 use crate::transport::Transport;
-use truapi_platform::{PermissionAuthorizationRequest, PermissionAuthorizationStatus};
 
-type DisconnectFn = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
-type CancelLoginFn = Arc<dyn Fn() + Send + Sync>;
-type PermissionAuthorizationStatusFn = Arc<
-    dyn Fn(
-            PermissionAuthorizationRequest,
-        ) -> BoxFuture<'static, Result<PermissionAuthorizationStatus, v01::GenericError>>
-        + Send
-        + Sync,
->;
-type PermissionAuthorizationStatusesFn = Arc<
-    dyn Fn(
-            Vec<PermissionAuthorizationRequest>,
-        )
-            -> BoxFuture<'static, Result<Vec<PermissionAuthorizationStatus>, v01::GenericError>>
-        + Send
-        + Sync,
->;
-type SetPermissionAuthorizationStatusFn = Arc<
-    dyn Fn(
-            PermissionAuthorizationRequest,
-            PermissionAuthorizationStatus,
-        ) -> BoxFuture<'static, Result<(), v01::GenericError>>
-        + Send
-        + Sync,
->;
-
-/// Top-level core. Owns the dispatcher and, on the platform path, the shared
-/// session-state holder.
+/// Top-level core. Owns the generated dispatcher.
 pub struct TrUApiCore {
     dispatcher: Dispatcher,
-    /// Always present; empty for [`Self::new`] (direct host path), connected
-    /// to a [`PlatformRuntimeHost`] for [`Self::from_platform_with_config`].
     session_state: Arc<SessionState>,
-    session_store_changes: Arc<SessionStoreChangeNotifier>,
-    disconnect: DisconnectFn,
-    cancel_login: CancelLoginFn,
-    permission_authorization_status: PermissionAuthorizationStatusFn,
-    permission_authorization_statuses: PermissionAuthorizationStatusesFn,
-    set_permission_authorization_status: SetPermissionAuthorizationStatusFn,
 }
 
 impl TrUApiCore {
@@ -75,103 +36,62 @@ impl TrUApiCore {
     {
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, host);
-        let session_state = SessionState::new();
-        let session_store_changes = SessionStoreChangeNotifier::new();
-        let disconnect_state = session_state.clone();
         Self {
             dispatcher,
-            session_state,
-            session_store_changes,
-            disconnect: Arc::new(move || {
-                let state = disconnect_state.clone();
-                Box::pin(async move {
-                    state.clear_session();
-                })
-            }),
-            cancel_login: Arc::new(|| {}),
-            permission_authorization_status: Arc::new(|_| {
-                Box::pin(async {
-                    Err(v01::GenericError {
-                        reason:
-                            "permission authorization is only available on platform-backed cores"
-                                .into(),
-                    })
-                })
-            }),
-            permission_authorization_statuses: Arc::new(|_| {
-                Box::pin(async {
-                    Err(v01::GenericError {
-                        reason:
-                            "permission authorization is only available on platform-backed cores"
-                                .into(),
-                    })
-                })
-            }),
-            set_permission_authorization_status: Arc::new(|_, _| {
-                Box::pin(async {
-                    Err(v01::GenericError {
-                        reason:
-                            "permission authorization is only available on platform-backed cores"
-                                .into(),
-                    })
-                })
-            }),
+            session_state: SessionState::new(),
         }
     }
 
-    /// Build a core around a [`Platform`] implementation and explicit product
-    /// runtime configuration.
+    /// Build a product-facing core around a [`Platform`] implementation,
+    /// explicit host runtime config, and product context.
     #[instrument(skip_all, fields(runtime.method = "core.from_platform_with_config"))]
     pub fn from_platform_with_config<P>(
         platform: Arc<P>,
-        runtime_config: RuntimeConfig,
+        host_config: PairingHostConfig,
+        product: ProductContext,
         spawner: Spawner,
     ) -> Self
     where
         P: Platform + 'static,
     {
-        let runtime = Arc::new(PlatformRuntimeHost::new(
+        let platform: Arc<dyn Platform> = platform;
+        let services = RuntimeServices::new(
             platform,
-            runtime_config,
+            host_config.people_chain_genesis_hash,
             spawner.clone(),
+        );
+        let pairing_host = PairingHostRole::new(services.clone(), host_config);
+        pairing_host.clone().start_session_store_sync(spawner);
+        Self::from_runtime_parts(services, pairing_host, product)
+    }
+
+    /// Build a product-facing core from shared services and authority.
+    #[instrument(skip_all, fields(runtime.method = "core.from_runtime_parts"))]
+    pub(crate) fn from_runtime_parts(
+        services: Arc<RuntimeServices>,
+        authority: Arc<dyn ProductAuthority>,
+        product: ProductContext,
+    ) -> Self {
+        let runtime = Arc::new(ProductRuntimeHost::from_services(
+            services.clone(),
+            authority.clone(),
+            product,
         ));
-        runtime.start_session_store_sync(spawner.clone());
-        let session_state = runtime.session_state();
-        let session_store_changes = runtime.session_store_changes();
-        let disconnect_runtime = runtime.clone();
-        let cancel_login_runtime = runtime.clone();
-        let permission_status_runtime = runtime.clone();
-        let permission_statuses_runtime = runtime.clone();
-        let set_permission_status_runtime = runtime.clone();
+        Self::from_product_runtime(runtime, services.spawner.clone(), authority.session_state())
+    }
+
+    /// Build a dispatcher core around an already-created product runtime.
+    #[instrument(skip_all, fields(runtime.method = "core.from_product_runtime"))]
+    pub(crate) fn from_product_runtime(
+        runtime: Arc<ProductRuntimeHost>,
+        spawner: Spawner,
+        session_state: Arc<SessionState>,
+    ) -> Self {
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
         Self {
             dispatcher,
             session_state,
-            session_store_changes,
-            disconnect: Arc::new(move || {
-                let runtime = disconnect_runtime.clone();
-                Box::pin(async move {
-                    runtime.disconnect().await;
-                })
-            }),
-            cancel_login: Arc::new(move || cancel_login_runtime.cancel_login()),
-            permission_authorization_status: Arc::new(move |request| {
-                let runtime = permission_status_runtime.clone();
-                Box::pin(async move { runtime.permission_authorization_status(request).await })
-            }),
-            permission_authorization_statuses: Arc::new(move |requests| {
-                let runtime = permission_statuses_runtime.clone();
-                Box::pin(async move { runtime.permission_authorization_statuses(requests).await })
-            }),
-            set_permission_authorization_status: Arc::new(move |request, status| {
-                let runtime = set_permission_status_runtime.clone();
-                Box::pin(async move {
-                    runtime
-                        .set_permission_authorization_status(request, status)
-                        .await
-                })
-            }),
         }
     }
 
@@ -182,84 +102,16 @@ impl TrUApiCore {
         self.session_state.clone()
     }
 
-    /// Notify the platform-backed session sync loop that the host-global auth
-    /// session slot may have changed.
-    #[instrument(skip_all, fields(runtime.method = "core.notify_session_store_changed"))]
-    pub fn notify_session_store_changed(&self) {
-        self.session_store_changes.notify();
-    }
-
-    /// Core-owned logout/disconnect. Platform-backed cores best-effort notify
-    /// the SSO peer and clear the host-global auth session; direct cores only
-    /// clear their in-memory session state.
-    #[instrument(skip_all, fields(runtime.method = "core.disconnect"))]
-    pub async fn disconnect_async(&self) {
-        (self.disconnect)().await;
-    }
-
-    /// Blocking wrapper for embedders that do not drive async directly.
-    #[instrument(skip_all, fields(runtime.method = "core.disconnect_blocking"))]
-    pub fn disconnect(&self) {
-        futures::executor::block_on(self.disconnect_async());
-    }
-
-    /// Cancel any in-flight `request_login` pairing. The host UI receives a
-    /// `Disconnected` auth state immediately and the pending login resolves
-    /// to `Rejected`. A no-op when no login is in progress (and always a
-    /// no-op on the direct host path).
-    #[instrument(skip_all, fields(runtime.method = "core.cancel_login"))]
-    pub fn cancel_login(&self) {
-        (self.cancel_login)();
-    }
-
-    /// Read a stored permission authorization status without prompting.
-    #[instrument(skip_all, fields(runtime.method = "core.permission_authorization_status"))]
-    pub async fn permission_authorization_status(
-        &self,
-        request: PermissionAuthorizationRequest,
-    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
-        (self.permission_authorization_status)(request).await
-    }
-
-    /// Read stored permission authorization statuses without prompting.
-    #[instrument(skip_all, fields(runtime.method = "core.permission_authorization_statuses"))]
-    pub async fn permission_authorization_statuses(
-        &self,
-        requests: Vec<PermissionAuthorizationRequest>,
-    ) -> Result<Vec<PermissionAuthorizationStatus>, v01::GenericError> {
-        (self.permission_authorization_statuses)(requests).await
-    }
-
-    /// Update a stored permission authorization status. `NotDetermined`
-    /// clears the stored value so the next product request prompts again.
-    #[instrument(skip_all, fields(runtime.method = "core.set_permission_authorization_status"))]
-    pub async fn set_permission_authorization_status(
-        &self,
-        request: PermissionAuthorizationRequest,
-        status: PermissionAuthorizationStatus,
-    ) -> Result<(), v01::GenericError> {
-        (self.set_permission_authorization_status)(request, status).await
-    }
-
-    /// Asynchronous form of [`Self::receive_from_product`]. Decodes the
-    /// incoming frame, runs it through the dispatcher, and returns the
-    /// SCALE-encoded response (if any).
+    /// Decode an incoming product frame, run it through the dispatcher, and
+    /// return the SCALE-encoded response frame when the method has one.
     #[instrument(skip_all, fields(runtime.method = "core.receive_from_product"))]
-    pub async fn receive_from_product_async(&self, frame: &[u8]) -> Option<Vec<u8>> {
+    pub async fn receive_from_product(&self, frame: &[u8]) -> Option<Vec<u8>> {
         let message = ProtocolMessage::decode(&mut &*frame).ok()?;
         let transport = Arc::new(ResponseTransport::default());
         self.dispatcher
             .dispatch(message, transport.clone() as Arc<dyn Transport>)
             .await;
         transport.take().map(|response| response.encode())
-    }
-
-    /// Synchronous wrapper that blocks the current thread until the inner
-    /// future resolves. Convenient for embedding contexts that don't already
-    /// drive an async runtime.
-    #[instrument(skip_all, fields(runtime.method = "core.receive_from_product_blocking"))]
-    pub fn receive_from_product(&self, frame: &[u8]) -> Option<Vec<u8>> {
-        futures::executor::block_on(self.receive_from_product_async(frame))
     }
 
     /// Dispatch an already-decoded protocol message through the underlying
@@ -275,8 +127,7 @@ impl TrUApiCore {
 
 /// Single-slot transport that captures the next response the dispatcher
 /// emits. Used by [`TrUApiCore::receive_from_product`] to bridge between the
-/// dispatcher's push model and the synchronous "decode in, encoded out"
-/// shape exposed to embedders.
+/// dispatcher's push model and the one-response frame API exposed to embedders.
 #[derive(Default)]
 struct ResponseTransport {
     response: Mutex<Option<ProtocolMessage>>,
@@ -318,9 +169,11 @@ mod tests {
 
     #[test]
     fn from_platform_dispatches_feature_supported() {
+        let (host_config, product) = runtime_config("dotli.dot");
         let core = TrUApiCore::from_platform_with_config(
             Arc::new(StubPlatform::default()),
-            runtime_config("dotli.dot"),
+            host_config,
+            product,
             test_spawner(),
         );
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
@@ -335,8 +188,7 @@ mod tests {
             },
         };
         let encoded = frame.encode();
-        let response_bytes = core
-            .receive_from_product(&encoded)
+        let response_bytes = futures::executor::block_on(core.receive_from_product(&encoded))
             .expect("dispatcher should emit a response");
         let response = ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
         assert_eq!(response.request_id, "p:1");
@@ -359,9 +211,9 @@ mod tests {
                 value: request_bytes,
             },
         };
-        let response_bytes = core
-            .receive_from_product(&frame.encode())
-            .expect("dispatcher should emit a response");
+        let response_bytes =
+            futures::executor::block_on(core.receive_from_product(&frame.encode()))
+                .expect("dispatcher should emit a response");
         let response = ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
         assert_eq!(response.request_id, "p:1");
         assert_eq!(response.payload.id, ids.response_id);
@@ -369,9 +221,11 @@ mod tests {
     }
 
     fn make_core() -> TrUApiCore {
+        let (host_config, product) = runtime_config("dotli.dot");
         TrUApiCore::from_platform_with_config(
             Arc::new(StubPlatform::default()),
-            runtime_config("dotli.dot"),
+            host_config,
+            product,
             test_spawner(),
         )
     }

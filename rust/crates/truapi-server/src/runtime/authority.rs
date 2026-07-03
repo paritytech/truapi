@@ -1,0 +1,225 @@
+use async_trait::async_trait;
+use std::sync::Arc;
+use truapi::latest::{
+    HostAccountGetAliasResponse, HostCreateTransactionResponse,
+    HostRequestResourceAllocationRequest, HostRequestResourceAllocationResponse,
+    HostSignPayloadRequest, HostSignPayloadResponse, HostSignPayloadWithLegacyAccountRequest,
+    HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload,
+    ProductAccountId, ProductAccountTxPayload,
+};
+use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
+use truapi::{CallContext, CallError};
+use truapi_platform::ProductContext;
+
+use crate::host_logic::session::{SessionInfo, SessionState};
+
+/// Snapshot of an account-authority session selected by the authority.
+///
+/// This is the neutral session projection product runtimes can use while
+/// preserving authority-private material inside the concrete authority
+/// implementation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AuthoritySession {
+    /// Root account public key for the active authority session.
+    pub public_key: [u8; 32],
+    /// Identity account resolved from the signing host, when available.
+    pub identity_account_id: Option<[u8; 32]>,
+    /// Lightweight username resolved from People-chain identity, when available.
+    pub lite_username: Option<String>,
+    /// Fully qualified username resolved from People-chain identity, when available.
+    pub full_username: Option<String>,
+    /// Opaque session token used to reject stale pre-confirmation snapshots.
+    pub validation_id: Vec<u8>,
+}
+
+impl AuthoritySession {
+    pub(crate) fn from_session_info(info: &SessionInfo, validation_id: Vec<u8>) -> Self {
+        Self {
+            public_key: info.public_key,
+            identity_account_id: info.identity_account_id,
+            lite_username: info.lite_username.clone(),
+            full_username: info.full_username.clone(),
+            validation_id,
+        }
+    }
+}
+
+/// Typed account-authority failure before it is mapped to an API-specific error.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+pub(crate) enum AuthorityError {
+    /// User or authority rejected the request.
+    #[display("Rejected")]
+    Rejected,
+    /// The selected authority session is no longer active.
+    #[display("Disconnected")]
+    Disconnected,
+    /// The authority cannot service the request.
+    #[display("{reason}")]
+    Unavailable { reason: String },
+    /// Catch-all authority failure.
+    #[display("{reason}")]
+    Unknown { reason: String },
+}
+
+impl AuthorityError {
+    pub(crate) fn reason(self) -> String {
+        self.to_string()
+    }
+}
+
+/// Payload-signing request selected by the product API entrypoint.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SignPayloadAuthorityRequest {
+    /// Sign a payload with a product-derived account.
+    Product(HostSignPayloadRequest),
+    /// Sign a payload through the legacy-account API.
+    LegacyAccount {
+        /// Product slot-zero account that backs the validated legacy signer.
+        product_account: ProductAccountId,
+        /// Original legacy-account request.
+        request: HostSignPayloadWithLegacyAccountRequest,
+    },
+}
+
+/// Raw-signing request selected by the product API entrypoint.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SignRawAuthorityRequest {
+    /// Sign raw data with a product-derived account.
+    Product(HostSignRawRequest),
+    /// Sign raw data through the legacy-account API using the product slot-zero account.
+    LegacyAccount {
+        /// Product slot-zero account that backs the validated legacy signer.
+        product_account: ProductAccountId,
+        /// Original legacy-account request.
+        request: HostSignRawWithLegacyAccountRequest,
+    },
+}
+
+/// Transaction-creation request selected by the product API entrypoint.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CreateTransactionAuthorityRequest {
+    /// Create a transaction with a product-derived account.
+    Product(ProductAccountTxPayload),
+    /// Create a transaction through the legacy-account API using the product slot-zero account.
+    LegacyAccount {
+        /// Product slot-zero account that backs the validated legacy signer.
+        product_account: ProductAccountId,
+        /// Original legacy-account transaction request.
+        request: LegacyAccountTxPayload,
+    },
+}
+
+/// Host-level account authority used by product runtimes.
+///
+/// Pairing hosts implement this by forwarding authority requests to a paired
+/// signing host. A signing-host implementation can later provide the same
+/// surface from local keys without changing product runtime code.
+#[async_trait]
+pub(crate) trait ProductAuthority: Send + Sync {
+    /// Current account-authority session, if connected.
+    fn current_session(&self) -> Option<AuthoritySession>;
+
+    /// Shared session holder owned by this authority.
+    ///
+    /// Product runtimes use it for connection-status subscriptions. The
+    /// concrete authority keeps ownership of the actual session material.
+    fn session_state(&self) -> Arc<SessionState>;
+
+    /// Request account connection for the calling product.
+    async fn request_login(
+        &self,
+        product: &ProductContext,
+    ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>>;
+
+    /// Disconnect the current account-authority session.
+    async fn disconnect(&self);
+
+    /// Sign a SCALE transaction payload for a product account.
+    async fn sign_payload(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: SignPayloadAuthorityRequest,
+    ) -> Result<HostSignPayloadResponse, AuthorityError>;
+
+    /// Sign arbitrary bytes for a product account.
+    async fn sign_raw(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: SignRawAuthorityRequest,
+    ) -> Result<HostSignPayloadResponse, AuthorityError>;
+
+    /// Build and sign a transaction for a product account.
+    async fn create_transaction(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: CreateTransactionAuthorityRequest,
+    ) -> Result<HostCreateTransactionResponse, AuthorityError>;
+
+    /// Request an alias proof for a product account in another product context.
+    async fn account_alias(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_account_id: ProductAccountId,
+        requesting_product_id: String,
+    ) -> Result<HostAccountGetAliasResponse, AuthorityError>;
+
+    /// Ask the account authority to allocate product-scoped resources.
+    async fn allocate_resources(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+        request: HostRequestResourceAllocationRequest,
+    ) -> Result<HostRequestResourceAllocationResponse, AuthorityError>;
+
+    /// Derive product-scoped entropy for a connected session.
+    fn derive_entropy(
+        &self,
+        session: &AuthoritySession,
+        product_id: &str,
+        context: &[u8],
+    ) -> Result<[u8; 32], AuthorityError>;
+}
+
+/// Build the neutral authority-session snapshot for `session`.
+pub(super) fn authority_session(session: &SessionInfo) -> AuthoritySession {
+    AuthoritySession::from_session_info(session, authority_session_validation_id(session))
+}
+
+/// Revalidate a pre-confirmation snapshot against the live session, returning
+/// the current [`SessionInfo`] when it still matches.
+///
+/// Both roles use this before touching key material: a snapshot taken before
+/// user confirmation must still be the current authority session when the
+/// signature or derivation happens, otherwise the request is rejected.
+pub(super) fn require_current_session(
+    session_state: &SessionState,
+    session: &AuthoritySession,
+) -> Result<SessionInfo, AuthorityError> {
+    let current = session_state
+        .current()
+        .ok_or(AuthorityError::Disconnected)?;
+    if authority_session_validation_id(&current) == session.validation_id {
+        Ok(current)
+    } else {
+        Err(AuthorityError::Disconnected)
+    }
+}
+
+/// Opaque token identifying which concrete session a snapshot was taken from.
+pub(super) fn authority_session_validation_id(session: &SessionInfo) -> Vec<u8> {
+    let mut id = Vec::with_capacity(67);
+    if let Some(sso) = &session.sso {
+        id.extend_from_slice(b"sso");
+        id.extend_from_slice(&sso.session_id_own);
+        id.extend_from_slice(&sso.session_id_peer);
+    } else {
+        id.extend_from_slice(b"local");
+        id.extend_from_slice(&session.public_key);
+    }
+    id
+}

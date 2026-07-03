@@ -7,8 +7,9 @@ use futures::stream::{self, BoxStream};
 use truapi::v01;
 use truapi_platform::{
     AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, HostInfo,
-    JsonRpcConnection, Navigation, Notifications, Permissions, PlatformInfo, PreimageHost,
-    ProductStorage, RuntimeConfig, ThemeHost, UserConfirmation, UserConfirmationReview,
+    JsonRpcConnection, Navigation, Notifications, PairingHostConfig, Permissions, PlatformInfo,
+    PreimageHost, ProductContext, ProductStorage, ThemeHost, UserConfirmation,
+    UserConfirmationReview,
 };
 use truapi_server::frame::ProtocolMessage;
 use truapi_server::transport::Transport;
@@ -46,19 +47,21 @@ pub fn test_spawner() -> truapi_server::subscription::Spawner {
 }
 
 /// Runtime configuration shared by integration tests.
-pub fn test_runtime_config() -> RuntimeConfig {
-    RuntimeConfig::new(
-        "dotli.dot".to_string(),
-        HostInfo {
-            name: "Polkadot Web".to_string(),
-            icon: Some("https://dot.li/dotli.png".to_string()),
-            version: None,
-        },
-        PlatformInfo::default(),
-        [0xa2; 32],
-        "polkadotapp".to_string(),
+pub fn test_runtime_config() -> (PairingHostConfig, ProductContext) {
+    (
+        PairingHostConfig::new(
+            HostInfo {
+                name: "Polkadot Web".to_string(),
+                icon: Some("https://dot.li/dotli.png".to_string()),
+                version: None,
+            },
+            PlatformInfo::default(),
+            [0xa2; 32],
+            "polkadotapp".to_string(),
+        )
+        .expect("test host runtime config is valid"),
+        ProductContext::new("dotli.dot".to_string()).expect("test product context is valid"),
     )
-    .expect("test runtime config is valid")
 }
 
 pub struct WireShapePlatform;

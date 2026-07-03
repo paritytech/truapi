@@ -1,8 +1,9 @@
 //! SSO remote messaging over the people-chain statement store: submits an
-//! encrypted request statement to the paired wallet and waits for the
+//! encrypted request statement to the paired signing host and waits for the
 //! matching response, honoring timeouts and local/peer disconnect signals.
 
 use core::mem;
+use std::fmt::Display;
 use std::sync::Mutex;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -10,12 +11,10 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
-use super::PlatformRuntimeHost;
 use super::statement_store_rpc;
-use crate::host_logic::session::{SessionInfo, SsoSessionInfo};
+use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
-    RemoteMessage, RemoteMessageData, RemoteMessageV1, SsoRemoteResponse, SsoSessionStatement,
-    build_outgoing_request_statement, decode_sso_session_statement,
+    SsoRemoteResponse, SsoSessionStatement, decode_sso_session_statement,
 };
 use crate::host_logic::statement_store::{current_unix_secs, parse_new_statements_result};
 
@@ -26,14 +25,13 @@ use futures::{FutureExt, StreamExt, pin_mut};
 use serde_json::Value;
 use subxt_rpcs::RpcClient;
 use subxt_rpcs::client::RpcSubscription;
-use tracing::{debug, instrument, warn};
+use tracing::instrument;
 use truapi::CallContext;
 
 const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
-const DEFAULT_SSO_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
 /// Disconnect reason reported when the local session logs out mid-request.
 pub(super) const SSO_LOCAL_DISCONNECT_REASON: &str = "SSO session disconnected";
-/// Disconnect reason reported when the paired wallet announces a disconnect.
+/// Disconnect reason reported when the paired signing host announces a disconnect.
 pub(super) const SSO_PEER_DISCONNECT_REASON: &str = "SSO peer disconnected";
 
 /// Registry of oneshot waiters resolved when the SSO session disconnects.
@@ -45,12 +43,41 @@ pub(super) struct SessionDisconnects {
 #[derive(Default)]
 struct SessionDisconnectsInner {
     next_id: u64,
-    waiters: Vec<(u64, oneshot::Sender<String>)>,
+    waiters: Vec<(u64, SsoSessionKey, oneshot::Sender<String>)>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct SsoSessionKey {
+    own: [u8; 32],
+    peer: [u8; 32],
+}
+
+impl SsoSessionKey {
+    pub(super) fn from_session(session: &SsoSessionInfo) -> Self {
+        Self {
+            own: session.session_id_own,
+            peer: session.session_id_peer,
+        }
+    }
+}
+
+pub(super) struct SessionDisconnectGuard {
+    disconnects: std::sync::Arc<SessionDisconnects>,
+    id: u64,
+}
+
+impl Drop for SessionDisconnectGuard {
+    fn drop(&mut self) {
+        self.disconnects.unsubscribe(self.id);
+    }
 }
 
 impl SessionDisconnects {
     /// Register a waiter; returns its id and the disconnect-reason receiver.
-    pub(super) fn subscribe(&self) -> (u64, oneshot::Receiver<String>) {
+    pub(super) fn subscribe(
+        self: &std::sync::Arc<Self>,
+        session: &SsoSessionInfo,
+    ) -> (SessionDisconnectGuard, oneshot::Receiver<String>) {
         let (tx, rx) = oneshot::channel();
         let mut inner = self
             .inner
@@ -58,8 +85,16 @@ impl SessionDisconnects {
             .expect("session disconnect mutex poisoned");
         inner.next_id = inner.next_id.wrapping_add(1);
         let id = inner.next_id;
-        inner.waiters.push((id, tx));
-        (id, rx)
+        inner
+            .waiters
+            .push((id, SsoSessionKey::from_session(session), tx));
+        (
+            SessionDisconnectGuard {
+                disconnects: self.clone(),
+                id,
+            },
+            rx,
+        )
     }
 
     fn unsubscribe(&self, id: u64) {
@@ -67,162 +102,51 @@ impl SessionDisconnects {
             .lock()
             .expect("session disconnect mutex poisoned")
             .waiters
-            .retain(|(waiter_id, _)| *waiter_id != id);
+            .retain(|(waiter_id, _, _)| *waiter_id != id);
     }
 
-    /// Resolve every pending waiter with `reason`.
-    pub(super) fn notify(&self, reason: &'static str) {
+    /// Resolve pending waiters for one SSO session with `reason`.
+    pub(super) fn notify(&self, session: &SsoSessionInfo, reason: &'static str) {
+        self.notify_key(SsoSessionKey::from_session(session), reason);
+    }
+
+    pub(super) fn notify_key(&self, key: SsoSessionKey, reason: &'static str) {
         let waiters = {
             let mut inner = self
                 .inner
                 .lock()
                 .expect("session disconnect mutex poisoned");
-            mem::take(&mut inner.waiters)
+            let mut matching = Vec::new();
+            let mut pending = Vec::with_capacity(inner.waiters.len());
+            for waiter in mem::take(&mut inner.waiters) {
+                if waiter.1 == key {
+                    matching.push(waiter);
+                } else {
+                    pending.push(waiter);
+                }
+            }
+            inner.waiters = pending;
+            matching
         };
-        for (_, waiter) in waiters {
+        for (_, _, waiter) in waiters {
             let _ = waiter.send(reason.to_string());
         }
     }
 }
 
-impl PlatformRuntimeHost {
-    /// Best-effort `Disconnected` notification to the SSO peer.
-    #[instrument(skip_all, fields(runtime.method = "sso.disconnect.submit"))]
-    pub(super) async fn submit_sso_disconnected(
-        &self,
-        session: &SessionInfo,
-    ) -> Result<(), String> {
-        let sso = session
-            .sso
-            .as_ref()
-            .ok_or_else(|| "No SSO session state".to_string())?;
-        let message_id = "truapi:sso:disconnect".to_string();
-        let message = RemoteMessage {
-            message_id: message_id.clone(),
-            data: RemoteMessageData::V1(RemoteMessageV1::Disconnected),
-        };
-        let statement = build_outgoing_request_statement(
-            sso,
-            message_id.clone(),
-            vec![message],
-            fresh_statement_expiry(),
-        )?;
-        self.statement_store_rpc()
-            .submit_fire_and_forget(statement, "SSO statement-store")
-            .await
-            .map_err(|err| format!("SSO statement submit failed: {err}"))?;
-        Ok(())
-    }
-
-    /// Submit an SSO remote message and wait for the wallet response with
-    /// the default timeout.
-    #[instrument(skip_all, fields(runtime.method = "sso.remote_message.submit", action = action))]
-    pub(super) async fn submit_sso_remote_message(
-        &self,
-        cx: &CallContext,
-        session: &SessionInfo,
-        action: &str,
-        message: RemoteMessage,
-    ) -> Result<SsoRemoteResponse, String> {
-        self.submit_sso_remote_message_with_timeout(
-            cx,
-            session,
-            action,
-            message,
-            Some(DEFAULT_SSO_RESPONSE_TIMEOUT),
-        )
-        .await
-    }
-
-    /// Submit an SSO remote message and wait for the wallet response without
-    /// a deadline (used for flows that block on user interaction).
-    #[instrument(skip_all, fields(runtime.method = "sso.remote_message.submit_without_timeout", action = action))]
-    pub(super) async fn submit_sso_remote_message_without_timeout(
-        &self,
-        cx: &CallContext,
-        session: &SessionInfo,
-        action: &str,
-        message: RemoteMessage,
-    ) -> Result<SsoRemoteResponse, String> {
-        self.submit_sso_remote_message_with_timeout(cx, session, action, message, None)
-            .await
-    }
-
-    #[instrument(skip_all, fields(runtime.method = "sso.remote_message.submit_with_timeout", action = action))]
-    async fn submit_sso_remote_message_with_timeout(
-        &self,
-        cx: &CallContext,
-        session: &SessionInfo,
-        action: &str,
-        message: RemoteMessage,
-        timeout: Option<Duration>,
-    ) -> Result<SsoRemoteResponse, String> {
-        let sso = session
-            .sso
-            .as_ref()
-            .ok_or_else(|| "No SSO session state".to_string())?;
-        let message_id = sso_message_id(cx, action);
-        let statement = build_outgoing_request_statement(
-            sso,
-            message_id.clone(),
-            vec![message],
-            fresh_statement_expiry(),
-        )?;
-        let rpc_client = self
-            .statement_store_rpc()
-            .client("SSO statement-store")
-            .await?;
-        let own_subscription = subscribe_statement_topic(&rpc_client, sso.session_id_own)
-            .await
-            .map_err(|err| format!("SSO own statement-store subscribe failed: {err}"))?;
-        let peer_subscription = subscribe_statement_topic(&rpc_client, sso.session_id_peer)
-            .await
-            .map_err(|err| format!("SSO peer statement-store subscribe failed: {err}"))?;
-        let submit_client = rpc_client.clone();
-        let submit = async move { statement_store_rpc::submit(&submit_client, statement).await }
-            .map(|result| result.map_err(|err| format!("SSO statement submit failed: {err}")))
-            .boxed();
-        debug!(action, %message_id, "submitted SSO remote message, awaiting response");
-        let (disconnect_waiter_id, disconnect) = self.session_disconnects.subscribe();
-        let result = wait_for_sso_remote_response(
-            statement_subscription_stream(own_subscription, "own"),
-            statement_subscription_stream(peer_subscription, "peer"),
-            submit,
-            SsoRemoteResponseWait {
-                session: sso,
-                statement_request_id: &message_id,
-                remote_message_id: &message_id,
-                timeout,
-                disconnect: Some(disconnect),
-            },
-        )
-        .await;
-        self.session_disconnects.unsubscribe(disconnect_waiter_id);
-        match &result {
-            Ok(_) => debug!(action, %message_id, "SSO remote response received"),
-            Err(reason) => warn!(action, %message_id, %reason, "SSO remote message failed"),
-        }
-        if matches!(&result, Err(reason) if reason == SSO_PEER_DISCONNECT_REASON) {
-            self.session_disconnects.notify(SSO_PEER_DISCONNECT_REASON);
-            self.clear_disconnected_session().await;
-        }
-        result
-    }
+pub(super) struct SsoRemoteResponseWait<'a> {
+    pub(super) session: &'a SsoSessionInfo,
+    pub(super) statement_request_id: &'a str,
+    pub(super) remote_message_id: &'a str,
+    pub(super) timeout: Option<Duration>,
+    pub(super) disconnect: Option<oneshot::Receiver<String>>,
 }
 
-struct SsoRemoteResponseWait<'a> {
-    session: &'a SsoSessionInfo,
-    statement_request_id: &'a str,
-    remote_message_id: &'a str,
-    timeout: Option<Duration>,
-    disconnect: Option<oneshot::Receiver<String>>,
-}
-
-type StatementPageStream = BoxStream<'static, Result<Value, String>>;
-type StatementSubmitFuture = BoxFuture<'static, Result<(), String>>;
+pub(super) type StatementPageStream = BoxStream<'static, Result<Value, String>>;
+pub(super) type StatementSubmitFuture = BoxFuture<'static, Result<(), String>>;
 
 #[instrument(skip_all, fields(runtime.method = "sso.remote_response.wait"))]
-async fn wait_for_sso_remote_response(
+pub(super) async fn wait_for_sso_remote_response(
     own_statements: StatementPageStream,
     peer_statements: StatementPageStream,
     submit: StatementSubmitFuture,
@@ -377,14 +301,14 @@ fn handle_sso_remote_statement_page(
     Ok(None)
 }
 
-async fn subscribe_statement_topic(
+pub(super) async fn subscribe_statement_topic(
     rpc_client: &RpcClient,
     topic: [u8; 32],
 ) -> Result<RpcSubscription<Value>, subxt_rpcs::Error> {
     statement_store_rpc::subscribe_match_all(rpc_client, &[topic]).await
 }
 
-fn statement_subscription_stream(
+pub(super) fn statement_subscription_stream(
     subscription: RpcSubscription<Value>,
     label: &'static str,
 ) -> StatementPageStream {
@@ -403,7 +327,7 @@ fn format_timeout_duration(duration: Duration) -> String {
 
 /// Stable message id for an SSO request: the wire request id when present,
 /// otherwise a fixed per-action fallback.
-pub(super) fn sso_message_id(cx: &CallContext, action: &str) -> String {
+pub(super) fn sso_message_id(cx: &CallContext, action: impl Display) -> String {
     if cx.request_id().is_empty() {
         format!("truapi:sso:{action}")
     } else {
@@ -411,7 +335,7 @@ pub(super) fn sso_message_id(cx: &CallContext, action: &str) -> String {
     }
 }
 
-fn fresh_statement_expiry() -> u64 {
+pub(super) fn fresh_statement_expiry() -> u64 {
     let timestamp = current_unix_secs().saturating_add(DEFAULT_SSO_STATEMENT_EXPIRY_SECS);
     timestamp << 32
 }

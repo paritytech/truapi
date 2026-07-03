@@ -35,8 +35,7 @@ const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 
 fn dispatch(core: &TrUApiCore, frame: ProtocolMessage) -> ProtocolMessage {
     let encoded = frame.encode();
-    let response_bytes = core
-        .receive_from_product(&encoded)
+    let response_bytes = futures::executor::block_on(core.receive_from_product(&encoded))
         .expect("dispatcher emitted a response frame");
     ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response")
 }
@@ -336,9 +335,11 @@ fn malformed_result_subscription_start_interrupts_with_malformed_frame() {
 }
 
 fn make_core() -> TrUApiCore {
+    let (host_config, product) = test_runtime_config();
     TrUApiCore::from_platform_with_config(
         Arc::new(WireShapePlatform),
-        test_runtime_config(),
+        host_config,
+        product,
         test_spawner(),
     )
 }
@@ -351,16 +352,14 @@ fn malformed_frames_are_dropped_without_panic() {
     let core = make_core();
 
     // Empty input and arbitrary garbage.
-    assert!(core.receive_from_product(&[]).is_none());
+    assert!(futures::executor::block_on(core.receive_from_product(&[])).is_none());
     assert!(
-        core.receive_from_product(&[0xff, 0xff, 0xff, 0xff])
-            .is_none()
+        futures::executor::block_on(core.receive_from_product(&[0xff, 0xff, 0xff, 0xff])).is_none()
     );
 
     // A truncated SCALE string header (claims length but no body).
     assert!(
-        core.receive_from_product(&[200u8 << 2, 0x61, 0x62])
-            .is_none()
+        futures::executor::block_on(core.receive_from_product(&[200u8 << 2, 0x61, 0x62])).is_none()
     );
 
     // A well-formed requestId envelope carrying an unknown wire discriminant.
@@ -368,7 +367,7 @@ fn malformed_frames_are_dropped_without_panic() {
     "p:1".to_string().encode_to(&mut unknown_disc);
     unknown_disc.push(0xFA);
     unknown_disc.extend_from_slice(&[0u8; 4]);
-    assert!(core.receive_from_product(&unknown_disc).is_none());
+    assert!(futures::executor::block_on(core.receive_from_product(&unknown_disc)).is_none());
 }
 
 /// Drive a subscription through the encoded-frame boundary: `_start` yields

@@ -1,4 +1,4 @@
-//! wasm-bindgen surface. Exposes [`WasmHostCore`] to JavaScript hosts so
+//! wasm-bindgen surface. Exposes [`WasmProductRuntime`] to JavaScript hosts so
 //! they can wire the TrUAPI core into a browser or worker shell.
 //!
 //! The browser side hands a `callbacks` object (a `JsBridge`) to the
@@ -24,22 +24,25 @@ use send_wrapper::SendWrapper;
 use truapi::v01;
 use truapi_platform::{
     AuthPresenter, AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features, HostInfo,
-    JsonRpcConnection, Navigation, Notifications, Permissions, PlatformInfo, PreimageHost,
-    ProductStorage, RuntimeConfig, RuntimeConfigValidationError, SessionUiInfo, ThemeHost,
-    UserConfirmation, UserConfirmationReview,
+    JsonRpcConnection, Navigation, Notifications, PairingHostConfig, Permissions, PlatformInfo,
+    PreimageHost, ProductContext, ProductStorage, RuntimeConfigValidationError, SessionUiInfo,
+    ThemeHost, UserConfirmation, UserConfirmationReview,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::subscription::Spawner;
-use crate::{FrameSink, HostCore, PermissionAuthorizationRequest, PermissionAuthorizationStatus};
+use crate::{
+    FrameSink, PairingHostRuntime, PermissionAuthorizationRequest, PermissionAuthorizationStatus,
+    ProductRuntime,
+};
 
 /// Bundle of JS-side callbacks the bridge invokes. Names map to camelCase
 /// keys on the JS object passed to the constructor.
 struct JsBridge {
     navigate_to: Function,
     push_notification: Function,
-    cancel_notification: Option<Function>,
+    cancel_notification: Function,
     device_permission: Function,
     remote_permission: Function,
     feature_supported: Function,
@@ -49,14 +52,16 @@ struct JsBridge {
     core_storage_read: Function,
     core_storage_write: Function,
     core_storage_clear: Function,
-    confirm_user_action: Option<Function>,
-    submit_preimage: Option<Function>,
-    lookup_preimage: Option<Function>,
-    subscribe_theme: Option<Function>,
-    auth_state_changed: Option<Function>,
-    /// Optional. Hosts that own JSON-RPC connections provide this; otherwise
-    /// chain calls fail with an "unavailable" reason.
-    chain_connect: Option<Function>,
+    confirm_user_action: Function,
+    submit_preimage: Function,
+    lookup_preimage: Function,
+    subscribe_theme: Function,
+    auth_state_changed: Function,
+    chain_connect: Function,
+}
+
+/// Per-core JS channel: outgoing frames and teardown for one product core.
+struct CoreChannel {
     emit_frame: Function,
     dispose: Function,
 }
@@ -66,7 +71,7 @@ impl JsBridge {
         Ok(Self {
             navigate_to: get_function(callbacks, "navigateTo")?,
             push_notification: get_function(callbacks, "pushNotification")?,
-            cancel_notification: get_optional_function(callbacks, "cancelNotification")?,
+            cancel_notification: get_function(callbacks, "cancelNotification")?,
             device_permission: get_function(callbacks, "devicePermission")?,
             remote_permission: get_function(callbacks, "remotePermission")?,
             feature_supported: get_function(callbacks, "featureSupported")?,
@@ -76,12 +81,19 @@ impl JsBridge {
             core_storage_read: get_function(callbacks, "readCoreStorage")?,
             core_storage_write: get_function(callbacks, "writeCoreStorage")?,
             core_storage_clear: get_function(callbacks, "clearCoreStorage")?,
-            confirm_user_action: get_optional_function(callbacks, "confirmUserAction")?,
-            submit_preimage: get_optional_function(callbacks, "submitPreimage")?,
-            lookup_preimage: get_optional_function(callbacks, "lookupPreimage")?,
-            subscribe_theme: get_optional_function(callbacks, "subscribeTheme")?,
-            auth_state_changed: get_optional_function(callbacks, "authStateChanged")?,
-            chain_connect: get_optional_function(callbacks, "chainConnect")?,
+            confirm_user_action: get_function(callbacks, "confirmUserAction")?,
+            submit_preimage: get_function(callbacks, "submitPreimage")?,
+            lookup_preimage: get_function(callbacks, "lookupPreimage")?,
+            subscribe_theme: get_function(callbacks, "subscribeTheme")?,
+            auth_state_changed: get_function(callbacks, "authStateChanged")?,
+            chain_connect: get_function(callbacks, "chainConnect")?,
+        })
+    }
+}
+
+impl CoreChannel {
+    fn from_js(callbacks: &JsValue) -> Result<Self, JsValue> {
+        Ok(Self {
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
         })
@@ -89,13 +101,13 @@ impl JsBridge {
 }
 
 struct WasmFrameSink {
-    bridge: SendWrapper<Arc<JsBridge>>,
+    emit_frame: SendWrapper<Function>,
 }
 
 impl FrameSink for WasmFrameSink {
     fn emit_frame(&self, frame: Vec<u8>) {
         let frame = Uint8Array::from(frame.as_slice());
-        if let Err(err) = self.bridge.emit_frame.call1(&JsValue::NULL, &frame) {
+        if let Err(err) = self.emit_frame.call1(&JsValue::NULL, &frame) {
             web_sys::console::error_1(&err);
         }
     }
@@ -136,10 +148,9 @@ impl Notifications for WasmPlatform {
     }
 
     async fn cancel_notification(&self, id: v01::NotificationId) -> Result<(), v01::GenericError> {
-        let Some(fn_) = self.bridge.cancel_notification.as_ref() else {
-            return Ok(());
-        };
-        invoke_u32_unit(fn_, id).await.map_err(generic)
+        invoke_u32_unit(&self.bridge.cancel_notification, id)
+            .await
+            .map_err(generic)
     }
 }
 
@@ -213,14 +224,7 @@ impl ChainProvider for WasmPlatform {
         &self,
         genesis_hash: [u8; 32],
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
-        let chain_connect = match self.bridge.chain_connect.clone() {
-            Some(f) => f,
-            None => {
-                return Err(generic(
-                    "chainConnect callback not provided by host".to_string(),
-                ));
-            }
-        };
+        let chain_connect = self.bridge.chain_connect.clone();
         let chain_connect = SendWrapper::new(chain_connect);
         SendWrapper::new(async move {
             let (response_tx, response_rx) = mpsc::unbounded::<String>();
@@ -273,10 +277,11 @@ impl ChainProvider for WasmPlatform {
 
 impl AuthPresenter for WasmPlatform {
     fn auth_state_changed(&self, state: AuthState) {
-        let Some(fn_) = self.bridge.auth_state_changed.as_ref() else {
-            return;
-        };
-        if let Err(err) = fn_.call1(&JsValue::NULL, &auth_state_to_js(&state)) {
+        if let Err(err) = self
+            .bridge
+            .auth_state_changed
+            .call1(&JsValue::NULL, &auth_state_to_js(&state))
+        {
             web_sys::console::error_1(&err);
         }
     }
@@ -316,33 +321,22 @@ impl UserConfirmation for WasmPlatform {
         &self,
         review: UserConfirmationReview,
     ) -> Result<bool, v01::GenericError> {
-        let Some(fn_) = self.bridge.confirm_user_action.as_ref() else {
-            return Err(generic(
-                "confirmUserAction callback not provided by host".to_string(),
-            ));
-        };
-        invoke_bool(fn_, review.encode()).await.map_err(generic)
+        invoke_bool(&self.bridge.confirm_user_action, review.encode())
+            .await
+            .map_err(generic)
     }
 }
 
 impl ThemeHost for WasmPlatform {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
-        let Some(fn_) = self.bridge.subscribe_theme.as_ref() else {
-            return stream::once(async { Ok(v01::ThemeVariant::Dark) }).boxed();
-        };
-        invoke_js_subscription(fn_, None, parse_theme_item).boxed()
+        invoke_js_subscription(&self.bridge.subscribe_theme, None, parse_theme_item).boxed()
     }
 }
 
 #[truapi_platform::async_trait]
 impl PreimageHost for WasmPlatform {
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        let Some(fn_) = self.bridge.submit_preimage.as_ref() else {
-            return Err(v01::PreimageSubmitError::Unknown {
-                reason: "submitPreimage callback not provided by host".to_string(),
-            });
-        };
-        invoke_bytes_return(fn_, value)
+        invoke_bytes_return(&self.bridge.submit_preimage, value)
             .await
             .map_err(|reason| v01::PreimageSubmitError::Unknown { reason })
     }
@@ -351,17 +345,18 @@ impl PreimageHost for WasmPlatform {
         &self,
         key: Vec<u8>,
     ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
-        let Some(fn_) = self.bridge.lookup_preimage.as_ref() else {
-            return stream::once(async { Ok(None) }).boxed();
-        };
-        invoke_js_subscription(fn_, Some(key), parse_preimage_lookup_item).boxed()
+        invoke_js_subscription(
+            &self.bridge.lookup_preimage,
+            Some(key),
+            parse_preimage_lookup_item,
+        )
+        .boxed()
     }
 }
 
-// Account, signing, and statement-store flows live in the Rust
-// core itself. Their `truapi::api::*` trait defaults return `Unsupported`
-// until those in-core implementations land. The JS bridge only carries
-// callbacks for the platform capabilities the core cannot satisfy alone.
+// Account, signing, and statement-store flows live in the Rust core itself.
+// The JS bridge only carries callbacks for platform capabilities the core
+// cannot satisfy alone; account authority is selected by the runtime.
 
 struct JsSubscriptionStream<T> {
     rx: mpsc::UnboundedReceiver<T>,
@@ -702,8 +697,8 @@ fn invoke_local_storage_read(
     let fn_ = bridge.local_storage_read.clone();
     let key = key.to_string();
     SendWrapper::new(async move {
-        let arg = JsValue::from_str(&key);
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
+        let key_arg = JsValue::from_str(&key);
+        let returned = fn_.call1(&JsValue::NULL, &key_arg).map_err(js_to_string)?;
         let resolved = await_optional_promise(returned).await?;
         if resolved.is_null() || resolved.is_undefined() {
             return Ok(None);
@@ -740,8 +735,8 @@ fn invoke_local_storage_clear(
     let fn_ = bridge.local_storage_clear.clone();
     let key = key.to_string();
     SendWrapper::new(async move {
-        let arg = JsValue::from_str(&key);
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
+        let key_arg = JsValue::from_str(&key);
+        let returned = fn_.call1(&JsValue::NULL, &key_arg).map_err(js_to_string)?;
         await_optional_promise(returned).await.map(|_| ())
     })
 }
@@ -779,9 +774,15 @@ fn noop_function() -> Function {
     Function::new_no_args("")
 }
 
-fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
+fn runtime_config_from_js(value: &JsValue) -> Result<(PairingHostConfig, ProductContext), JsValue> {
+    let host_config = pairing_host_config_from_js(value)?;
+    let product = product_context_from_js(value)?;
+    Ok((host_config, product))
+}
+
+fn pairing_host_config_from_js(value: &JsValue) -> Result<PairingHostConfig, JsValue> {
     if value.is_null() || value.is_undefined() {
-        return Err(JsValue::from_str("runtimeConfig is required"));
+        return Err(JsValue::from_str("hostConfig is required"));
     }
 
     let host = get_required_object(value, "host", "runtimeConfig.host")?;
@@ -789,8 +790,7 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
     let people = get_required_object(value, "people", "runtimeConfig.people")?;
     let pairing = get_required_object(value, "pairing", "runtimeConfig.pairing")?;
 
-    RuntimeConfig::new(
-        get_required_string_at(value, "productId", "runtimeConfig.productId")?,
+    PairingHostConfig::new(
         HostInfo {
             name: get_required_string_at(&host, "name", "runtimeConfig.host.name")?,
             icon: get_optional_string_at(&host, "icon", "runtimeConfig.host.icon")?,
@@ -815,6 +815,18 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
             "runtimeConfig.pairing.deeplinkScheme",
         )?,
     )
+    .map_err(runtime_config_validation_to_js)
+}
+
+fn product_context_from_js(value: &JsValue) -> Result<ProductContext, JsValue> {
+    if value.is_null() || value.is_undefined() {
+        return Err(JsValue::from_str("product is required"));
+    }
+    ProductContext::new(get_required_string_at(
+        value,
+        "productId",
+        "runtimeConfig.productId",
+    )?)
     .map_err(runtime_config_validation_to_js)
 }
 
@@ -843,6 +855,11 @@ fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue
         RuntimeConfigValidationError::InvalidDeeplinkScheme { scheme } => JsValue::from_str(
             &format!("runtimeConfig.pairing.deeplinkScheme must not include ://, got {scheme:?}"),
         ),
+        RuntimeConfigValidationError::InvalidProductId { product_id } => {
+            JsValue::from_str(&format!(
+                "runtimeConfig.productId must be a .dot or localhost product identifier, got {product_id:?}"
+            ))
+        }
     }
 }
 
@@ -986,10 +1003,125 @@ fn generic_error_to_js(err: v01::GenericError) -> JsValue {
 }
 
 struct WasmCoreInner {
-    core: HostCore,
+    core: ProductRuntime,
     dispose_fn: SendWrapper<Function>,
     disposed: Cell<bool>,
     disposing: Cell<bool>,
+}
+
+/// JS-callable handle to a long-lived pairing-host runtime shared by product
+/// cores.
+#[wasm_bindgen]
+pub struct WasmPairingHostRuntime {
+    runtime: Rc<PairingHostRuntime>,
+}
+
+#[wasm_bindgen]
+impl WasmPairingHostRuntime {
+    /// Build a shared runtime from host-level platform callbacks and host config.
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        callbacks: JsValue,
+        host_config: JsValue,
+    ) -> Result<WasmPairingHostRuntime, JsValue> {
+        console_error_panic_hook::set_once();
+        crate::logging::init();
+        let bridge = Arc::new(JsBridge::from_js(&callbacks)?);
+        let platform = Arc::new(WasmPlatform::new(bridge));
+        let spawner: Spawner = Arc::new(|fut| {
+            wasm_bindgen_futures::spawn_local(fut);
+        });
+        let host_config = pairing_host_config_from_js(&host_config)?;
+        Ok(Self {
+            runtime: Rc::new(PairingHostRuntime::new(platform, host_config, spawner)),
+        })
+    }
+
+    /// Build one product-scoped runtime from this pairing host runtime.
+    #[wasm_bindgen(js_name = productRuntime)]
+    pub fn product_runtime(
+        &self,
+        product: JsValue,
+        core_callbacks: JsValue,
+    ) -> Result<WasmProductRuntime, JsValue> {
+        let product = product_context_from_js(&product)?;
+        let channel = CoreChannel::from_js(&core_callbacks)?;
+        let sink = Arc::new(WasmFrameSink {
+            emit_frame: SendWrapper::new(channel.emit_frame),
+        });
+        let runtime = self.runtime.product_runtime(product, sink);
+        Ok(WasmProductRuntime::from_parts(runtime, channel.dispose))
+    }
+
+    /// Disconnect the shared account-authority session.
+    #[wasm_bindgen(js_name = disconnectSession)]
+    pub async fn disconnect_session(&self) {
+        self.runtime.disconnect_session().await;
+    }
+
+    /// Cancel an in-flight pairing flow.
+    #[wasm_bindgen(js_name = cancelPairing)]
+    pub fn cancel_pairing(&self) {
+        self.runtime.cancel_pairing();
+    }
+
+    /// Notify the runtime that the auth session slot may have changed.
+    #[wasm_bindgen(js_name = notifySessionStoreChanged)]
+    pub fn notify_session_store_changed(&self) {
+        self.runtime.notify_session_store_changed();
+    }
+
+    /// Read a stored permission authorization status for a product.
+    #[wasm_bindgen(js_name = permissionAuthorizationStatus)]
+    pub async fn permission_authorization_status(
+        &self,
+        product_id: String,
+        payload: Vec<u8>,
+    ) -> Result<JsValue, JsValue> {
+        let request = decode_permission_authorization_request(&payload)?;
+        let status = self
+            .runtime
+            .permission_authorization_status(&product_id, request)
+            .await
+            .map_err(generic_error_to_js)?;
+        Ok(permission_authorization_status_to_js(status))
+    }
+
+    /// Read stored permission authorization statuses for a product.
+    #[wasm_bindgen(js_name = permissionAuthorizationStatuses)]
+    pub async fn permission_authorization_statuses(
+        &self,
+        product_id: String,
+        payloads: Array,
+    ) -> Result<Array, JsValue> {
+        let requests = decode_permission_authorization_requests(&payloads)?;
+        let statuses = self
+            .runtime
+            .permission_authorization_statuses(&product_id, requests)
+            .await
+            .map_err(generic_error_to_js)?;
+        let values = Array::new();
+        for status in statuses {
+            values.push(&permission_authorization_status_to_js(status));
+        }
+        Ok(values)
+    }
+
+    /// Update a stored permission authorization status for a product.
+    #[wasm_bindgen(js_name = setPermissionAuthorizationStatus)]
+    pub async fn set_permission_authorization_status(
+        &self,
+        product_id: String,
+        payload: Vec<u8>,
+        status: String,
+    ) -> Result<(), JsValue> {
+        let request = decode_permission_authorization_request(&payload)?;
+        let status = permission_authorization_status_from_js(&status)?;
+        self.runtime
+            .set_permission_authorization_status(&product_id, request, status)
+            .await
+            .map_err(generic_error_to_js)
+    }
 }
 
 /// Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
@@ -1000,20 +1132,33 @@ pub fn set_log_level(level: &str) {
     crate::logging::set_level_from_str(level);
 }
 
-/// JS-callable handle to the TrUAPI core. Constructed once per shell boot.
+/// JS-callable handle to one product-scoped TrUAPI core.
 #[wasm_bindgen]
-pub struct WasmHostCore {
+pub struct WasmProductRuntime {
     inner: Rc<WasmCoreInner>,
 }
 
+impl WasmProductRuntime {
+    fn from_parts(core: ProductRuntime, dispose_fn: Function) -> Self {
+        Self {
+            inner: Rc::new(WasmCoreInner {
+                core,
+                dispose_fn: SendWrapper::new(dispose_fn),
+                disposed: Cell::new(false),
+                disposing: Cell::new(false),
+            }),
+        }
+    }
+}
+
 #[wasm_bindgen]
-impl WasmHostCore {
+impl WasmProductRuntime {
     /// Build the core from a JS callbacks object. The object must define
     /// every host capability the [`truapi_platform::Platform`] trait set
     /// requires (camelCase property names; see the source for the full
     /// list).
     #[wasm_bindgen(constructor)]
-    pub fn new(callbacks: JsValue, runtime_config: JsValue) -> Result<WasmHostCore, JsValue> {
+    pub fn new(callbacks: JsValue, runtime_config: JsValue) -> Result<WasmProductRuntime, JsValue> {
         // Surface Rust panics to the browser console. A panic mid-dispatch
         // aborts the call as a wasm trap; the host should treat a thrown error
         // from `receiveFrame` as a fatal-instance signal and rebuild the
@@ -1021,25 +1166,23 @@ impl WasmHostCore {
         console_error_panic_hook::set_once();
         crate::logging::init();
         let bridge = Arc::new(JsBridge::from_js(&callbacks)?);
+        let channel = CoreChannel::from_js(&callbacks)?;
         let frame_sink = Arc::new(WasmFrameSink {
-            bridge: SendWrapper::new(bridge.clone()),
+            emit_frame: SendWrapper::new(channel.emit_frame),
         });
-        let dispose_fn = SendWrapper::new(bridge.dispose.clone());
         let platform = Arc::new(WasmPlatform::new(bridge));
         let spawner: Spawner = Arc::new(|fut| {
             wasm_bindgen_futures::spawn_local(fut);
         });
-        let runtime_config = runtime_config_from_js(&runtime_config)?;
-        let core =
-            HostCore::from_platform_with_config(platform, runtime_config, spawner, frame_sink);
-        Ok(Self {
-            inner: Rc::new(WasmCoreInner {
-                core,
-                dispose_fn,
-                disposed: Cell::new(false),
-                disposing: Cell::new(false),
-            }),
-        })
+        let (host_config, product) = runtime_config_from_js(&runtime_config)?;
+        let core = ProductRuntime::from_platform_with_config(
+            platform,
+            host_config,
+            product,
+            spawner,
+            frame_sink,
+        );
+        Ok(Self::from_parts(core, channel.dispose))
     }
 
     /// Push a SCALE-encoded protocol frame into the dispatcher. Responses
@@ -1139,22 +1282,5 @@ impl WasmHostCore {
     pub async fn disconnect_session(&self) -> Result<(), JsValue> {
         self.inner.core.disconnect_session().await;
         Ok(())
-    }
-
-    /// Cancel any in-flight `request_login` pairing. The host receives a
-    /// `Disconnected` auth state immediately and the pending login resolves
-    /// to `Rejected`. A no-op when no login is in progress.
-    #[wasm_bindgen(js_name = cancelPairing)]
-    pub fn cancel_pairing(&self) {
-        self.inner.core.cancel_pairing();
-    }
-
-    /// Notify the core that the host-global auth session slot may have changed.
-    #[wasm_bindgen(js_name = notifySessionStoreChanged)]
-    pub fn notify_session_store_changed(&self) {
-        if self.inner.disposed.get() {
-            return;
-        }
-        self.inner.core.notify_session_store_changed();
     }
 }
