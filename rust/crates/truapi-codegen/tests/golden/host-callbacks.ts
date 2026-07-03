@@ -425,9 +425,9 @@ export interface PairingHostAdmin {
 }
 
 /**
- * Permission prompts. v0.1 keeps device permissions (camera, mic, NFC, ...)
- * separate from remote permissions (domain access, chain submit, ...), so the
- * platform surface mirrors that split.
+ * Permission prompts. Device permissions (camera, mic, NFC, ...) are separate
+ * from remote permissions (domain access, chain submit, ...), so the platform
+ * surface mirrors that split.
  */
 export interface Permissions {
   /**
