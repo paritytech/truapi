@@ -1653,7 +1653,7 @@ impl Notifications for ProductRuntimeHost {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_logic::sso::messages::{RemoteMessageData, RemoteMessageV1};
+    use crate::host_logic::sso::messages::{RemoteMessageData, v1};
     use crate::test_support::*;
     use std::sync::Mutex;
     use truapi_platform::{AuthState, CoreStorageKey};
@@ -1914,7 +1914,7 @@ mod tests {
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasResponse(
+                        crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasResponse(
                             crate::host_logic::sso::messages::RingVrfAliasResponse {
                                 responding_to: "alias-1".to_string(),
                                 payload: Ok(v01::HostAccountGetAliasResponse {
@@ -1944,7 +1944,7 @@ mod tests {
         assert_eq!(inner.alias, vec![1, 2, 3]);
         let message = submitted_remote_message(&platform, &session);
         let crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasRequest(request),
+            crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasRequest(request),
         ) = message.data
         else {
             panic!("expected ring VRF alias request");
@@ -1963,7 +1963,7 @@ mod tests {
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasResponse(
+                        crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasResponse(
                             crate::host_logic::sso::messages::RingVrfAliasResponse {
                                 responding_to: "alias-1".to_string(),
                                 payload: Ok(v01::HostAccountGetAliasResponse {
@@ -1990,7 +1990,7 @@ mod tests {
         .unwrap();
         let message = submitted_remote_message(&platform, &session);
         let crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasRequest(request),
+            crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasRequest(request),
         ) = message.data
         else {
             panic!("expected ring VRF alias request");
@@ -2049,7 +2049,7 @@ mod tests {
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-2".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasResponse(
+                        crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasResponse(
                             crate::host_logic::sso::messages::RingVrfAliasResponse {
                                 responding_to: "alias-2".to_string(),
                                 payload: Ok(v01::HostAccountGetAliasResponse {
@@ -2081,7 +2081,7 @@ mod tests {
         assert!(matches!(
             message.data,
             crate::host_logic::sso::messages::RemoteMessageData::V1(
-                crate::host_logic::sso::messages::RemoteMessageV1::RingVrfAliasRequest(_)
+                crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasRequest(_)
             )
         ));
     }
@@ -2353,7 +2353,7 @@ mod tests {
         assert!(matches!(
             &message.data,
             crate::host_logic::sso::messages::RemoteMessageData::V1(
-                crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request)
+                crate::host_logic::sso::messages::v1::RemoteMessage::SignRequest(request)
             ) if matches!(
                 request.as_ref(),
                 crate::host_logic::sso::messages::SigningRequest::Raw(_)
@@ -2573,7 +2573,7 @@ mod tests {
         assert!(matches!(
             &message.data,
             crate::host_logic::sso::messages::RemoteMessageData::V1(
-                crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request)
+                crate::host_logic::sso::messages::v1::RemoteMessage::SignRequest(request)
             ) if matches!(
                 request.as_ref(),
                 crate::host_logic::sso::messages::SigningRequest::Payload(_)
@@ -2592,7 +2592,7 @@ mod tests {
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-create-tx-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::RemoteMessageV1::CreateTransactionResponse(
+                        crate::host_logic::sso::messages::v1::RemoteMessage::CreateTransactionResponse(
                             crate::host_logic::sso::messages::CreateTransactionResponse {
                                 responding_to: "create-tx-1".to_string(),
                                 signed_transaction: Ok(vec![0xca, 0xfe]),
@@ -2618,7 +2618,7 @@ mod tests {
         assert!(matches!(
             message.data,
             crate::host_logic::sso::messages::RemoteMessageData::V1(
-                crate::host_logic::sso::messages::RemoteMessageV1::CreateTransactionRequest(_)
+                crate::host_logic::sso::messages::v1::RemoteMessage::CreateTransactionRequest(_)
             )
         ));
     }
@@ -2702,7 +2702,7 @@ mod tests {
         assert_eq!(inner.signed_transaction, None);
         let message = submitted_remote_message(&platform, &session);
         let crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request),
+            crate::host_logic::sso::messages::v1::RemoteMessage::SignRequest(request),
         ) = message.data
         else {
             panic!("expected product raw signing request");
@@ -2756,7 +2756,7 @@ mod tests {
 
         let message = submitted_remote_message(&platform, &session);
         let crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::RemoteMessageV1::SignRequest(request),
+            crate::host_logic::sso::messages::v1::RemoteMessage::SignRequest(request),
         ) = message.data
         else {
             panic!("expected product raw signing request");
@@ -2810,7 +2810,7 @@ mod tests {
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-legacy-create-tx-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::RemoteMessageV1::CreateTransactionResponse(
+                        crate::host_logic::sso::messages::v1::RemoteMessage::CreateTransactionResponse(
                             crate::host_logic::sso::messages::CreateTransactionResponse {
                                 responding_to: "legacy-create-tx-1".to_string(),
                                 signed_transaction: Ok(vec![0xca, 0xfe]),
@@ -2845,7 +2845,7 @@ mod tests {
         assert_eq!(inner.transaction, vec![0xca, 0xfe]);
         let message = submitted_remote_message(&platform, &session);
         let crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::RemoteMessageV1::CreateTransactionRequest(request),
+            crate::host_logic::sso::messages::v1::RemoteMessage::CreateTransactionRequest(request),
         ) = message.data
         else {
             panic!("expected product transaction request");
@@ -2947,7 +2947,7 @@ mod tests {
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alloc-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::RemoteMessageV1::ResourceAllocationResponse(
+                        crate::host_logic::sso::messages::v1::RemoteMessage::ResourceAllocationResponse(
                             crate::host_logic::sso::messages::ResourceAllocationResponse {
                                 responding_to: "alloc-1".to_string(),
                                 payload: Ok(vec![
@@ -2988,7 +2988,7 @@ mod tests {
         assert!(matches!(
             message.data,
             crate::host_logic::sso::messages::RemoteMessageData::V1(
-                crate::host_logic::sso::messages::RemoteMessageV1::ResourceAllocationRequest(_)
+                crate::host_logic::sso::messages::v1::RemoteMessage::ResourceAllocationRequest(_)
             )
         ));
     }
@@ -3156,7 +3156,7 @@ mod tests {
         assert_eq!(message.message_id, "truapi:sso:disconnect");
         assert!(matches!(
             message.data,
-            RemoteMessageData::V1(RemoteMessageV1::Disconnected)
+            RemoteMessageData::V1(v1::RemoteMessage::Disconnected)
         ));
     }
 

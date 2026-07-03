@@ -327,7 +327,7 @@ pub(crate) fn sso_peer_disconnect_responses(
                         crate::host_logic::sso::messages::RemoteMessage {
                             message_id: format!("wallet-disconnect-{message_id}"),
                             data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                                crate::host_logic::sso::messages::RemoteMessageV1::Disconnected,
+                                crate::host_logic::sso::messages::v1::RemoteMessage::Disconnected,
                             ),
                         }
                         .encode(),
@@ -356,7 +356,7 @@ pub(crate) fn sso_peer_disconnect_monitor_responses(
                         crate::host_logic::sso::messages::RemoteMessage {
                             message_id: "wallet-disconnect-monitor".to_string(),
                             data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                                crate::host_logic::sso::messages::RemoteMessageV1::Disconnected,
+                                crate::host_logic::sso::messages::v1::RemoteMessage::Disconnected,
                             ),
                         }
                         .encode(),
@@ -501,7 +501,7 @@ pub(crate) fn sign_response_message(
     crate::host_logic::sso::messages::RemoteMessage {
         message_id: format!("wallet-{message_id}"),
         data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::RemoteMessageV1::SignResponse(
+            crate::host_logic::sso::messages::v1::RemoteMessage::SignResponse(
                 crate::host_logic::sso::messages::SigningResponse {
                     responding_to: message_id.to_string(),
                     payload: Ok(

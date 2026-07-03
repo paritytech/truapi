@@ -24,10 +24,10 @@ use super::AuthorityRequestKind;
 use super::PairingHost;
 use crate::host_logic::session::{SessionInfo, SessionState, SsoSessionInfo};
 use crate::host_logic::sso::messages::{
-    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, RemoteMessageV1,
-    SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement, alias_request_message,
+    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, SsoAllocationOutcome,
+    SsoRemoteResponse, SsoSessionStatement, alias_request_message,
     build_outgoing_request_statement, create_transaction_message, decode_sso_session_statement,
-    resource_allocation_message, sign_payload_message, sign_raw_message,
+    resource_allocation_message, sign_payload_message, sign_raw_message, v1,
 };
 use crate::host_logic::statement_store::parse_new_statements_result;
 
@@ -168,7 +168,7 @@ impl PairingHost {
         let message_id = "truapi:sso:disconnect".to_string();
         let message = RemoteMessage {
             message_id: message_id.clone(),
-            data: RemoteMessageData::V1(RemoteMessageV1::Disconnected),
+            data: RemoteMessageData::V1(v1::RemoteMessage::Disconnected),
         };
         let statement = build_outgoing_request_statement(
             sso,
