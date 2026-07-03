@@ -6,7 +6,7 @@
 //! shells.
 //!
 //! Host-facing bridges:
-//! - [`wasm`] (wasm32 only): wasm-bindgen surface exposing `WasmProductRuntime`.
+//! - `wasm` (wasm32 only): wasm-bindgen surface exposing `WasmProductRuntime`.
 
 pub(crate) mod chain_runtime;
 pub mod core;
