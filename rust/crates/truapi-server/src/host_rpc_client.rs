@@ -5,6 +5,9 @@
 //! [`subxt_rpcs::RpcClientT`]: request correlation, subscription routing, and
 //! best-effort unsubscribe on subscription drop.
 
+// Temporary for this stack layer: runtime wiring lands in the next child PR.
+#![allow(dead_code)]
+
 use core::fmt;
 use core::mem;
 use core::pin::Pin;
