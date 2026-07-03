@@ -29,7 +29,6 @@ pub struct Item {
     /// Local item name as it appears in source.
     pub name: Option<String>,
     /// Rustdoc comment on the item, if any.
-    #[allow(dead_code)]
     pub docs: Option<String>,
     /// Kind-dependent rustdoc payload, parsed lazily by helpers in this module.
     pub inner: serde_json::Value,
