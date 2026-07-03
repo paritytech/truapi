@@ -74,6 +74,9 @@ export type AuthState =
 /**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
+ *
+ * Storage is host-local; `storage.md` records the current status quo:
+ * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
 export type CoreStorageKey =
   /**
@@ -223,6 +226,9 @@ export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Code
 /**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
+ *
+ * Storage is host-local; `storage.md` records the current status quo:
+ * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
 export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>}));
 
@@ -282,6 +288,9 @@ export interface AuthPresenter {
  *
  * The platform provides a way to get a JSON-RPC connection for a given chain.
  * The server runtime manages the chainHead v1 state machine on top of this.
+ * Host-spec N.6 requires products to access chains through host-mediated
+ * providers:
+ * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/N-shared-infrastructure.md?plain=1#L91-L102>
  */
 export interface ChainProvider {
   /**
