@@ -6,6 +6,10 @@
 //! allocation, and transaction requests to the paired signing host, then
 //! decodes the signing host's responses while waiting on the SSO
 //! statement-store channels.
+//! The envelope and baseline message catalog are specified in host-spec:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L194-L208>
+//! Deployed extension variants are tracked as a host-spec divergence:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/divergences.md?plain=1#L26-L33>
 //! Field order and enum variant order are kept wire-compatible with host-papp:
 //! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts#L23-L35>
 //! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/signing.ts#L6-L68>
