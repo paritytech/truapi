@@ -6,9 +6,17 @@ use std::collections::{BTreeMap, HashMap};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
+/// Minimum rustdoc JSON `format_version` the extractors are tested against.
+/// Emitted by nightly 2026-02-23 (rustc 1.95.0-nightly); older formats may
+/// encode item shapes differently and are rejected outright.
+const MIN_FORMAT_VERSION: u32 = 57;
+
 /// Parsed rustdoc crate. IDs are integers but serialized as string keys in JSON maps.
 #[derive(Debug, Deserialize)]
 pub struct Crate {
+    /// rustdoc JSON format version stamped into the document.
+    #[serde(default)]
+    pub format_version: Option<u32>,
     pub index: HashMap<String, Item>,
     #[serde(default)]
     pub paths: HashMap<String, ItemPath>,
@@ -21,7 +29,6 @@ pub struct Item {
     /// Local item name as it appears in source.
     pub name: Option<String>,
     /// Rustdoc comment on the item, if any.
-    #[allow(dead_code)]
     pub docs: Option<String>,
     /// Kind-dependent rustdoc payload, parsed lazily by helpers in this module.
     pub inner: serde_json::Value,
@@ -220,7 +227,7 @@ struct ItemCandidate {
 }
 
 #[derive(Debug, Default)]
-struct NameContext {
+pub(crate) struct NameContext {
     by_item_id: HashMap<String, String>,
     by_path: HashMap<String, String>,
 }
@@ -242,9 +249,23 @@ impl NameContext {
 }
 
 /// Parses rustdoc JSON output into the minimal crate model used by the code
-/// generator.
+/// generator. Rejects documents older than [`MIN_FORMAT_VERSION`] because the
+/// untyped walkers in this crate assume the format of recent nightlies.
 pub fn parse(json: &str) -> Result<Crate> {
-    serde_json::from_str(json).context("Failed to parse rustdoc JSON")
+    let krate: Crate = serde_json::from_str(json).context("Failed to parse rustdoc JSON")?;
+    let Some(version) = krate.format_version else {
+        bail!(
+            "rustdoc JSON is missing `format_version`; regenerate it with \
+             `cargo +nightly rustdoc --output-format json` (nightly 2026-02-23 or later)"
+        );
+    };
+    if version < MIN_FORMAT_VERSION {
+        bail!(
+            "rustdoc JSON format_version {version} is older than the tested minimum \
+             {MIN_FORMAT_VERSION}; regenerate with nightly 2026-02-23 or later"
+        );
+    }
+    Ok(krate)
 }
 
 /// Extracts the public traits and types that make up the generated API surface
@@ -433,8 +454,11 @@ fn disambiguated_type_name(simple_name: &str, path: &[String]) -> String {
     if path.iter().any(|segment| segment == "versioned") {
         return simple_name.to_string();
     }
-    if path.iter().any(|segment| segment == "v01") {
-        return format!("V01{simple_name}");
+    if let Some(version) = path
+        .iter()
+        .find_map(|segment| version_module_number(segment))
+    {
+        return format!("V{version:02}{simple_name}");
     }
     let module = path
         .iter()
@@ -443,6 +467,12 @@ fn disambiguated_type_name(simple_name: &str, path: &[String]) -> String {
         .map(|segment| to_pascal_case(segment))
         .unwrap_or_default();
     format!("{module}{simple_name}")
+}
+
+fn version_module_number(segment: &str) -> Option<u32> {
+    segment
+        .strip_prefix('v')
+        .and_then(|value| value.parse::<u32>().ok())
 }
 
 fn to_pascal_case(value: &str) -> String {
@@ -853,7 +883,8 @@ fn extract_generic_arg(
     resolve_type(&generic, names)
 }
 
-fn resolve_type(ty: &serde_json::Value, names: &NameContext) -> Result<TypeRef> {
+/// Resolve a rustdoc JSON type node into the internal type reference model.
+pub(crate) fn resolve_type(ty: &serde_json::Value, names: &NameContext) -> Result<TypeRef> {
     if let Some(name) = ty.get("generic").and_then(|value| value.as_str()) {
         return Ok(TypeRef::Generic(name.to_string()));
     }
@@ -994,7 +1025,8 @@ fn expect_single_arg(type_name: &str, mut args: Vec<TypeRef>) -> Result<TypeRef>
     Ok(args.remove(0))
 }
 
-fn extract_struct(
+/// Extract a struct item, including field docs and generic parameters.
+pub(crate) fn extract_struct(
     item_id: &str,
     item: &Item,
     krate: &Crate,
@@ -1095,7 +1127,8 @@ fn extract_struct(
     })
 }
 
-fn extract_enum(
+/// Extract an enum item, including variant docs and field payloads.
+pub(crate) fn extract_enum(
     item_id: &str,
     item: &Item,
     krate: &Crate,
@@ -1297,7 +1330,8 @@ fn value_id(value: &serde_json::Value) -> Result<String> {
     bail!("Expected rustdoc item id, got {}", summarize_json(value))
 }
 
-fn summarize_json(value: &serde_json::Value) -> String {
+/// Render a bounded JSON snippet for diagnostics.
+pub(crate) fn summarize_json(value: &serde_json::Value) -> String {
     const LIMIT: usize = 200;
 
     let mut text =
@@ -1318,5 +1352,36 @@ mod tests {
         let docs = "Trait summary.\n\n@wire_request_id=7\n";
 
         assert_eq!(clean_docs(Some(docs)).as_deref(), Some("Trait summary."));
+    }
+
+    #[test]
+    fn parse_accepts_tested_format_version() {
+        let json = format!(r#"{{ "format_version": {MIN_FORMAT_VERSION}, "index": {{}} }}"#);
+
+        assert!(parse(&json).is_ok());
+    }
+
+    #[test]
+    fn parse_rejects_missing_format_version() {
+        let err = parse(r#"{ "index": {} }"#).expect_err("missing format_version must error");
+
+        assert!(
+            format!("{err}").contains("missing `format_version`"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_old_format_version() {
+        let json = format!(
+            r#"{{ "format_version": {}, "index": {{}} }}"#,
+            MIN_FORMAT_VERSION - 1
+        );
+        let err = parse(&json).expect_err("old format_version must error");
+
+        assert!(
+            format!("{err}").contains("older than the tested minimum"),
+            "unexpected error: {err}"
+        );
     }
 }

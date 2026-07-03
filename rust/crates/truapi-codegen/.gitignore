@@ -1,0 +1,2 @@
+# Mismatch dumps written by tests/golden_rust_emit.rs for local inspection.
+tests/golden/*.actual
