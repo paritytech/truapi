@@ -1,20 +1,21 @@
-// Wire format between the main thread (`createWebWorkerProvider`) and the
-// Web Worker that hosts the truapi-server WASM core.
+// Wire format between the main thread (`createWebWorkerPairingHostRuntime`) and the
+// Web Worker that hosts the truapi-server WASM runtime.
 //
 //   Main window / host JS
 //   ┌─────────────────────────────────────────────────────────────────┐
-//   │ createWebWorkerProvider                                         │
+//   │ createWebWorkerPairingHostRuntime                               │
 //   │ host callbacks: storage, DOM prompts, chain provider, logging   │
 //   └───────────────┬─────────────────────────────────────────────────┘
-//                   │ MainToWorker: init, frame, callbackResponse,
-//                   │               subscriptionItem, chainResponse
+//                   │ MainToWorker: init, createCore, frame,
+//                   │               callbackResponse, subscriptionItem,
+//                   │               chainResponse
 //                   v
 //   Dedicated Worker
 //   ┌─────────────────────────────────────────────────────────────────┐
-//   │ truapi-server WASM HostCore                                     │
+//   │ shared truapi-server WASM PairingHostRuntime + product runtimes │
 //   │ generated raw-callback proxy                                    │
 //   └───────────────┬─────────────────────────────────────────────────┘
-//                   │ WorkerToMain: frame, callbackRequest,
+//                   │ WorkerToMain: coreReady, frame, callbackRequest,
 //                   │               subscriptionStart, chainConnect
 //                   v
 //   Main window dispatches those requests to the actual host callbacks.
@@ -54,28 +55,29 @@ export type CallbackArgs = readonly unknown[];
  * host callback/subscription/chain responses requested by the worker.
  */
 export type MainToWorker =
-  | {
-      kind: "init";
-      logLevel: LogLevel;
-      runtimeConfig: unknown;
-    }
+  | { kind: "init"; logLevel: LogLevel; hostConfig: unknown }
+  | { kind: "createCore"; coreId: number; product: unknown }
+  | { kind: "disposeCore"; coreId: number }
   | { kind: "setLogLevel"; level: LogLevel }
-  | { kind: "frame"; bytes: Uint8Array }
+  | { kind: "frame"; coreId: number; bytes: Uint8Array }
   | { kind: "disconnectSession"; requestId: number }
   | { kind: "cancelPairing" }
   | { kind: "notifySessionStoreChanged" }
   | {
       kind: "getPermissionAuthorizationStatus";
+      productId: string;
       requestId: number;
       request: Uint8Array;
     }
   | {
       kind: "getPermissionAuthorizationStatuses";
+      productId: string;
       requestId: number;
       requests: Uint8Array[];
     }
   | {
       kind: "setPermissionAuthorizationStatus";
+      productId: string;
       requestId: number;
       request: Uint8Array;
       status: PermissionAuthorizationStatus;
@@ -96,10 +98,12 @@ export type MainToWorker =
 export type WorkerToMain =
   | { kind: "loaded" }
   | { kind: "ready" }
+  | { kind: "coreReady"; coreId: number }
+  | { kind: "coreError"; coreId: number; error: string }
   | { kind: "fatalError"; error: string }
-  | { kind: "frameError"; error: string }
+  | { kind: "frameError"; coreId: number; error: string }
   | { kind: "disposeError"; error: string }
-  | { kind: "frame"; bytes: Uint8Array }
+  | { kind: "frame"; coreId: number; bytes: Uint8Array }
   | { kind: "disconnectSessionResponse"; requestId: number; ok: true }
   | {
       kind: "disconnectSessionResponse";

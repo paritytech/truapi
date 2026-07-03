@@ -16,6 +16,7 @@ export type {
   LogLevel,
   Navigation,
   Notifications,
+  PairingHostAdmin,
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
   Permissions,
@@ -24,6 +25,6 @@ export type {
   PlatformJsonRpcConnection,
   SessionUiInfo,
   ThemeHost,
-  TrUApiHostCoreProvider,
-  HostCoreRuntimeConfig,
+  TrUApiProductProvider,
+  ProductRuntimeConfig,
 } from "./runtime.js";
