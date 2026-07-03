@@ -1,3 +1,10 @@
+//! V1 application messages exchanged on the encrypted SSO channel.
+//!
+//! Baseline variants are specified in host-spec B.5:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L189-L208>
+//! Additional deployed variants are tracked as divergence D-B.5.6:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/divergences.md?plain=1#L26-L35>
+
 use parity_scale_codec::{Decode, Encode};
 
 use super::{
