@@ -36,6 +36,9 @@ use futures::future::{AbortHandle, Abortable};
 use tracing::{debug, instrument, warn};
 use truapi::{CallContext, v01};
 
+/// Host-spec B.6.2 recommends timing out unanswered SSO application requests
+/// after 180 seconds:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L303-L307>
 const DEFAULT_SSO_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
 const UNEXPECTED_SSO_SIGNING_RESPONSE: &str = "Unexpected SSO response for signing request";
 const UNEXPECTED_SSO_TRANSACTION_RESPONSE: &str = "Unexpected SSO response for transaction request";

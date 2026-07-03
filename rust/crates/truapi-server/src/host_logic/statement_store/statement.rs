@@ -7,6 +7,10 @@ use crate::host_logic::product_account::SR25519_SIGNING_CONTEXT;
 use crate::host_logic::session::SsoSessionInfo;
 
 /// Verified statement payload plus the sr25519 signer recovered from proof.
+///
+/// SSO receivers verify incoming statement proofs against the paired
+/// `identityAccountId` as required by host-spec B.3.4:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L147-L149>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedStatementData {
     /// Raw statement data field.
@@ -120,6 +124,11 @@ pub fn decode_signed_statement(
 }
 
 /// Build a signed statement on the active SSO request channel.
+///
+/// Host-spec B.3.1 defines directional session topics; B.4.1 defines the
+/// encrypted statement `data` wrapper carried by this statement:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L119-L131>
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L151-L175>
 pub fn build_signed_session_request_statement(
     session: &SsoSessionInfo,
     encrypted_data: Vec<u8>,

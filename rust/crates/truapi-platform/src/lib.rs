@@ -42,10 +42,17 @@ pub struct HostRuntimeConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairingHostConfig {
     /// Host identity shown to the signing host during pairing.
+    ///
+    /// Host-spec B.1.3 defines the host metadata consumed by the signing host:
+    /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L48-L60>
     pub host: HostRuntimeConfig,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
+    ///
+    /// Host-spec L.2-L.3 define the `polkadotapp://pair` route and construction
+    /// rules:
+    /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/L-url-schemes.md?plain=1#L17-L33>
     pub pairing_deeplink_scheme: String,
 }
 
@@ -70,6 +77,9 @@ pub struct SigningHostConfig {
 pub struct ProductContext {
     /// Product identifier used for account derivation and product-scoped
     /// storage/permission namespaces.
+    ///
+    /// Host-spec C.7 defines accepted product id forms:
+    /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L109-L128>
     pub product_id: String,
 }
 
@@ -382,6 +392,9 @@ pub trait Features: Send + Sync {
 ///
 /// The platform provides a way to get a JSON-RPC connection for a given chain.
 /// The server runtime manages the chainHead v1 state machine on top of this.
+/// Host-spec N.6 requires products to access chains through host-mediated
+/// providers:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/N-shared-infrastructure.md?plain=1#L91-L102>
 #[async_trait]
 pub trait ChainProvider: Send + Sync {
     /// Open a JSON-RPC connection for the chain identified by `genesis_hash`.
@@ -409,6 +422,9 @@ pub trait JsonRpcConnection: Send + Sync {
 
 /// Core-owned host-private storage slots. Products never address these slots;
 /// the host chooses the backing store for each slot.
+///
+/// Storage is host-local; `storage.md` records the current status quo:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CoreStorageKey {
     /// Opaque SSO/auth session blob.

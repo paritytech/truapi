@@ -2,6 +2,9 @@
 //!
 //! Mirrors dotli's `packages/auth/src/account.ts`: derive an sr25519 public
 //! key through soft HDKD junctions `["product", product_id, derivation_index]`.
+//! Host-spec C.5-C.7 define the product-account derivation, SS58 address, and
+//! `ProductAccountId` shape:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L66-L128>
 
 use blake2_rfc::blake2b::blake2b;
 use parity_scale_codec::Encode;
@@ -29,6 +32,9 @@ pub enum ProductAccountError {
 }
 
 /// Derive the root sr25519 keypair from raw BIP-39 entropy.
+///
+/// Host-spec C.1 defines the BIP-39 entropy to sr25519 mini-secret path:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L24-L41>
 ///
 /// Matches the Substrate mini-secret scheme (`sp_core::sr25519::Pair::from_entropy`)
 /// used by polkadot-app-ios-v2: PBKDF2 over the entropy to a 32-byte mini

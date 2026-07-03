@@ -6,7 +6,10 @@
 //! allocation, and transaction requests to the paired signing host, then
 //! decodes the signing host's responses while waiting on the SSO
 //! statement-store channels.
-//! The envelope and baseline message catalog are specified in host-spec:
+//! The encrypted statement envelope and message identifiers are specified in
+//! host-spec:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L151-L183>
+//! The baseline remote message catalog is specified in host-spec:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L194-L208>
 //! Deployed extension variants are tracked as a host-spec divergence:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/divergences.md?plain=1#L26-L33>

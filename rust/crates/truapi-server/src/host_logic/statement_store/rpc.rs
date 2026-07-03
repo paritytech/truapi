@@ -1,5 +1,8 @@
 //! Statement-store JSON-RPC shapes mirrored from `sp_statement_store`.
 //!
+//! Host-spec N.5 lists the statement-store methods hosts must use:
+//! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/N-shared-infrastructure.md?plain=1#L79-L89>
+//!
 //! See the upstream RPC methods plus `TopicFilter` / `StatementEvent` types:
 //! <https://github.com/paritytech/polkadot-sdk/blob/f2f3aa6a8fda8ea52282da9711b3c5da4ba82529/substrate/client/rpc-api/src/statement/mod.rs#L19-L117>
 //! <https://github.com/paritytech/polkadot-sdk/blob/f2f3aa6a8fda8ea52282da9711b3c5da4ba82529/substrate/primitives/statement-store/src/store_api.rs#L41-L54>
