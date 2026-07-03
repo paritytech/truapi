@@ -11,6 +11,7 @@
 
 use futures::stream::BoxStream;
 use parity_scale_codec::{Decode, Encode};
+use unicode_normalization::UnicodeNormalization;
 
 pub use async_trait::async_trait;
 
@@ -26,74 +27,81 @@ use truapi::latest::{
 };
 use url::Url;
 
-/// Static runtime configuration supplied by the embedding host before the
-/// core handles product-scoped calls.
+/// Role-neutral runtime configuration supplied by the embedding host.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeConfig {
-    /// Canonical product identifier used for account derivation.
-    pub product_id: String,
-    /// Host metadata shown by the wallet during SSO pairing.
+pub struct HostRuntimeConfig {
+    /// Host metadata.
     pub host_info: HostInfo,
-    /// Platform metadata shown by the wallet during SSO pairing.
+    /// Platform metadata.
     pub platform_info: PlatformInfo,
+}
+
+/// Pairing-host runtime configuration supplied by the embedding host.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PairingHostConfig {
+    /// Host identity shown to the signing host during pairing.
+    pub host: HostRuntimeConfig,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
     pub pairing_deeplink_scheme: String,
 }
 
-/// Host metadata shown by the wallet during SSO pairing.
+/// Signing-host runtime configuration supplied by the embedding host.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SigningHostConfig {
+    /// Host identity. Not read by the local-signing paths yet; retained for
+    /// parity with [`PairingHostConfig`] and for the future signer-side SSO
+    /// responder, which advertises host identity in handshake responses.
+    pub host: HostRuntimeConfig,
+    /// People-chain genesis hash used for statement-store product calls.
+    pub people_chain_genesis_hash: [u8; 32],
+}
+
+/// Product identity attached to one product-facing TrUAPI connection.
+///
+/// A host may create multiple product runtimes from the same long-lived host
+/// runtime, each with its own product context.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductContext {
+    /// Product identifier used for account derivation and product-scoped
+    /// storage/permission namespaces.
+    pub product_id: String,
+}
+
+/// Host metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostInfo {
-    /// Host name shown by the wallet during SSO pairing.
+    /// Host name.
     pub name: String,
-    /// Optional absolute HTTPS host icon URL shown by the wallet during SSO pairing.
+    /// Optional absolute HTTPS host icon URL.
     pub icon: Option<String>,
-    /// Optional host version shown by the wallet during SSO pairing.
+    /// Optional host version.
     pub version: Option<String>,
 }
 
-/// Platform metadata shown by the wallet during SSO pairing.
+/// Platform metadata.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlatformInfo {
-    /// Optional platform/browser name shown by the wallet during SSO pairing.
+    /// Optional platform/browser name.
     pub kind: Option<String>,
-    /// Optional platform/browser version shown by the wallet during SSO pairing.
+    /// Optional platform/browser version.
     pub version: Option<String>,
 }
 
-impl RuntimeConfig {
-    /// Build a runtime config, validating fields whose representation cannot
-    /// be made invalid by Rust types alone.
+impl HostRuntimeConfig {
+    /// Build a role-neutral host runtime config, validating fields whose
+    /// representation cannot be made invalid by Rust types alone.
     pub fn new(
-        product_id: String,
         host_info: HostInfo,
         platform_info: PlatformInfo,
-        people_chain_genesis_hash: [u8; 32],
-        pairing_deeplink_scheme: String,
     ) -> Result<Self, RuntimeConfigValidationError> {
-        let config = Self {
-            product_id,
-            host_info,
-            platform_info,
-            people_chain_genesis_hash,
-            pairing_deeplink_scheme,
-        };
-        config.validate()?;
-        Ok(config)
-    }
-
-    fn validate(&self) -> Result<(), RuntimeConfigValidationError> {
-        require_non_empty("product_id", &self.product_id)?;
-        require_non_empty("host_info.name", &self.host_info.name)?;
-        require_non_empty("pairing_deeplink_scheme", &self.pairing_deeplink_scheme)?;
-        if self.pairing_deeplink_scheme.contains("://") {
-            return Err(RuntimeConfigValidationError::InvalidDeeplinkScheme {
-                scheme: self.pairing_deeplink_scheme.clone(),
-            });
-        }
-        if let Some(icon) = &self.host_info.icon {
+        require_non_empty("host_info.name", &host_info.name)?;
+        if let Some(icon) = &host_info.icon {
             let parsed =
                 Url::parse(icon).map_err(|err| RuntimeConfigValidationError::InvalidHostIcon {
                     reason: err.to_string(),
@@ -104,7 +112,83 @@ impl RuntimeConfig {
                 });
             }
         }
-        Ok(())
+        Ok(Self {
+            host_info,
+            platform_info,
+        })
+    }
+}
+
+impl PairingHostConfig {
+    /// Build a pairing-host runtime config, validating fields whose
+    /// representation cannot be made invalid by Rust types alone.
+    pub fn new(
+        host_info: HostInfo,
+        platform_info: PlatformInfo,
+        people_chain_genesis_hash: [u8; 32],
+        pairing_deeplink_scheme: String,
+    ) -> Result<Self, RuntimeConfigValidationError> {
+        require_non_empty("pairing_deeplink_scheme", &pairing_deeplink_scheme)?;
+        if pairing_deeplink_scheme.contains("://") {
+            return Err(RuntimeConfigValidationError::InvalidDeeplinkScheme {
+                scheme: pairing_deeplink_scheme,
+            });
+        }
+        let config = Self {
+            host: HostRuntimeConfig::new(host_info, platform_info)?,
+            people_chain_genesis_hash,
+            pairing_deeplink_scheme,
+        };
+        Ok(config)
+    }
+}
+
+impl SigningHostConfig {
+    /// Build a signing-host runtime config, validating fields whose
+    /// representation cannot be made invalid by Rust types alone.
+    pub fn new(
+        host_info: HostInfo,
+        platform_info: PlatformInfo,
+        people_chain_genesis_hash: [u8; 32],
+    ) -> Result<Self, RuntimeConfigValidationError> {
+        Ok(Self {
+            host: HostRuntimeConfig::new(host_info, platform_info)?,
+            people_chain_genesis_hash,
+        })
+    }
+}
+
+impl ProductContext {
+    /// Build a product context, validating fields whose representation cannot
+    /// be made invalid by Rust types alone.
+    pub fn new(product_id: String) -> Result<Self, RuntimeConfigValidationError> {
+        Ok(Self {
+            product_id: normalize_product_identifier(&product_id)?,
+        })
+    }
+}
+
+/// Whether `identifier` is a product scope the core is allowed to derive for.
+pub fn is_product_identifier(identifier: &str) -> bool {
+    normalize_product_identifier(identifier).is_ok()
+}
+
+/// Normalize product identifiers before derivation and policy checks.
+pub fn normalize_product_identifier(
+    product_id: &str,
+) -> Result<String, RuntimeConfigValidationError> {
+    let trimmed = product_id.trim();
+    require_non_empty("product_id", trimmed)?;
+    let normalized = trimmed.nfc().collect::<String>().to_lowercase();
+    if normalized.ends_with(".dot")
+        || normalized == "localhost"
+        || normalized.starts_with("localhost:")
+    {
+        Ok(normalized)
+    } else {
+        Err(RuntimeConfigValidationError::InvalidProductId {
+            product_id: product_id.to_string(),
+        })
     }
 }
 
@@ -142,12 +226,20 @@ pub enum RuntimeConfigValidationError {
         /// Actual deeplink scheme value.
         scheme: String,
     },
+    /// Product id was not a `.dot` or localhost product identifier.
+    #[display("product_id must be a .dot or localhost product identifier, got {product_id:?}")]
+    InvalidProductId {
+        /// Actual product id value.
+        product_id: String,
+    },
 }
 
-impl std::error::Error for RuntimeConfigValidationError {}
+impl core::error::Error for RuntimeConfigValidationError {}
 
-/// Product-scoped key-value storage. The platform namespaces keys so different
-/// products cannot read each other's data.
+/// Product-scoped key-value storage.
+///
+/// The core namespaces product keys before calling this trait. Host
+/// implementations should treat `key` as an opaque OS-style storage key.
 #[async_trait]
 pub trait ProductStorage: Send + Sync {
     /// Read a value by key.
@@ -187,9 +279,9 @@ pub trait Notifications: Send + Sync {
     }
 }
 
-/// Permission prompts. v0.1 keeps device permissions (camera, mic, NFC, ...)
-/// separate from remote permissions (domain access, chain submit, ...), so the
-/// platform surface mirrors that split.
+/// Permission prompts. Device permissions (camera, mic, NFC, ...) are separate
+/// from remote permissions (domain access, chain submit, ...), so the platform
+/// surface mirrors that split.
 #[async_trait]
 pub trait Permissions: Send + Sync {
     /// Prompt the user for a device-level permission.
@@ -239,13 +331,6 @@ pub trait CoreAdmin: Send + Sync {
     /// resulting auth state transition.
     async fn disconnect_session(&self) -> Result<(), GenericError>;
 
-    /// Cancel any in-flight pairing request.
-    fn cancel_pairing(&self);
-
-    /// Notify the core that the host-global auth session slot may have
-    /// changed. The core re-reads storage and emits any resulting auth state.
-    fn notify_session_store_changed(&self);
-
     /// Read a stored permission authorization status without prompting.
     async fn get_permission_authorization_status(
         &self,
@@ -267,6 +352,19 @@ pub trait CoreAdmin: Send + Sync {
         request: PermissionAuthorizationRequest,
         status: PermissionAuthorizationStatus,
     ) -> Result<(), GenericError>;
+}
+
+/// Pairing-host-only administration API exposed to host UI.
+#[async_trait]
+pub trait PairingHostAdmin: Send + Sync {
+    /// Cancel any in-flight pairing request.
+    fn cancel_pairing(&self);
+
+    /// Notify the core that the persisted auth-session blob may have changed.
+    ///
+    /// The host owns persistence and change detection. The pairing core owns
+    /// decoding that blob into live `SessionState` / `AuthState`.
+    fn notify_session_store_changed(&self);
 }
 
 /// Feature-support probing. The host answers whether it can service a given
