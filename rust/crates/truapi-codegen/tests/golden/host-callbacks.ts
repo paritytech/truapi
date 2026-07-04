@@ -106,6 +106,16 @@ export type CreateTransactionReview =
   | { tag: "LegacyAccount"; value: LegacyAccountTxPayload };
 
 /**
+ * Review shown before a product learns the user's primary identity.
+ */
+export interface IdentityDisclosureReview {
+  /**
+   * Product currently handling the request.
+   */
+  productId: string;
+}
+
+/**
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
@@ -117,7 +127,11 @@ export type PermissionAuthorizationRequest =
   /**
    * Remote/product-scoped permission such as chain submit or HTTP access.
    */
-  | { tag: "Remote"; value: RemotePermissionRequest };
+  | { tag: "Remote"; value: RemotePermissionRequest }
+  /**
+   * Product-scoped permission to disclose the user's primary identity.
+   */
+  | { tag: "IdentityDisclosure"; value?: undefined };
 
 /**
  * Authorization status for a permission request.
@@ -210,6 +224,10 @@ export type UserConfirmationReview =
    */
   | { tag: "AccountAlias"; value: AccountAliasReview }
   /**
+   * Allow a product to learn the user's primary identity.
+   */
+  | { tag: "IdentityDisclosure"; value: IdentityDisclosureReview }
+  /**
    * Allocate resources for the requesting product.
    */
   | { tag: "ResourceAllocation"; value: HostRequestResourceAllocationRequest }
@@ -238,10 +256,15 @@ export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreSt
 export const CreateTransactionReview: S.Codec<CreateTransactionReview> = S.lazy((): S.Codec<CreateTransactionReview> => S.TaggedUnion({Product: ProductAccountTxPayload, LegacyAccount: LegacyAccountTxPayload}));
 
 /**
+ * Review shown before a product learns the user's primary identity.
+ */
+export const IdentityDisclosureReview: S.Codec<IdentityDisclosureReview> = S.lazy((): S.Codec<IdentityDisclosureReview> => S.Struct({productId: S.str}) as S.Codec<IdentityDisclosureReview>);
+
+/**
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
-export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequest> = S.lazy((): S.Codec<PermissionAuthorizationRequest> => S.TaggedUnion({Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest}));
+export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequest> = S.lazy((): S.Codec<PermissionAuthorizationRequest> => S.TaggedUnion({Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void}));
 
 /**
  * Authorization status for a permission request.
@@ -269,7 +292,7 @@ export const SignRawReview: S.Codec<SignRawReview> = S.lazy((): S.Codec<SignRawR
 /**
  * Review shown before a user-confirmed core action continues.
  */
-export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy((): S.Codec<UserConfirmationReview> => S.TaggedUnion({SignPayload: SignPayloadReview, SignRaw: SignRawReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, ResourceAllocation: HostRequestResourceAllocationRequest, PreimageSubmit: PreimageSubmitReview}));
+export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy((): S.Codec<UserConfirmationReview> => S.TaggedUnion({SignPayload: SignPayloadReview, SignRaw: SignRawReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: HostRequestResourceAllocationRequest, PreimageSubmit: PreimageSubmitReview}));
 
 /**
  * Host auth UI driven by core-owned `AuthState` transitions.
@@ -500,11 +523,11 @@ export interface ThemeHost {
 }
 
 /**
- * Local user confirmation UI for session-channel operations.
+ * Local user confirmation UI for sensitive core-owned operations.
  */
 export interface UserConfirmation {
   /**
-   * Confirm a reviewed action before the core asks the SSO peer.
+   * Confirm a reviewed action before the core continues.
    */
   confirmUserAction(review: UserConfirmationReview): Promise<boolean>;
 }

@@ -132,10 +132,13 @@ use truapi::{CallContext, CallError, Subscription};
 #[cfg(test)]
 use truapi_platform::Platform;
 use truapi_platform::{
-    AccountAliasReview, CreateTransactionReview, PermissionAuthorizationRequest,
-    PermissionAuthorizationStatus, PreimageSubmitReview, ProductContext, SessionUiInfo,
-    SignPayloadReview, SignRawReview, UserConfirmationReview, normalize_product_identifier,
+    AccountAliasReview, CreateTransactionReview, IdentityDisclosureReview,
+    PermissionAuthorizationRequest, PermissionAuthorizationStatus, PreimageSubmitReview,
+    ProductContext, SessionUiInfo, SignPayloadReview, SignRawReview, UserConfirmationReview,
+    normalize_product_identifier,
 };
+
+pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
 
 /// Product-scoped adapter that exposes a long-lived host runtime through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
@@ -330,8 +333,11 @@ impl ProductRuntimeHost {
         service.set_authorization_status(&request, status).await
     }
 
-    #[instrument(skip_all, fields(runtime.method = "permissions.chain_submit_authorization"))]
-    async fn chain_submit_authorization(&self) -> Result<PermissionAuthorizationStatus, String> {
+    #[instrument(skip_all, fields(runtime.method = "permissions.remote_authorization"))]
+    async fn remote_permission_authorization(
+        &self,
+        permission: v01::RemotePermission,
+    ) -> Result<PermissionAuthorizationStatus, String> {
         let product_id = self.product_id();
         let service = PermissionsService::new(
             self.services.platform.as_ref(),
@@ -339,15 +345,17 @@ impl ProductRuntimeHost {
             &product_id,
         );
         service
-            .check_or_prompt_remote(v01::RemotePermissionRequest {
-                permission: v01::RemotePermission::ChainSubmit,
-            })
+            .check_or_prompt_remote(v01::RemotePermissionRequest { permission })
             .await
             .map_err(|err| format!("permission storage failed: {err:?}"))
     }
 
-    async fn require_chain_submit<E>(&self, denied_error: E) -> Result<(), CallError<E>> {
-        match self.chain_submit_authorization().await {
+    pub(super) async fn require_remote_permission<E>(
+        &self,
+        permission: v01::RemotePermission,
+        denied_error: E,
+    ) -> Result<(), CallError<E>> {
+        match self.remote_permission_authorization(permission).await {
             Ok(PermissionAuthorizationStatus::Authorized) => Ok(()),
             Ok(
                 PermissionAuthorizationStatus::Denied
@@ -355,6 +363,52 @@ impl ProductRuntimeHost {
             ) => Err(CallError::Domain(denied_error)),
             Err(reason) => Err(CallError::HostFailure { reason }),
         }
+    }
+
+    async fn require_chain_submit<E>(&self, denied_error: E) -> Result<(), CallError<E>> {
+        self.require_remote_permission(v01::RemotePermission::ChainSubmit, denied_error)
+            .await
+    }
+
+    #[instrument(skip_all, fields(runtime.method = "permissions.identity_disclosure_authorization"))]
+    async fn identity_disclosure_authorization(
+        &self,
+    ) -> Result<PermissionAuthorizationStatus, String> {
+        let product_id = self.product_id();
+        let request = PermissionAuthorizationRequest::IdentityDisclosure;
+        let service = PermissionsService::new(
+            self.services.platform.as_ref(),
+            self.services.platform.as_ref(),
+            &product_id,
+        );
+        let cached = service
+            .authorization_status(&request)
+            .await
+            .map_err(|err| format!("permission storage failed: {err:?}"))?;
+        if cached != PermissionAuthorizationStatus::NotDetermined {
+            return Ok(cached);
+        }
+
+        let confirmed = self
+            .services
+            .platform
+            .confirm_user_action(UserConfirmationReview::IdentityDisclosure(
+                IdentityDisclosureReview {
+                    product_id: product_id.clone(),
+                },
+            ))
+            .await
+            .map_err(|err| format!("identity disclosure confirmation failed: {err:?}"))?;
+        let status = if confirmed {
+            PermissionAuthorizationStatus::Authorized
+        } else {
+            PermissionAuthorizationStatus::Denied
+        };
+        service
+            .set_authorization_status(&request, status)
+            .await
+            .map_err(|err| format!("permission storage failed: {err:?}"))?;
+        Ok(status)
     }
 
     fn validate_legacy_address_signer(
@@ -748,6 +802,19 @@ impl Account for ProductRuntimeHost {
                     reason: "No primary username for this session".to_string(),
                 }))
             })?;
+
+        match self.identity_disclosure_authorization().await {
+            Ok(PermissionAuthorizationStatus::Authorized) => {}
+            Ok(
+                PermissionAuthorizationStatus::Denied
+                | PermissionAuthorizationStatus::NotDetermined,
+            ) => {
+                return Err(CallError::Domain(HostGetUserIdError::V1(
+                    v01::HostGetUserIdError::PermissionDenied,
+                )));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
 
         Ok(HostGetUserIdResponse::V1(v01::HostGetUserIdResponse {
             primary_username,
@@ -1341,6 +1408,12 @@ impl Chain for ProductRuntimeHost {
         CallError<RemoteChainTransactionBroadcastError>,
     > {
         let RemoteChainTransactionBroadcastRequest::V1(inner) = request;
+        self.require_chain_submit(RemoteChainTransactionBroadcastError::V1(
+            v01::GenericError {
+                reason: REMOTE_PERMISSION_DENIED_REASON.to_string(),
+            },
+        ))
+        .await?;
         self.services
             .chain
             .remote_chain_transaction_broadcast(inner)
@@ -1553,6 +1626,13 @@ impl Preimage for ProductRuntimeHost {
         request: RemotePreimageSubmitRequest,
     ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
         let RemotePreimageSubmitRequest::V1(value) = request;
+        self.require_remote_permission(
+            v01::RemotePermission::PreimageSubmit,
+            RemotePreimageSubmitError::V1(v01::PreimageSubmitError::Unknown {
+                reason: REMOTE_PERMISSION_DENIED_REASON.to_string(),
+            }),
+        )
+        .await?;
         let confirmed = self
             .services
             .platform
@@ -1656,7 +1736,8 @@ mod tests {
     use crate::host_logic::sso::messages::{RemoteMessageData, v1};
     use crate::test_support::*;
     use std::sync::Mutex;
-    use truapi_platform::{AuthState, CoreStorageKey};
+    use std::sync::atomic::Ordering;
+    use truapi_platform::{AuthState, CoreStorageKey, PermissionAuthorizationRequest};
 
     fn wait_until(mut condition: impl FnMut() -> bool, message: &str) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
@@ -2122,13 +2203,92 @@ mod tests {
 
     #[test]
     fn get_user_id_returns_primary_username() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let platform = Arc::new(StubPlatform {
+            identity_disclosure_confirmed: true,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let response =
             futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
         let HostGetUserIdResponse::V1(inner) = response;
         assert_eq!(inner.primary_username, "Alice Smith");
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn get_user_id_caches_identity_disclosure_grant() {
+        let platform = Arc::new(StubPlatform {
+            identity_disclosure_confirmed: true,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+
+        futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
+        futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
+
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
+        let status =
+            futures::executor::block_on(host.permission_authorization_status(
+                PermissionAuthorizationRequest::IdentityDisclosure,
+            ))
+            .unwrap();
+        assert_eq!(status, PermissionAuthorizationStatus::Authorized);
+    }
+
+    #[test]
+    fn get_user_id_caches_identity_disclosure_denial() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+
+        let first = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+        let second = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            first,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+        assert!(matches!(
+            second,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+        let status =
+            futures::executor::block_on(host.permission_authorization_status(
+                PermissionAuthorizationRequest::IdentityDisclosure,
+            ))
+            .unwrap();
+        assert_eq!(status, PermissionAuthorizationStatus::Denied);
+    }
+
+    #[test]
+    fn get_user_id_respects_pre_authorized_identity_disclosure() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+        futures::executor::block_on(host.set_permission_authorization_status(
+            PermissionAuthorizationRequest::IdentityDisclosure,
+            PermissionAuthorizationStatus::Authorized,
+        ))
+        .unwrap();
+
+        let response =
+            futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
+        let HostGetUserIdResponse::V1(inner) = response;
+        assert_eq!(inner.primary_username, "Alice Smith");
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]
@@ -2210,6 +2370,63 @@ mod tests {
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
         let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
         assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn preimage_submit_requires_remote_permission_before_backend_call() {
+        let preimage_submits = Arc::new(Mutex::new(Vec::new()));
+        let host = ProductRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                remote_permission_denied: true,
+                preimage_submits: preimage_submits.clone(),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
+        let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
+        match err {
+            CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown { reason },
+            )) => assert_eq!(reason, REMOTE_PERMISSION_DENIED_REASON),
+            other => panic!("expected preimage permission denial, got {other:?}"),
+        }
+        assert!(
+            preimage_submits
+                .lock()
+                .expect("preimage submit list mutex poisoned")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn chain_broadcast_requires_remote_permission_before_backend_call() {
+        let platform = Arc::new(StubPlatform {
+            remote_permission_denied: true,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = RemoteChainTransactionBroadcastRequest::V1(
+            v01::RemoteChainTransactionBroadcastRequest {
+                genesis_hash: vec![0; 32],
+                transaction: vec![1, 2, 3],
+            },
+        );
+        let err = futures::executor::block_on(Chain::broadcast_transaction(&host, &cx, request))
+            .unwrap_err();
+        match err {
+            CallError::Domain(RemoteChainTransactionBroadcastError::V1(v01::GenericError {
+                reason,
+            })) => assert_eq!(reason, REMOTE_PERMISSION_DENIED_REASON),
+            other => panic!("expected chain broadcast permission denial, got {other:?}"),
+        }
+        assert!(platform.sent_rpc.lock().unwrap().is_empty());
     }
 
     #[test]
