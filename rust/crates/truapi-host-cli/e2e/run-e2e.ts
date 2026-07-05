@@ -246,7 +246,8 @@ function cleanDetail(output: string): string {
 
 // Emit a report in the same table shape as explorer/diagnosis-reports/web.md
 // so the headless run can be diffed against the browser host directly.
-// Details are shown for failures (matching web.md); pass/skip cells are blank.
+// Details carry the captured example output for passes and the error for
+// failures; skipped rows are blank.
 function renderReport(rows: DiagnosisRow[]): string {
   const icon = (s: DiagnosisRow["status"]) =>
     s === "pass" ? "✅" : s === "skipped" ? "⏭️" : "❌";
@@ -258,7 +259,7 @@ function renderReport(rows: DiagnosisRow[]): string {
       "| --- | --- | --- |",
       ...rows.map(
         (r) =>
-          `| \`${r.id}\` | ${icon(r.status)} | ${r.status === "fail" ? cleanDetail(r.output) : ""} |`,
+          `| \`${r.id}\` | ${icon(r.status)} | ${r.status === "skipped" ? "" : cleanDetail(r.output)} |`,
       ),
     ].join("\n") + "\n"
   );
