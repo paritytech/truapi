@@ -1,10 +1,10 @@
 import type {
   ChainConnection,
-  HostCallbacks,
   ProductRuntimeConfig,
   LogLevel,
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
+  RequiredHostCallbacks,
   TrUApiProductProvider,
 } from "../index.js";
 import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec } from "../generated/host-callbacks.js";
@@ -457,7 +457,7 @@ export interface CreateWebWorkerPairingHostRuntimeOptions {
   initTimeoutMs?: number;
 }
 
-export type WebWorkerHostCallbacks = Required<HostCallbacks>;
+export type WebWorkerHostCallbacks = RequiredHostCallbacks;
 
 export function createWebWorkerPairingHostRuntime(
   worker: Worker,

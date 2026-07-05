@@ -242,6 +242,13 @@ export type UserConfirmationReview =
 export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Codec<AccountAliasReview> => S.Struct({requestingProductId: S.str, targetProductId: S.str}) as S.Codec<AccountAliasReview>);
 
 /**
+ * Auth/session lifecycle state the core projects for host UI. The core owns
+ * every transition and emits states in order; hosts render the current state
+ * and never derive auth UI from any other signal.
+ */
+export const AuthState: S.Codec<AuthState> = S.lazy((): S.Codec<AuthState> => S.TaggedUnion({Disconnected: S._void, Pairing: S.Struct({deeplink: S.str}) as S.Codec<{ deeplink: string }>, Connected: SessionUiInfo, LoginFailed: S.Struct({reason: S.str}) as S.Codec<{ reason: string }>}));
+
+/**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  *
@@ -278,6 +285,12 @@ export const PermissionAuthorizationStatus: S.Codec<PermissionAuthorizationStatu
  * Review shown before a preimage is submitted.
  */
 export const PreimageSubmitReview: S.Codec<PreimageSubmitReview> = S.lazy((): S.Codec<PreimageSubmitReview> => S.Struct({size: S.u64}) as S.Codec<PreimageSubmitReview>);
+
+/**
+ * Decoded session fields a host shell needs to render account UI without
+ * parsing the opaque session blob the core persists through `CoreStorage`.
+ */
+export const SessionUiInfo: S.Codec<SessionUiInfo> = S.lazy((): S.Codec<SessionUiInfo> => S.Struct({publicKey: S.Bytes(32), identityAccountId: S.Option(S.Bytes(32)), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str)}) as S.Codec<SessionUiInfo>);
 
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
@@ -532,7 +545,36 @@ export interface UserConfirmation {
   confirmUserAction(review: UserConfirmationReview): Promise<boolean>;
 }
 
+/** @deprecated Use the namespaced `HostCallbacks` shape instead. */
+export interface FlatHostCallbacks extends Navigation, Notifications, Permissions, Features, ProductStorage, CoreStorage, ChainProvider, AuthPresenter, UserConfirmation, ThemeHost, PreimageHost {}
+
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, ProductStorage, CoreStorage, ChainProvider, AuthPresenter, UserConfirmation, ThemeHost, PreimageHost {}
+export interface HostCallbacks {
+  navigation: Navigation;
+  notifications: Notifications;
+  permissions: Permissions;
+  features: Features;
+  productStorage: ProductStorage;
+  coreStorage: CoreStorage;
+  chain: ChainProvider;
+  auth: AuthPresenter;
+  userConfirmation: UserConfirmation;
+  theme: ThemeHost;
+  preimage: PreimageHost;
+}
+
+export interface RequiredHostCallbacks {
+  navigation: Required<Navigation>;
+  notifications: Required<Notifications>;
+  permissions: Required<Permissions>;
+  features: Required<Features>;
+  productStorage: Required<ProductStorage>;
+  coreStorage: Required<CoreStorage>;
+  chain: Required<ChainProvider>;
+  auth: Required<AuthPresenter>;
+  userConfirmation: Required<UserConfirmation>;
+  theme: Required<ThemeHost>;
+  preimage: Required<PreimageHost>;
+}
