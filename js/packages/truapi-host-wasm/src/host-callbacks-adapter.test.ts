@@ -15,14 +15,13 @@ import {
 import type { HostSignPayloadData } from "@parity/truapi";
 
 import { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
-import { CoreStorageKey, UserConfirmationReview } from "./generated/host-callbacks.js";
+import { AuthState, CoreStorageKey, UserConfirmationReview } from "./generated/host-callbacks.js";
 import { makeHostCallbacks, settle } from "./test-support.js";
 
 // The generated `createWasmRawCallbacks` adapter speaks the symmetric SCALE
 // byte boundary: codec-typed requests arrive as `Uint8Array` and are decoded
 // for the typed host callback; codec-typed responses are SCALE-encoded back to
-// `Uint8Array`. Primitives, strings, byte blobs and the local `AuthState` pass
-// through unchanged.
+// `Uint8Array`. Primitives, strings and byte blobs pass through unchanged.
 
 const GENESIS = `0x${"11".repeat(32)}` as `0x${string}`;
 const PRODUCT_ACCOUNT = {
@@ -195,10 +194,12 @@ describe("createWasmRawCallbacks", () => {
             preimageEvents.push(value ? [...value] : null),
         );
 
-        raw.authStateChanged?.({
-            tag: "Pairing",
-            value: { deeplink: "polkadotapp://example" },
-        });
+        raw.authStateChanged?.(
+            AuthState.enc({
+                tag: "Pairing",
+                value: { deeplink: "polkadotapp://example" },
+            }),
+        );
         const authSessionKey = CoreStorageKey.enc({ tag: "AuthSession" });
         expect(await raw.readCoreStorage!(authSessionKey)).toEqual(new Uint8Array([1, 2, 3]));
         await raw.writeCoreStorage!(authSessionKey, new Uint8Array([3, 2, 1]));
