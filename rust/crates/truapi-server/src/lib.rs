@@ -32,6 +32,7 @@ pub use host_core::{
     FrameSink, HostAdmin, PairingHostRuntime, ProductRuntime, ProductRuntimeError,
     SigningHostRuntime,
 };
+pub use runtime::ResponderExit;
 pub use truapi_platform::{
     HostRuntimeConfig, PairingHostConfig, PermissionAuthorizationRequest,
     PermissionAuthorizationStatus, Platform, ProductContext, SigningHostConfig,

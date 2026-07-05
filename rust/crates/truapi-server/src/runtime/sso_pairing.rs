@@ -206,7 +206,7 @@ impl<'a> SsoPairingFlow<'a> {
         };
         let resolve_session = resolve_session_identity_with_chain(
             &self.host.chain,
-            self.host.host_config.people_chain_genesis_hash,
+            self.host.host_config.identity_lookup_genesis_hash(),
             session,
         )
         .fuse();

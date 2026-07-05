@@ -6,17 +6,20 @@
 //! (the host owns its persistence, e.g. the OS keychain) and kept in memory
 //! for the session, zeroized on disconnect.
 //!
-//! Implemented: local session lifecycle, raw-bytes signing, and RFC-0007
-//! product entropy. Deferred (return [`AuthorityError::Unavailable`]):
-//! extrinsic-payload signing and transaction construction (need chain
-//! metadata to assemble the signing payload), ring-VRF aliases, and
-//! resource allocation (needs on-chain allowance submission).
+//! Implemented: local session lifecycle, raw-bytes signing, extrinsic-payload
+//! signing, v4 transaction construction (payload fields and extensions arrive
+//! pre-encoded, so no chain metadata is needed), RFC-0007 product entropy, and
+//! bandersnatch ring-VRF product-account aliases (native only). Deferred
+//! (returns [`AuthorityError::Unavailable`]): on-chain resource allocation.
 
 mod local_activation;
+mod sso_responder;
 
 use std::sync::{Arc, Mutex};
 
 pub(crate) use local_activation::LocalActivation;
+pub use sso_responder::ResponderExit;
+pub(crate) use sso_responder::respond_to_pairing;
 
 use super::authority::{
     AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest, ProductAuthority,
@@ -26,10 +29,12 @@ use super::authority::{
 use super::connected_session_ui_info;
 use crate::host_logic::entropy::derive_product_entropy;
 use crate::host_logic::product_account::{
-    ProductAccountError, SR25519_SIGNING_CONTEXT, derive_product_keypair,
-    derive_root_keypair_from_entropy,
+    ProductAccountError, SR25519_SIGNING_CONTEXT, derive_product_keypair, derive_sr25519_hard_path,
 };
 use crate::host_logic::session::SessionState;
+use crate::host_logic::transaction::{
+    build_v4_signed_extrinsic, extrinsic_payload_preimage, transaction_signing_preimage,
+};
 use crate::runtime::auth_state::AuthStateMachine;
 
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
@@ -71,24 +76,25 @@ impl SigningHost {
             .ok_or(AuthorityError::Disconnected)
     }
 
-    /// Derive the product-account keypair for `account` from the root entropy.
+    /// Derive the product-account keypair for `account` from the wallet root.
     ///
-    /// The root keypair is recomputed per call (PBKDF2, 2048 rounds, via
-    /// `substrate-bip39`) rather than cached: the signing host holds only the
-    /// raw, zeroizable entropy, never an expanded secret key.
+    /// Per host-spec C.5, product keys derive from the user's main wallet
+    /// account at `//wallet` (whose public key is `rootUserAccountId`), not the
+    /// bare BIP-39 root. The wallet keypair is recomputed per call; the signing
+    /// host holds only the raw, zeroizable entropy.
     fn product_keypair(
         &self,
         account: &v01::ProductAccountId,
     ) -> Result<schnorrkel::Keypair, AuthorityError> {
         let entropy = self.root_entropy()?;
-        let root = derive_root_keypair_from_entropy(&entropy).map_err(product_authority_error)?;
+        let wallet = wallet_root_keypair(&entropy)?;
         let product_id =
             normalize_product_identifier(&account.dot_ns_identifier).map_err(|err| {
                 AuthorityError::Unavailable {
                     reason: err.to_string(),
                 }
             })?;
-        derive_product_keypair(&root, &product_id, account.derivation_index)
+        derive_product_keypair(&wallet, &product_id, account.derivation_index)
             .map_err(product_authority_error)
     }
 }
@@ -134,13 +140,26 @@ impl ProductAuthority for SigningHost {
     async fn sign_payload(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _request: SignPayloadAuthorityRequest,
+        session: &AuthoritySession,
+        request: SignPayloadAuthorityRequest,
     ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: extrinsic-payload signing needs chain-metadata payload \
-                     assembly (not yet implemented)"
-                .to_string(),
+        let (account, payload) = match request {
+            SignPayloadAuthorityRequest::Product(request) => (request.account, request.payload),
+            SignPayloadAuthorityRequest::LegacyAccount {
+                product_account,
+                request,
+            } => (product_account, request.payload),
+        };
+        require_current_session(&self.session_state, session)?;
+        let keypair = self.product_keypair(&account)?;
+        let message = extrinsic_payload_preimage(&payload);
+        let signature = keypair
+            .secret
+            .sign_simple(SR25519_SIGNING_CONTEXT, &message, &keypair.public)
+            .to_bytes();
+        Ok(v01::HostSignPayloadResponse {
+            signature: signature.to_vec(),
+            signed_transaction: None,
         })
     }
 
@@ -172,26 +191,84 @@ impl ProductAuthority for SigningHost {
     async fn create_transaction(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _request: CreateTransactionAuthorityRequest,
+        session: &AuthoritySession,
+        request: CreateTransactionAuthorityRequest,
     ) -> Result<v01::HostCreateTransactionResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: transaction construction needs chain metadata (not yet \
-                     implemented)"
-                .to_string(),
+        let (account, call_data, extensions, tx_ext_version) = match request {
+            CreateTransactionAuthorityRequest::Product(payload) => (
+                payload.signer,
+                payload.call_data,
+                payload.extensions,
+                payload.tx_ext_version,
+            ),
+            CreateTransactionAuthorityRequest::LegacyAccount {
+                product_account,
+                request,
+            } => (
+                product_account,
+                request.call_data,
+                request.extensions,
+                request.tx_ext_version,
+            ),
+        };
+        if tx_ext_version != 0 {
+            return Err(AuthorityError::Unavailable {
+                reason: format!(
+                    "signing host: extrinsic v5 construction (tx_ext_version \
+                     {tx_ext_version}) is not supported"
+                ),
+            });
+        }
+        require_current_session(&self.session_state, session)?;
+        let keypair = self.product_keypair(&account)?;
+        let message = transaction_signing_preimage(&call_data, &extensions);
+        let signature = keypair
+            .secret
+            .sign_simple(SR25519_SIGNING_CONTEXT, &message, &keypair.public)
+            .to_bytes();
+        Ok(v01::HostCreateTransactionResponse {
+            transaction: build_v4_signed_extrinsic(
+                keypair.public.to_bytes(),
+                signature,
+                &extensions,
+                &call_data,
+            ),
         })
     }
 
     async fn account_alias(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _product_account_id: v01::ProductAccountId,
+        session: &AuthoritySession,
+        product_account_id: v01::ProductAccountId,
         _requesting_product_id: String,
     ) -> Result<v01::HostAccountGetAliasResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: ring-VRF alias derivation not yet implemented".to_string(),
-        })
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (session, product_account_id);
+            Err(AuthorityError::Unavailable {
+                reason: "signing host: ring-VRF alias derivation is native-only".to_string(),
+            })
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            require_current_session(&self.session_state, session)?;
+            let entropy = self.root_entropy()?;
+            let product_id = normalize_product_identifier(&product_account_id.dot_ns_identifier)
+                .map_err(|err| AuthorityError::Unavailable {
+                    reason: err.to_string(),
+                })?;
+            let alias = crate::host_logic::alias::derive_product_alias(
+                &entropy,
+                &product_id,
+                product_account_id.derivation_index,
+            )
+            .map_err(|reason| AuthorityError::Unknown { reason })?;
+            Ok(v01::HostAccountGetAliasResponse {
+                context: alias.context,
+                alias: alias.alias.to_vec(),
+            })
+        }
     }
 
     async fn allocate_resources(
@@ -226,6 +303,13 @@ fn product_authority_error(err: ProductAccountError) -> AuthorityError {
     AuthorityError::Unavailable {
         reason: err.to_string(),
     }
+}
+
+/// The user's main wallet keypair at `//wallet` (host-spec C.0), the root of
+/// product-account derivation and the `rootUserAccountId` shared with paired
+/// hosts.
+pub(crate) fn wallet_root_keypair(entropy: &[u8]) -> Result<schnorrkel::Keypair, AuthorityError> {
+    derive_sr25519_hard_path(entropy, &["wallet"]).map_err(product_authority_error)
 }
 
 /// Wrap raw sign-message bytes in the `<Bytes>…</Bytes>` envelope unless
@@ -272,9 +356,7 @@ mod tests {
     use super::super::authority::{AuthorityError, SignRawAuthorityRequest};
     use super::super::{ProductAuthority, ProductRuntimeHost, RuntimeServices, SigningHostRole};
     use super::{BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, raw_payload_bytes};
-    use crate::host_logic::product_account::{
-        derive_product_keypair, derive_root_keypair_from_entropy,
-    };
+    use crate::host_logic::product_account::{derive_product_keypair, derive_sr25519_hard_path};
     use crate::test_support::{StubPlatform, test_spawner};
     use truapi::api::{Account, Entropy, Signing};
     use truapi::versioned::account::{HostAccountGetError, HostAccountGetRequest};
@@ -355,8 +437,8 @@ mod tests {
             futures::executor::block_on(runtime.sign_raw(&cx, request)).expect("sign_raw ok");
         assert!(response.signed_transaction.is_none());
 
-        let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
-        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let wallet = derive_sr25519_hard_path(&ENTROPY, &["wallet"]).unwrap();
+        let keypair = derive_product_keypair(&wallet, "myapp.dot", 0).unwrap();
         let signature =
             schnorrkel::Signature::from_bytes(&response.signature).expect("64-byte signature");
         assert!(
@@ -498,8 +580,8 @@ mod tests {
         });
         let HostSignRawResponse::V1(response) =
             futures::executor::block_on(runtime.sign_raw(&cx, request)).expect("sign_raw ok");
-        let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
-        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let wallet = derive_sr25519_hard_path(&ENTROPY, &["wallet"]).unwrap();
+        let keypair = derive_product_keypair(&wallet, "myapp.dot", 0).unwrap();
         let signature =
             schnorrkel::Signature::from_bytes(&response.signature).expect("64-byte signature");
         assert!(
@@ -585,7 +667,159 @@ mod tests {
     }
 
     #[test]
-    fn deferred_operations_return_unavailable() {
+    fn sign_payload_verifies_against_derived_product_key() {
+        use super::super::authority::SignPayloadAuthorityRequest;
+        use crate::host_logic::transaction::extrinsic_payload_preimage;
+
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation");
+        let session = authority.current_session().expect("connected");
+        let cx = CallContext::new();
+        let payload = v01::HostSignPayloadData {
+            block_hash: vec![0xB1; 32],
+            block_number: vec![0x01],
+            era: vec![0x00],
+            genesis_hash: vec![0x61; 32],
+            method: vec![0x4D, 0x00],
+            nonce: vec![0x00],
+            spec_version: vec![0x51],
+            tip: vec![0x00],
+            transaction_version: vec![0x56],
+            signed_extensions: vec![],
+            version: 4,
+            asset_id: None,
+            metadata_hash: None,
+            mode: None,
+            with_signed_transaction: None,
+        };
+        let request = v01::HostSignPayloadRequest {
+            account: v01::ProductAccountId {
+                dot_ns_identifier: "myapp.dot".to_string(),
+                derivation_index: 0,
+            },
+            payload: payload.clone(),
+        };
+
+        let response = futures::executor::block_on(authority.sign_payload(
+            &cx,
+            &session,
+            SignPayloadAuthorityRequest::Product(request),
+        ))
+        .expect("sign_payload ok");
+
+        assert!(response.signed_transaction.is_none());
+        let wallet = derive_sr25519_hard_path(&ENTROPY, &["wallet"]).unwrap();
+        let keypair = derive_product_keypair(&wallet, "myapp.dot", 0).unwrap();
+        let signature =
+            schnorrkel::Signature::from_bytes(&response.signature).expect("64-byte signature");
+        assert!(
+            keypair
+                .public
+                .verify_simple(
+                    b"substrate",
+                    &extrinsic_payload_preimage(&payload),
+                    &signature
+                )
+                .is_ok(),
+            "signature verifies over the payload preimage",
+        );
+    }
+
+    #[test]
+    fn create_transaction_builds_verifiable_v4_extrinsic() {
+        use super::super::authority::CreateTransactionAuthorityRequest;
+        use crate::host_logic::transaction::transaction_signing_preimage;
+
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation");
+        let session = authority.current_session().expect("connected");
+        let cx = CallContext::new();
+        let extensions = vec![v01::TxPayloadExtension {
+            id: "CheckNonce".to_string(),
+            extra: vec![0x04],
+            additional_signed: vec![],
+        }];
+        let payload = v01::ProductAccountTxPayload {
+            signer: v01::ProductAccountId {
+                dot_ns_identifier: "myapp.dot".to_string(),
+                derivation_index: 0,
+            },
+            genesis_hash: [0x61; 32],
+            call_data: vec![0x00, 0x00],
+            extensions: extensions.clone(),
+            tx_ext_version: 0,
+        };
+
+        let response = futures::executor::block_on(authority.create_transaction(
+            &cx,
+            &session,
+            CreateTransactionAuthorityRequest::Product(payload),
+        ))
+        .expect("create_transaction ok");
+
+        let wallet = derive_sr25519_hard_path(&ENTROPY, &["wallet"]).unwrap();
+        let keypair = derive_product_keypair(&wallet, "myapp.dot", 0).unwrap();
+        let transaction = response.transaction;
+        let mut body = transaction.as_slice();
+        let body_len =
+            <parity_scale_codec::Compact<u32> as parity_scale_codec::Decode>::decode(&mut body)
+                .expect("compact length prefix")
+                .0 as usize;
+        assert_eq!(body.len(), body_len);
+        assert_eq!(body[0], 0x84);
+        assert_eq!(body[1], 0x00);
+        assert_eq!(&body[2..34], &keypair.public.to_bytes());
+        assert_eq!(body[34], 0x01);
+        let signature = schnorrkel::Signature::from_bytes(&body[35..99]).unwrap();
+        assert_eq!(body[99], 0x04);
+        assert_eq!(&body[100..], &[0x00, 0x00]);
+        assert!(
+            keypair
+                .public
+                .verify_simple(
+                    b"substrate",
+                    &transaction_signing_preimage(&[0x00, 0x00], &extensions),
+                    &signature
+                )
+                .is_ok(),
+            "extrinsic signature verifies over call ++ extra ++ implicit",
+        );
+    }
+
+    #[test]
+    fn create_transaction_rejects_v5_extension_version() {
+        use super::super::authority::CreateTransactionAuthorityRequest;
+
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation");
+        let session = authority.current_session().expect("connected");
+        let cx = CallContext::new();
+        let payload = v01::ProductAccountTxPayload {
+            signer: v01::ProductAccountId {
+                dot_ns_identifier: "myapp.dot".to_string(),
+                derivation_index: 0,
+            },
+            genesis_hash: [0x61; 32],
+            call_data: vec![],
+            extensions: vec![],
+            tx_ext_version: 1,
+        };
+
+        let err = futures::executor::block_on(authority.create_transaction(
+            &cx,
+            &session,
+            CreateTransactionAuthorityRequest::Product(payload),
+        ))
+        .expect_err("v5 rejected");
+
+        assert!(matches!(err, AuthorityError::Unavailable { .. }));
+    }
+
+    #[test]
+    fn account_alias_returns_ring_vrf_alias() {
         let (_services, authority) = signing_runtime();
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation");
@@ -596,13 +830,27 @@ mod tests {
             &cx,
             &session,
             v01::ProductAccountId {
-                dot_ns_identifier: "other.dot".to_string(),
+                dot_ns_identifier: "truapi-playground.dot".to_string(),
                 derivation_index: 0,
             },
-            "myapp.dot".to_string(),
+            "truapi-playground.dot".to_string(),
         ))
-        .expect_err("alias deferred");
-        assert!(matches!(alias, AuthorityError::Unavailable { .. }));
+        .expect("alias derives");
+
+        let expected =
+            crate::host_logic::alias::derive_product_alias(&ENTROPY, "truapi-playground.dot", 0)
+                .unwrap();
+        assert_eq!(alias.context, expected.context);
+        assert_eq!(alias.alias, expected.alias.to_vec());
+    }
+
+    #[test]
+    fn deferred_operations_return_unavailable() {
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation");
+        let session = authority.current_session().expect("connected");
+        let cx = CallContext::new();
 
         let alloc = futures::executor::block_on(authority.allocate_resources(
             &cx,

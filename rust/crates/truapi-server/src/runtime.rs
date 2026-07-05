@@ -37,7 +37,10 @@ pub(crate) use authority::ProductAuthority;
 use pairing_host::PairingHost;
 pub(crate) use pairing_host::PairingHost as PairingHostRole;
 pub(crate) use services::RuntimeServices;
-pub(crate) use signing_host::{LocalActivation, SigningHost as SigningHostRole};
+pub use signing_host::ResponderExit;
+pub(crate) use signing_host::{
+    LocalActivation, SigningHost as SigningHostRole, respond_to_pairing,
+};
 
 use authority::{
     AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest,

@@ -1,0 +1,40 @@
+[package]
+name = "truapi-host-cli"
+version = "0.1.0"
+edition.workspace = true
+description = "Headless TrUAPI hosts: a signing-host companion and a pairing host, plus a dev statement-store relay, for end-to-end testing without an external signer service"
+license = "MIT"
+
+[[bin]]
+name = "truapi-host"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+truapi = { path = "../truapi" }
+truapi-platform = { path = "../truapi-platform" }
+truapi-server = { path = "../truapi-server" }
+anyhow = "1"
+async-trait = "0.1"
+bip39 = "2"
+blake2-rfc = { version = "0.2", default-features = false }
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+futures-util = "0.3"
+hex = "0.4"
+parity-scale-codec = { version = "3", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "net", "time", "signal"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-tungstenite = { version = "0.24", features = ["connect", "rustls-tls-webpki-roots"] }
+# TLS is compiled in so the pairing host *can* reach real `wss://` chain nodes
+# for the `Chain/*` playground methods. Live-chain routing is opt-in
+# (`E2E_LIVE_CHAIN=1`); it is off by default because streaming chainHead from a
+# live node over the shared product connection is not yet robust and can drop
+# that connection mid-run. See src/chain.rs.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }

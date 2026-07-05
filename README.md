@@ -59,6 +59,7 @@ rust/crates/
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
   truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM surface
+  truapi-host-cli/       Headless pairing-host + signing-host + dev relay CLIs for local e2e (signing-bot replacement)
 js/packages/
   truapi/                  @parity/truapi TypeScript client
   truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime; entries `.`

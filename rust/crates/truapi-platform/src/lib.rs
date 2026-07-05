@@ -48,6 +48,13 @@ pub struct PairingHostConfig {
     pub host: HostRuntimeConfig,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
+    /// Optional distinct genesis for People-chain identity (username) lookups.
+    ///
+    /// In production this equals `people_chain_genesis_hash` (SSO and identity
+    /// share the People chain). It can be set separately so a host can run SSO
+    /// over one transport (e.g. a local relay) while resolving usernames from
+    /// the real People chain. `None` falls back to `people_chain_genesis_hash`.
+    pub identity_chain_genesis_hash: Option<[u8; 32]>,
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
     ///
     /// Host-spec L.2-L.3 define the `polkadotapp://pair` route and construction
@@ -147,9 +154,23 @@ impl PairingHostConfig {
         let config = Self {
             host: HostRuntimeConfig::new(host_info, platform_info)?,
             people_chain_genesis_hash,
+            identity_chain_genesis_hash: None,
             pairing_deeplink_scheme,
         };
         Ok(config)
+    }
+
+    /// Resolve usernames from a People chain distinct from the SSO transport.
+    pub fn with_identity_chain_genesis_hash(mut self, genesis_hash: [u8; 32]) -> Self {
+        self.identity_chain_genesis_hash = Some(genesis_hash);
+        self
+    }
+
+    /// Genesis used for People-chain identity lookups (falls back to the SSO
+    /// People-chain genesis when no distinct identity chain is configured).
+    pub fn identity_lookup_genesis_hash(&self) -> [u8; 32] {
+        self.identity_chain_genesis_hash
+            .unwrap_or(self.people_chain_genesis_hash)
     }
 }
 

@@ -40,7 +40,7 @@ pub(super) async fn resolve_session_identity_with_chain(
     }
 
     let preferred_account = session.identity_account_id.unwrap_or(session.public_key);
-    if !lookup_and_apply(
+    if lookup_and_apply(
         chain,
         people_chain_genesis_hash,
         preferred_account,
@@ -48,6 +48,7 @@ pub(super) async fn resolve_session_identity_with_chain(
         "identity",
     )
     .await
+        == LookupOutcome::NoRecord
         && preferred_account != session.public_key
     {
         let public_key = session.public_key;
@@ -64,42 +65,60 @@ pub(super) async fn resolve_session_identity_with_chain(
     session
 }
 
+/// Maximum lookup attempts per account on transient failure. The first attempt
+/// warms the People-chain connection (cached per genesis), so a retry after a
+/// cold-start timeout usually resolves immediately.
+const IDENTITY_LOOKUP_MAX_ATTEMPTS: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LookupOutcome {
+    /// A username record was found and applied.
+    Applied,
+    /// The account has no consumer record (definitive; do not retry).
+    NoRecord,
+    /// The lookup failed transiently after exhausting retries.
+    Failed,
+}
+
 /// Look up `account`'s people-chain identity and apply any usernames to
-/// `session`; returns whether a username record was found and applied.
+/// `session`, retrying transient failures against the warmed connection.
 async fn lookup_and_apply(
     chain: &ChainRuntime,
     people_chain_genesis_hash: [u8; 32],
     account: [u8; 32],
     session: &mut SessionInfo,
     label: &str,
-) -> bool {
-    match lookup_people_identity(chain, people_chain_genesis_hash, account).await {
-        Ok(Some(identity)) => {
-            debug!(
-                account = %hex::encode(account),
-                lite_username = identity.lite_username.as_deref().unwrap_or(""),
-                full_username = identity.full_username.as_deref().unwrap_or(""),
-                "People-chain {label} lookup found username"
-            );
-            apply_people_identity(session, identity);
-            true
-        }
-        Ok(None) => {
-            debug!(
-                account = %hex::encode(account),
-                "People-chain {label} lookup found no consumer record"
-            );
-            false
-        }
-        Err(reason) => {
-            warn!(
-                account = %hex::encode(account),
-                %reason,
-                "People-chain {label} lookup failed"
-            );
-            false
+) -> LookupOutcome {
+    for attempt in 1..=IDENTITY_LOOKUP_MAX_ATTEMPTS {
+        match lookup_people_identity(chain, people_chain_genesis_hash, account).await {
+            Ok(Some(identity)) => {
+                debug!(
+                    account = %hex::encode(account),
+                    lite_username = identity.lite_username.as_deref().unwrap_or(""),
+                    full_username = identity.full_username.as_deref().unwrap_or(""),
+                    "People-chain {label} lookup found username"
+                );
+                apply_people_identity(session, identity);
+                return LookupOutcome::Applied;
+            }
+            Ok(None) => {
+                debug!(
+                    account = %hex::encode(account),
+                    "People-chain {label} lookup found no consumer record"
+                );
+                return LookupOutcome::NoRecord;
+            }
+            Err(reason) => {
+                warn!(
+                    account = %hex::encode(account),
+                    attempt,
+                    %reason,
+                    "People-chain {label} lookup failed"
+                );
+            }
         }
     }
+    LookupOutcome::Failed
 }
 
 fn non_empty(value: &Option<String>) -> bool {
@@ -172,7 +191,9 @@ async fn lookup_people_identity(
 async fn wait_for_identity_follow_hash(
     follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
 ) -> Result<Vec<u8>, String> {
-    let timeout = futures_timer::Delay::new(Duration::from_secs(10)).fuse();
+    // Best-effort lookup: tolerate a cold chainHead follow init against a real
+    // node (a fresh WS can take well over 10s to report a finalized block).
+    let timeout = futures_timer::Delay::new(Duration::from_secs(30)).fuse();
     pin_mut!(timeout);
     loop {
         let next = follow.next().fuse();
@@ -236,7 +257,7 @@ async fn wait_for_identity_storage_value(
     operation_id: &str,
     key: &[u8],
 ) -> Result<Option<Vec<u8>>, String> {
-    let timeout = futures_timer::Delay::new(Duration::from_secs(10)).fuse();
+    let timeout = futures_timer::Delay::new(Duration::from_secs(30)).fuse();
     pin_mut!(timeout);
     let mut value = None;
     loop {

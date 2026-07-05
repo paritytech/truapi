@@ -13,6 +13,7 @@ rust/crates/
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits (storage, navigation, consent, ...)
   truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node)
+  truapi-host-cli/       Headless pairing-host + signing-host + dev statement-store relay CLIs; local e2e signing-bot replacement
 js/packages/
   truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
   truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime. Subpath entries:
