@@ -28,39 +28,37 @@ impl FrameSink for WsFrameSink {
     }
 }
 
-/// Serve product frames for `product_id` on `addr` until the process exits.
+/// Bind the product-frame listener on `addr`.
+pub async fn bind(addr: SocketAddr) -> Result<TcpListener> {
+    TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("frame server failed to bind {addr}"))
+}
+
+/// Accept product-frame connections on `listener` for `product_id` until
+/// cancelled.
 ///
 /// The product dispatch future is `!Send` (matching the single-threaded wasm
-/// runtime), so connections are driven with `spawn_local` under a `LocalSet`.
-/// The runtime's own subscription work is `Send` and still runs on the
-/// multi-thread pool via the tokio spawner.
-pub async fn serve(
+/// runtime), so connections are driven with `spawn_local`; callers must run
+/// this inside a `tokio::task::LocalSet`. The runtime's own subscription work
+/// is `Send` and still runs on the multi-thread pool via the tokio spawner.
+pub async fn accept_loop(
     runtime: Arc<PairingHostRuntime>,
     product_id: String,
-    addr: SocketAddr,
+    listener: TcpListener,
 ) -> Result<()> {
-    let listener = TcpListener::bind(addr)
-        .await
-        .with_context(|| format!("frame server failed to bind {addr}"))?;
     let bound = listener.local_addr()?;
     info!(%bound, %product_id, "product frame server listening");
-    println!("FRAMES_LISTENING ws://{bound}");
-
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async move {
-            loop {
-                let (stream, peer) = listener.accept().await?;
-                let runtime = runtime.clone();
-                let product_id = product_id.clone();
-                tokio::task::spawn_local(async move {
-                    if let Err(err) = serve_connection(runtime, product_id, stream).await {
-                        debug!(%peer, %err, "frame connection ended");
-                    }
-                });
+    loop {
+        let (stream, peer) = listener.accept().await?;
+        let runtime = runtime.clone();
+        let product_id = product_id.clone();
+        tokio::task::spawn_local(async move {
+            if let Err(err) = serve_connection(runtime, product_id, stream).await {
+                debug!(%peer, %err, "frame connection ended");
             }
-        })
-        .await
+        });
+    }
 }
 
 async fn serve_connection(

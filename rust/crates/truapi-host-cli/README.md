@@ -3,24 +3,97 @@
 Headless TrUAPI hosts for local end-to-end testing, built on `truapi-server`.
 They replace the external signing-bot service: two CLI processes take the two
 host-spec §B roles and pair over the **real People-chain statement store** (the
-same node an iOS/web client uses), so the playground's own tests can run against
-a real signer with no Novasama-operated dependency.
+same node an iOS/web client uses), so tests run against a real signer with no
+Novasama-operated dependency.
 
-One binary, `truapi-host`, with these roles:
+The pairing host is driven by a **product script** you write: a JS/TS file that
+receives a global `truapi` (the `@parity/truapi` client, scoped to a product id)
+and calls it like any product would. The CLI runs the script and exits with its
+status, so `truapi-host pairing-host --script foo.ts` *is* the test — there is no
+separate bun orchestrator.
+
+One binary, `truapi-host`:
 
 | Command | Role |
 | --- | --- |
-| `pairing-host` | Seedless host: presents a pairing deeplink, serves product frames over WebSocket. |
-| `signing-host` | Wallet-local host: answers a pairing deeplink, registers statement allowance on-chain, auto-signs (the signing-bot replacement). |
+| `pairing-host` | Seedless host: serves product frames and runs your `--script` with `truapi` injected. |
+| `signing-host` | Wallet-local host: answers a pairing deeplink, registers statement allowance on-chain, signs. |
 | `identity-check` | Probe which derivation of a mnemonic carries a registered username. |
 | `alloc-check` | Diagnose (or `--submit`) on-chain statement-store allowance: ring membership, chosen slot, and the `set_statement_store_account` extrinsic. |
 
-The signing host reuses the `truapi-server` signing-host runtime and its SSO
-responder (`runtime/signing_host/sso_responder.rs`); the pairing host is the
-existing `PairingHostRuntime`. Both connect to the People-chain statement store
-over a native WebSocket `JsonRpcConnection`, and the pairing host bridges product
-byte-frames to the runtime over a second WebSocket (one binary message per SCALE
-`ProtocolMessage`, matching the browser transport).
+## Quick start
+
+```bash
+make headless                                # build the CLI + JS client (once)
+rust/crates/truapi-host-cli/e2e/run.sh       # run js/scripts/battery.ts end-to-end
+rust/crates/truapi-host-cli/e2e/run.sh path/to/my-script.ts   # or a custom script
+```
+
+`run.sh` starts a pairing host running the product script, hands the emitted
+pairing deeplink to a signing host, and exits with the script's status. It uses
+the dev mnemonic by default (a registered LitePeople member); override with
+`SIGNER_MNEMONIC=...`, the product with `PRODUCT_ID=...`, and the port with
+`FRAME=...`.
+
+## Writing a product script
+
+A product script is an ES module. The runner injects two globals before it runs:
+
+- **`truapi`** — the `@parity/truapi` client connected to the pairing host and
+  scoped to the host's `--product-id`. Call `truapi.account.requestLogin(...)`,
+  `truapi.signing.signRaw(...)`, `truapi.localStorage.write(...)`, etc.
+- **`host`** — helpers: `host.productId`, `host.productAccount(index?)`,
+  `host.log(...)` (stderr), `host.assert(cond, msg)`.
+
+Export a default function to receive the `host` context; throw (or reject) to
+fail the run. Minimal example:
+
+```ts
+export default async function (host) {
+  const login = await truapi.account.requestLogin({ reason: undefined });
+  host.assert(login.isOk() && login.value === "Success", "login failed");
+
+  const res = await truapi.signing.signRaw({
+    account: host.productAccount(),
+    payload: { tag: "Bytes", value: { bytes: "0xdeadbeef" } },
+  });
+  res.match(
+    (v) => host.log("signature", v.signature),
+    (e) => { throw new Error(JSON.stringify(e)); },
+  );
+}
+```
+
+`--product-id` (a `.dot` name or `localhost` identifier; default
+`headless-playground.dot`) scopes product-owned APIs like `truapi.localStorage.*`
+and the accounts `host.productAccount()` returns.
+
+Two scripts ship under `js/scripts/`:
+
+- `battery.ts` — the curated signer gate (login + raw/payload signing,
+  create-transaction, entropy). This is `run.sh`'s default.
+- `diagnosis.ts` — runs the playground's own generated example sources
+  (`runExample`) and writes a `web.md`-shape report to
+  `explorer/diagnosis-reports/headless.md`, gating on the signer-critical
+  methods. The generated examples are baked to the `truapi-playground.dot`
+  product, so run it with that product id:
+
+  ```bash
+  PRODUCT_ID=truapi-playground.dot E2E_LIVE_CHAIN=1 \
+    rust/crates/truapi-host-cli/e2e/run.sh rust/crates/truapi-host-cli/js/scripts/diagnosis.ts
+  ```
+
+  With a live chain, this is **43 passed, 1 failed, 20 skipped**; the lone
+  failure is `Chain/stop_transaction` (the example sends a deliberately-invalid
+  operation id the real RPC node rejects, which the browser host's smoldot
+  tolerates). It needs the playground's deps (`cd playground && bun install`).
+
+## Confirmations
+
+Both hosts take `--auto-accept`. Without it, every confirmation a web/iOS host
+would show as a modal (sign requests, permission prompts) is printed on the CLI
+and answered `y/n` on stdin. `run.sh` passes `--auto-accept` to both for
+unattended runs.
 
 ## Statement-store allowance
 
@@ -31,100 +104,46 @@ General (v5) `Resources.set_statement_store_account` extrinsic for each account
 that submits statements — its own `//wallet//sso` account and the pairing host's
 per-pairing device key. The port lives in `src/alloc/` (metadata-driven
 signed-extension encoding, ring fetch, slot scan, ring-VRF proof, extrinsic
-assembly, submit). The signing account must be an attested LitePeople member;
-`alloc-check` verifies this and can submit a test registration.
+assembly, submit). The signing account must be an attested LitePeople member,
+and may sit in an old ring, so the signing host scans back from the current ring
+index (slow, one-time per pairing). `alloc-check` verifies membership and can
+submit a test registration.
 
-## End-to-end test
-
-`e2e/run-e2e.ts` boots a pairing host, and (once login begins) a signing host
-that registers allowance on-chain, then drives the real `@parity/truapi` client
-against the pairing host over the real statement store. Two modes:
-
-- default: a curated battery of signer-backed methods (login, get account, raw
-  and payload signing, transaction construction, entropy) — a deterministic
-  gate, 7/7.
-- `E2E_DIAGNOSIS=1`: runs the playground's own generated example sources through
-  the playground's `runExample`, i.e. literally the playground diagnosis. Gated
-  on the signer-critical methods; Asset Hub `Chain/*` methods and deferred
-  features are reported but not gated unless `E2E_LIVE_CHAIN=1` routes them to a
-  real node.
+## Manual use (two terminals)
 
 ```bash
-# One-time JS setup (generated client + built package + playground deps):
-./scripts/codegen.sh
-( cd js/packages/truapi && bun install && bunx tsc -b )
-( cd playground && bun install )
-
-# Run it:
-bash rust/crates/truapi-host-cli/e2e/run.sh              # curated battery
-E2E_DIAGNOSIS=1 bash rust/crates/truapi-host-cli/e2e/run.sh   # full diagnosis
-```
-
-## Manual use
-
-```bash
-cargo build -p truapi-host-cli
+make headless
 BIN=target/debug/truapi-host
 
-# Both hosts default to the real People-chain statement store
-# (wss://paseo-people-next-system-rpc.polkadot.io); override with --statement-store.
-$BIN pairing-host --frame-listen 127.0.0.1:9955 &
-# A product connects to ws://127.0.0.1:9955 and calls account.requestLogin;
-# the pairing host prints `PAIRING_DEEPLINK <deeplink>`. Hand it to the signer,
-# which registers on-chain allowance then answers the handshake:
-$BIN signing-host --deeplink '<deeplink>'
+# Terminal 1 — pairing host runs a product script and prints PAIRING_DEEPLINK:
+$BIN pairing-host --product-id myapp.dot --script js/scripts/battery.ts --auto-accept
+
+# Terminal 2 — hand the deeplink to a signing host (registers allowance, signs):
+$BIN signing-host --deeplink '<deeplink>' --auto-accept
 
 # Inspect on-chain statement-store allowance for a mnemonic:
 $BIN alloc-check --lookback 100          # ring membership + free slot (read-only)
 ```
 
-Signing is auto-approved via the platform's `UserConfirmation`; pass
-`--reject` to the signing host to refuse every sensitive action (negative
-tests).
-
-## Playground diagnosis coverage
-
-`E2E_DIAGNOSIS=1` writes `explorer/diagnosis-reports/headless.md` in the same
-table shape as `web.md` (the dotli browser host), for a direct diff. Run with
-`E2E_LIVE_CHAIN=1` to route `Chain/*` to real paseo-next-v2 nodes:
-
-```bash
-E2E_LIVE_CHAIN=1 E2E_DIAGNOSIS=1 bun rust/crates/truapi-host-cli/e2e/run-e2e.ts
-```
-
-With live chain on, the diagnosis is **43 passed, 1 failed, 20 skipped**. The
-headless stack matches the browser host on every method it passes and also
-passes 3 the browser host fails (`Signing/sign_raw_with_legacy_account`,
-`Signing/sign_payload_with_legacy_account`,
-`Statement Store/create_proof_authorized`). The one remaining failure is
-environmental, not a host defect:
-
-- `Chain/stop_transaction` — the example passes a hardcoded bogus `operationId`;
-  the real RPC node rejects it (`-32602`), whereas the browser host's smoldot
-  tolerates unknown ids.
+Both hosts default `--statement-store` to the real People chain
+(`wss://paseo-people-next-system-rpc.polkadot.io`); override with
+`--statement-store`.
 
 ## Scope / gaps
 
 - **Chain methods** route to real `wss://` nodes when `E2E_LIVE_CHAIN=1`
-  (`src/chain.rs`, `PASEO_NEXT_V2_CHAIN_ENDPOINTS`); off by default so the
-  curated battery stays hermetic and network-free. A rustls crypto provider is
-  installed at startup for the TLS connections.
+  (`src/chain.rs`, `PASEO_NEXT_V2_CHAIN_ENDPOINTS`); off by default. A rustls
+  crypto provider is installed at startup for the TLS connections.
 - **Ring-VRF product-account aliases** are implemented natively via the
   `verifiable` crate (`get_account_alias`); on wasm they remain `Unavailable`.
 - **`get_user_id`** resolves the signing account's username from People-chain
-  `Resources.Consumers`. Since SSO and identity both run over the real People
-  chain, the username always resolves; the signing host presents its
-  `//wallet//sso` account as its statement identity. `truapi-host signing-host
-  --username <base>` registers a fresh lite username via the identity backend
-  (`src/attestation.rs`); first registration is backend-async and can take
-  minutes (ring onboarding), so the e2e uses an account that is already
-  registered. `truapi-host identity-check --mnemonic <m>` probes which
-  derivation carries a username.
-- **Statement-store allowance** is registered on-chain before pairing (see
-  above). The signing account must be an attested LitePeople ring member; it may
-  sit in an old ring, so the signing host scans back from the current ring index
-  to find it (slow, but one-time per pairing). `set_statement_store_account`
-  resource-allocation over SSO is still reported `NotAvailable`.
+  `Resources.Consumers`. `truapi-host signing-host --username <base>` registers a
+  fresh lite username via the identity backend (`src/attestation.rs`); first
+  registration is backend-async and can take minutes (ring onboarding), so the
+  e2e uses an already-registered account. `truapi-host identity-check --mnemonic
+  <m>` probes which derivation carries a username.
+- `set_statement_store_account` resource-allocation over SSO is still reported
+  `NotAvailable`.
 - Everything else the browser host exercises passes: signing (raw, payload,
   create-transaction, and their legacy variants), statement store, entropy,
   aliases, preimage, storage, permissions, notifications, theme, system, chain

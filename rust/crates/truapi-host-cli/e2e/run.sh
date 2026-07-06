@@ -1,17 +1,52 @@
 #!/usr/bin/env bash
-# Build the headless hosts and run the end-to-end pairing + signing test.
+# Headless end-to-end run: a pairing host drives a product script against a
+# signing host, pairing over the real People-chain statement store.
 #
-#   run.sh              curated signer battery (deterministic gate)
-#   E2E_DIAGNOSIS=1 run.sh   full playground diagnosis (gated on signer methods)
+#   make headless                  # build once
+#   e2e/run.sh                     # runs js/scripts/battery.ts (default)
+#   e2e/run.sh path/to/script.ts   # runs a custom product script
 #
-# Prerequisites for the JS driver (one-time):
-#   ./scripts/codegen.sh   (or generate js/packages/truapi/src/generated)
-#   (cd js/packages/truapi && bun install && bunx tsc -b)
-#   (cd playground && bun install)
+# Env:
+#   PRODUCT_ID       product id the pairing host serves (default headless-playground)
+#   SIGNER_MNEMONIC  wallet mnemonic for the signing host (default: dev mnemonic)
+#   FRAME            frame-server address (default 127.0.0.1:9955)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
-cd "$ROOT"
+BIN="$ROOT/target/debug/truapi-host"
+SCRIPT="${1:-$ROOT/rust/crates/truapi-host-cli/js/scripts/battery.ts}"
+PRODUCT_ID="${PRODUCT_ID:-headless-playground.dot}"
+FRAME="${FRAME:-127.0.0.1:9955}"
 
-cargo build -p truapi-host-cli
-exec bun rust/crates/truapi-host-cli/e2e/run-e2e.ts
+[ -x "$BIN" ] || { echo "missing $BIN — run: make headless" >&2; exit 2; }
+
+LOG="$(mktemp)"
+SIGNER_PID=""
+cleanup() {
+  [ -n "$SIGNER_PID" ] && kill "$SIGNER_PID" 2>/dev/null || true
+  rm -f "$LOG"
+}
+trap cleanup EXIT
+
+# The pairing host runs the product script; the script's
+# `truapi.account.requestLogin` makes the host emit a pairing deeplink, which we
+# hand to a signing host. The pairing host exits with the script's status.
+"$BIN" pairing-host --product-id "$PRODUCT_ID" --script "$SCRIPT" \
+  --frame-listen "$FRAME" --auto-accept 2>&1 | tee "$LOG" &
+PAIR_PID=$!
+
+deeplink=""
+for _ in $(seq 1 600); do
+  deeplink="$(grep -m1 -oE 'PAIRING_DEEPLINK .+' "$LOG" | cut -d' ' -f2- || true)"
+  [ -n "$deeplink" ] && break
+  kill -0 "$PAIR_PID" 2>/dev/null || break
+  sleep 0.5
+done
+[ -n "$deeplink" ] || { echo "pairing host did not emit a deeplink" >&2; exit 1; }
+
+signer_args=(signing-host --deeplink "$deeplink" --auto-accept)
+[ -n "${SIGNER_MNEMONIC:-}" ] && signer_args+=(--mnemonic "$SIGNER_MNEMONIC")
+"$BIN" "${signer_args[@]}" &
+SIGNER_PID=$!
+
+wait "$PAIR_PID"

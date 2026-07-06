@@ -1,9 +1,10 @@
 //! `Platform` implementation for the headless hosts.
 //!
 //! In-memory product and core storage, a WebSocket chain provider pointed at
-//! the real People-chain statement store, and an auto-approving
-//! [`UserConfirmation`]. Auth-state transitions are published on a channel so
-//! the CLI can print the pairing deeplink and observe connection status.
+//! the real People-chain statement store, and a [`UserConfirmation`] that
+//! either auto-accepts or prompts on the CLI (the web/iOS "sign?" modal).
+//! Auth-state transitions are published on a channel so the CLI can print the
+//! pairing deeplink and observe connection status.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -11,6 +12,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use blake2_rfc::blake2b::blake2b;
 use futures::stream::{self, BoxStream};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::Mutex as AsyncMutex;
 use truapi::v01;
 use truapi_platform::{
     AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features, JsonRpcConnection, Navigation,
@@ -20,19 +23,13 @@ use truapi_platform::{
 
 use crate::chain::WsChainProvider;
 
-/// How the host answers [`UserConfirmation`] prompts.
+/// How the host answers confirmation prompts (the web/iOS "sign?" modals).
 #[derive(Clone, Copy)]
 pub enum ApprovalPolicy {
-    /// Approve every sensitive action (default for e2e).
-    Always,
-    /// Reject every sensitive action (for negative tests).
-    Never,
-}
-
-impl ApprovalPolicy {
-    fn approves(self) -> bool {
-        matches!(self, ApprovalPolicy::Always)
-    }
+    /// Approve every sensitive action without prompting (`--auto-accept`).
+    AutoAccept,
+    /// Prompt on the CLI (y/n) for every sensitive action.
+    Prompt,
 }
 
 /// Headless-host platform shared by both roles.
@@ -42,6 +39,9 @@ pub struct CliPlatform {
     core_storage: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
     preimages: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
     approval: ApprovalPolicy,
+    /// Serializes interactive CLI prompts so concurrent confirmations don't
+    /// interleave on stdin.
+    prompt_lock: AsyncMutex<()>,
 }
 
 impl CliPlatform {
@@ -53,6 +53,7 @@ impl CliPlatform {
             core_storage: Mutex::new(HashMap::new()),
             preimages: Mutex::new(HashMap::new()),
             approval,
+            prompt_lock: AsyncMutex::new(()),
         })
     }
 
@@ -60,6 +61,40 @@ impl CliPlatform {
         use parity_scale_codec::Encode;
         key.encode()
     }
+
+    /// Resolve a confirmation: auto-accept, or prompt y/n on the CLI.
+    async fn decide(&self, action: &str, detail: String) -> bool {
+        match self.approval {
+            ApprovalPolicy::AutoAccept => {
+                eprintln!("[auto-accept] {action}: {detail}");
+                true
+            }
+            ApprovalPolicy::Prompt => {
+                let _guard = self.prompt_lock.lock().await;
+                prompt_yes_no(action, &detail).await
+            }
+        }
+    }
+}
+
+/// Print a confirmation and read a y/n answer from the CLI (default: no).
+async fn prompt_yes_no(action: &str, detail: &str) -> bool {
+    let mut stdout = tokio::io::stdout();
+    let _ = stdout
+        .write_all(
+            format!(
+                "\n\u{2500}\u{2500} confirm: {action} \u{2500}\u{2500}\n{detail}\nApprove? [y/N] "
+            )
+            .as_bytes(),
+        )
+        .await;
+    let _ = stdout.flush().await;
+    let mut line = String::new();
+    let mut reader = BufReader::new(tokio::io::stdin());
+    if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
+        return false;
+    }
+    matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 #[async_trait]
@@ -161,20 +196,22 @@ impl Notifications for CliPlatform {
 impl Permissions for CliPlatform {
     async fn device_permission(
         &self,
-        _request: v01::HostDevicePermissionRequest,
+        request: v01::HostDevicePermissionRequest,
     ) -> Result<v01::HostDevicePermissionResponse, v01::GenericError> {
-        Ok(v01::HostDevicePermissionResponse {
-            granted: self.approval.approves(),
-        })
+        let granted = self
+            .decide("device permission", format!("{request:?}"))
+            .await;
+        Ok(v01::HostDevicePermissionResponse { granted })
     }
 
     async fn remote_permission(
         &self,
-        _request: v01::RemotePermissionRequest,
+        request: v01::RemotePermissionRequest,
     ) -> Result<v01::RemotePermissionResponse, v01::GenericError> {
-        Ok(v01::RemotePermissionResponse {
-            granted: self.approval.approves(),
-        })
+        let granted = self
+            .decide("remote permission", format!("{request:?}"))
+            .await;
+        Ok(v01::RemotePermissionResponse { granted })
     }
 }
 
@@ -206,12 +243,7 @@ impl UserConfirmation for CliPlatform {
         &self,
         review: UserConfirmationReview,
     ) -> Result<bool, v01::GenericError> {
-        tracing::debug!(
-            ?review,
-            approved = self.approval.approves(),
-            "confirm_user_action"
-        );
-        Ok(self.approval.approves())
+        Ok(self.decide("sign request", format!("{review:?}")).await)
     }
 }
 

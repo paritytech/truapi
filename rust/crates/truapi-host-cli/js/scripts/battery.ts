@@ -1,66 +1,46 @@
-// Product-side test battery run against a headless pairing host.
+// Curated signer battery, as a product script for the pairing host.
 //
-// Constructs the real @parity/truapi client over a WebSocket to the pairing
-// host's frame endpoint and drives the SSO-class methods the playground
-// diagnosis exercises against the signer: login, account lookup, raw signing,
-// payload signing, transaction construction, and product entropy. Each method
-// is one pass/fail case, mirroring how the playground diagnosis reports.
-import {
-  createClient,
-  createTransport,
-  type TrUApiClient,
-} from "../../../../js/packages/truapi/src/index.ts";
-import { wsProvider } from "./ws-provider.ts";
+// Run via: truapi-host pairing-host --product-id <p> --script js/scripts/battery.ts
+// The runner injects `truapi` (the @parity/truapi client, scoped to the product)
+// and `host` (helpers). Logs in with the paired signing host, exercises the
+// signer-backed methods the playground diagnosis covers, and throws on any
+// failure so the host command exits non-zero.
+import type { HostContext } from "../runner.ts";
 
-export interface CaseResult {
+const GENESIS_HASH = `0x${"11".repeat(32)}` as const;
+
+interface Case {
   name: string;
   ok: boolean;
   detail: string;
 }
 
-const PRODUCT_ID = "truapi-playground.dot";
-const GENESIS_HASH = `0x${"11".repeat(32)}` as const;
+export default async function run(host: HostContext) {
+  const account = host.productAccount();
+  const results: Case[] = [];
 
-function productAccount(index = 0) {
-  return { dotNsIdentifier: PRODUCT_ID, derivationIndex: index };
-}
-
-/** Connect a client to the pairing host and return it plus the open signal. */
-export function connect(frameUrl: string): {
-  client: TrUApiClient;
-  opened: Promise<void>;
-  dispose: () => void;
-} {
-  const provider = wsProvider(frameUrl);
-  const transport = createTransport(provider);
-  const client = createClient(transport);
-  return { client, opened: provider.opened, dispose: () => provider.dispose() };
-}
-
-/** Begin login; resolves when the host reports the pairing outcome. */
-export function beginLogin(client: TrUApiClient) {
-  return client.account.requestLogin({ reason: undefined });
-}
-
-/** Run the signing battery against an already-paired client. */
-export async function runBattery(client: TrUApiClient): Promise<CaseResult[]> {
-  const results: CaseResult[] = [];
-
-  const record = async (
-    name: string,
-    run: () => Promise<{ ok: boolean; detail: string }>,
-  ) => {
+  const record = async (name: string, fn: () => Promise<{ ok: boolean; detail: string }>) => {
     try {
-      results.push({ name, ...(await run()) });
+      results.push({ name, ...(await fn()) });
     } catch (error) {
       results.push({ name, ok: false, detail: `threw: ${String(error)}` });
     }
   };
 
+  const login = await truapi.account.requestLogin({ reason: undefined });
+  const loginOk = login.isOk() && login.value === "Success";
+  results.push({
+    name: "account.requestLogin",
+    ok: loginOk,
+    detail: login.isOk() ? String(login.value) : JSON.stringify(login.error),
+  });
+  if (!loginOk) {
+    report(results);
+    throw new Error("login did not succeed");
+  }
+
   await record("account.getAccount", async () => {
-    const result = await client.account.getAccount({
-      productAccountId: productAccount(),
-    });
+    const result = await truapi.account.getAccount({ productAccountId: account });
     return result.match(
       (value) => ({
         ok: value.account.publicKey.startsWith("0x") && value.account.publicKey.length > 4,
@@ -71,8 +51,8 @@ export async function runBattery(client: TrUApiClient): Promise<CaseResult[]> {
   });
 
   await record("signing.signRaw(bytes)", async () => {
-    const result = await client.signing.signRaw({
-      account: productAccount(),
+    const result = await truapi.signing.signRaw({
+      account,
       payload: { tag: "Bytes", value: { bytes: "0xdeadbeef" } },
     });
     return result.match(
@@ -85,9 +65,9 @@ export async function runBattery(client: TrUApiClient): Promise<CaseResult[]> {
   });
 
   await record("signing.signRaw(message)", async () => {
-    const result = await client.signing.signRaw({
-      account: productAccount(),
-      payload: { tag: "Payload", value: { payload: "hello from e2e" } },
+    const result = await truapi.signing.signRaw({
+      account,
+      payload: { tag: "Payload", value: { payload: "hello from the headless battery" } },
     });
     return result.match(
       (value) => ({ ok: value.signature.startsWith("0x"), detail: value.signature.slice(0, 18) }),
@@ -96,8 +76,8 @@ export async function runBattery(client: TrUApiClient): Promise<CaseResult[]> {
   });
 
   await record("signing.signPayload", async () => {
-    const result = await client.signing.signPayload({
-      account: productAccount(),
+    const result = await truapi.signing.signPayload({
+      account,
       payload: {
         blockHash: GENESIS_HASH,
         blockNumber: "0x01",
@@ -123,8 +103,8 @@ export async function runBattery(client: TrUApiClient): Promise<CaseResult[]> {
   });
 
   await record("signing.createTransaction", async () => {
-    const result = await client.signing.createTransaction({
-      signer: productAccount(),
+    const result = await truapi.signing.createTransaction({
+      signer: account,
       genesisHash: GENESIS_HASH,
       callData: "0x0000",
       extensions: [{ id: "CheckNonce", extra: "0x04", additionalSigned: "0x" }],
@@ -140,12 +120,26 @@ export async function runBattery(client: TrUApiClient): Promise<CaseResult[]> {
   });
 
   await record("entropy.derive", async () => {
-    const result = await client.entropy.derive({ context: "0x6d792d6b6579" });
+    const result = await truapi.entropy.derive({ context: "0x6d792d6b6579" });
     return result.match(
       (value) => ({ ok: value.entropy.startsWith("0x"), detail: value.entropy.slice(0, 18) }),
       (error) => ({ ok: false, detail: JSON.stringify(error) }),
     );
   });
 
-  return results;
+  report(results);
+  const failures = results.filter((r) => !r.ok);
+  if (failures.length > 0) {
+    throw new Error(`GATE FAILED: ${failures.map((r) => r.name).join(", ")}`);
+  }
+  host.log(`GATE PASSED: ${results.length} signer-critical cases`);
+}
+
+function report(results: Case[]) {
+  console.log("\n=== Headless host signer battery ===");
+  for (const r of results) {
+    console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name.padEnd(28)} ${r.detail}`);
+  }
+  const pass = results.filter((r) => r.ok).length;
+  console.log(`--------------------------------\n${pass}/${results.length} passed`);
 }

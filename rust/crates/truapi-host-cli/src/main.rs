@@ -14,9 +14,11 @@ mod attestation;
 mod chain;
 mod frame_server;
 mod platform;
+mod script_runner;
 
 use std::io::BufRead;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
@@ -31,8 +33,9 @@ use crate::platform::{ApprovalPolicy, CliPlatform};
 /// Default dev mnemonic used when a signing host is started without one.
 const DEFAULT_MNEMONIC: &str =
     "bottom drive obey lake curtain smoke basket hold race lonely fit walk";
-/// Default product served by the pairing host's frame endpoint.
-const DEFAULT_PRODUCT_ID: &str = "truapi-playground.dot";
+/// Default product served by the pairing host's frame endpoint. Product ids
+/// must be a `.dot` name or a `localhost` identifier (host-spec product id).
+const DEFAULT_PRODUCT_ID: &str = "headless-playground.dot";
 /// Deeplink scheme advertised by the pairing host.
 const DEEPLINK_SCHEME: &str = "polkadotapp";
 /// paseo-next-v2 identity backend base (includes /api/v1).
@@ -72,32 +75,46 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run a seedless pairing host and serve product frames over WebSocket.
+    /// Run a seedless pairing host and drive a product script against it.
+    ///
+    /// Starts the product-frame server, then runs `--script` with a global
+    /// `truapi` injected (the `@parity/truapi` client, scoped to `--product-id`).
+    /// The host command exits with the script's exit status.
     PairingHost {
-        /// Statement-store WebSocket URL (the real People chain by default).
-        #[arg(long = "statement-store", default_value = PEOPLE_CHAIN_WS)]
-        statement_store: String,
+        /// Product script to run (JS/TS). Receives the global `truapi`.
+        #[arg(long)]
+        script: PathBuf,
+        /// Product id the host serves; scopes storage and product accounts.
+        #[arg(long = "product-id", default_value = DEFAULT_PRODUCT_ID)]
+        product_id: String,
         /// Address to serve product frames on.
         #[arg(long, default_value = "127.0.0.1:9955")]
         frame_listen: SocketAddr,
-        /// Product id presented to product frame connections.
-        #[arg(long, default_value = DEFAULT_PRODUCT_ID)]
-        product: String,
-    },
-    /// Answer a pairing deeplink as a wallet-local signing host and auto-sign.
-    SigningHost {
         /// Statement-store WebSocket URL (the real People chain by default).
         #[arg(long = "statement-store", default_value = PEOPLE_CHAIN_WS)]
         statement_store: String,
-        /// BIP-39 mnemonic for the wallet root.
-        #[arg(long, default_value = DEFAULT_MNEMONIC)]
-        mnemonic: String,
+        /// Approve every confirmation without prompting on the CLI.
+        #[arg(long)]
+        auto_accept: bool,
+    },
+    /// Answer a pairing deeplink as a wallet-local signing host and sign.
+    ///
+    /// Registers statement allowance on-chain, answers the deeplink, and serves
+    /// the SSO session. Confirmations are prompted on the CLI unless
+    /// `--auto-accept` is set.
+    SigningHost {
         /// Pairing deeplink to answer. Read from stdin when omitted.
         #[arg(long)]
         deeplink: Option<String>,
-        /// Reject every sensitive action instead of auto-approving.
+        /// BIP-39 mnemonic for the wallet root.
+        #[arg(long, default_value = DEFAULT_MNEMONIC)]
+        mnemonic: String,
+        /// Statement-store WebSocket URL (the real People chain by default).
+        #[arg(long = "statement-store", default_value = PEOPLE_CHAIN_WS)]
+        statement_store: String,
+        /// Approve every confirmation without prompting on the CLI.
         #[arg(long)]
-        reject: bool,
+        auto_accept: bool,
         /// Register this lite username base (6+ lowercase letters) on the
         /// People chain via the identity backend before pairing, so
         /// `get_user_id` resolves. Requires network access.
@@ -152,17 +169,28 @@ async fn main() -> Result<()> {
 
     match Cli::parse().command {
         Command::PairingHost {
-            statement_store,
+            script,
+            product_id,
             frame_listen,
-            product,
-        } => run_pairing_host(statement_store, frame_listen, product).await,
-        Command::SigningHost {
             statement_store,
-            mnemonic,
+            auto_accept,
+        } => {
+            run_pairing_host(
+                script,
+                product_id,
+                frame_listen,
+                statement_store,
+                auto_accept,
+            )
+            .await
+        }
+        Command::SigningHost {
             deeplink,
-            reject,
+            mnemonic,
+            statement_store,
+            auto_accept,
             username,
-        } => run_signing_host(statement_store, mnemonic, deeplink, reject, username).await,
+        } => run_signing_host(deeplink, mnemonic, statement_store, auto_accept, username).await,
         Command::IdentityCheck {
             mnemonic,
             people_ws,
@@ -282,6 +310,16 @@ async fn run_alloc_check(
     Ok(())
 }
 
+/// Map the `--auto-accept` flag to an approval policy: auto-accept, or prompt
+/// each confirmation on the CLI.
+fn approval_policy(auto_accept: bool) -> ApprovalPolicy {
+    if auto_accept {
+        ApprovalPolicy::AutoAccept
+    } else {
+        ApprovalPolicy::Prompt
+    }
+}
+
 /// Spawner that runs runtime futures on the tokio runtime, so their WebSocket
 /// connects and timers have a reactor.
 fn tokio_spawner() -> Spawner {
@@ -306,11 +344,13 @@ fn platform_info() -> PlatformInfo {
 }
 
 async fn run_pairing_host(
-    statement_store: String,
+    script: PathBuf,
+    product_id: String,
     frame_listen: SocketAddr,
-    product: String,
+    statement_store: String,
+    auto_accept: bool,
 ) -> Result<()> {
-    let platform = CliPlatform::new(statement_store, ApprovalPolicy::Always);
+    let platform = CliPlatform::new(statement_store, approval_policy(auto_accept));
     // SSO and identity both run over the real People chain, so usernames always
     // resolve from `Resources.Consumers` (host-spec G).
     let config = PairingHostConfig::new(
@@ -322,14 +362,36 @@ async fn run_pairing_host(
     .context("invalid pairing host config")?
     .with_identity_chain_genesis_hash(PEOPLE_CHAIN_GENESIS);
     let runtime = Arc::new(PairingHostRuntime::new(platform, config, tokio_spawner()));
-    frame_server::serve(runtime, product, frame_listen).await
+
+    // Bind the frame server, then drive the product script against it; the
+    // command exits with the script's status. The frame accept loop is `!Send`,
+    // so it runs on a LocalSet alongside the (Send) script subprocess.
+    let listener = frame_server::bind(frame_listen).await?;
+    let frame_url = format!("ws://{}", listener.local_addr()?);
+    println!("FRAMES_LISTENING {frame_url}");
+
+    let local = tokio::task::LocalSet::new();
+    let status = local
+        .run_until(async move {
+            let server = tokio::task::spawn_local(frame_server::accept_loop(
+                runtime,
+                product_id.clone(),
+                listener,
+            ));
+            let status = script_runner::run(&frame_url, &product_id, &script).await;
+            server.abort();
+            status
+        })
+        .await?;
+
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 async fn run_signing_host(
-    statement_store: String,
-    mnemonic: String,
     deeplink: Option<String>,
-    reject: bool,
+    mnemonic: String,
+    statement_store: String,
+    auto_accept: bool,
     username: Option<String>,
 ) -> Result<()> {
     let entropy = bip39::Mnemonic::parse(mnemonic.trim())
@@ -353,18 +415,13 @@ async fn run_signing_host(
         None => read_deeplink_from_stdin()?,
     };
 
-    let approval = if reject {
-        ApprovalPolicy::Never
-    } else {
-        ApprovalPolicy::Always
-    };
     // Grant statement-store allowance to the accounts that submit statements
     // over the real store: our own `//wallet//sso` and the pairing host's
     // device key. A real client does this on-chain; without it the store
     // rejects the handshake with `NoAllowance`.
     register_pairing_allowances(&statement_store, &entropy, &deeplink).await?;
 
-    let platform = CliPlatform::new(statement_store, approval);
+    let platform = CliPlatform::new(statement_store, approval_policy(auto_accept));
     let config = SigningHostConfig::new(
         host_info("Headless Signing Host"),
         platform_info(),
