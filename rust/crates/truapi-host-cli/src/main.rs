@@ -106,8 +106,10 @@ enum Command {
         /// Pairing deeplink to answer. Read from stdin when omitted.
         #[arg(long)]
         deeplink: Option<String>,
-        /// BIP-39 mnemonic for the wallet root.
-        #[arg(long, default_value = DEFAULT_MNEMONIC)]
+        /// BIP-39 mnemonic for the wallet root. Defaults to the
+        /// `HOST_CLI_SIGNER_MNEMONIC` env var if set, otherwise the dev mnemonic.
+        /// Must be a registered LitePeople ring member for allowance to succeed.
+        #[arg(long, env = "HOST_CLI_SIGNER_MNEMONIC", default_value = DEFAULT_MNEMONIC)]
         mnemonic: String,
         /// Statement-store WebSocket URL (the real People chain by default).
         #[arg(long = "statement-store", default_value = PEOPLE_CHAIN_WS)]

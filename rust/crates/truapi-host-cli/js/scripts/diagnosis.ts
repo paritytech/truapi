@@ -1,15 +1,16 @@
+/// <reference path="../runner.ts" />
 // Full playground diagnosis, as a product script for the pairing host.
 //
 // Run via: truapi-host pairing-host --product-id truapi-playground.dot --script js/scripts/diagnosis.ts
 // The generated example sources hardcode the `truapi-playground.dot` product, so
 // the pairing host must serve that product id (else signing methods fail with
-// PermissionDenied). Logs in, runs the examples against the paired signing host,
-// writes a web.md-shape report to explorer/diagnosis-reports/headless.md, and
-// gates on the signer-critical methods (chain-node methods and deferred features
-// are reported, not gated, unless a live chain node is routed in).
+// PermissionDenied). Top-level product code: logs in, runs the examples against
+// the paired signing host, writes a web.md-shape report to
+// explorer/diagnosis-reports/headless.md, and gates on the signer-critical
+// methods (chain-node methods and deferred features are reported, not gated,
+// unless a live chain node is routed in).
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { HostContext } from "../runner.ts";
 import { runDiagnosis, type DiagnosisRow } from "../diagnosis.ts";
 
 // Signer-critical, chain-node-independent methods that must pass.
@@ -33,29 +34,26 @@ const REPORT_PATH = fileURLToPath(
   new URL("../../../../../explorer/diagnosis-reports/headless.md", import.meta.url),
 );
 
-export default async function run(host: HostContext) {
-  const login = await truapi.account.requestLogin({ reason: undefined });
-  if (!login.isOk() || login.value !== "Success") {
-    throw new Error(`login failed: ${login.isOk() ? login.value : JSON.stringify(login.error)}`);
-  }
-
-  const rows = await runDiagnosis(truapi);
-  const report = renderReport(rows);
-  writeFileSync(REPORT_PATH, report);
-
-  console.log("\n" + report);
-  const pass = rows.filter((r) => r.status === "pass").length;
-  const fail = rows.filter((r) => r.status === "fail").length;
-  const skip = rows.filter((r) => r.status === "skipped").length;
-  console.log(`\nwrote ${REPORT_PATH}`);
-  console.log(`${pass} passed, ${fail} failed, ${skip} skipped (of ${rows.length})`);
-
-  const critical = rows.filter((r) => MUST_PASS.has(r.id) && r.status === "fail");
-  if (critical.length > 0) {
-    throw new Error(`GATE FAILED: ${critical.map((r) => r.id).join(", ")}`);
-  }
-  host.log("GATE PASSED: all signer-critical methods pass");
+const login = await truapi.account.requestLogin({ reason: undefined });
+if (!login.isOk() || login.value !== "Success") {
+  throw new Error(`login failed: ${login.isOk() ? login.value : JSON.stringify(login.error)}`);
 }
+
+const rows = await runDiagnosis(truapi);
+writeFileSync(REPORT_PATH, renderReport(rows));
+
+console.log("\n" + renderReport(rows));
+const pass = rows.filter((r) => r.status === "pass").length;
+const fail = rows.filter((r) => r.status === "fail").length;
+const skip = rows.filter((r) => r.status === "skipped").length;
+console.log(`\nwrote ${REPORT_PATH}`);
+console.log(`${pass} passed, ${fail} failed, ${skip} skipped (of ${rows.length})`);
+
+const critical = rows.filter((r) => MUST_PASS.has(r.id) && r.status === "fail");
+if (critical.length > 0) {
+  throw new Error(`GATE FAILED: ${critical.map((r) => r.id).join(", ")}`);
+}
+console.log("GATE PASSED: all signer-critical methods pass");
 
 // web.md-shape table so the headless run can be diffed against the browser host.
 function renderReport(rows: DiagnosisRow[]): string {

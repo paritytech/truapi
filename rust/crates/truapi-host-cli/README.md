@@ -30,38 +30,39 @@ rust/crates/truapi-host-cli/e2e/run.sh path/to/my-script.ts   # or a custom scri
 ```
 
 `run.sh` starts a pairing host running the product script, hands the emitted
-pairing deeplink to a signing host, and exits with the script's status. It uses
-the dev mnemonic by default (a registered LitePeople member); override with
-`SIGNER_MNEMONIC=...`, the product with `PRODUCT_ID=...`, and the port with
-`FRAME=...`.
+pairing deeplink to a signing host, and exits with the script's status. The
+signing host uses `HOST_CLI_SIGNER_MNEMONIC` (from the environment or a gitignored
+`e2e/.env`) if set, otherwise the dev mnemonic — either must be a registered
+LitePeople ring member. Override the product with `PRODUCT_ID=...` and the port
+with `FRAME=...`.
 
 ## Writing a product script
 
-A product script is an ES module. The runner injects two globals before it runs:
+A product script is top-level code (an ES module). The runner injects two
+globals before running it:
 
 - **`truapi`** — the `@parity/truapi` client connected to the pairing host and
   scoped to the host's `--product-id`. Call `truapi.account.requestLogin(...)`,
   `truapi.signing.signRaw(...)`, `truapi.localStorage.write(...)`, etc.
-- **`host`** — helpers: `host.productId`, `host.productAccount(index?)`,
-  `host.log(...)` (stderr), `host.assert(cond, msg)`.
+- **`host`** — just `host.productId` and `host.productAccount(index?)`. That is
+  all it does: it keeps product accounts in sync with the host's `--product-id`
+  (hardcoding a mismatched id fails signing with `PermissionDenied`). Use
+  `console.log` and `throw` for everything else.
 
-Export a default function to receive the `host` context; throw (or reject) to
-fail the run. Minimal example:
+Write it top-level and `throw` (or reject) to fail the run:
 
 ```ts
-export default async function (host) {
-  const login = await truapi.account.requestLogin({ reason: undefined });
-  host.assert(login.isOk() && login.value === "Success", "login failed");
+const login = await truapi.account.requestLogin({ reason: undefined });
+if (!login.isOk() || login.value !== "Success") throw new Error("login failed");
 
-  const res = await truapi.signing.signRaw({
-    account: host.productAccount(),
-    payload: { tag: "Bytes", value: { bytes: "0xdeadbeef" } },
-  });
-  res.match(
-    (v) => host.log("signature", v.signature),
-    (e) => { throw new Error(JSON.stringify(e)); },
-  );
-}
+const res = await truapi.signing.signRaw({
+  account: host.productAccount(),
+  payload: { tag: "Bytes", value: { bytes: "0xdeadbeef" } },
+});
+res.match(
+  (v) => console.log("signature", v.signature),
+  (e) => { throw new Error(JSON.stringify(e)); },
+);
 ```
 
 `--product-id` (a `.dot` name or `localhost` identifier; default
@@ -118,8 +119,11 @@ BIN=target/debug/truapi-host
 # Terminal 1 — pairing host runs a product script and prints PAIRING_DEEPLINK:
 $BIN pairing-host --product-id myapp.dot --script js/scripts/battery.ts --auto-accept
 
-# Terminal 2 — hand the deeplink to a signing host (registers allowance, signs):
+# Terminal 2 — hand the deeplink to a signing host (registers allowance, signs).
+# The wallet mnemonic comes from --mnemonic, else $HOST_CLI_SIGNER_MNEMONIC,
+# else the dev mnemonic; it must be a registered LitePeople ring member.
 $BIN signing-host --deeplink '<deeplink>' --auto-accept
+HOST_CLI_SIGNER_MNEMONIC="spin battle …" $BIN signing-host --deeplink '<deeplink>' --auto-accept
 
 # Inspect on-chain statement-store allowance for a mnemonic:
 $BIN alloc-check --lookback 100          # ring membership + free slot (read-only)

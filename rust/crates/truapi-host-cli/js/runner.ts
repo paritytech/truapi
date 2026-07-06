@@ -21,16 +21,15 @@ import {
 } from "../../../../js/packages/truapi/src/index.ts";
 import { wsProvider } from "./ws-provider.ts";
 
-/** Helpers injected alongside `truapi` for scripts to use. */
+/// The host context injected alongside `truapi`. It only exposes what a script
+/// can't get from `truapi` alone: the product id the host serves, so product
+/// accounts stay in sync with `--product-id` (hardcoding a mismatched id fails
+/// signing with `PermissionDenied`). Use `console.log` / `throw` for the rest.
 export interface HostContext {
-  /** The product id this host serves. */
+  /** The product id this host serves (its `--product-id`). */
   productId: string;
   /** A product account id for `derivationIndex` (default 0) under this product. */
   productAccount(index?: number): ProductAccountId;
-  /** Log to stderr (keeps stdout clean for machine-readable host output). */
-  log(...args: unknown[]): void;
-  /** Throw `message` unless `condition` holds. */
-  assert(condition: unknown, message: string): asserts condition;
 }
 
 declare global {
@@ -59,10 +58,6 @@ async function main() {
   const context: HostContext = {
     productId,
     productAccount: (index = 0) => ({ dotNsIdentifier: productId, derivationIndex: index }),
-    log: (...args) => console.error("[script]", ...args),
-    assert: (condition, message) => {
-      if (!condition) throw new Error(`assertion failed: ${message}`);
-    },
   };
   globalThis.truapi = client;
   globalThis.host = context;

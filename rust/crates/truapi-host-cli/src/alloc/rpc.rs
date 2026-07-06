@@ -133,12 +133,14 @@ enum ExtrinsicStatus {
 }
 
 /// Classify an `author_extrinsicUpdate` status value.
+///
+/// Only `finalized` is terminal success: a freshly-set statement-store allowance
+/// is not honored by the store until its `set_statement_store_account` extrinsic
+/// is finalized, so returning at `inBlock` would race the handshake submit
+/// (which then fails with `NoAllowance`).
 fn extrinsic_status(status: &Value) -> ExtrinsicStatus {
-    // Terminal-success statuses carry a block hash: {"inBlock": "0x…"} / {"finalized": "0x…"}.
-    for key in ["inBlock", "finalized"] {
-        if let Some(hash) = status.get(key).and_then(Value::as_str) {
-            return ExtrinsicStatus::InBlock(hash.to_string());
-        }
+    if let Some(hash) = status.get("finalized").and_then(Value::as_str) {
+        return ExtrinsicStatus::InBlock(hash.to_string());
     }
     for key in ["invalid", "dropped", "usurped", "finalityTimeout"] {
         if status.get(key).is_some() {

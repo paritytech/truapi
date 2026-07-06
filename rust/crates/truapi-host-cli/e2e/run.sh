@@ -7,9 +7,9 @@
 #   e2e/run.sh path/to/script.ts   # runs a custom product script
 #
 # Env:
-#   PRODUCT_ID       product id the pairing host serves (default headless-playground)
-#   SIGNER_MNEMONIC  wallet mnemonic for the signing host (default: dev mnemonic)
-#   FRAME            frame-server address (default 127.0.0.1:9955)
+#   PRODUCT_ID               product id the pairing host serves (default headless-playground.dot)
+#   HOST_CLI_SIGNER_MNEMONIC wallet mnemonic for the signing host (default: dev mnemonic)
+#   FRAME                    frame-server address (default 127.0.0.1:9955)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -17,6 +17,11 @@ BIN="$ROOT/target/debug/truapi-host"
 SCRIPT="${1:-$ROOT/rust/crates/truapi-host-cli/js/scripts/battery.ts}"
 PRODUCT_ID="${PRODUCT_ID:-headless-playground.dot}"
 FRAME="${FRAME:-127.0.0.1:9955}"
+
+# Load HOST_CLI_SIGNER_MNEMONIC (and any other vars) from a gitignored e2e/.env
+# if present, so the signing host uses a registered account.
+ENV_FILE="$(dirname "$0")/.env"
+[ -f "$ENV_FILE" ] && { set -a; . "$ENV_FILE"; set +a; }
 
 [ -x "$BIN" ] || { echo "missing $BIN — run: make headless" >&2; exit 2; }
 
@@ -44,9 +49,9 @@ for _ in $(seq 1 600); do
 done
 [ -n "$deeplink" ] || { echo "pairing host did not emit a deeplink" >&2; exit 1; }
 
-signer_args=(signing-host --deeplink "$deeplink" --auto-accept)
-[ -n "${SIGNER_MNEMONIC:-}" ] && signer_args+=(--mnemonic "$SIGNER_MNEMONIC")
-"$BIN" "${signer_args[@]}" &
+# The signing host reads HOST_CLI_SIGNER_MNEMONIC from the env (else the dev
+# mnemonic). It must be a registered LitePeople ring member for allowance.
+"$BIN" signing-host --deeplink "$deeplink" --auto-accept &
 SIGNER_PID=$!
 
 wait "$PAIR_PID"
