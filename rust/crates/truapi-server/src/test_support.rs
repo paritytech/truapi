@@ -17,8 +17,8 @@ use crate::subscription::thread_per_subscription_spawner;
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
-use futures::stream::{self, BoxStream};
 use futures::Stream;
+use futures::stream::{self, BoxStream};
 use hkdf::Hkdf;
 use p256::PublicKey as P256PublicKey;
 use p256::SecretKey as P256SecretKey;

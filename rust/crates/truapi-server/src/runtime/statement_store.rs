@@ -4,8 +4,8 @@
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use super::{ProductRuntimeHost, REMOTE_PERMISSION_DENIED_REASON};
 use super::statement_store_rpc::{self, StatementStoreRpc};
+use super::{ProductRuntimeHost, REMOTE_PERMISSION_DENIED_REASON};
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
     parse_new_statements_result, sign_statement_fields, signed_statement_to_scale,

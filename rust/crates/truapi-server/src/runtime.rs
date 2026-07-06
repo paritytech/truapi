@@ -1408,9 +1408,11 @@ impl Chain for ProductRuntimeHost {
         CallError<RemoteChainTransactionBroadcastError>,
     > {
         let RemoteChainTransactionBroadcastRequest::V1(inner) = request;
-        self.require_chain_submit(RemoteChainTransactionBroadcastError::V1(v01::GenericError {
-            reason: REMOTE_PERMISSION_DENIED_REASON.to_string(),
-        }))
+        self.require_chain_submit(RemoteChainTransactionBroadcastError::V1(
+            v01::GenericError {
+                reason: REMOTE_PERMISSION_DENIED_REASON.to_string(),
+            },
+        ))
         .await?;
         self.services
             .chain
@@ -1733,8 +1735,8 @@ mod tests {
     use super::*;
     use crate::host_logic::sso::messages::{RemoteMessageData, v1};
     use crate::test_support::*;
-    use std::sync::atomic::Ordering;
     use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
     use truapi_platform::{AuthState, CoreStorageKey, PermissionAuthorizationRequest};
 
     fn wait_until(mut condition: impl FnMut() -> bool, message: &str) {
@@ -2205,10 +2207,7 @@ mod tests {
             identity_disclosure_confirmed: true,
             ..Default::default()
         });
-        let host = ProductRuntimeHost::new_compat(
-            platform.clone(),
-            test_spawner(),
-        );
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let response =
@@ -2224,10 +2223,7 @@ mod tests {
             identity_disclosure_confirmed: true,
             ..Default::default()
         });
-        let host = ProductRuntimeHost::new_compat(
-            platform.clone(),
-            test_spawner(),
-        );
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
 
@@ -2235,29 +2231,25 @@ mod tests {
         futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
 
         assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
-        let status = futures::executor::block_on(
-            host.permission_authorization_status(PermissionAuthorizationRequest::IdentityDisclosure),
-        )
-        .unwrap();
+        let status =
+            futures::executor::block_on(host.permission_authorization_status(
+                PermissionAuthorizationRequest::IdentityDisclosure,
+            ))
+            .unwrap();
         assert_eq!(status, PermissionAuthorizationStatus::Authorized);
     }
 
     #[test]
     fn get_user_id_caches_identity_disclosure_denial() {
         let platform = Arc::new(StubPlatform::default());
-        let host = ProductRuntimeHost::new_compat(
-            platform.clone(),
-            test_spawner(),
-        );
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
 
-        let first =
-            futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
-                .unwrap_err();
-        let second =
-            futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
-                .unwrap_err();
+        let first = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+        let second = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
 
         assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
         assert!(matches!(
@@ -2272,10 +2264,11 @@ mod tests {
                 v01::HostGetUserIdError::PermissionDenied
             ))
         ));
-        let status = futures::executor::block_on(
-            host.permission_authorization_status(PermissionAuthorizationRequest::IdentityDisclosure),
-        )
-        .unwrap();
+        let status =
+            futures::executor::block_on(host.permission_authorization_status(
+                PermissionAuthorizationRequest::IdentityDisclosure,
+            ))
+            .unwrap();
         assert_eq!(status, PermissionAuthorizationStatus::Denied);
     }
 
@@ -2310,9 +2303,8 @@ mod tests {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
-        let err =
-            futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
-                .unwrap_err();
+        let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
         assert!(matches!(
             err,
             CallError::Domain(HostGetUserIdError::V1(
@@ -2415,8 +2407,7 @@ mod tests {
         );
         let cx = CallContext::new();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
-        let err =
-            futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
+        let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
         match err {
             CallError::Domain(RemotePreimageSubmitError::V1(
                 v01::PreimageSubmitError::Unknown { reason },
@@ -2437,7 +2428,11 @@ mod tests {
             remote_permission_denied: true,
             ..Default::default()
         });
-        let host = ProductRuntimeHost::new(platform.clone(), runtime_config("myapp.dot"), test_spawner());
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
         let cx = CallContext::new();
         let request = RemoteChainTransactionBroadcastRequest::V1(
             v01::RemoteChainTransactionBroadcastRequest {
@@ -2445,9 +2440,8 @@ mod tests {
                 transaction: vec![1, 2, 3],
             },
         );
-        let err =
-            futures::executor::block_on(Chain::broadcast_transaction(&host, &cx, request))
-                .unwrap_err();
+        let err = futures::executor::block_on(Chain::broadcast_transaction(&host, &cx, request))
+            .unwrap_err();
         match err {
             CallError::Domain(RemoteChainTransactionBroadcastError::V1(v01::GenericError {
                 reason,
