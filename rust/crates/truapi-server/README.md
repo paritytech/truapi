@@ -35,7 +35,7 @@ stage in the frame path; the host's `Platform` impl is the syscall floor.
           SCALE frames        │  │  MessageChannel · loopback
           both directions     ▼  │  WS
    ┌───────────────────────────────────────────────────────┐
-   │ binding layer :  wasm.rs  ( browser / node )          │
+   │ binding layer :  host shell / transport adapter       │
    │ thin byte bridge  ·  no protocol logic                │
    └───────────────────────────────────────────────────────┘
 
