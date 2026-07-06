@@ -10,9 +10,9 @@ use super::super::authority::{
     SignPayloadAuthorityRequest, SignRawAuthorityRequest,
 };
 use super::super::sso_remote::{
-    SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON, SsoRemoteResponseError, SsoSessionKey,
-    fresh_statement_expiry, sso_message_id, statement_subscription_stream,
-    subscribe_statement_topic, wait_for_sso_remote_response,
+    RemoteResponseWait, SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON,
+    SsoRemoteResponseError, SsoSessionKey, fresh_statement_expiry, sso_message_id,
+    statement_subscription_stream, subscribe_statement_topic, wait_for_sso_remote_response,
 };
 use super::super::statement_store_rpc::{self, StatementStoreRpc};
 use super::AuthorityRequestKind;
@@ -233,16 +233,16 @@ impl PairingHost {
         .boxed();
         let action = action.to_string();
         debug!(action, %message_id, "submitted SSO remote message, awaiting response");
-        let result = wait_for_sso_remote_response(
-            statement_subscription_stream(own_subscription, "own"),
-            statement_subscription_stream(peer_subscription, "peer"),
+        let result = wait_for_sso_remote_response(RemoteResponseWait {
+            own_statements: statement_subscription_stream(own_subscription, "own"),
+            peer_statements: statement_subscription_stream(peer_subscription, "peer"),
             submit,
-            sso,
-            &message_id,
-            &message_id,
-            cx.cancel(),
-            Some(disconnect),
-        )
+            session: sso,
+            statement_request_id: &message_id,
+            remote_message_id: &message_id,
+            cancel: cx.cancel(),
+            disconnect: Some(disconnect),
+        })
         .await;
         match &result {
             Ok(_) => debug!(action, %message_id, "SSO remote response received"),
