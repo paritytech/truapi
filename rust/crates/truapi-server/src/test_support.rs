@@ -477,7 +477,7 @@ pub(crate) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65
     )
 }
 
-fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
+pub(crate) fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
     let core_public_key =
         P256PublicKey::from_sec1_bytes(&core_encryption_public_key_from_deeplink(deeplink))
             .expect("core encryption public key should decode");
