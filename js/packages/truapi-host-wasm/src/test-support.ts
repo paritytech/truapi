@@ -1,13 +1,18 @@
-import type { HostCallbacks } from "./generated/host-callbacks.js";
+import type {
+  FlatHostCallbacks,
+  RequiredHostCallbacks,
+} from "./generated/host-callbacks.js";
 
 /** `HostCallbacks` with every optional member required, for exhaustive test fixtures. */
-export type CompleteHostCallbacks = Required<HostCallbacks>;
+export type CompleteHostCallbacks = RequiredHostCallbacks;
+
+type FlatHostCallbackOverrides = Partial<Required<FlatHostCallbacks>>;
 
 /** Default no-op host callbacks with optional per-test overrides. */
 export function makeHostCallbacks(
-  overrides: Partial<CompleteHostCallbacks> = {},
+  overrides: FlatHostCallbackOverrides = {},
 ): CompleteHostCallbacks {
-  return {
+  const flat: Required<FlatHostCallbacks> = {
     navigateTo: async () => {},
     pushNotification: async () => ({ id: 0 }),
     cancelNotification: async () => {},
@@ -31,6 +36,36 @@ export function makeHostCallbacks(
       close() {},
     }),
     ...overrides,
+  };
+  return {
+    navigation: { navigateTo: flat.navigateTo },
+    notifications: {
+      pushNotification: flat.pushNotification,
+      cancelNotification: flat.cancelNotification,
+    },
+    permissions: {
+      devicePermission: flat.devicePermission,
+      remotePermission: flat.remotePermission,
+    },
+    features: { featureSupported: flat.featureSupported },
+    productStorage: {
+      read: flat.read,
+      write: flat.write,
+      clear: flat.clear,
+    },
+    coreStorage: {
+      readCoreStorage: flat.readCoreStorage,
+      writeCoreStorage: flat.writeCoreStorage,
+      clearCoreStorage: flat.clearCoreStorage,
+    },
+    auth: { authStateChanged: flat.authStateChanged },
+    userConfirmation: { confirmUserAction: flat.confirmUserAction },
+    preimage: {
+      submitPreimage: flat.submitPreimage,
+      lookupPreimage: flat.lookupPreimage,
+    },
+    theme: { subscribeTheme: flat.subscribeTheme },
+    chain: { connect: flat.connect },
   };
 }
 
