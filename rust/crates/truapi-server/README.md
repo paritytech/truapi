@@ -88,6 +88,84 @@ the wallet-authority tail (`sign_*`, `create_transaction`, `account_alias`,
 handle with an `AuthoritySession` snapshot the role revalidates before touching
 key material.
 
+### Permission flow
+
+Permission grants are scoped by product id and typed request, so a grant for
+one product never authorizes another product or another permission class.
+
+```text
+Product app
+(product_id = "my-product")
+        |
+        | host API call
+        | e.g. getUserId(), chain submit, camera, remote fetch
+        v
+Generated product client / host callback bridge
+        |
+        v
+ProductRuntime
+        |
+        | attaches current ProductContext.product_id
+        v
+PermissionsService(storage, platform, product_id)
+        |
+        | builds storage key:
+        |
+        | CoreStorageKey::PermissionAuthorization {
+        |   product_id: "my-product",
+        |   request: PermissionAuthorizationRequest::...
+        | }
+        v
+CoreStorage lookup
+        |
+        +-- Authorized ---------------> allow protected host/backend call
+        |
+        +-- Denied -------------------> return PermissionDenied / deny call
+        |
+        +-- NotDetermined / missing ---+
+                                       |
+                                       v
+                              Platform prompt callback
+                                       |
+                   +-------------------+-------------------+
+                   |                   |                   |
+                   v                   v                   v
+          device_permission()   remote_permission()   confirm_user_action()
+          camera/mic/etc        chain/preimage/etc    identity disclosure
+                   |                   |                   |
+                   +-------------------+-------------------+
+                                       |
+                                       v
+                         user chooses Allow / Deny
+                                       |
+                                       v
+                      write Authorized / Denied to CoreStorage
+                      under the same product-scoped key
+                                       |
+                         +-------------+-------------+
+                         |                           |
+                         v                           v
+                    Authorized                    Denied
+                    allow call                    deny call
+```
+
+Permission administration uses the same key without prompting:
+
+```text
+Product UI
+  |
+  | permission_authorization_status(request)
+  | set_permission_authorization_status(request, status)
+  v
+HostAdmin / ProductRuntime
+  |
+  v
+PermissionsService
+  |
+  v
+CoreStorageKey::PermissionAuthorization { product_id, request }
+```
+
 The embedder builds a role handle, `PairingHostRuntime::new(...)` or
 `SigningHostRuntime::new(...)`, then calls `product_runtime(product, sink)` for
 each product connection. Role-specific operations live only on the matching handle:
