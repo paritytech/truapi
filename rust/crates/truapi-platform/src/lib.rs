@@ -462,7 +462,7 @@ pub trait CoreStorage: Send + Sync {
 
 /// Decoded session fields a host shell needs to render account UI without
 /// parsing the opaque session blob the core persists through [`CoreStorage`].
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Encode, Decode)]
 pub struct SessionUiInfo {
     /// 32-byte sr25519 root public key of the active session.
     pub public_key: [u8; 32],
@@ -477,7 +477,7 @@ pub struct SessionUiInfo {
 /// Auth/session lifecycle state the core projects for host UI. The core owns
 /// every transition and emits states in order; hosts render the current state
 /// and never derive auth UI from any other signal.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Encode, Decode)]
 pub enum AuthState {
     /// No active session and no login in progress.
     #[default]
