@@ -1,6 +1,3 @@
-//! Signing-host-only capability: activate a wallet-local session from
-//! host-held secret material. Implemented solely by [`SigningHost`].
-
 use super::{SigningHost, product_authority_error};
 use crate::host_logic::product_account::derive_root_keypair_from_entropy;
 use crate::host_logic::session::SessionInfo;
