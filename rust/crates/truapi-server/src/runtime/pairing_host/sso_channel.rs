@@ -1,9 +1,4 @@
 //! SSO statement-store channel to the paired remote signing host.
-//!
-//! The channel half of [`PairingHost`]: message submission and response
-//! correlation over the statement store, plus the peer-disconnect monitor.
-//! Role policy (session lifecycle, login, revalidation) stays in the parent
-//! module.
 
 use super::super::authority::{
     AuthorityCancelError, AuthorityError, CreateTransactionAuthorityRequest,
@@ -175,9 +170,6 @@ impl PairingHost {
     }
 
     /// Submit an SSO remote message and wait for the signing-host response.
-    ///
-    /// Calls without a [`CallContext`] timeout block until response,
-    /// disconnect, or stream completion.
     #[instrument(skip_all, fields(runtime.method = "sso.remote_message.submit", action = %action))]
     async fn submit_remote_message(
         &self,
