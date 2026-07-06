@@ -536,22 +536,26 @@ mod tests {
             other => panic!("expected handshake decrypt failure, got {other:?}"),
         }
         let sent_rpc = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
-        let methods = sent_rpc
+        let requests = sent_rpc
             .iter()
             .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
-            .map(|request| request["method"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        let methods = requests
+            .iter()
+            .map(|request| request["method"].as_str().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(
-            methods.first().map(String::as_str),
+            methods.first().copied(),
             Some("statement_subscribeStatement")
         );
         assert!(
-            methods
-                .iter()
-                .any(|method| method == "statement_unsubscribeStatement"),
+            methods.contains(&"statement_unsubscribeStatement"),
             "pairing subscription should be cleaned up"
         );
-        let unsubscribe: serde_json::Value = serde_json::from_str(&sent_rpc[1]).unwrap();
+        let unsubscribe = requests
+            .iter()
+            .find(|request| request["method"].as_str() == Some("statement_unsubscribeStatement"))
+            .expect("pairing subscription should be cleaned up");
         assert_eq!(unsubscribe["params"][0], "remote-sub");
     }
 
