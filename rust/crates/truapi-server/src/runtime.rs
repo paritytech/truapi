@@ -3231,12 +3231,23 @@ mod tests {
         );
 
         assert_eq!(host.test_session_state().current(), Some(stored.clone()));
+        let expected_auth_states = vec![AuthState::Connected(connected_session_ui_info(&stored))];
+        wait_until(
+            || {
+                *platform
+                    .auth_states
+                    .lock()
+                    .expect("auth state list mutex poisoned")
+                    == expected_auth_states
+            },
+            "session store sync did not broadcast connected auth state",
+        );
         assert_eq!(
             *platform
                 .auth_states
                 .lock()
                 .expect("auth state list mutex poisoned"),
-            vec![AuthState::Connected(connected_session_ui_info(&stored))]
+            expected_auth_states
         );
     }
 
