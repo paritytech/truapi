@@ -18,6 +18,8 @@ pub(crate) mod sso_remote;
 pub(crate) mod statement_store;
 mod statement_store_rpc;
 
+use core::future::Future;
+use core::time::Duration;
 use std::sync::Arc;
 
 use crate::chain_runtime::RuntimeFailure;
@@ -40,13 +42,11 @@ pub(crate) use services::RuntimeServices;
 pub(crate) use signing_host::{LocalActivation, SigningHost as SigningHostRole};
 
 use authority::{
-    AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest,
+    AuthorityCancelError, AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest,
     SignPayloadAuthorityRequest, SignRawAuthorityRequest,
 };
 
-#[cfg(test)]
-use futures::FutureExt;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt, pin_mut};
 #[cfg(test)]
 use parity_scale_codec::Encode;
 use tracing::{info, instrument};
@@ -128,7 +128,7 @@ use truapi::versioned::system::{
     HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse,
 };
 use truapi::versioned::theme::HostThemeSubscribeItem;
-use truapi::{CallContext, CallError, Subscription};
+use truapi::{CallContext, CallError, CancellationReason, Subscription};
 #[cfg(test)]
 use truapi_platform::Platform;
 use truapi_platform::{
@@ -139,6 +139,62 @@ use truapi_platform::{
 };
 
 pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
+/// Host-spec B.6.2 recommends timing out unanswered SSO application requests
+/// after 180 seconds:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L303-L307>
+const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+
+fn remote_authority_context(cx: &CallContext) -> CallContext {
+    let mut cx = cx.clone();
+    if cx.timeout().is_none() {
+        cx.set_timeout(DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT);
+    }
+    cx
+}
+
+async fn remote_authority_call<T, F>(cx: &CallContext, call: F) -> Result<T, AuthorityError>
+where
+    F: Future<Output = Result<T, AuthorityError>>,
+{
+    let call = call.fuse();
+    let cancelled = cx.cancel().cancelled().fuse();
+    pin_mut!(call, cancelled);
+
+    if let Some(timeout_duration) = cx.timeout() {
+        let timeout = futures_timer::Delay::new(timeout_duration).fuse();
+        pin_mut!(timeout);
+        futures::select! {
+            result = call => result,
+            reason = cancelled => {
+                let error = authority_cancellation_error(cx, reason);
+                let _ = call.await;
+                Err(error)
+            },
+            () = timeout => {
+                let reason = CancellationReason::TimedOut {
+                    timeout: timeout_duration,
+                };
+                cx.cancel().cancel_with_reason(reason.clone());
+                let error = authority_cancellation_error(cx, reason);
+                let _ = call.await;
+                Err(error)
+            }
+        }
+    } else {
+        futures::select! {
+            result = call => result,
+            reason = cancelled => {
+                let error = authority_cancellation_error(cx, reason);
+                let _ = call.await;
+                Err(error)
+            },
+        }
+    }
+}
+
+fn authority_cancellation_error(cx: &CallContext, reason: CancellationReason) -> AuthorityError {
+    AuthorityError::Cancelled(AuthorityCancelError::new(cx.request_id(), reason))
+}
 
 /// Product-scoped adapter that exposes a long-lived host runtime through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
@@ -853,6 +909,9 @@ fn account_get_error_from_authority(err: AuthorityError) -> v01::HostAccountGetE
     match err {
         AuthorityError::Rejected => v01::HostAccountGetError::Rejected,
         AuthorityError::Disconnected => v01::HostAccountGetError::NotConnected,
+        AuthorityError::Cancelled(err) => v01::HostAccountGetError::Unknown {
+            reason: err.to_string(),
+        },
         AuthorityError::Unavailable { reason } | AuthorityError::Unknown { reason } => {
             v01::HostAccountGetError::Unknown { reason }
         }
@@ -867,6 +926,9 @@ fn signing_call_error<E>(
         AuthorityError::Rejected | AuthorityError::Disconnected => {
             v01::HostSignPayloadError::Rejected
         }
+        AuthorityError::Cancelled(err) => v01::HostSignPayloadError::Unknown {
+            reason: err.to_string(),
+        },
         AuthorityError::Unavailable { reason } | AuthorityError::Unknown { reason } => {
             v01::HostSignPayloadError::Unknown { reason }
         }
@@ -881,6 +943,9 @@ fn transaction_call_error<E>(
         AuthorityError::Rejected | AuthorityError::Disconnected => {
             v01::HostCreateTransactionError::Rejected
         }
+        AuthorityError::Cancelled(err) => v01::HostCreateTransactionError::Unknown {
+            reason: err.to_string(),
+        },
         AuthorityError::Unavailable { reason } | AuthorityError::Unknown { reason } => {
             v01::HostCreateTransactionError::Unknown { reason }
         }
@@ -930,11 +995,15 @@ impl Signing for ProductRuntimeHost {
                 v01::HostSignPayloadError::Rejected,
             )));
         }
-        self.authority
-            .sign_payload(cx, &session, SignPayloadAuthorityRequest::Product(inner))
-            .await
-            .map(HostSignPayloadResponse::V1)
-            .map_err(|reason| signing_call_error(HostSignPayloadError::V1, reason))
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority
+                .sign_payload(&cx, &session, SignPayloadAuthorityRequest::Product(inner)),
+        )
+        .await
+        .map(HostSignPayloadResponse::V1)
+        .map_err(|reason| signing_call_error(HostSignPayloadError::V1, reason))
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.sign_raw"))]
@@ -979,11 +1048,15 @@ impl Signing for ProductRuntimeHost {
                 v01::HostSignPayloadError::Rejected,
             )));
         }
-        self.authority
-            .sign_raw(cx, &session, SignRawAuthorityRequest::Product(inner))
-            .await
-            .map(HostSignRawResponse::V1)
-            .map_err(|reason| signing_call_error(HostSignRawError::V1, reason))
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority
+                .sign_raw(&cx, &session, SignRawAuthorityRequest::Product(inner)),
+        )
+        .await
+        .map(HostSignRawResponse::V1)
+        .map_err(|reason| signing_call_error(HostSignRawError::V1, reason))
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.create_transaction"))]
@@ -1028,15 +1101,18 @@ impl Signing for ProductRuntimeHost {
                 v01::HostCreateTransactionError::Rejected,
             )));
         }
-        self.authority
-            .create_transaction(
-                cx,
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.create_transaction(
+                &cx,
                 &session,
                 CreateTransactionAuthorityRequest::Product(inner),
-            )
-            .await
-            .map(HostCreateTransactionResponse::V1)
-            .map_err(|reason| transaction_call_error(HostCreateTransactionError::V1, reason))
+            ),
+        )
+        .await
+        .map(HostCreateTransactionResponse::V1)
+        .map_err(|reason| transaction_call_error(HostCreateTransactionError::V1, reason))
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.sign_payload_with_legacy_account"))]
@@ -1075,9 +1151,11 @@ impl Signing for ProductRuntimeHost {
                 HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Rejected),
             ));
         }
-        self.authority
-            .sign_payload(
-                cx,
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.sign_payload(
+                &cx,
                 &session,
                 SignPayloadAuthorityRequest::LegacyAccount {
                     product_account: v01::ProductAccountId {
@@ -1086,10 +1164,11 @@ impl Signing for ProductRuntimeHost {
                     },
                     request: inner,
                 },
-            )
-            .await
-            .map(HostSignPayloadWithLegacyAccountResponse::V1)
-            .map_err(|reason| signing_call_error(HostSignPayloadWithLegacyAccountError::V1, reason))
+            ),
+        )
+        .await
+        .map(HostSignPayloadWithLegacyAccountResponse::V1)
+        .map_err(|reason| signing_call_error(HostSignPayloadWithLegacyAccountError::V1, reason))
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.sign_raw_with_legacy_account"))]
@@ -1126,9 +1205,11 @@ impl Signing for ProductRuntimeHost {
                 v01::HostSignPayloadError::Rejected,
             )));
         }
-        self.authority
-            .sign_raw(
-                cx,
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.sign_raw(
+                &cx,
                 &session,
                 SignRawAuthorityRequest::LegacyAccount {
                     product_account: v01::ProductAccountId {
@@ -1137,10 +1218,11 @@ impl Signing for ProductRuntimeHost {
                     },
                     request: inner,
                 },
-            )
-            .await
-            .map(HostSignRawWithLegacyAccountResponse::V1)
-            .map_err(|reason| signing_call_error(HostSignRawWithLegacyAccountError::V1, reason))
+            ),
+        )
+        .await
+        .map(HostSignRawWithLegacyAccountResponse::V1)
+        .map_err(|reason| signing_call_error(HostSignRawWithLegacyAccountError::V1, reason))
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.create_transaction_with_legacy_account"))]
@@ -1185,9 +1267,11 @@ impl Signing for ProductRuntimeHost {
                 ),
             ));
         }
-        self.authority
-            .create_transaction(
-                cx,
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.create_transaction(
+                &cx,
                 &session,
                 CreateTransactionAuthorityRequest::LegacyAccount {
                     product_account: v01::ProductAccountId {
@@ -1196,18 +1280,19 @@ impl Signing for ProductRuntimeHost {
                     },
                     request: inner,
                 },
+            ),
+        )
+        .await
+        .map(|response| {
+            HostCreateTransactionWithLegacyAccountResponse::V1(
+                v01::HostCreateTransactionWithLegacyAccountResponse {
+                    transaction: response.transaction,
+                },
             )
-            .await
-            .map(|response| {
-                HostCreateTransactionWithLegacyAccountResponse::V1(
-                    v01::HostCreateTransactionWithLegacyAccountResponse {
-                        transaction: response.transaction,
-                    },
-                )
-            })
-            .map_err(|reason| {
-                transaction_call_error(HostCreateTransactionWithLegacyAccountError::V1, reason)
-            })
+        })
+        .map_err(|reason| {
+            transaction_call_error(HostCreateTransactionWithLegacyAccountError::V1, reason)
+        })
     }
 }
 
@@ -1542,17 +1627,21 @@ impl ResourceAllocation for ProductRuntimeHost {
                 },
             )));
         }
-        self.authority
-            .allocate_resources(cx, &session, self.product_id(), inner)
-            .await
-            .map(HostRequestResourceAllocationResponse::V1)
-            .map_err(|err| {
-                CallError::Domain(HostRequestResourceAllocationError::V1(
-                    v01::ResourceAllocationError::Unknown {
-                        reason: err.reason(),
-                    },
-                ))
-            })
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority
+                .allocate_resources(&cx, &session, self.product_id(), inner),
+        )
+        .await
+        .map(HostRequestResourceAllocationResponse::V1)
+        .map_err(|err| {
+            CallError::Domain(HostRequestResourceAllocationError::V1(
+                v01::ResourceAllocationError::Unknown {
+                    reason: err.reason(),
+                },
+            ))
+        })
     }
 }
 // ---------------------------------------------------------------------------
@@ -1745,6 +1834,27 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "{message}");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    fn recorded_rpc_methods(sent_rpc: &Mutex<Vec<String>>) -> Vec<String> {
+        sent_rpc
+            .lock()
+            .expect("rpc list mutex poisoned")
+            .iter()
+            .map(|request| {
+                serde_json::from_str::<serde_json::Value>(request).unwrap()["method"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    fn recorded_rpc_method_count(sent_rpc: &Mutex<Vec<String>>, method: &str) -> usize {
+        recorded_rpc_methods(sent_rpc)
+            .iter()
+            .filter(|candidate| candidate.as_str() == method)
+            .count()
     }
 
     #[test]
@@ -2605,6 +2715,110 @@ mod tests {
         assert_eq!(
             unsubscribe_ids,
             vec!["own-sub-sign-raw-1", "peer-sub-sign-raw-1"]
+        );
+    }
+
+    #[test]
+    fn sign_raw_uses_call_context_timeout_for_sso_response_wait() {
+        let session = sso_session_info();
+        let message_id = "sign-raw-timeout";
+        let mut rpc_responses = sso_success_responses(
+            &session,
+            message_id,
+            sign_response_message(message_id, vec![], None),
+        );
+        rpc_responses.truncate(3);
+        let platform = Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            rpc_responses,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session);
+        let mut cx = CallContext::with_request_id(message_id.to_string());
+        cx.set_timeout(std::time::Duration::from_millis(1));
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: account_id("myapp.dot", 0),
+            payload: raw_payload(),
+        });
+        let err = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
+                reason,
+            })) => assert_eq!(
+                reason,
+                "Account authority request timed out after 1ms for sign-raw-timeout"
+            ),
+            other => panic!("expected SSO response timeout, got {other:?}"),
+        }
+
+        wait_until(
+            || recorded_rpc_method_count(&platform.sent_rpc, "statement_unsubscribeStatement") == 2,
+            "timed-out SSO request did not unsubscribe statement streams",
+        );
+    }
+
+    #[test]
+    fn sign_raw_cancellation_unsubscribes_sso_subscriptions() {
+        let session = sso_session_info();
+        let message_id = "sign-raw-cancel";
+        let platform = Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            rpc_responses: vec![
+                subscribe_ack_frame("truapi:1", "own-sub-sign-raw-cancel"),
+                subscribe_ack_frame("truapi:2", "peer-sub-sign-raw-cancel"),
+            ],
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session);
+        let cancel = truapi::CancellationToken::new();
+        let cx = CallContext::with_parts(message_id.to_string(), cancel.clone());
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: account_id("myapp.dot", 0),
+            payload: raw_payload(),
+        });
+        let handle = std::thread::spawn(move || {
+            futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err()
+        });
+
+        wait_until(
+            || recorded_rpc_method_count(&platform.sent_rpc, "statement_subscribeStatement") == 2,
+            "SSO subscriptions were not established before cancellation",
+        );
+        cancel.cancel();
+
+        let err = handle
+            .join()
+            .expect("sign_raw cancellation thread panicked");
+        match err {
+            CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
+                reason,
+            })) => {
+                assert!(
+                    reason.contains("cancelled"),
+                    "expected cancellation, got {reason}"
+                );
+                assert!(
+                    reason.contains(message_id),
+                    "expected request id in cancellation reason, got {reason}"
+                );
+            }
+            other => panic!("expected SSO cancellation, got {other:?}"),
+        }
+
+        wait_until(
+            || recorded_rpc_method_count(&platform.sent_rpc, "statement_unsubscribeStatement") == 2,
+            "cancelled SSO request did not unsubscribe statement streams",
         );
     }
 
