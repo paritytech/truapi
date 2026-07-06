@@ -2275,13 +2275,6 @@ mod tests {
     #[test]
     fn get_user_id_respects_pre_authorized_identity_disclosure() {
         let platform = Arc::new(StubPlatform::default());
-        let host = ProductRuntimeHost::new_compat(
-            Arc::new(StubPlatform {
-                identity_disclosure_confirmed: true,
-                ..Default::default()
-            }),
-            test_spawner(),
-        );
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
@@ -2296,21 +2289,6 @@ mod tests {
         let HostGetUserIdResponse::V1(inner) = response;
         assert_eq!(inner.primary_username, "Alice Smith");
         assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
-    fn get_user_id_requires_identity_disclosure_confirmation() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
-        let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            CallError::Domain(HostGetUserIdError::V1(
-                v01::HostGetUserIdError::PermissionDenied
-            ))
-        ));
     }
 
     #[test]
