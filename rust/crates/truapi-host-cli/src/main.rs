@@ -1,18 +1,19 @@
 //! Headless TrUAPI hosts for local end-to-end testing.
 //!
-//! Three roles, one binary:
-//! - `relay`: an in-memory statement-store the two hosts pair over.
+//! Two roles, one binary, pairing over the real People-chain statement store:
 //! - `pairing-host`: a seedless host that presents a pairing deeplink and
 //!   serves product frames over WebSocket (the surface a product/test driver
 //!   talks to).
 //! - `signing-host`: a wallet-local host that answers a pairing deeplink and
 //!   auto-signs, replacing the external signing-bot in e2e.
+//!
+//! Plus `alloc-check`, a diagnostic for on-chain statement-store allowance.
 
+mod alloc;
 mod attestation;
 mod chain;
 mod frame_server;
 mod platform;
-mod relay;
 
 use std::io::BufRead;
 use std::net::SocketAddr;
@@ -71,33 +72,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run the in-memory statement-store relay.
-    Relay {
-        /// Address to listen on.
-        #[arg(long, default_value = "127.0.0.1:9944")]
-        listen: SocketAddr,
-    },
     /// Run a seedless pairing host and serve product frames over WebSocket.
     PairingHost {
-        /// Statement-store relay WebSocket URL.
-        #[arg(long, default_value = "ws://127.0.0.1:9944")]
-        relay: String,
+        /// Statement-store WebSocket URL (the real People chain by default).
+        #[arg(long = "statement-store", default_value = PEOPLE_CHAIN_WS)]
+        statement_store: String,
         /// Address to serve product frames on.
         #[arg(long, default_value = "127.0.0.1:9955")]
         frame_listen: SocketAddr,
         /// Product id presented to product frame connections.
         #[arg(long, default_value = DEFAULT_PRODUCT_ID)]
         product: String,
-        /// Resolve usernames from the real paseo-next-v2 People chain (so
-        /// `get_user_id` works), instead of only the SSO relay.
-        #[arg(long)]
-        resolve_identity: bool,
     },
     /// Answer a pairing deeplink as a wallet-local signing host and auto-sign.
     SigningHost {
-        /// Statement-store relay WebSocket URL.
-        #[arg(long, default_value = "ws://127.0.0.1:9944")]
-        relay: String,
+        /// Statement-store WebSocket URL (the real People chain by default).
+        #[arg(long = "statement-store", default_value = PEOPLE_CHAIN_WS)]
+        statement_store: String,
         /// BIP-39 mnemonic for the wallet root.
         #[arg(long, default_value = DEFAULT_MNEMONIC)]
         mnemonic: String,
@@ -122,6 +113,27 @@ enum Command {
         #[arg(long, default_value = PEOPLE_CHAIN_WS)]
         people_ws: String,
     },
+    /// Check (and optionally submit) a statement-store allowance registration
+    /// against the real People chain: ring membership, the chosen slot, and
+    /// (with `--submit`) the `set_statement_store_account` extrinsic.
+    AllocCheck {
+        /// BIP-39 mnemonic proving LitePeople ring membership.
+        #[arg(long, default_value = DEFAULT_MNEMONIC)]
+        mnemonic: String,
+        /// People-chain WebSocket URL (statement store + chain RPC).
+        #[arg(long, default_value = PEOPLE_CHAIN_WS)]
+        people_ws: String,
+        /// Target account (hex, 32 bytes) to grant allowance to. Defaults to
+        /// all-zero (read-only slot scan only).
+        #[arg(long)]
+        target: Option<String>,
+        /// How many rings back from the current index to scan for our member.
+        #[arg(long, default_value_t = 8)]
+        lookback: u32,
+        /// Submit the extrinsic instead of only checking membership + slot.
+        #[arg(long)]
+        submit: bool,
+    },
 }
 
 #[tokio::main]
@@ -139,20 +151,18 @@ async fn main() -> Result<()> {
         .init();
 
     match Cli::parse().command {
-        Command::Relay { listen } => relay::Relay::serve(listen).await,
         Command::PairingHost {
-            relay,
+            statement_store,
             frame_listen,
             product,
-            resolve_identity,
-        } => run_pairing_host(relay, frame_listen, product, resolve_identity).await,
+        } => run_pairing_host(statement_store, frame_listen, product).await,
         Command::SigningHost {
-            relay,
+            statement_store,
             mnemonic,
             deeplink,
             reject,
             username,
-        } => run_signing_host(relay, mnemonic, deeplink, reject, username).await,
+        } => run_signing_host(statement_store, mnemonic, deeplink, reject, username).await,
         Command::IdentityCheck {
             mnemonic,
             people_ws,
@@ -162,7 +172,114 @@ async fn main() -> Result<()> {
                 .to_entropy();
             attestation::check_identity(&people_ws, &entropy).await
         }
+        Command::AllocCheck {
+            mnemonic,
+            people_ws,
+            target,
+            lookback,
+            submit,
+        } => run_alloc_check(mnemonic, people_ws, target, lookback, submit).await,
     }
+}
+
+/// Check statement-store allowance for a mnemonic: ring membership, the chosen
+/// slot, and (with `submit`) the `set_statement_store_account` extrinsic.
+async fn run_alloc_check(
+    mnemonic: String,
+    people_ws: String,
+    target: Option<String>,
+    lookback: u32,
+    submit: bool,
+) -> Result<()> {
+    let entropy = bip39::Mnemonic::parse(mnemonic.trim())
+        .context("invalid BIP-39 mnemonic")?
+        .to_entropy();
+    let bandersnatch = alloc::bandersnatch_entropy(&entropy);
+
+    let target = match target {
+        Some(hex_str) => {
+            let bytes = hex::decode(hex_str.strip_prefix("0x").unwrap_or(&hex_str))
+                .context("invalid --target hex")?;
+            <[u8; 32]>::try_from(bytes.as_slice())
+                .map_err(|_| anyhow::anyhow!("--target must be 32 bytes"))?
+        }
+        None => [0u8; 32],
+    };
+
+    let rpc = alloc::rpc::RpcClient::connect(&people_ws).await?;
+    let metadata = alloc::fetch_metadata(&rpc)
+        .await
+        .map_err(anyhow::Error::msg)?;
+    let chain_state = alloc::fetch_chain_state(&rpc)
+        .await
+        .map_err(anyhow::Error::msg)?;
+    println!(
+        "chain: specVersion={} txVersion={} genesis=0x{}",
+        chain_state.spec_version,
+        chain_state.transaction_version,
+        hex::encode(chain_state.genesis_hash),
+    );
+
+    let member = alloc::proof::member_key(bandersnatch);
+    println!("bandersnatch member=0x{}", hex::encode(member));
+    let current_ring = alloc::ring::read_current_ring_index(&rpc)
+        .await
+        .map_err(anyhow::Error::msg)?;
+    println!("current ring index={current_ring}");
+    let ring = alloc::find_including_ring(&rpc, &metadata, bandersnatch, lookback)
+        .await
+        .map_err(anyhow::Error::msg)?;
+    match &ring {
+        Some(r) => println!(
+            "member INCLUDED in ring_index={} exponent={} included_members={}",
+            r.ring_index,
+            r.exponent,
+            r.members.len(),
+        ),
+        None => println!("member NOT in the last {lookback} rings (onboarding pending)"),
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .context("system clock before UNIX epoch")?
+        .as_secs();
+    let period = alloc::slot::current_period(now);
+    println!("period={period} target=0x{}", hex::encode(target));
+
+    match alloc::slot::scan_slot(&rpc, &metadata, bandersnatch, period, &target).await {
+        Ok(alloc::slot::SlotSelection::Free(seq)) => println!("slot scan: free seq={seq}"),
+        Ok(alloc::slot::SlotSelection::AlreadyAllocated(seq)) => {
+            println!("slot scan: target already allocated at seq={seq}")
+        }
+        Err(err) => println!("slot scan: {err}"),
+    }
+
+    if submit {
+        let ring = ring.ok_or_else(|| anyhow::anyhow!("cannot submit: member not in any ring"))?;
+        match alloc::register_statement_account(
+            &rpc,
+            &metadata,
+            &chain_state,
+            bandersnatch,
+            &target,
+            period,
+            &ring,
+        )
+        .await
+        {
+            Ok(alloc::RegistrationOutcome::Registered {
+                block_hash,
+                seq,
+                ring_index,
+            }) => println!("REGISTERED seq={seq} ring_index={ring_index} block={block_hash}"),
+            Ok(alloc::RegistrationOutcome::AlreadyAllocated { seq }) => {
+                println!("already allocated at seq={seq}")
+            }
+            Err(err) => bail!("registration failed: {err}"),
+        }
+    }
+
+    Ok(())
 }
 
 /// Spawner that runs runtime futures on the tokio runtime, so their WebSocket
@@ -189,30 +306,27 @@ fn platform_info() -> PlatformInfo {
 }
 
 async fn run_pairing_host(
-    relay: String,
+    statement_store: String,
     frame_listen: SocketAddr,
     product: String,
-    resolve_identity: bool,
 ) -> Result<()> {
-    let platform = CliPlatform::new(relay, ApprovalPolicy::Always);
-    let mut config = PairingHostConfig::new(
+    let platform = CliPlatform::new(statement_store, ApprovalPolicy::Always);
+    // SSO and identity both run over the real People chain, so usernames always
+    // resolve from `Resources.Consumers` (host-spec G).
+    let config = PairingHostConfig::new(
         host_info("Headless Pairing Host"),
         platform_info(),
         [0u8; 32],
         DEEPLINK_SCHEME.to_string(),
     )
-    .context("invalid pairing host config")?;
-    if resolve_identity {
-        // SSO stays on the relay ([0;32]); resolve usernames from the real
-        // People chain. Requires live-chain routing (E2E_LIVE_CHAIN=1).
-        config = config.with_identity_chain_genesis_hash(PEOPLE_CHAIN_GENESIS);
-    }
+    .context("invalid pairing host config")?
+    .with_identity_chain_genesis_hash(PEOPLE_CHAIN_GENESIS);
     let runtime = Arc::new(PairingHostRuntime::new(platform, config, tokio_spawner()));
     frame_server::serve(runtime, product, frame_listen).await
 }
 
 async fn run_signing_host(
-    relay: String,
+    statement_store: String,
     mnemonic: String,
     deeplink: Option<String>,
     reject: bool,
@@ -244,7 +358,13 @@ async fn run_signing_host(
     } else {
         ApprovalPolicy::Always
     };
-    let platform = CliPlatform::new(relay, approval);
+    // Grant statement-store allowance to the accounts that submit statements
+    // over the real store: our own `//wallet//sso` and the pairing host's
+    // device key. A real client does this on-chain; without it the store
+    // rejects the handshake with `NoAllowance`.
+    register_pairing_allowances(&statement_store, &entropy, &deeplink).await?;
+
+    let platform = CliPlatform::new(statement_store, approval);
     let config = SigningHostConfig::new(
         host_info("Headless Signing Host"),
         platform_info(),
@@ -263,6 +383,86 @@ async fn run_signing_host(
         .await
         .map_err(|err| anyhow::anyhow!("pairing failed: {}", err.reason))?;
     println!("SIGNING_HOST_EXIT {exit:?}");
+    Ok(())
+}
+
+/// Grant on-chain statement-store allowance to the two accounts that submit
+/// statements during pairing: the signing host's own `//wallet//sso` account
+/// and the pairing host's per-pairing device key (from the deeplink). Proves
+/// the signing account's LitePeople ring membership once and reuses it.
+async fn register_pairing_allowances(
+    statement_store_url: &str,
+    entropy: &[u8],
+    deeplink: &str,
+) -> Result<()> {
+    use truapi_server::host_logic::product_account::derive_sr25519_hard_path;
+    use truapi_server::host_logic::sso::pairing::{
+        VersionedHandshakeProposal, decode_pairing_deeplink,
+    };
+
+    let wallet_sso = derive_sr25519_hard_path(entropy, &["wallet", "sso"])
+        .map_err(|e| anyhow::anyhow!("//wallet//sso derivation failed: {e}"))?
+        .public
+        .to_bytes();
+    let VersionedHandshakeProposal::V2(proposal) =
+        decode_pairing_deeplink(deeplink).map_err(anyhow::Error::msg)?;
+    let device = proposal.device.statement_account_id;
+
+    let bandersnatch = alloc::bandersnatch_entropy(entropy);
+    let rpc = alloc::rpc::RpcClient::connect(statement_store_url).await?;
+    let metadata = alloc::fetch_metadata(&rpc)
+        .await
+        .map_err(anyhow::Error::msg)?;
+    let chain_state = alloc::fetch_chain_state(&rpc)
+        .await
+        .map_err(anyhow::Error::msg)?;
+
+    // The signing account may be in an old ring, so scan back to genesis.
+    let current = alloc::ring::read_current_ring_index(&rpc)
+        .await
+        .map_err(anyhow::Error::msg)?;
+    let ring = alloc::find_including_ring(&rpc, &metadata, bandersnatch, current)
+        .await
+        .map_err(anyhow::Error::msg)?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "signing account is not a LitePeople ring member; cannot grant allowance"
+            )
+        })?;
+    println!(
+        "SIGNING_HOST_RING ring_index={} members={}",
+        ring.ring_index,
+        ring.members.len()
+    );
+
+    let period = alloc::slot::current_period(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .context("system clock before UNIX epoch")?
+            .as_secs(),
+    );
+
+    for (label, target) in [("wallet-sso", wallet_sso), ("device", device)] {
+        let outcome = alloc::register_statement_account(
+            &rpc,
+            &metadata,
+            &chain_state,
+            bandersnatch,
+            &target,
+            period,
+            &ring,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("allowance registration for {label} failed: {e}"))?;
+        match outcome {
+            alloc::RegistrationOutcome::Registered {
+                block_hash, seq, ..
+            } => println!("SIGNING_HOST_ALLOWANCE {label} seq={seq} block={block_hash}"),
+            alloc::RegistrationOutcome::AlreadyAllocated { seq } => {
+                println!("SIGNING_HOST_ALLOWANCE {label} already-allocated seq={seq}")
+            }
+        }
+    }
     Ok(())
 }
 

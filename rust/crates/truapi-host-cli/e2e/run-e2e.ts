@@ -1,9 +1,10 @@
-// End-to-end orchestrator: relay + pairing host + signing host + product driver.
+// End-to-end orchestrator: pairing host + signing host + product driver.
 //
-// Boots the dev statement-store relay, a headless pairing host (frame server),
-// connects the real @parity/truapi client, starts login, hands the pairing
-// deeplink to a headless signing host, and once paired runs the signing
-// battery. Prints a pass/fail summary and exits non-zero on any failure.
+// Boots a headless pairing host (frame server) pointed at the real People-chain
+// statement store, connects the real @parity/truapi client, starts login, hands
+// the pairing deeplink to a headless signing host (which registers statement
+// allowance on-chain), and once paired runs the signing battery. Prints a
+// pass/fail summary and exits non-zero on any failure.
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { beginLogin, connect, runBattery, type CaseResult } from "./driver.ts";
@@ -130,20 +131,12 @@ async function main() {
   const cleanup = () => processes.forEach((p) => p.kill());
 
   try {
-    const relay = new HostProcess("relay", ["relay", "--listen", "127.0.0.1:0"]);
-    processes.push(relay);
-    const relayUrl = wsUrlFrom(await relay.waitFor("RELAY_LISTENING "), "RELAY_LISTENING ");
-
-    // With live chain on, resolve usernames from the real People chain so
-    // get_user_id works (SSO still runs over the relay).
-    const liveChain = process.env.E2E_LIVE_CHAIN === "1";
+    // The hosts pair over the real People-chain statement store (the CLI
+    // default), so no local relay is started.
     const pairing = new HostProcess("pairing", [
       "pairing-host",
-      "--relay",
-      relayUrl,
       "--frame-listen",
       "127.0.0.1:0",
-      ...(liveChain ? ["--resolve-identity"] : []),
     ]);
     processes.push(pairing);
     const frameUrl = wsUrlFrom(await pairing.waitFor("FRAMES_LISTENING "), "FRAMES_LISTENING ");
@@ -161,28 +154,26 @@ async function main() {
       "PAIRING_DEEPLINK ",
     );
 
-    // External-signer mode: hand the relay URL + deeplink to a separate
-    // signing-host process (e.g. a second tmux pane) via a file, instead of
-    // spawning the signer here. Lets the two hosts run as visibly separate
-    // processes.
+    // External-signer mode: hand the deeplink to a separate signing-host
+    // process (e.g. a second tmux pane) via a file, instead of spawning the
+    // signer here. Lets the two hosts run as visibly separate processes.
     const handoffFile = process.env.E2E_HANDOFF_FILE;
     if (handoffFile) {
-      // Two lines: relay URL, then deeplink — trivially read by a shell script.
-      await Bun.write(handoffFile, `${relayUrl}\n${deeplink}\n`);
-      console.error(`wrote relay + deeplink handoff to ${handoffFile}; waiting for external signer`);
+      await Bun.write(handoffFile, `${deeplink}\n`);
+      console.error(`wrote deeplink handoff to ${handoffFile}; waiting for external signer`);
     } else {
       console.error(`launching signing host for deeplink ${deeplink.slice(0, 48)}...`);
       const mnemonic = process.env.E2E_SIGNER_MNEMONIC;
       const signing = new HostProcess("signing", [
         "signing-host",
-        "--relay",
-        relayUrl,
         "--deeplink",
         deeplink,
         ...(mnemonic ? ["--mnemonic", mnemonic] : []),
       ]);
       processes.push(signing);
-      await signing.waitFor("SIGNING_HOST_READY");
+      // The signing host registers on-chain statement allowance (ring scan +
+      // two extrinsics) before it is ready, which can take a couple of minutes.
+      await signing.waitFor("SIGNING_HOST_READY", 240_000);
     }
 
     const login = await loginPromise;
@@ -205,9 +196,9 @@ async function main() {
       console.log(`${pass} passed, ${fail} failed, ${skip} skipped (of ${rows.length})`);
       cleanup();
       // Gate on the signer path: chain-node methods and deferred features
-      // (ring-VRF alias, identity, live-chain transaction assembly) fail
-      // against the hermetic statement-store relay; those are environmental,
-      // not signing regressions.
+      // (ring-VRF alias, live-chain transaction assembly) may fail when
+      // Asset Hub routing is off; those are environmental, not signing
+      // regressions.
       const critical = rows.filter((r) => MUST_PASS.has(r.id) && r.status === "fail");
       if (critical.length > 0) {
         console.log(`\nGATE FAILED: ${critical.map((r) => r.id).join(", ")}`);

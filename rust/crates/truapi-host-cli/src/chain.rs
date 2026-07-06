@@ -1,8 +1,9 @@
 //! Native WebSocket `ChainProvider` / `JsonRpcConnection`.
 //!
-//! The headless hosts reach the dev statement-store [`crate::relay`] over
-//! WebSocket JSON-RPC. Every `connect` opens a fresh socket; the runtime's
-//! `HostRpcClient` sits on top and speaks statement-store RPC.
+//! The headless hosts reach the real People-chain statement store over
+//! WebSocket JSON-RPC (the same node an iOS/web client uses). Every `connect`
+//! opens a fresh socket; the runtime's `HostRpcClient` sits on top and speaks
+//! statement-store RPC.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,8 +43,8 @@ const PASEO_NEXT_V2_CHAIN_ENDPOINTS: &[(&str, &str)] = &[
 /// Chain provider that maps a requested genesis hash to a WebSocket endpoint.
 ///
 /// The all-zero genesis (the headless SSO sentinel) and any unmapped genesis
-/// fall back to the local statement-store relay; known public genesis hashes
-/// route to real testnet nodes.
+/// fall back to the People-chain statement store; the Asset Hub genesis routes
+/// to its own node (opt-in) for the `Chain/*` playground examples.
 pub struct WsChainProvider {
     fallback_url: String,
     by_genesis: HashMap<[u8; 32], String>,
@@ -51,10 +52,11 @@ pub struct WsChainProvider {
 
 impl WsChainProvider {
     pub fn new(fallback_url: impl Into<String>) -> Self {
-        // Live-chain routing is opt-in: when disabled, every genesis (including
-        // the real testnet ones the `Chain/*` examples request) falls back to
-        // the local relay, which does not speak chainHead, so those methods
-        // fail cleanly without disturbing the SSO/signer path.
+        // The fallback is the People-chain statement store, which serves the
+        // SSO/identity path directly. Asset Hub routing (for the `Chain/*`
+        // examples) is opt-in; when off, those genesis requests fall back to the
+        // People node, which does not serve Asset Hub chainHead, so they fail
+        // cleanly without disturbing the SSO/signer path.
         let by_genesis = if std::env::var("E2E_LIVE_CHAIN").as_deref() == Ok("1") {
             PASEO_NEXT_V2_CHAIN_ENDPOINTS
                 .iter()

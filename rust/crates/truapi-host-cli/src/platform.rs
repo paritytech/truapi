@@ -1,9 +1,9 @@
 //! `Platform` implementation for the headless hosts.
 //!
 //! In-memory product and core storage, a WebSocket chain provider pointed at
-//! the dev relay, and an auto-approving [`UserConfirmation`]. Auth-state
-//! transitions are published on a channel so the CLI can print the pairing
-//! deeplink and observe connection status.
+//! the real People-chain statement store, and an auto-approving
+//! [`UserConfirmation`]. Auth-state transitions are published on a channel so
+//! the CLI can print the pairing deeplink and observe connection status.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -45,10 +45,10 @@ pub struct CliPlatform {
 }
 
 impl CliPlatform {
-    /// Build a platform whose chain provider connects to `relay_url`.
-    pub fn new(relay_url: impl Into<String>, approval: ApprovalPolicy) -> Arc<Self> {
+    /// Build a platform whose chain provider connects to `statement_store_url`.
+    pub fn new(statement_store_url: impl Into<String>, approval: ApprovalPolicy) -> Arc<Self> {
         Arc::new(Self {
-            chain: WsChainProvider::new(relay_url),
+            chain: WsChainProvider::new(statement_store_url),
             product_storage: Mutex::new(HashMap::new()),
             core_storage: Mutex::new(HashMap::new()),
             preimages: Mutex::new(HashMap::new()),

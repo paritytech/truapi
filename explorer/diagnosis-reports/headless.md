@@ -9,8 +9,8 @@
 | `Account/get_legacy_accounts` | ✅ | legacy accounts: { "accounts": [ { "publicKey": "0xf41df7581a7a4bdf59ab2497f3d86dd8ea14db35c5c1930790d5a3554d0bef13", "name": "pgherveou.06" } ] } |
 | `Account/get_user_id` | ✅ | user id: { "primaryUsername": "pgherveou.06" } |
 | `Account/request_login` | ✅ | login completed: AlreadyConnected |
-| `Chain/follow_head_subscribe` | ✅ | head follow event: { "tag": "Initialized", "value": { "finalizedBlockHashes": [ "0xa5ae138f1b4cd068bc704ee3cb6f9358b21e82799451d1b08658be523757fe2f", "0x2c2ec575d2c336b34f635965ef2636587938fda8d64578fbf88f720947a1203a", "0xd8abfa22d8ed08c4728916457d353f9b122c5f109bef8f8727d956b4ad1e37b5", "0x541e... |
-| `Chain/get_head_header` | ✅ | block header: { "header": "0xf9a495e0317aa41a3e1d51e73ecb9a9d4a495ed4e0991f838207944dc521a0e7aaba5a006d711144eeb697c01f656c61e86a9747f958e10c9f9037fd1dc52df3c0104ba52b0f9b97f61207308e3a1b3f5ba6616de4073a48c3279956d1b8f64340d7e6701006434d4c531001000104066175726120a98edb08000000000452505352903d2a29... |
+| `Chain/follow_head_subscribe` | ✅ | head follow event: { "tag": "Initialized", "value": { "finalizedBlockHashes": [ "0x250744308f9f54705da08b8ed1360756a60c4c4d5ed0dd028f6d3ffaef34697c", "0x167e135c78af237da48362dce50efdd1a9362c0248250935890f060b9ac2572e", "0xb772c6963007376a073bd79bbb0ede819a97ab3605a26975df75be98116ffb6f", "0xc0cb... |
+| `Chain/get_head_header` | ✅ | block header: { "header": "0x4a65540ed66cc5b8a4023520d76a617c1cf95ce8ddb9ccd86890e7c26a45dd0616d05a0000dc38d0b9c4aad4dd573ababe1457db2ee8455f4a4107cbaed510a67027050538cc0edf23a8f6548e4d80afe3f1f2daa9f3dd50b732f86a8cca75bf5fb512331006434d4c531001000104066175726120479adb0800000000045250535290f2cf90... |
 | `Chain/get_head_body` | ✅ | block body: { "operation": { "tag": "Started", "value": { "operationId": "0" } } } |
 | `Chain/get_head_storage` | ✅ | storage value: { "operation": { "tag": "Started", "value": { "operationId": "0" } } } |
 | `Chain/call_head` | ✅ | runtime call result: { "operation": { "tag": "Started", "value": { "operationId": "0" } } } |
@@ -20,7 +20,7 @@
 | `Chain/get_spec_genesis_hash` | ✅ | genesis hash: { "genesisHash": "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f" } |
 | `Chain/get_spec_chain_name` | ✅ | chain name: { "chainName": "Paseo Asset Hub Next" } |
 | `Chain/get_spec_properties` | ✅ | chain properties: { "properties": "{\"tokenDecimals\":10,\"tokenSymbol\":\"PAS\"}" } |
-| `Chain/broadcast_transaction` | ✅ | transaction broadcast: { "operationId": "IOSWFVOvUOCr6EqA" } |
+| `Chain/broadcast_transaction` | ✅ | transaction broadcast: { "operationId": "78Z1IqDRkuXpP8rO" } |
 | `Chain/stop_transaction` | ❌ | stopTransaction failed: { "error": { "tag": "HostFailure", "value": { "reason": "remote_chain_transaction_stop: User error: Invalid operation id (-32602)" } } } |
 | `Chat/create_room` | ⏭️ |  |
 | `Chat/register_bot` | ⏭️ |  |
@@ -52,16 +52,16 @@
 | `Preimage/lookup_subscribe` | ✅ | preimage lookup received: { "value": "0xdeadbeef" } |
 | `Preimage/submit` | ✅ | preimage submitted: 0xf3e925002fed7cc0ded46842569eb5c90c910c091d8d04a1bdf96e0db719fd91 |
 | `Resource Allocation/request` | ✅ | resource allocation result: { "outcomes": [ "NotAvailable", "NotAvailable" ] } |
-| `Signing/create_transaction` | ✅ | transaction created: { "transaction": "0xd9018400f41df7581a7a4bdf59ab2497f3d86dd8ea14db35c5c1930790d5a3554d0bef1301a277fa7a08aaa6253478e7f5a974ccde4b4a89aa891d94150815d3a514a01e1a7bd5d16fbc3e8df09f39d112dc92dbf2854b10dc4bca2d5bff21aa966609008400000000000000000000000000000000000000" } |
-| `Signing/create_transaction_with_legacy_account` | ✅ | selected legacy account: { "publicKey": "0xf41df7581a7a4bdf59ab2497f3d86dd8ea14db35c5c1930790d5a3554d0bef13", "name": "pgherveou.06" } transaction created: { "transaction": "0xd9018400f41df7581a7a4bdf59ab2497f3d86dd8ea14db35c5c1930790d5a3554d0bef1301cea6ac96e57e11d4f1f910704963723e1e18df71947f2bf... |
-| `Signing/sign_raw_with_legacy_account` | ✅ | raw bytes signed: { "signature": "0x5e3a2c277cfab5b897be4e49b2e01d31297d40da7e4dead2a14b42a17f38c27cb836c8f30985cac947cf656c7d27aa808e2d827f132d57e101b61241d5c74c8b" } |
-| `Signing/sign_payload_with_legacy_account` | ✅ | payload signed: { "signature": "0xd0e90abc571c107f492f3d6b8b0811799e3869d12e0b4a103c2a77b81cf03034079441f76884c823a14a6577b0f12e018608735e12c149cddc296fe851b19a87" } |
-| `Signing/sign_raw` | ✅ | raw bytes signed: { "signature": "0x641d998ce2ce375ab55682a22d2e941bb881f99ed986aa44aa1cbc5d23734569667f098642436d72d44fe199be2c9d062ca992a7e8578cb2627b04111d081b87" } |
-| `Signing/sign_payload` | ✅ | payload signed: { "signature": "0xf6a22196b0ad973c405ab42a0041b3ac83fed630c0257663707ebc593dcae179189aaa6e3db2bc3f4ba8e52d99bfc76f6ec54d8f66923d5fb5d236fa02b4a483" } |
-| `Statement Store/subscribe` | ✅ | submitting statement: { "expiry": "7659500274590941184n", "topics": [ "0xa54edfe3483582af1d5eca2fe801f0dce1737aaa01805c28992b1feda9f424ea" ], "proof": { "tag": "Sr25519", "value": { "signature": "0x683790faacf0cdd69fd7ddbe467487a99b6b745ed9b2de14e4dc5a94b2c8875ec9bc1c4da29d8791ea59939a1b56c4b831e... |
-| `Statement Store/create_proof` | ✅ | proof created: { "proof": { "tag": "Sr25519", "value": { "signature": "0x740f4a72c94a4fe3a10b8bb2c1569dadf2e7b9970eb79fc17767e068b219616c16e8852ce1afac38d544b6f0cf4fe3964f0460601963376aeb40e2b988a64c8d", "signer": "0x92efa72e75d92c115fb4d596387290e4409ff1b1a72a3ec39457ef351086d838" } } } |
+| `Signing/create_transaction` | ✅ | transaction created: { "transaction": "0xd9018400f41df7581a7a4bdf59ab2497f3d86dd8ea14db35c5c1930790d5a3554d0bef1301c8264dd11330720ff8232378c87186794c5e577abdd74d74cd967367f623e30e1e14165e7cdec32a7f9b566faf06e026fa7d71cf6f510062094f284293daf08d00000000000000000000000000000000000000" } |
+| `Signing/create_transaction_with_legacy_account` | ✅ | selected legacy account: { "publicKey": "0xf41df7581a7a4bdf59ab2497f3d86dd8ea14db35c5c1930790d5a3554d0bef13", "name": "pgherveou.06" } transaction created: { "transaction": "0xd9018400f41df7581a7a4bdf59ab2497f3d86dd8ea14db35c5c1930790d5a3554d0bef1301c2a7dfb92f096c1bfc1d680f234ae203e68352dd9e79dff... |
+| `Signing/sign_raw_with_legacy_account` | ✅ | raw bytes signed: { "signature": "0xd291fcd096acd68f0fdbdada30ac91bc58bd7960e9328ccb96b251effc991c7518cabe8c9559a33426b2da0a6beec409980bdfb91502a2fa84ee889624236681" } |
+| `Signing/sign_payload_with_legacy_account` | ✅ | payload signed: { "signature": "0x70636930d6fbdeff4587ea2500def78fefe75195ad0e5ec09e8e945fa82af22b24b986ed01a0de3c2b270d9bdf623e1abb53836b491163925b71ffc9205d628e" } |
+| `Signing/sign_raw` | ✅ | raw bytes signed: { "signature": "0xfcc96443f18f6e8b1340fdfaa3baa5d33f8f983014a9ce602ede6e7a769067569f32514e95a481bbcc5a0a5c1c02a175458596bd436fea50c5c9d870e963ba8a" } |
+| `Signing/sign_payload` | ✅ | payload signed: { "signature": "0x625e911b25ca6471b5aa4b917012ccbad10a54347142e78a31930901749480457a7fee72d0b9a8ab666b948de6db9b094a09a4f0508e9c666689c0a8a5e7d189" } |
+| `Statement Store/subscribe` | ✅ | submitting statement: { "expiry": "7659654034420137984n", "topics": [ "0xd61590958f674d52bad9c60348459ce813540d1a5108266f803d3083530dafaf" ], "proof": { "tag": "Sr25519", "value": { "signature": "0x0a3feb7cebe294484fbe3beda1a7474cec09cbc1f08dfbe31f353b2497cfb9184adae85612ab6c0ae5e1e30c76142d36ec8... |
+| `Statement Store/create_proof` | ✅ | proof created: { "proof": { "tag": "Sr25519", "value": { "signature": "0x2299d6c886a51b79f8de93e15269f5dc5601f0a379ce19243e8366db93e98b46f1a3caed8cf04265752d086a684afb50c7a1348af31e91f0cbb73246db485186", "signer": "0xd6af71ea43ef71caea4afb37d908333411a79aad6f2559864296606d47d47a52" } } } |
 | `Statement Store/submit` | ✅ | statement submitted |
-| `Statement Store/create_proof_authorized` | ✅ | proof created: { "proof": { "tag": "Sr25519", "value": { "signature": "0x1ee8ba4f76b76029dd398f9f1c364aeb25fcb8c97a9ae0d2cec5a94527c07d35122c37b12f7c92bab87ff52bdc1acee73927f7b93859554c7cc8b98a122b6c83", "signer": "0x92efa72e75d92c115fb4d596387290e4409ff1b1a72a3ec39457ef351086d838" } } } |
+| `Statement Store/create_proof_authorized` | ✅ | proof created: { "proof": { "tag": "Sr25519", "value": { "signature": "0xd861edf3ff18bdb04c0f6d76add5429014afa964521740147044ce7ac2d9d3369446a8c888b4efef32269dac45ad6d7bf07e34f278037ddb7ee2f3bd60304786", "signer": "0xd6af71ea43ef71caea4afb37d908333411a79aad6f2559864296606d47d47a52" } } } |
 | `System/handshake` | ✅ | handshake succeeded |
 | `System/feature_supported` | ✅ | feature supported: true |
 | `System/navigate_to` | ✅ | navigation succeeded |

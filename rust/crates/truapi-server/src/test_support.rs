@@ -410,10 +410,12 @@ pub(crate) fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> St
 }
 
 fn statement_submit_ack_frame(request_id: &str) -> String {
+    // Mirror the real `statement_submit` result shape (`SubmitResult`); `submit`
+    // treats only `new`/`known` as accepted.
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": request_id,
-        "result": "0xok",
+        "result": { "status": "new" },
     })
     .to_string()
 }

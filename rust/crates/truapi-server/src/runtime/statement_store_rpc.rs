@@ -103,16 +103,24 @@ pub(super) async fn subscribe_match_all(
     subscribe(rpc_client, TopicFilterKind::MatchAll, topics).await
 }
 
-/// Submit a SCALE-encoded statement and wait for the JSON-RPC ack.
+/// Submit a SCALE-encoded statement and confirm the store accepted it.
+///
+/// `statement_submit` returns an RPC error only for internal failures; a
+/// rejected or invalid statement (e.g. `NoAllowance`, `BadProof`) comes back as
+/// `Ok(SubmitResult)`. Treat only `new`/`known` as success, so allowance/proof
+/// rejections surface instead of being silently dropped.
 pub(super) async fn submit(rpc_client: &RpcClient, statement: Vec<u8>) -> Result<(), String> {
-    rpc_client
+    let result = rpc_client
         .request::<Value>(
             SUBMIT_STATEMENT_METHOD,
             rpc_params![format!("0x{}", hex::encode(&statement))],
         )
         .await
-        .map(|_| ())
-        .map_err(rpc_error_message)
+        .map_err(rpc_error_message)?;
+    match result.get("status").and_then(Value::as_str) {
+        Some("new") | Some("known") => Ok(()),
+        _ => Err(format!("statement_submit not accepted: {result}")),
+    }
 }
 
 /// Statement-store topic filter encoded as JSON-RPC params.

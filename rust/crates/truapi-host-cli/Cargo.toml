@@ -2,7 +2,7 @@
 name = "truapi-host-cli"
 version = "0.1.0"
 edition.workspace = true
-description = "Headless TrUAPI hosts: a signing-host companion and a pairing host, plus a dev statement-store relay, for end-to-end testing without an external signer service"
+description = "Headless TrUAPI hosts: a signing-host companion and a pairing host that pair over the real People-chain statement store, for end-to-end testing without an external signer service"
 license = "MIT"
 
 [[bin]]
@@ -21,10 +21,13 @@ async-trait = "0.1"
 bip39 = "2"
 blake2-rfc = { version = "0.2", default-features = false }
 clap = { version = "4", features = ["derive"] }
+frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
 futures = "0.3"
 futures-util = "0.3"
 hex = "0.4"
 parity-scale-codec = { version = "3", features = ["derive"] }
+scale-info = { version = "2.11", default-features = false, features = ["decode"] }
+sp-crypto-hashing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde_json = "1"
@@ -38,3 +41,7 @@ tokio-tungstenite = { version = "0.24", features = ["connect", "rustls-tls-webpk
 # that connection mid-run. See src/chain.rs.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+# Ring-VRF prover for on-chain statement-store allowance registration
+# (`set_statement_store_account`). `std` already implies `prover`, but list it
+# explicitly since we call the prover-gated `open`/`create`. Native only.
+verifiable = { git = "https://github.com/paritytech/verifiable", rev = "f65b39df04f2f9a453d78550438b189c96785285", default-features = false, features = ["std", "prover"] }
