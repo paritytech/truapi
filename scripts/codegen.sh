@@ -11,6 +11,7 @@
 #                                     --platform-input target/doc/truapi_platform.json
 #                                     --platform-ts-output js/packages/truapi-host-wasm/src/generated
 #                                     --platform-wasm-adapter-output js/packages/truapi-host-wasm/src/generated
+#                                     --platform-rust-output rust/crates/truapi-server/src/wasm
 #                                     --codec-version 1
 #
 # The client surface defaults to the latest wire version any versioned
@@ -34,6 +35,7 @@ cargo run -p truapi-codegen -- \
   --platform-input target/doc/truapi_platform.json \
   --platform-ts-output js/packages/truapi-host-wasm/src/generated \
   --platform-wasm-adapter-output js/packages/truapi-host-wasm/src/generated \
+  --platform-rust-output rust/crates/truapi-server/src/wasm \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
 
@@ -70,3 +72,4 @@ echo "Generated playground metadata at js/packages/truapi/src/playground/codegen
 echo "Generated client examples at playground/test/generated/examples/"
 echo "Generated Rust dispatcher at rust/crates/truapi-server/src/generated/"
 echo "Generated host-callbacks WASM adapter at js/packages/truapi-host-wasm/src/generated/"
+echo "Generated Rust WASM bridge at rust/crates/truapi-server/src/wasm/generated_bridge.rs"
