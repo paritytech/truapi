@@ -5,8 +5,11 @@
 // file owns the callback names, host-hook arity, and
 // subscription payload shape derived from `truapi-platform`.
 
-import type { ChainConnect } from "../runtime.js";
 import type { RawCallbacks } from "./host-callbacks-adapter.js";
+
+import type {
+  ChainConnect,
+} from "../runtime.js";
 
 export const CALLBACK_NAMES = [
   "authStateChanged",

@@ -11,25 +11,9 @@ import type {
 // typed wrappers (`HostDevicePermissionRequest`, etc.) rather than raw
 // SCALE bytes. The web worker pairing-host runtime adapts this typed surface
 // into the byte-oriented callback bridge consumed by the WASM core.
+export * from "./generated/host-callbacks.js";
 export type {
-  AuthState,
-  ChainProvider,
-  CoreAdmin,
-  CoreStorage,
-  CoreStorageKey,
-  Features,
-  HostCallbacks,
   JsonRpcConnection as PlatformJsonRpcConnection,
-  Navigation,
-  Notifications,
-  PairingHostAdmin,
-  PermissionAuthorizationRequest,
-  PermissionAuthorizationStatus,
-  Permissions,
-  PreimageHost,
-  ProductStorage,
-  SessionUiInfo,
-  ThemeHost,
 } from "./generated/host-callbacks.js";
 
 /** Encode a typed core-storage slot for hosts that need an opaque backing key. */

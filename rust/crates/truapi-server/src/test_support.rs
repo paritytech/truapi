@@ -1,8 +1,9 @@
 //! Shared fixtures for the runtime test modules: a stub platform, a
 //! recording json-rpc connection, and SSO statement/frame builders.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
@@ -17,6 +18,7 @@ use crate::subscription::thread_per_subscription_spawner;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use futures::stream::{self, BoxStream};
+use futures::Stream;
 use hkdf::Hkdf;
 use p256::PublicKey as P256PublicKey;
 use p256::SecretKey as P256SecretKey;
@@ -65,6 +67,9 @@ pub(crate) struct StubPlatform {
     pub(crate) remote_permission_denied: bool,
     pub(crate) account_alias_confirmed: bool,
     pub(crate) account_alias_error: Option<&'static str>,
+    pub(crate) identity_disclosure_confirmed: bool,
+    pub(crate) identity_disclosure_error: Option<&'static str>,
+    pub(crate) identity_disclosure_calls: Arc<AtomicUsize>,
     pub(crate) sign_payload_confirmed: bool,
     pub(crate) sign_payload_error: Option<&'static str>,
     pub(crate) sign_raw_confirmed: bool,
@@ -85,6 +90,10 @@ pub(crate) struct StubPlatform {
     /// Set when a `chain_connect_pending` connect future is dropped, which is
     /// how a dropped login flow manifests on the stub.
     pub(crate) pending_connect_dropped: Arc<AtomicBool>,
+    /// When true, `subscribe_theme` returns a never-ending stream.
+    pub(crate) theme_stream_pending: bool,
+    /// Set when the pending theme stream is dropped.
+    pub(crate) theme_stream_dropped: Arc<AtomicBool>,
     pub(crate) pairing_success_response: bool,
     /// Deliver the pairing success statement only through a snapshot
     /// query page; the live subscription stays silent.
@@ -96,6 +105,7 @@ pub(crate) struct StubPlatform {
     pub(crate) rpc_responses: Vec<String>,
     pub(crate) chain_connect_error: Option<&'static str>,
     pub(crate) chain_connect_pending: bool,
+    pub(crate) preimage_submits: Arc<Mutex<Vec<Vec<u8>>>>,
     pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
     /// When set, product/core storage reads fail with this reason.
     pub(crate) local_storage_error: Option<&'static str>,
@@ -106,6 +116,27 @@ struct DropFlagGuard(Arc<AtomicBool>);
 impl Drop for DropFlagGuard {
     fn drop(&mut self) {
         self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+struct PendingThemeStream {
+    dropped: Arc<AtomicBool>,
+}
+
+impl Drop for PendingThemeStream {
+    fn drop(&mut self) {
+        self.dropped.store(true, Ordering::SeqCst);
+    }
+}
+
+impl Stream for PendingThemeStream {
+    type Item = Result<v01::ThemeVariant, v01::GenericError>;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        Poll::Pending
     }
 }
 
@@ -1002,6 +1033,14 @@ impl UserConfirmation for StubPlatform {
             UserConfirmationReview::AccountAlias(_) => {
                 (self.account_alias_error, self.account_alias_confirmed)
             }
+            UserConfirmationReview::IdentityDisclosure(_) => {
+                self.identity_disclosure_calls
+                    .fetch_add(1, Ordering::SeqCst);
+                (
+                    self.identity_disclosure_error,
+                    self.identity_disclosure_confirmed,
+                )
+            }
             UserConfirmationReview::ResourceAllocation(_) => (
                 self.resource_allocation_error,
                 self.resource_allocation_confirmed,
@@ -1019,6 +1058,11 @@ impl UserConfirmation for StubPlatform {
 
 impl ThemeHost for StubPlatform {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
+        if self.theme_stream_pending {
+            return Box::pin(PendingThemeStream {
+                dropped: self.theme_stream_dropped.clone(),
+            });
+        }
         Box::pin(stream::once(async { Ok(v01::ThemeVariant::Dark) }))
     }
 }
@@ -1026,6 +1070,10 @@ impl ThemeHost for StubPlatform {
 #[truapi_platform::async_trait]
 impl PreimageHost for StubPlatform {
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+        self.preimage_submits
+            .lock()
+            .expect("preimage submit list mutex poisoned")
+            .push(value.clone());
         Ok(value)
     }
     fn lookup_preimage(

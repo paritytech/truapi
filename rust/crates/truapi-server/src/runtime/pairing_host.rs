@@ -85,6 +85,33 @@ struct LoginInFlight {
     waiters: Vec<oneshot::Sender<Result<(), String>>>,
 }
 
+struct LoginInFlightOwner<'a> {
+    host: &'a PairingHost,
+    active: bool,
+}
+
+impl<'a> LoginInFlightOwner<'a> {
+    fn new(host: &'a PairingHost) -> Self {
+        Self { host, active: true }
+    }
+
+    fn finish(&mut self, result: Result<(), String>) {
+        if self.active {
+            self.active = false;
+            self.host.finish_login_in_flight(result);
+        }
+    }
+}
+
+impl Drop for LoginInFlightOwner<'_> {
+    fn drop(&mut self) {
+        if self.active {
+            self.host
+                .finish_login_in_flight(Err("login request aborted".to_string()));
+        }
+    }
+}
+
 /// Remote account authority for a pairing host.
 pub(crate) struct PairingHost {
     pub(super) platform: Arc<dyn Platform>,
@@ -259,16 +286,17 @@ impl PairingHost {
             }
         }
 
+        let mut login_owner = LoginInFlightOwner::new(self);
         let outcome = match SsoPairingFlow::new(self).request_session().await {
             Ok(outcome) => outcome,
             Err(err) => {
-                self.finish_login_in_flight(Err(login_error_reason(&err)));
+                login_owner.finish(Err(login_error_reason(&err)));
                 return Err(err);
             }
         };
         match outcome {
             SsoPairingOutcome::Cancelled => {
-                self.finish_login_in_flight(Ok(()));
+                login_owner.finish(Ok(()));
                 if self.session_state.current().is_some() {
                     Ok(HostRequestLoginResponse::V1(
                         v01::HostRequestLoginResponse::AlreadyConnected,
@@ -281,7 +309,7 @@ impl PairingHost {
             }
             SsoPairingOutcome::Success(session) => {
                 self.set_connected_session(*session);
-                self.finish_login_in_flight(Ok(()));
+                login_owner.finish(Ok(()));
                 Ok(HostRequestLoginResponse::V1(
                     v01::HostRequestLoginResponse::Success,
                 ))

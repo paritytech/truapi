@@ -8,7 +8,7 @@ import { type GenericError, type Result } from "@parity/truapi";
 import { hexToBytes } from "@parity/truapi/scale";
 
 import type { ChainConnect, ChainConnection } from "./runtime.js";
-import type { HostCallbacks } from "./generated/host-callbacks.js";
+import type { ChainProvider } from "./generated/host-callbacks.js";
 
 type WireResult<T, E> =
   | { success: true; value: T }
@@ -106,7 +106,7 @@ export function driveResultStream<T>(
  * `send`/`close`.
  */
 export function chainConnectAdapter(
-  host: Pick<HostCallbacks, "connect">,
+  host: Pick<ChainProvider, "connect">,
 ): ChainConnect {
   return async (genesisHash, onResponse): Promise<ChainConnection | null> => {
     const connection = await host.connect(hexToBytes(genesisHash));

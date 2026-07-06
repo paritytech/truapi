@@ -755,6 +755,60 @@ mod tests {
     }
 
     #[test]
+    fn dropped_request_login_clears_single_flight_for_next_attempt() {
+        use std::future::Future;
+        use std::task::{Context, Poll};
+
+        let platform = Arc::new(StubPlatform {
+            chain_connect_pending: true,
+            ..Default::default()
+        });
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let host = Arc::new(host);
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let cx = CallContext::new();
+        let mut first_login = Box::pin(host.request_login(&cx, request.clone()));
+        let waker = futures::task::noop_waker();
+        let mut task_cx = Context::from_waker(&waker);
+
+        match first_login.as_mut().poll(&mut task_cx) {
+            Poll::Pending => {}
+            Poll::Ready(result) => panic!("first login should be pending, got {result:?}"),
+        }
+        assert!(
+            platform
+                .auth_states
+                .lock()
+                .expect("auth state list mutex poisoned")
+                .iter()
+                .any(|state| matches!(state, AuthState::Pairing { .. })),
+            "first login did not enter pairing state"
+        );
+
+        drop(first_login);
+
+        assert!(
+            platform
+                .pending_connect_dropped
+                .load(std::sync::atomic::Ordering::SeqCst),
+            "dropping the login future should drop the pending statement-store connect"
+        );
+
+        cancel_on_pairing(&platform, pairing_host);
+        let second_cx = CallContext::new();
+        let mut second_login = Box::pin(host.request_login(&second_cx, request));
+        let second = match second_login.as_mut().poll(&mut task_cx) {
+            Poll::Ready(result) => result.expect("second login should complete after cancellation"),
+            Poll::Pending => panic!("second login stayed pending behind stale single-flight state"),
+        };
+        assert_eq!(
+            second,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
+    }
+
+    #[test]
     fn request_login_does_not_restore_persisted_session_before_pairing() {
         let stored = session_info();
         let platform = Arc::new(StubPlatform {

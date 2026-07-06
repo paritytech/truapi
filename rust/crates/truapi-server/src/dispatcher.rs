@@ -162,6 +162,11 @@ impl Dispatcher {
         // Unknown discriminant: drop. Response / receive / interrupt frames are
         // handled by the client side and never registered here.
     }
+
+    /// Cancel every subscription currently owned by this dispatcher.
+    pub fn cancel_subscriptions(&self) {
+        self.subscriptions.cancel_all();
+    }
 }
 
 #[cfg(test)]

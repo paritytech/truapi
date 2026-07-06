@@ -5,8 +5,8 @@ import { HostPushNotificationRequest, HostPushNotificationResponse } from "@pari
 import type { GenericError, Result, ThemeVariant } from "@parity/truapi";
 
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
-import { CoreStorageKey } from "../generated/host-callbacks.js";
-import type { AuthState, HostCallbacks } from "../generated/host-callbacks.js";
+import { AuthState, CoreStorageKey } from "../generated/host-callbacks.js";
+import type { AuthState as AuthStateValue, PreimageHost } from "../generated/host-callbacks.js";
 import type { ProductRuntimeConfig, TrUApiProductProvider } from "../runtime.js";
 import { makeHostCallbacks, settle } from "../test-support.js";
 import { createWebWorkerPairingHostRuntime } from "./index.js";
@@ -429,7 +429,7 @@ describe("createWebWorkerPairingHostRuntime", () => {
 
     it("forwards authStateChanged callback requests", async () => {
         const worker = new FakeWorker();
-        const states: AuthState[] = [];
+        const states: AuthStateValue[] = [];
         const providerPromise = createProviderFromRuntime(
             asWorker(worker),
             makeHostCallbacks({
@@ -442,19 +442,21 @@ describe("createWebWorkerPairingHostRuntime", () => {
         worker.emit({ kind: "loaded" });
         worker.emit({ kind: "ready" });
         const provider = await finishProviderReady(worker, providerPromise);
+        const publicKey = new Uint8Array(32);
+        publicKey.set([1, 2]);
 
         worker.emit({
             kind: "callbackRequest",
             requestId: 3,
             name: "authStateChanged",
             args: [
-                {
+                AuthState.enc({
                     tag: "Connected",
                     value: {
-                        publicKey: new Uint8Array([1, 2]),
+                        publicKey,
                         liteUsername: "alice",
                     },
-                },
+                }),
             ],
         });
         await settle();
@@ -463,7 +465,7 @@ describe("createWebWorkerPairingHostRuntime", () => {
             {
                 tag: "Connected",
                 value: {
-                    publicKey: new Uint8Array([1, 2]),
+                    publicKey,
                     liteUsername: "alice",
                 },
             },
@@ -684,7 +686,7 @@ describe("createWebWorkerPairingHostRuntime", () => {
                 lookupPreimage: (() => {
                     preimageStarts += 1;
                     return () => {};
-                }) as unknown as HostCallbacks["lookupPreimage"],
+                }) as unknown as PreimageHost["lookupPreimage"],
             }),
             { runtimeConfig: runtimeConfig() },
         );
@@ -714,7 +716,7 @@ describe("createWebWorkerPairingHostRuntime", () => {
                 lookupPreimage: (() => {
                     preimageStarts += 1;
                     return () => {};
-                }) as unknown as HostCallbacks["lookupPreimage"],
+                }) as unknown as PreimageHost["lookupPreimage"],
             }),
             { runtimeConfig: runtimeConfig() },
         );

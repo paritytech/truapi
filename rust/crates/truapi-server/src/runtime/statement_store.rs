@@ -4,7 +4,7 @@
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use super::ProductRuntimeHost;
+use super::{ProductRuntimeHost, REMOTE_PERMISSION_DENIED_REASON};
 use super::statement_store_rpc::{self, StatementStoreRpc};
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
@@ -128,6 +128,13 @@ impl StatementStore for ProductRuntimeHost {
         request: RemoteStatementStoreSubmitRequest,
     ) -> Result<(), CallError<RemoteStatementStoreSubmitError>> {
         let RemoteStatementStoreSubmitRequest::V1(statement) = request;
+        self.require_remote_permission(
+            v01::RemotePermission::StatementSubmit,
+            RemoteStatementStoreSubmitError::V1(v01::GenericError {
+                reason: REMOTE_PERMISSION_DENIED_REASON.to_string(),
+            }),
+        )
+        .await?;
         let statement = signed_statement_to_scale(statement).map_err(|reason| {
             CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
                 reason,
@@ -422,6 +429,32 @@ mod tests {
             crate::host_logic::statement_store::decode_signed_statement(&statement).unwrap(),
             signed_statement([7; 32])
         );
+    }
+
+    #[test]
+    fn statement_store_submit_requires_remote_permission_before_rpc() {
+        let platform = Arc::new(StubPlatform {
+            remote_permission_denied: true,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::with_request_id("submit-1".to_string());
+        let request = RemoteStatementStoreSubmitRequest::V1(signed_statement([7; 32]));
+
+        let err =
+            futures::executor::block_on(StatementStore::submit(&host, &cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
+                reason,
+            })) => assert_eq!(reason, REMOTE_PERMISSION_DENIED_REASON),
+            other => panic!("expected statement-store permission denial, got {other:?}"),
+        }
+        assert!(platform.sent_rpc.lock().unwrap().is_empty());
     }
 
     #[test]
