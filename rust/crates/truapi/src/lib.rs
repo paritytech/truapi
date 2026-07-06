@@ -341,6 +341,23 @@ impl<T> Stream for Subscription<T> {
     }
 }
 
+impl<T> Subscription<T> {
+    /// Creates a new subscription from a boxed stream.
+    pub fn new(stream: Pin<Box<dyn Stream<Item = T> + Send>>) -> Self {
+        Self { inner: stream }
+    }
+
+    /// Creates a subscription that yields no items. Useful as a placeholder for
+    /// default "unavailable" trait bodies where the dispatcher will discard the
+    /// stream and emit an Interrupt frame.
+    pub fn empty() -> Self
+    where
+        T: Send + 'static,
+    {
+        Self::new(Box::pin(futures::stream::empty()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,22 +387,5 @@ mod tests {
         let reason = futures::executor::block_on(wait);
         assert_eq!(reason, CancellationReason::Cancelled);
         assert!(cloned.is_cancelled());
-    }
-}
-
-impl<T> Subscription<T> {
-    /// Creates a new subscription from a boxed stream.
-    pub fn new(stream: Pin<Box<dyn Stream<Item = T> + Send>>) -> Self {
-        Self { inner: stream }
-    }
-
-    /// Creates a subscription that yields no items. Useful as a placeholder for
-    /// default "unavailable" trait bodies where the dispatcher will discard the
-    /// stream and emit an Interrupt frame.
-    pub fn empty() -> Self
-    where
-        T: Send + 'static,
-    {
-        Self::new(Box::pin(futures::stream::empty()))
     }
 }
