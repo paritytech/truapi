@@ -414,6 +414,8 @@ fn should_skip_type_name(name: &str) -> bool {
         "Subscription"
             | "CallContext"
             | "CallError"
+            | "CancellationFuture"
+            | "CancellationReason"
             | "CancellationToken"
             | "FrameworkOnlyError"
             | "Infallible"
