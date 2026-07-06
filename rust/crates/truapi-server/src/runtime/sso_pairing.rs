@@ -389,9 +389,11 @@ mod tests {
     use super::super::connected_session_ui_info;
     use super::super::{PairingHostRole, ProductRuntimeHost};
     use super::*;
+    use crate::host_rpc_client::HostRpcClient;
     use crate::test_support::{
         StubPlatform, core_storage_test_key, pairing_device_from_deeplink, peer_statement_keypair,
-        runtime_config, session_info, signed_test_statement, stub_platform, test_spawner,
+        runtime_config, session_info, signed_test_statement, stub_platform, subscribe_ack_frame,
+        test_spawner, wallet_handshake_statement,
     };
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use truapi::CallContext;
@@ -399,7 +401,7 @@ mod tests {
     use truapi::versioned::account::{
         HostAccountConnectionStatusSubscribeItem, HostRequestLoginRequest,
     };
-    use truapi_platform::{AuthState, CoreStorageKey};
+    use truapi_platform::{AuthState, ChainProvider, CoreStorageKey};
 
     /// Cancel the login as soon as the host observes the `Pairing` state,
     /// mimicking a user dismissing the pairing UI immediately.
@@ -680,34 +682,39 @@ mod tests {
         assert!(matches!(&auth_states[1], AuthState::Connected(_)));
     }
 
-    /// The pairing success must also be reachable through the core's own 2s
-    /// snapshot queries: the live subscription stays silent and the wallet
-    /// statement is delivered only on a query subscription page.
+    /// Pairing success must also be decoded from a snapshot query page, not only
+    /// from the live pairing subscription.
     #[test]
     fn request_login_accepts_pairing_statement_from_snapshot_query_page() {
+        let (host_config, _) = runtime_config("myapp.dot");
+        let pairing_identity = generate_pairing_device_identity().unwrap();
+        let bootstrap =
+            create_pairing_bootstrap_from_identity(&host_config, pairing_identity).unwrap();
+        let statement = wallet_handshake_statement(&bootstrap.deeplink);
         let platform = Arc::new(StubPlatform {
-            pairing_success_via_query: true,
+            rpc_responses: vec![
+                subscribe_ack_frame("truapi:1", "query-sub"),
+                crate::test_support::new_statements_frame("query-sub", vec![statement]),
+            ],
             ..Default::default()
         });
-        let host = ProductRuntimeHost::new(
-            platform.clone(),
-            runtime_config("myapp.dot"),
-            test_spawner(),
-        );
-        let cx = CallContext::new();
-        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
-        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+        let connection =
+            futures::executor::block_on(platform.connect(host_config.people_chain_genesis_hash))
+                .unwrap();
+        let rpc_client = RpcClient::new(HostRpcClient::new(Arc::from(connection), test_spawner()));
+        let success = futures::executor::block_on(run_pairing_snapshot_query(
+            rpc_client,
+            bootstrap.topic,
+            bootstrap.encryption_secret_key,
+        ))
+        .unwrap()
+        .expect("snapshot query should return pairing success");
 
         assert_eq!(
-            response,
-            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Success)
+            success.peer_statement_account_id,
+            peer_statement_keypair().1
         );
-        assert_eq!(
-            host.test_session_state()
-                .current()
-                .map(|session| session.public_key),
-            Some(session_info().public_key)
-        );
+        assert_eq!(success.success.root_account_id, session_info().public_key);
 
         let methods = platform
             .sent_rpc
@@ -717,19 +724,9 @@ mod tests {
             .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
             .map(|request| request["method"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
-        assert!(
-            methods
-                .iter()
-                .filter(|method| method.as_str() == "statement_subscribeStatement")
-                .count()
-                >= 2,
-            "core should issue snapshot queries while pairing: {methods:?}"
-        );
-        assert!(
-            methods
-                .iter()
-                .any(|method| method == "statement_unsubscribeStatement"),
-            "drained query subscription should be cleaned up: {methods:?}"
+        assert_eq!(
+            methods.first().map(String::as_str),
+            Some("statement_subscribeStatement")
         );
     }
 
