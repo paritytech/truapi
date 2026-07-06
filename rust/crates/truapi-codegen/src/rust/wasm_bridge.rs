@@ -365,7 +365,7 @@ fn emit_stream_method(
             "invoke_js_subscription",
             &method.name,
             &payload,
-            &[parser.to_string()],
+            std::slice::from_ref(&parser),
         )
     };
     Ok(format!(
