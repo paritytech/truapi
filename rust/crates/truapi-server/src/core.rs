@@ -123,6 +123,11 @@ impl TrUApiCore {
     pub async fn dispatch(&self, message: ProtocolMessage, transport: Arc<dyn Transport>) {
         self.dispatcher.dispatch(message, transport).await;
     }
+
+    /// Cancel all active and pending subscriptions owned by this core.
+    pub fn cancel_subscriptions(&self) {
+        self.dispatcher.cancel_subscriptions();
+    }
 }
 
 /// Single-slot transport that captures the next response the dispatcher

@@ -315,6 +315,8 @@ pub enum PermissionAuthorizationRequest {
     Device(HostDevicePermissionRequest),
     /// Remote/product-scoped permission such as chain submit or HTTP access.
     Remote(RemotePermissionRequest),
+    /// Product-scoped permission to disclose the user's primary identity.
+    IdentityDisclosure,
 }
 
 /// Authorization status for a permission request.
@@ -460,7 +462,7 @@ pub trait CoreStorage: Send + Sync {
 
 /// Decoded session fields a host shell needs to render account UI without
 /// parsing the opaque session blob the core persists through [`CoreStorage`].
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Encode, Decode)]
 pub struct SessionUiInfo {
     /// 32-byte sr25519 root public key of the active session.
     pub public_key: [u8; 32],
@@ -475,7 +477,7 @@ pub struct SessionUiInfo {
 /// Auth/session lifecycle state the core projects for host UI. The core owns
 /// every transition and emits states in order; hosts render the current state
 /// and never derive auth UI from any other signal.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Encode, Decode)]
 pub enum AuthState {
     /// No active session and no login in progress.
     #[default]
@@ -542,6 +544,13 @@ pub struct AccountAliasReview {
     pub target_product_id: String,
 }
 
+/// Review shown before a product learns the user's primary identity.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct IdentityDisclosureReview {
+    /// Product currently handling the request.
+    pub product_id: String,
+}
+
 /// Review shown before a preimage is submitted.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct PreimageSubmitReview {
@@ -561,16 +570,18 @@ pub enum UserConfirmationReview {
     CreateTransaction(CreateTransactionReview),
     /// Allow a product to request another product account alias.
     AccountAlias(AccountAliasReview),
+    /// Allow a product to learn the user's primary identity.
+    IdentityDisclosure(IdentityDisclosureReview),
     /// Allocate resources for the requesting product.
     ResourceAllocation(HostRequestResourceAllocationRequest),
     /// Submit a preimage to the host-selected backend.
     PreimageSubmit(PreimageSubmitReview),
 }
 
-/// Local user confirmation UI for session-channel operations.
+/// Local user confirmation UI for sensitive core-owned operations.
 #[async_trait]
 pub trait UserConfirmation: Send + Sync {
-    /// Confirm a reviewed action before the core asks the SSO peer.
+    /// Confirm a reviewed action before the core continues.
     async fn confirm_user_action(
         &self,
         review: UserConfirmationReview,

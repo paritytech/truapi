@@ -31,27 +31,6 @@ fn quoted_strings_in_const_array(src: &str, const_name: &str) -> Vec<String> {
         .collect()
 }
 
-fn wasm_optional_callback_names(workspace: &Path) -> Vec<String> {
-    let src = fs::read_to_string(workspace.join("rust/crates/truapi-server/src/wasm.rs"))
-        .expect("read wasm.rs");
-    let mut names = src
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            let start = line.find("get_optional_function(callbacks, \"")?;
-            let quoted = &line[start + "get_optional_function(callbacks, \"".len()..];
-            let end = quoted.find('"')?;
-            let name = &quoted[..end];
-            match name {
-                "chainConnect" | "dispose" => None,
-                _ => Some(name.to_string()),
-            }
-        })
-        .collect::<Vec<_>>();
-    names.sort();
-    names
-}
-
 /// Run `cargo +nightly rustdoc -p truapi --output-format json` into the
 /// given `target_dir` and return the path to the produced JSON file.
 /// Panics with a clear message if nightly is unavailable so CI cannot
@@ -214,6 +193,8 @@ fn golden_host_callbacks_ts() {
             tempdir.path().join("host").to_str().unwrap(),
             "--platform-wasm-adapter-output",
             tempdir.path().join("wasm").to_str().unwrap(),
+            "--platform-rust-output",
+            tempdir.path().join("rust-wasm").to_str().unwrap(),
         ])
         .output()
         .expect("run truapi-codegen");
@@ -264,6 +245,20 @@ fn golden_host_callbacks_ts() {
         );
     }
 
+    let wasm_bridge_golden_path = manifest_dir.join("tests/golden/wasm_bridge.rs");
+    let wasm_bridge_actual =
+        fs::read_to_string(tempdir.path().join("rust-wasm/generated_bridge.rs"))
+            .expect("read generated wasm bridge");
+    let wasm_bridge_golden = fs::read_to_string(&wasm_bridge_golden_path).unwrap_or_default();
+    if wasm_bridge_golden != wasm_bridge_actual {
+        let dump = manifest_dir.join("tests/golden/wasm_bridge.rs.actual");
+        let _ = fs::write(&dump, &wasm_bridge_actual);
+        panic!(
+            "golden mismatch for wasm_bridge.rs; wrote actual to {}",
+            dump.display()
+        );
+    }
+
     assert!(
         !worker_actual.contains("OPTIONAL_CALLBACK_NAMES"),
         "worker callback generation should not expose an optional callback manifest"
@@ -273,11 +268,10 @@ fn golden_host_callbacks_ts() {
         &worker_actual,
         "SUBSCRIPTION_NAMES",
     ));
-    let wasm_optional = wasm_optional_callback_names(&workspace);
-    for name in wasm_optional {
+    for name in generated_names {
         assert!(
-            generated_names.contains(&name),
-            "generated worker names must include JsBridge optional callback `{name}`"
+            wasm_bridge_actual.contains(&format!("get_function(callbacks, \"{name}\")?")),
+            "generated wasm bridge must bind worker callback `{name}`"
         );
     }
 }

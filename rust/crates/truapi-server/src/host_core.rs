@@ -438,6 +438,9 @@ impl ProductRuntime {
             .lock()
             .expect("host core in-flight dispatch mutex poisoned")
             .remove(&dispatch_id);
+        if self.disposed.load(Ordering::Acquire) {
+            self.core.cancel_subscriptions();
+        }
         Ok(())
     }
 
@@ -482,9 +485,8 @@ impl ProductRuntime {
 
     /// Dispose this host core. Idempotent.
     ///
-    /// Disposal suppresses future outgoing frames and aborts in-flight dispatch
-    /// futures. Adapter-specific resource cleanup remains the adapter's
-    /// responsibility.
+    /// Disposal suppresses future outgoing frames, aborts in-flight dispatch
+    /// futures, and cancels active subscriptions.
     #[instrument(skip_all, fields(runtime.method = "product_runtime.dispose"))]
     pub fn dispose(&self) {
         if self.disposed.swap(true, Ordering::AcqRel) {
@@ -498,6 +500,7 @@ impl ProductRuntime {
         {
             handle.abort();
         }
+        self.core.cancel_subscriptions();
     }
 }
 
@@ -519,5 +522,68 @@ impl Transport for SinkTransport {
         _handler: Box<dyn Fn(ProtocolMessage) + Send + Sync>,
     ) -> Box<dyn FnOnce()> {
         Box::new(|| {})
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::{Payload, ProtocolMessage, subscription_ids};
+    use crate::test_support::{StubPlatform, runtime_config, test_spawner};
+    use parity_scale_codec::Encode;
+    use std::sync::atomic::Ordering;
+
+    #[derive(Default)]
+    struct RecordingSink {
+        frames: Mutex<Vec<Vec<u8>>>,
+    }
+
+    impl FrameSink for RecordingSink {
+        fn emit_frame(&self, frame: Vec<u8>) {
+            self.frames
+                .lock()
+                .expect("recording sink mutex poisoned")
+                .push(frame);
+        }
+    }
+
+    #[test]
+    fn dispose_cancels_active_subscriptions() {
+        let theme_stream_dropped = Arc::new(AtomicBool::new(false));
+        let platform = Arc::new(StubPlatform {
+            theme_stream_pending: true,
+            theme_stream_dropped: theme_stream_dropped.clone(),
+            ..Default::default()
+        });
+        let sink = Arc::new(RecordingSink::default());
+        let (host_config, product) = runtime_config("myapp.dot");
+        let runtime = ProductRuntime::from_platform_with_config(
+            platform,
+            host_config,
+            product,
+            test_spawner(),
+            sink,
+        );
+
+        let ids = subscription_ids("theme_subscribe").expect("known subscription");
+        let frame = ProtocolMessage {
+            request_id: "theme:1".to_string(),
+            payload: Payload {
+                id: ids.start_id,
+                value: Vec::new(),
+            },
+        };
+        futures::executor::block_on(runtime.receive_frame(frame.encode())).unwrap();
+
+        runtime.dispose();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !theme_stream_dropped.load(Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "dispose did not drop the active theme subscription stream"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
 }
