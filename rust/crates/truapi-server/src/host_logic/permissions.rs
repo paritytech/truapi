@@ -7,6 +7,9 @@
 //! The cache layer is shared but keys are typed so a device grant cannot
 //! authorize a remote operation by accident. Keys are also scoped by product id
 //! so one product's authorization never grants another product's request.
+//! Identity disclosure is also represented as a product-scoped authorization,
+//! but the prompt itself is handled by the account runtime because it uses the
+//! richer user-confirmation surface rather than the device/remote callbacks.
 
 use parity_scale_codec::{Decode, Encode};
 
@@ -104,6 +107,13 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
                 self.peek_device(permission).await
             }
             PermissionAuthorizationRequest::Remote(request) => self.peek_remote(request).await,
+            PermissionAuthorizationRequest::IdentityDisclosure => {
+                authorization_status(
+                    self.storage,
+                    identity_disclosure_core_storage_key(self.product_id),
+                )
+                .await
+            }
         }
     }
 
@@ -135,6 +145,9 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
             }
             PermissionAuthorizationRequest::Remote(request) => {
                 remote_core_storage_key(self.product_id, request)
+            }
+            PermissionAuthorizationRequest::IdentityDisclosure => {
+                identity_disclosure_core_storage_key(self.product_id)
             }
         };
         set_authorization_status(self.storage, key, status).await
@@ -246,6 +259,13 @@ fn remote_core_storage_key(product_id: &str, request: &RemotePermissionRequest) 
     CoreStorageKey::PermissionAuthorization {
         product_id: product_id.to_string(),
         request: PermissionAuthorizationRequest::Remote(canonical_remote_request(request)),
+    }
+}
+
+fn identity_disclosure_core_storage_key(product_id: &str) -> CoreStorageKey {
+    CoreStorageKey::PermissionAuthorization {
+        product_id: product_id.to_string(),
+        request: PermissionAuthorizationRequest::IdentityDisclosure,
     }
 }
 
@@ -366,9 +386,14 @@ mod tests {
                 permission: RemotePermission::ChainSubmit,
             },
         );
+        let identity = identity_disclosure_core_storage_key("product.dot");
+        let other_product_identity = identity_disclosure_core_storage_key("other.dot");
 
         assert_ne!(camera, other_product);
         assert_ne!(camera, remote);
+        assert_ne!(camera, identity);
+        assert_ne!(remote, identity);
+        assert_ne!(identity, other_product_identity);
     }
 
     #[test]
@@ -581,6 +606,35 @@ mod tests {
         .unwrap();
         assert_eq!(
             futures::executor::block_on(service.authorization_status(&request)).unwrap(),
+            PermissionAuthorizationStatus::NotDetermined
+        );
+    }
+
+    #[test]
+    fn identity_disclosure_authorization_round_trips() {
+        let storage = MemStorage::default();
+        let prompt = ScriptedPrompt::new(vec![], vec![]);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
+        let request = PermissionAuthorizationRequest::IdentityDisclosure;
+
+        assert_eq!(
+            futures::executor::block_on(service.authorization_status(&request)).unwrap(),
+            PermissionAuthorizationStatus::NotDetermined
+        );
+
+        futures::executor::block_on(
+            service.set_authorization_status(&request, PermissionAuthorizationStatus::Authorized),
+        )
+        .unwrap();
+        assert_eq!(
+            futures::executor::block_on(service.authorization_status(&request)).unwrap(),
+            PermissionAuthorizationStatus::Authorized
+        );
+
+        let other_product_service = PermissionsService::new(&storage, &prompt, "other.dot");
+        assert_eq!(
+            futures::executor::block_on(other_product_service.authorization_status(&request))
+                .unwrap(),
             PermissionAuthorizationStatus::NotDetermined
         );
     }

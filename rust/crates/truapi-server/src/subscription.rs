@@ -284,6 +284,25 @@ impl SubscriptionManager {
             None => {}
         }
     }
+
+    /// Cancel and forget every pending or live subscription owned by this
+    /// manager. Used when the product runtime is disposed, where no further
+    /// frames should be emitted and platform resources must be released.
+    pub fn cancel_all(&self) {
+        let cancellations = {
+            let mut active = self.active.lock().unwrap();
+            active
+                .drain()
+                .filter_map(|(_, slot)| match slot {
+                    Slot::Pending { .. } => None,
+                    Slot::Live { cancel, .. } => Some(cancel),
+                })
+                .collect::<Vec<_>>()
+        };
+        for cancel in cancellations {
+            cancel();
+        }
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -291,6 +310,7 @@ mod tests {
     use super::*;
     use futures::stream;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::task::{Context, Poll};
 
     /// Transport that records every frame and notifies waiters when it
     /// reaches a target count. Used to wait for the subscription's
@@ -345,6 +365,27 @@ mod tests {
         Box::pin(stream::iter(
             items.into_iter().map(SubscriptionOutput::Item),
         ))
+    }
+
+    struct PendingDropStream {
+        dropped: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl Drop for PendingDropStream {
+        fn drop(&mut self) {
+            self.dropped.store(true, Ordering::SeqCst);
+        }
+    }
+
+    impl futures::Stream for PendingDropStream {
+        type Item = SubscriptionOutput;
+
+        fn poll_next(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Option<Self::Item>> {
+            Poll::Pending
+        }
     }
 
     /// Register a never-ending stream then immediately stop it. The
@@ -490,6 +531,33 @@ mod tests {
             transport_typed.sent().len(),
             2,
             "no leaked frames from the superseded stream"
+        );
+    }
+
+    #[test]
+    fn cancel_all_stops_live_subscription_streams() {
+        let transport_typed = Arc::new(RecordingTransport::new());
+        let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
+        let manager = SubscriptionManager::new(thread_per_subscription_spawner());
+        let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stream: SubscriptionStream = Box::pin(PendingDropStream {
+            dropped: dropped.clone(),
+        });
+
+        manager.register("p:1".to_string(), 99, 98, stream, transport_dyn);
+        manager.cancel_all();
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !dropped.load(Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "cancel_all did not drop the live subscription stream"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(
+            transport_typed.sent().is_empty(),
+            "runtime disposal cancellation must not emit an interrupt frame"
         );
     }
 }
