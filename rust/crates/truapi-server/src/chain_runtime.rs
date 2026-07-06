@@ -17,13 +17,17 @@ use core::task::{Context, Poll};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+#[cfg(target_arch = "wasm32")]
+use web_time::Duration;
 
 use futures::FutureExt;
 use futures::channel::mpsc;
 use futures::future::{AbortHandle, Abortable};
 use futures::future::{BoxFuture, Shared};
 use futures::stream::BoxStream;
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, pin_mut};
 use parity_scale_codec::{Decode, Error as ScaleError, Input};
 use primitive_types::H256;
 use serde::de::{Deserializer, Error as DeError};
@@ -1107,6 +1111,129 @@ pub(crate) fn encode_hex(value: &[u8]) -> String {
     format!("0x{}", hex::encode(value))
 }
 
+/// Wait for a usable best block hash from a `chainHead_v1_follow` stream.
+pub(crate) async fn wait_for_chain_head_best_hash(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    label: &'static str,
+    initialization_timeout: Duration,
+    best_hash_timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    let timeout = futures_timer::Delay::new(initialization_timeout).fuse();
+    pin_mut!(timeout);
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::Initialized { finalized_block_hashes, .. }) => {
+                    let fallback = finalized_block_hashes.last().cloned();
+                    return wait_for_chain_head_best_hash_after_initialization(
+                        follow,
+                        label,
+                        fallback,
+                        best_hash_timeout,
+                    )
+                    .await;
+                }
+                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                    return Ok(best_block_hash);
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(format!("{label} follow stopped before initialization"));
+                }
+                _ => {}
+            },
+            () = timeout => return Err(format!("{label} follow initialization timed out")),
+        }
+    }
+}
+
+async fn wait_for_chain_head_best_hash_after_initialization(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    label: &'static str,
+    fallback: Option<Vec<u8>>,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    let timeout = futures_timer::Delay::new(timeout).fuse();
+    pin_mut!(timeout);
+    let mut candidate = fallback;
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                    return Ok(best_block_hash);
+                }
+                Some(RemoteChainHeadFollowItem::NewBlock { block_hash, .. }) => {
+                    candidate = Some(block_hash);
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return candidate.ok_or_else(|| {
+                        format!("{label} follow stopped before best block")
+                    });
+                }
+                _ => {}
+            },
+            () = timeout => {
+                return candidate.ok_or_else(|| {
+                    format!("{label} follow best block timed out")
+                });
+            },
+        }
+    }
+}
+
+/// Wait for one storage operation's value from a `chainHead_v1_follow` stream.
+pub(crate) async fn wait_for_chain_head_storage_value(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    operation_id: &str,
+    key: &[u8],
+    label: &'static str,
+    timeout: Duration,
+) -> Result<Option<Vec<u8>>, String> {
+    let timeout = futures_timer::Delay::new(timeout).fuse();
+    pin_mut!(timeout);
+    let mut value = None;
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::OperationStorageItems { operation_id: item_operation_id, items })
+                    if item_operation_id == operation_id =>
+                {
+                    for item in items {
+                        if item.key == key {
+                            value = item.value;
+                        }
+                    }
+                }
+                Some(RemoteChainHeadFollowItem::OperationStorageDone { operation_id: item_operation_id })
+                    if item_operation_id == operation_id =>
+                {
+                    return Ok(value);
+                }
+                Some(RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
+                    if item_operation_id == operation_id =>
+                {
+                    return Ok(None);
+                }
+                Some(RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
+                    if item_operation_id == operation_id =>
+                {
+                    return Err(error);
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(format!("{label} follow stopped during storage lookup"));
+                }
+                _ => {}
+            },
+            () = timeout => return Err(format!("{label} storage lookup timed out")),
+        }
+    }
+}
+
 #[cfg(test)]
 fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
     hex::decode(value.strip_prefix("0x").unwrap_or(value)).map_err(|_| "invalid hex".to_string())
@@ -1117,7 +1244,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use futures::channel::mpsc as fut_mpsc;
-    use futures::stream::BoxStream;
+    use futures::stream::{self, BoxStream};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn spawner_for_tests() -> Spawner {
@@ -1129,6 +1256,57 @@ mod tests {
         {
             Arc::new(futures::executor::block_on)
         }
+    }
+
+    #[test]
+    fn chain_head_best_hash_prefers_best_block_after_initialization() {
+        let mut follow = stream::iter(vec![
+            RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: vec![vec![0x01]],
+                finalized_block_runtime: None,
+            },
+            RemoteChainHeadFollowItem::BestBlockChanged {
+                best_block_hash: vec![0x02],
+            },
+        ])
+        .boxed();
+
+        let hash = futures::executor::block_on(wait_for_chain_head_best_hash(
+            &mut follow,
+            "test chain",
+            Duration::from_secs(10),
+            Duration::from_secs(2),
+        ))
+        .expect("best hash should resolve");
+
+        assert_eq!(hash, vec![0x02]);
+    }
+
+    #[test]
+    fn chain_head_best_hash_uses_new_block_before_stale_finalized_fallback() {
+        let mut follow = stream::iter(vec![
+            RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: vec![vec![0x01]],
+                finalized_block_runtime: None,
+            },
+            RemoteChainHeadFollowItem::NewBlock {
+                block_hash: vec![0x03],
+                parent_block_hash: vec![0x01],
+                new_runtime: None,
+            },
+            RemoteChainHeadFollowItem::Stop,
+        ])
+        .boxed();
+
+        let hash = futures::executor::block_on(wait_for_chain_head_best_hash(
+            &mut follow,
+            "test chain",
+            Duration::from_secs(10),
+            Duration::from_secs(2),
+        ))
+        .expect("new block hash should resolve");
+
+        assert_eq!(hash, vec![0x03]);
     }
 
     #[derive(Default)]

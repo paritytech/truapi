@@ -38,6 +38,32 @@ pub struct SessionInfo {
     pub full_username: Option<String>,
 }
 
+impl SessionInfo {
+    /// Whether the session already carries a usable username.
+    pub(crate) fn has_username(&self) -> bool {
+        non_empty_username(&self.full_username) || non_empty_username(&self.lite_username)
+    }
+
+    /// Apply resolved username fields without replacing populated values with
+    /// empty strings.
+    pub(crate) fn apply_usernames(
+        &mut self,
+        lite_username: Option<String>,
+        full_username: Option<String>,
+    ) {
+        if non_empty_username(&full_username) {
+            self.full_username = full_username;
+        }
+        if non_empty_username(&lite_username) {
+            self.lite_username = lite_username;
+        }
+    }
+}
+
+fn non_empty_username(value: &Option<String>) -> bool {
+    value.as_ref().is_some_and(|value| !value.is_empty())
+}
+
 /// SSO session material negotiated by the pairing host with the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SsoSessionInfo {
@@ -195,6 +221,24 @@ mod tests {
             lite_username: Some("alice".to_string()),
             full_username: None,
         }
+    }
+
+    #[test]
+    fn session_username_helpers_check_and_apply_non_empty_values() {
+        let mut session = info(0x42);
+        session.lite_username = None;
+        session.full_username = None;
+
+        assert!(!session.has_username());
+
+        session.apply_usernames(Some(String::new()), Some("Alice Smith".to_string()));
+        assert!(session.has_username());
+        assert_eq!(session.full_username.as_deref(), Some("Alice Smith"));
+        assert_eq!(session.lite_username, None);
+
+        session.apply_usernames(Some("alice".to_string()), Some(String::new()));
+        assert_eq!(session.full_username.as_deref(), Some("Alice Smith"));
+        assert_eq!(session.lite_username.as_deref(), Some("alice"));
     }
 
     #[test]
