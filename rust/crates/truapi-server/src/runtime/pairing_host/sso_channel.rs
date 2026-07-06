@@ -188,7 +188,7 @@ impl PairingHost {
         if !session_matches_key(&self.session_state, key) {
             return Err(SsoRemoteResponseError::LocalDisconnected);
         }
-        let message_id = sso_message_id(cx, action);
+        let message_id = message.message_id.clone();
         let statement = build_outgoing_request_statement(
             sso,
             message_id.clone(),
@@ -237,6 +237,12 @@ impl PairingHost {
             disconnect: Some(disconnect),
         })
         .await;
+        let result = result.map_err(|reason| match reason {
+            SsoRemoteResponseError::Cancelled(err) if !cx.request_id().is_empty() => {
+                SsoRemoteResponseError::Cancelled(err.with_remote_message_id(cx.request_id()))
+            }
+            reason => reason,
+        });
         match &result {
             Ok(_) => debug!(action, %message_id, "SSO remote response received"),
             Err(reason) => warn!(action, %message_id, %reason, "SSO remote message failed"),
@@ -254,7 +260,7 @@ impl PairingHost {
         request: SignPayloadAuthorityRequest,
     ) -> Result<latest::HostSignPayloadResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
-        let message_id = sso_message_id(cx, RemoteAction::Signing(action));
+        let message_id = sso_message_id();
         let request = match request {
             SignPayloadAuthorityRequest::Product(request) => request,
             SignPayloadAuthorityRequest::LegacyAccount {
@@ -278,7 +284,7 @@ impl PairingHost {
         request: SignRawAuthorityRequest,
     ) -> Result<latest::HostSignPayloadResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
-        let message_id = sso_message_id(cx, RemoteAction::Signing(action));
+        let message_id = sso_message_id();
         let request = match request {
             SignRawAuthorityRequest::Product(request) => request,
             SignRawAuthorityRequest::LegacyAccount {
@@ -315,7 +321,7 @@ impl PairingHost {
         request: CreateTransactionAuthorityRequest,
     ) -> Result<latest::HostCreateTransactionResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
-        let message_id = sso_message_id(cx, RemoteAction::Signing(action));
+        let message_id = sso_message_id();
         let request = match request {
             CreateTransactionAuthorityRequest::Product(request) => request,
             CreateTransactionAuthorityRequest::LegacyAccount {
@@ -352,7 +358,7 @@ impl PairingHost {
         product_account_id: latest::ProductAccountId,
         requesting_product_id: String,
     ) -> Result<latest::HostAccountGetAliasResponse, AuthorityError> {
-        let message_id = sso_message_id(cx, RemoteAction::AccountAlias);
+        let message_id = sso_message_id();
         let message = alias_request_message(
             message_id.clone(),
             product_account_id,
@@ -377,7 +383,7 @@ impl PairingHost {
         product_id: String,
         request: latest::HostRequestResourceAllocationRequest,
     ) -> Result<latest::HostRequestResourceAllocationResponse, AuthorityError> {
-        let message_id = sso_message_id(cx, RemoteAction::ResourceAllocation);
+        let message_id = sso_message_id();
         let message = resource_allocation_message(
             message_id,
             product_id.clone(),
@@ -410,7 +416,7 @@ impl PairingHost {
             return Ok(cached);
         }
 
-        let message_id = sso_message_id(cx, RemoteAction::ResourceAllocation);
+        let message_id = sso_message_id();
         let message = resource_allocation_message(
             message_id,
             product_id.clone(),

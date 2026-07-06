@@ -2235,9 +2235,8 @@ mod tests {
     fn get_account_alias_same_domain_returns_sso_response() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "alias-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -2252,7 +2251,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2284,9 +2283,8 @@ mod tests {
     fn get_account_alias_normalizes_remote_request_identifier() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "alias-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -2301,7 +2299,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2370,9 +2368,8 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             account_alias_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "alias-2",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-2".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -2387,7 +2384,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2790,11 +2787,10 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "sign-raw-1",
                 sign_response_message("sign-raw-1", vec![7, 7], None),
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2848,10 +2844,7 @@ mod tests {
             .map(|request| request["params"][0].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
         unsubscribe_ids.sort();
-        assert_eq!(
-            unsubscribe_ids,
-            vec!["own-sub-sign-raw-1", "peer-sub-sign-raw-1"]
-        );
+        assert_eq!(unsubscribe_ids, vec!["own-sub", "peer-sub"]);
     }
 
     #[test]
@@ -2963,7 +2956,7 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
-            rpc_responses: sso_peer_disconnect_responses(&session, "sign-raw-disconnect"),
+            sso_response_script: Some(sso_peer_disconnect_response_script(&session)),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3112,11 +3105,10 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_payload_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "sign-payload-1",
                 sign_response_message("sign-payload-1", vec![8, 8], Some(vec![0xab, 0xcd])),
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3153,9 +3145,8 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             create_transaction_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "create-tx-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-create-tx-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -3167,7 +3158,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3243,11 +3234,10 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "legacy-sign-raw-1",
                 sign_response_message("legacy-sign-raw-1", vec![9, 9], None),
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3297,11 +3287,10 @@ mod tests {
         let signer = derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "legacy-sign-raw-hex-1",
                 sign_response_message("legacy-sign-raw-hex-1", vec![8, 8], None),
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3371,9 +3360,8 @@ mod tests {
         let signer = derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap();
         let platform = Arc::new(StubPlatform {
             create_transaction_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "legacy-create-tx-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-legacy-create-tx-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -3385,7 +3373,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3513,9 +3501,8 @@ mod tests {
         };
         let platform = Arc::new(StubPlatform {
             resource_allocation_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "alloc-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alloc-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -3535,7 +3522,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());

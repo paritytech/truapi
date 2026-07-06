@@ -388,7 +388,7 @@ mod tests {
     };
     use crate::test_support::{
         StubPlatform, account_id, new_statements_frame, runtime_config, signed_statement,
-        sso_session_info, sso_success_responses, statement, stub_platform,
+        sso_session_info, sso_success_response_script, statement, stub_platform,
         submitted_remote_message, subscribe_ack_frame, test_spawner,
     };
     use futures::StreamExt;
@@ -513,9 +513,8 @@ mod tests {
         let payload = statement_payload(statement.clone());
         let (allowance_secret, expected_signer) = allowance_key(11);
         let platform = Arc::new(StubPlatform {
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "proof-auth-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-proof-auth-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -533,7 +532,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
