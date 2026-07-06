@@ -28,7 +28,7 @@ use crate::subscription::Spawner;
 
 use futures::channel::{mpsc, oneshot};
 use futures::{FutureExt, StreamExt, pin_mut};
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use serde_json::Value;
 use subxt_rpcs::RpcClient;
 use subxt_rpcs::client::RpcSubscription;
@@ -97,7 +97,7 @@ impl<'a> SsoPairingFlow<'a> {
     pub(super) async fn request_session(
         &self,
     ) -> Result<SsoPairingOutcome, CallError<HostRequestLoginError>> {
-        let pairing_identity = create_fresh_pairing_device_identity(self.host.platform.as_ref())
+        let pairing_identity = read_or_create_pairing_device_identity(self.host.platform.as_ref())
             .await
             .map_err(|reason| self.fail_before_pairing(reason))?;
         let bootstrap =
@@ -124,6 +124,7 @@ impl<'a> SsoPairingFlow<'a> {
 
         match self.run_pairing_flow(&bootstrap, cancel_rx).await {
             Ok(outcome @ SsoPairingOutcome::Cancelled) => {
+                clear_pairing_device_identity(self.host.platform.as_ref()).await;
                 reset_guard.disarm();
                 Ok(outcome)
             }
@@ -133,6 +134,7 @@ impl<'a> SsoPairingFlow<'a> {
             }
             Err(reason) => {
                 self.host.auth_state.login_failed(reason.clone());
+                clear_pairing_device_identity(self.host.platform.as_ref()).await;
                 Err(CallError::HostFailure { reason })
             }
         }
@@ -244,6 +246,36 @@ async fn create_fresh_pairing_device_identity(
         .await
         .map_err(|err| format!("pairing device identity write failed: {err:?}"))?;
     Ok(identity)
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.read_or_create"))]
+async fn read_or_create_pairing_device_identity(
+    storage: &(impl CoreStorage + ?Sized),
+) -> Result<PairingDeviceIdentity, String> {
+    let stored = storage
+        .read_core_storage(CoreStorageKey::PairingDeviceIdentity)
+        .await
+        .map_err(|err| format!("pairing device identity read failed: {err:?}"))?;
+    if let Some(stored) = stored {
+        match PairingDeviceIdentity::decode(&mut stored.as_slice()) {
+            Ok(identity) => return Ok(identity),
+            Err(err) => {
+                debug!("discarding invalid stored pairing device identity: {err}");
+            }
+        }
+    }
+
+    create_fresh_pairing_device_identity(storage).await
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.clear"))]
+async fn clear_pairing_device_identity(storage: &(impl CoreStorage + ?Sized)) {
+    if let Err(err) = storage
+        .clear_core_storage(CoreStorageKey::PairingDeviceIdentity)
+        .await
+    {
+        debug!("pairing device identity clear failed: {err:?}");
+    }
 }
 
 struct PairingSuccess {
@@ -456,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn request_login_rotates_pairing_device_identity_between_attempts() {
+    fn request_login_clears_cancelled_pairing_device_identity_between_attempts() {
         let platform = stub_platform();
         let (host, pairing_host) =
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
@@ -492,13 +524,68 @@ mod tests {
             pairing_device_from_deeplink(&deeplinks[1])
         );
         assert!(
-            platform
+            !platform
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
                 .contains_key(&core_storage_test_key(
                     CoreStorageKey::PairingDeviceIdentity
-                ))
+                )),
+            "cancelled pairing must clear the device identity so stale statement-store responses cannot be replayed"
+        );
+    }
+
+    #[test]
+    fn request_login_reuses_stored_pairing_device_identity() {
+        let platform = stub_platform();
+        let identity = generate_pairing_device_identity().unwrap();
+        platform
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(
+                core_storage_test_key(CoreStorageKey::PairingDeviceIdentity),
+                identity.encode(),
+            );
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let host = Arc::new(host);
+        cancel_on_pairing(&platform, pairing_host);
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
+        let deeplink = platform
+            .auth_states
+            .lock()
+            .expect("auth state list mutex poisoned")
+            .iter()
+            .find_map(|state| match state {
+                AuthState::Pairing { deeplink } => Some(deeplink.clone()),
+                _ => None,
+            })
+            .expect("pairing state should be emitted");
+        assert_eq!(
+            pairing_device_from_deeplink(&deeplink),
+            (
+                identity.statement_store_public_key,
+                identity.encryption_public_key
+            )
+        );
+        assert!(
+            !platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&core_storage_test_key(
+                    CoreStorageKey::PairingDeviceIdentity
+                )),
+            "cancelled pairing still clears a reused identity"
         );
     }
 

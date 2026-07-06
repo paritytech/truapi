@@ -15,6 +15,7 @@ export interface TestEntry {
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
 const SSO_TIMEOUT_MS = 60_000;
+const LIVE_ALLOCATION_TIMEOUT_MS = 240_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);
@@ -37,10 +38,13 @@ const LONG_TIMEOUT_METHODS = new Set([
 
 const METHOD_TIMEOUT_MS = new Map<string, number>([
   ["Account/get_account_alias", SSO_TIMEOUT_MS],
-  ["Resource Allocation/request", SSO_TIMEOUT_MS],
+  ["Resource Allocation/request", LIVE_ALLOCATION_TIMEOUT_MS],
   ["Preimage/lookup_subscribe", SSO_TIMEOUT_MS],
   ["Preimage/submit", SSO_TIMEOUT_MS],
   ["Signing/create_transaction", SSO_TIMEOUT_MS],
+  ["Statement Store/create_proof_authorized", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Statement Store/submit", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Statement Store/subscribe", LIVE_ALLOCATION_TIMEOUT_MS],
 ]);
 
 type RunOneOpts = {

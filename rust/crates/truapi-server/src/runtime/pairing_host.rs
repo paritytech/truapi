@@ -6,6 +6,7 @@
 
 mod sso_channel;
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
 use futures::channel::oneshot;
@@ -14,8 +15,8 @@ use sso_channel::SsoDisconnectMonitor;
 use super::auth_state::AuthStateMachine;
 use super::authority::{
     AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest, ProductAuthority,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest, authority_session,
-    require_current_session,
+    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
+    authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use super::identity::resolve_session_identity_with_chain;
@@ -85,6 +86,12 @@ struct LoginInFlight {
     waiters: Vec<oneshot::Sender<Result<(), String>>>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct StatementStoreAllowanceCacheKey {
+    session: SsoSessionKey,
+    product_id: String,
+}
+
 struct LoginInFlightOwner<'a> {
     host: &'a PairingHost,
     active: bool,
@@ -125,6 +132,8 @@ pub(crate) struct PairingHost {
     session_disconnects: Arc<SessionDisconnects>,
     disconnect_monitor: Mutex<Option<SsoDisconnectMonitor>>,
     login_in_flight: Mutex<Option<LoginInFlight>>,
+    statement_store_allowances:
+        Mutex<HashMap<StatementStoreAllowanceCacheKey, StatementStoreAllowanceKey>>,
     /// Self-reference captured by the spawned disconnect-monitor task.
     weak_self: Weak<PairingHost>,
     pub(super) spawner: Spawner,
@@ -145,6 +154,7 @@ impl PairingHost {
             session_disconnects: Arc::new(SessionDisconnects::default()),
             disconnect_monitor: Mutex::new(None),
             login_in_flight: Mutex::new(None),
+            statement_store_allowances: Mutex::new(HashMap::new()),
             weak_self: weak_self.clone(),
             spawner: services.spawner.clone(),
         })
@@ -423,6 +433,62 @@ impl PairingHost {
         require_current_session(&self.session_state, session)
     }
 
+    fn statement_store_allowance_cache_key(
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<StatementStoreAllowanceCacheKey, AuthorityError> {
+        let sso = session.sso.as_ref().ok_or(AuthorityError::Disconnected)?;
+        Ok(StatementStoreAllowanceCacheKey {
+            session: SsoSessionKey::from_session(sso),
+            product_id: product_id.to_string(),
+        })
+    }
+
+    pub(super) fn cache_statement_store_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        slot_account_key: Vec<u8>,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        let cache_key = Self::statement_store_allowance_cache_key(session, product_id)?;
+        let allowance = StatementStoreAllowanceKey::from_secret_bytes(slot_account_key)?;
+        self.statement_store_allowances
+            .lock()
+            .expect("statement-store allowance cache mutex poisoned")
+            .insert(cache_key, allowance.clone());
+        Ok(allowance)
+    }
+
+    pub(super) fn cached_statement_store_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<Option<StatementStoreAllowanceKey>, AuthorityError> {
+        let cache_key = Self::statement_store_allowance_cache_key(session, product_id)?;
+        Ok(self
+            .statement_store_allowances
+            .lock()
+            .expect("statement-store allowance cache mutex poisoned")
+            .get(&cache_key)
+            .cloned())
+    }
+
+    pub(super) fn clear_statement_store_allowance_keys(&self, session: Option<&SessionInfo>) {
+        let mut allowances = self
+            .statement_store_allowances
+            .lock()
+            .expect("statement-store allowance cache mutex poisoned");
+        let Some(session) = session else {
+            allowances.clear();
+            return;
+        };
+        let Some(sso) = session.sso.as_ref() else {
+            return;
+        };
+        let session_key = SsoSessionKey::from_session(sso);
+        allowances.retain(|key, _| key.session != session_key);
+    }
+
     async fn sign_payload(
         &self,
         cx: &CallContext,
@@ -475,6 +541,32 @@ impl PairingHost {
         let session = self.current_private_session(session)?;
         self.remote_allocate_resources(cx, &session, product_id, request)
             .await
+    }
+
+    async fn statement_store_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_statement_store_allowance_key(cx, &session, product_id)
+            .await
+    }
+
+    async fn sign_statement_store_product_payload(
+        &self,
+        _cx: &CallContext,
+        session: &AuthoritySession,
+        _account: v01::ProductAccountId,
+        _payload: Vec<u8>,
+    ) -> Result<[u8; 64], AuthorityError> {
+        self.current_private_session(session)?;
+        Err(AuthorityError::Unavailable {
+            reason: "pairing host: exact statement proof signing is not supported over the \
+                     current SSO raw-signing protocol"
+                .to_string(),
+        })
     }
 
     fn derive_entropy(
@@ -580,6 +672,25 @@ impl ProductAuthority for PairingHost {
         request: v01::HostRequestResourceAllocationRequest,
     ) -> Result<v01::HostRequestResourceAllocationResponse, AuthorityError> {
         PairingHost::allocate_resources(self, cx, session, product_id, request).await
+    }
+
+    async fn statement_store_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        PairingHost::statement_store_allowance_key(self, cx, session, product_id).await
+    }
+
+    async fn sign_statement_store_product_payload(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        account: v01::ProductAccountId,
+        payload: Vec<u8>,
+    ) -> Result<[u8; 64], AuthorityError> {
+        PairingHost::sign_statement_store_product_payload(self, cx, session, account, payload).await
     }
 
     fn derive_entropy(

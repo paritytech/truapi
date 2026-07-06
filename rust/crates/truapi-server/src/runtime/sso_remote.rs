@@ -50,7 +50,7 @@ struct SessionDisconnectsInner {
     waiters: Vec<(u64, SsoSessionKey, oneshot::Sender<String>)>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct SsoSessionKey {
     own: [u8; 32],
     peer: [u8; 32],

@@ -2,7 +2,7 @@
 
 use super::super::authority::{
     AuthorityCancelError, AuthorityError, CreateTransactionAuthorityRequest,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest,
+    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
 };
 use super::super::sso_remote::{
     RemoteResponseWait, SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON,
@@ -14,8 +14,8 @@ use super::AuthorityRequestKind;
 use super::PairingHost;
 use crate::host_logic::session::{SessionInfo, SessionState, SsoSessionInfo};
 use crate::host_logic::sso::messages::{
-    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, SsoAllocationOutcome,
-    SsoRemoteResponse, SsoSessionStatement, alias_request_message,
+    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, SsoAllocatedResource,
+    SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement, alias_request_message,
     build_outgoing_request_statement, create_transaction_message, decode_sso_session_statement,
     resource_allocation_message, sign_payload_message, sign_raw_message, v1,
 };
@@ -138,6 +138,7 @@ impl PairingHost {
             self.session_disconnects
                 .notify(sso, SSO_LOCAL_DISCONNECT_REASON);
         }
+        self.clear_statement_store_allowance_keys(session);
         self.stop_disconnect_monitor();
     }
 
@@ -379,7 +380,7 @@ impl PairingHost {
         let message_id = sso_message_id(cx, RemoteAction::ResourceAllocation);
         let message = resource_allocation_message(
             message_id,
-            product_id,
+            product_id.clone(),
             request.resources,
             OnExistingAllowancePolicy::Increase,
         );
@@ -392,12 +393,81 @@ impl PairingHost {
                 reason: "Unexpected SSO response for resource allocation request".to_string(),
             });
         };
-        response
+        let outcomes = response.payload.map_err(remote_authority_error)?;
+        self.cache_statement_store_allowance_outcomes(session, &product_id, &outcomes)?;
+        Ok(latest::HostRequestResourceAllocationResponse {
+            outcomes: outcomes.into_iter().map(Into::into).collect(),
+        })
+    }
+
+    pub(super) async fn remote_statement_store_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        if let Some(cached) = self.cached_statement_store_allowance_key(session, &product_id)? {
+            return Ok(cached);
+        }
+
+        let message_id = sso_message_id(cx, RemoteAction::ResourceAllocation);
+        let message = resource_allocation_message(
+            message_id,
+            product_id.clone(),
+            vec![latest::AllocatableResource::StatementStoreAllowance],
+            OnExistingAllowancePolicy::Ignore,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::ResourceAllocation(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for statement-store allowance request".to_string(),
+            });
+        };
+        let mut outcomes = response
             .payload
-            .map(|outcomes| latest::HostRequestResourceAllocationResponse {
-                outcomes: outcomes.into_iter().map(Into::into).collect(),
-            })
-            .map_err(remote_authority_error)
+            .map_err(remote_authority_error)?
+            .into_iter();
+        let outcome = outcomes.next().ok_or_else(|| AuthorityError::Unknown {
+            reason: "Empty statement-store allowance response".to_string(),
+        })?;
+        match outcome {
+            SsoAllocationOutcome::Allocated(SsoAllocatedResource::StatementStoreAllowance {
+                slot_account_key,
+            }) => self.cache_statement_store_allowance_key(session, &product_id, slot_account_key),
+            SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
+                reason: format!(
+                    "Unexpected statement-store allowance response resource: {other:?}"
+                ),
+            }),
+            SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
+            SsoAllocationOutcome::NotAvailable => Err(AuthorityError::Unavailable {
+                reason: "statement-store allowance is not available".to_string(),
+            }),
+        }
+    }
+
+    fn cache_statement_store_allowance_outcomes(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        outcomes: &[SsoAllocationOutcome],
+    ) -> Result<(), AuthorityError> {
+        for outcome in outcomes {
+            if let SsoAllocationOutcome::Allocated(
+                SsoAllocatedResource::StatementStoreAllowance { slot_account_key },
+            ) = outcome
+            {
+                self.cache_statement_store_allowance_key(
+                    session,
+                    product_id,
+                    slot_account_key.clone(),
+                )?;
+            }
+        }
+        Ok(())
     }
 }
 

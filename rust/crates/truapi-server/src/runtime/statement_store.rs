@@ -4,12 +4,17 @@
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
+use super::authority::{AuthorityError, StatementStoreAllowanceKey};
 use super::statement_store_rpc::{self, StatementStoreRpc};
-use super::{ProductRuntimeHost, REMOTE_PERMISSION_DENIED_REASON};
+use super::{
+    ProductRuntimeHost, REMOTE_PERMISSION_DENIED_REASON, remote_authority_call,
+    remote_authority_context,
+};
+use crate::host_logic::product_account::derive_product_public_key;
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
     parse_new_statements_result, sign_statement_fields, signed_statement_to_scale,
-    statement_fields_from_v01, statement_proof_to_v01,
+    statement_fields_from_v01, statement_proof_to_v01, unsigned_statement_signing_payload,
 };
 
 use serde_json::Value;
@@ -77,7 +82,7 @@ impl StatementStore for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "statement_store.create_proof"))]
     async fn create_proof(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: RemoteStatementStoreCreateProofRequest,
     ) -> Result<
         RemoteStatementStoreCreateProofResponse,
@@ -96,7 +101,8 @@ impl StatementStore for ProductRuntimeHost {
             )));
         }
         let proof = self
-            .create_statement_proof(inner.statement)
+            .create_product_statement_proof(cx, inner.product_account_id, inner.statement)
+            .await
             .map_err(statement_proof_error)?;
         Ok(RemoteStatementStoreCreateProofResponse::V1(
             v01::RemoteStatementStoreCreateProofResponse { proof },
@@ -106,7 +112,7 @@ impl StatementStore for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "statement_store.create_proof_authorized"))]
     async fn create_proof_authorized(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: RemoteStatementStoreCreateProofAuthorizedRequest,
     ) -> Result<
         RemoteStatementStoreCreateProofAuthorizedResponse,
@@ -114,7 +120,8 @@ impl StatementStore for ProductRuntimeHost {
     > {
         let RemoteStatementStoreCreateProofAuthorizedRequest::V1(statement) = request;
         let proof = self
-            .create_statement_proof(statement)
+            .create_authorized_statement_proof(cx, statement)
+            .await
             .map_err(statement_proof_authorized_error)?;
         Ok(RemoteStatementStoreCreateProofAuthorizedResponse::V1(
             v01::RemoteStatementStoreCreateProofResponse { proof },
@@ -254,39 +261,92 @@ impl ProductRuntimeHost {
         self.services.statement_store.clone()
     }
 
-    fn create_statement_proof(
+    async fn create_product_statement_proof(
         &self,
+        cx: &CallContext,
+        product_account_id: v01::ProductAccountId,
         statement: v01::Statement,
     ) -> Result<v01::StatementProof, StatementProofFailure> {
         let session = self
             .authority
-            .session_state()
-            .current()
+            .current_session()
             .ok_or(StatementProofFailure::NoSession)?;
-        let sso = session
-            .sso
-            .as_ref()
-            .ok_or(StatementProofFailure::NoSession)?;
+        let signer = derive_product_public_key(
+            session.public_key,
+            &product_account_id.dot_ns_identifier,
+            product_account_id.derivation_index,
+        )
+        .map_err(|err| StatementProofFailure::UnableToSign(err.to_string()))?;
         let fields = statement_fields_from_v01(statement)
             .map_err(StatementProofFailure::InvalidStatement)?;
-        let signed = sign_statement_fields(sso.ss_secret, sso.ss_public_key, fields)
+        let payload = unsigned_statement_signing_payload(fields)
             .map_err(StatementProofFailure::UnableToSign)?;
-        signed
-            .into_iter()
-            .find_map(|field| match field {
-                crate::host_logic::statement_store::StatementField::Proof(proof) => {
-                    Some(statement_proof_to_v01(proof))
-                }
-                _ => None,
-            })
-            .ok_or_else(|| StatementProofFailure::UnableToSign("missing proof".to_string()))
+        let cx = remote_authority_context(cx);
+        let signature = remote_authority_call(
+            &cx,
+            self.authority.sign_statement_store_product_payload(
+                &cx,
+                &session,
+                product_account_id,
+                payload,
+            ),
+        )
+        .await
+        .map_err(statement_authority_failure)?;
+        Ok(v01::StatementProof::Sr25519 { signature, signer })
     }
+
+    async fn create_authorized_statement_proof(
+        &self,
+        cx: &CallContext,
+        statement: v01::Statement,
+    ) -> Result<v01::StatementProof, StatementProofFailure> {
+        let session = self
+            .authority
+            .current_session()
+            .ok_or(StatementProofFailure::NoSession)?;
+        let cx = remote_authority_context(cx);
+        let allowance = remote_authority_call(
+            &cx,
+            self.authority
+                .statement_store_allowance_key(&cx, &session, self.product_id()),
+        )
+        .await
+        .map_err(statement_authority_failure)?;
+        create_statement_proof_with_key(statement, &allowance)
+    }
+}
+
+fn create_statement_proof_with_key(
+    statement: v01::Statement,
+    key: &StatementStoreAllowanceKey,
+) -> Result<v01::StatementProof, StatementProofFailure> {
+    let fields =
+        statement_fields_from_v01(statement).map_err(StatementProofFailure::InvalidStatement)?;
+    let signed = sign_statement_fields(key.secret, key.public_key, fields)
+        .map_err(StatementProofFailure::UnableToSign)?;
+    signed
+        .into_iter()
+        .find_map(|field| match field {
+            crate::host_logic::statement_store::StatementField::Proof(proof) => {
+                Some(statement_proof_to_v01(proof))
+            }
+            _ => None,
+        })
+        .ok_or_else(|| StatementProofFailure::UnableToSign("missing proof".to_string()))
 }
 
 enum StatementProofFailure {
     NoSession,
     InvalidStatement(String),
     UnableToSign(String),
+}
+
+fn statement_authority_failure(err: AuthorityError) -> StatementProofFailure {
+    match err {
+        AuthorityError::Disconnected => StatementProofFailure::NoSession,
+        err => StatementProofFailure::UnableToSign(err.reason()),
+    }
 }
 
 fn statement_proof_v01_error(
@@ -321,27 +381,93 @@ fn statement_proof_authorized_error(
 
 #[cfg(test)]
 mod tests {
+    use super::super::{LocalActivation, RuntimeServices, SigningHostRole};
     use super::*;
+    use crate::host_logic::product_account::{
+        SR25519_SIGNING_CONTEXT, derive_product_keypair, derive_root_keypair_from_entropy,
+    };
     use crate::test_support::{
         StubPlatform, account_id, new_statements_frame, runtime_config, signed_statement,
-        sso_session_info, statement, stub_platform, subscribe_ack_frame, test_spawner,
+        sso_session_info, sso_success_responses, statement, stub_platform,
+        submitted_remote_message, subscribe_ack_frame, test_spawner,
     };
     use futures::StreamExt;
     use parity_scale_codec::Encode;
+    use schnorrkel::{ExpansionMode, MiniSecretKey, PublicKey, Signature};
     use std::sync::Arc;
+    use truapi_platform::ProductContext;
+
+    const ENTROPY: [u8; 16] = [0xAB; 16];
+
+    fn statement_payload(statement: v01::Statement) -> Vec<u8> {
+        unsigned_statement_signing_payload(statement_fields_from_v01(statement).unwrap()).unwrap()
+    }
+
+    fn allowance_key(seed: u8) -> ([u8; 64], [u8; 32]) {
+        let mini_secret = MiniSecretKey::from_bytes(&[seed; 32]).unwrap();
+        let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
+        (keypair.secret.to_bytes(), keypair.public.to_bytes())
+    }
+
+    fn assert_sr25519_signature(signer: [u8; 32], signature: [u8; 64], payload: &[u8]) {
+        let public = PublicKey::from_bytes(&signer).unwrap();
+        let signature = Signature::from_bytes(&signature).unwrap();
+        public
+            .verify_simple(SR25519_SIGNING_CONTEXT, payload, &signature)
+            .unwrap();
+    }
+
+    fn signing_host_runtime(product_id: &str) -> (ProductRuntimeHost, Arc<SigningHostRole>) {
+        let platform: Arc<dyn truapi_platform::Platform> = Arc::new(StubPlatform::default());
+        let services = RuntimeServices::new(platform.clone(), [0; 32], test_spawner());
+        let signing_host = SigningHostRole::new(platform);
+        futures::executor::block_on(signing_host.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let host = ProductRuntimeHost::from_services(
+            services,
+            signing_host.clone(),
+            ProductContext::new(product_id.to_string()).expect("valid product id"),
+        );
+        (host, signing_host)
+    }
 
     #[test]
-    fn statement_store_create_proof_signs_with_session_key() {
+    fn statement_store_create_proof_pairing_host_does_not_use_session_key() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        let session = sso_session_info();
-        let expected_signer = session.sso.as_ref().unwrap().ss_public_key;
-        host.test_session_state().set_session(session);
+        host.test_session_state().set_session(sso_session_info());
         let cx = CallContext::new();
         let request = RemoteStatementStoreCreateProofRequest::V1(
             v01::RemoteStatementStoreCreateProofRequest {
                 product_account_id: account_id("myapp.dot", 0),
                 statement: statement(),
+            },
+        );
+
+        let err = futures::executor::block_on(StatementStore::create_proof(&host, &cx, request))
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
+                v01::RemoteStatementStoreCreateProofError::UnableToSign
+            ))
+        ));
+    }
+
+    #[test]
+    fn statement_store_create_proof_signing_host_uses_product_key() {
+        let (host, _signing_host) = signing_host_runtime("myapp.dot");
+        let statement = statement();
+        let payload = statement_payload(statement.clone());
+        let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
+        let product_keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let expected_signer = product_keypair.public.to_bytes();
+        let cx = CallContext::new();
+        let request = RemoteStatementStoreCreateProofRequest::V1(
+            v01::RemoteStatementStoreCreateProofRequest {
+                product_account_id: account_id("myapp.dot", 0),
+                statement,
             },
         );
 
@@ -353,7 +479,7 @@ mod tests {
             panic!("expected sr25519 statement proof");
         };
         assert_eq!(signer, expected_signer);
-        assert_ne!(signature, [0; 64]);
+        assert_sr25519_signature(signer, signature, &payload);
     }
 
     #[test]
@@ -381,14 +507,43 @@ mod tests {
     }
 
     #[test]
-    fn statement_store_create_proof_authorized_signs_with_session_key() {
-        let host =
-            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+    fn statement_store_create_proof_authorized_signs_with_allowance_key() {
         let session = sso_session_info();
-        let expected_signer = session.sso.as_ref().unwrap().ss_public_key;
-        host.test_session_state().set_session(session);
-        let cx = CallContext::new();
-        let request = RemoteStatementStoreCreateProofAuthorizedRequest::V1(statement());
+        let statement = statement();
+        let payload = statement_payload(statement.clone());
+        let (allowance_secret, expected_signer) = allowance_key(11);
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: sso_success_responses(
+                &session,
+                "proof-auth-1",
+                crate::host_logic::sso::messages::RemoteMessage {
+                    message_id: "wallet-proof-auth-1".to_string(),
+                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                        crate::host_logic::sso::messages::v1::RemoteMessage::ResourceAllocationResponse(
+                            crate::host_logic::sso::messages::ResourceAllocationResponse {
+                                responding_to: "proof-auth-1".to_string(),
+                                payload: Ok(vec![
+                                    crate::host_logic::sso::messages::SsoAllocationOutcome::Allocated(
+                                        crate::host_logic::sso::messages::SsoAllocatedResource::StatementStoreAllowance {
+                                            slot_account_key: allowance_secret.to_vec(),
+                                        },
+                                    ),
+                                ]),
+                            },
+                        ),
+                    ),
+                },
+            ),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("proof-auth-1".to_string());
+        let request = RemoteStatementStoreCreateProofAuthorizedRequest::V1(statement);
 
         let response = futures::executor::block_on(StatementStore::create_proof_authorized(
             &host, &cx, request,
@@ -396,10 +551,28 @@ mod tests {
         .unwrap();
 
         let RemoteStatementStoreCreateProofAuthorizedResponse::V1(inner) = response;
-        let v01::StatementProof::Sr25519 { signer, .. } = inner.proof else {
+        let v01::StatementProof::Sr25519 { signer, signature } = inner.proof else {
             panic!("expected sr25519 statement proof");
         };
         assert_eq!(signer, expected_signer);
+        assert_sr25519_signature(signer, signature, &payload);
+
+        let message = submitted_remote_message(&platform, &session);
+        let crate::host_logic::sso::messages::RemoteMessageData::V1(
+            crate::host_logic::sso::messages::v1::RemoteMessage::ResourceAllocationRequest(request),
+        ) = message.data
+        else {
+            panic!("expected resource allocation request");
+        };
+        assert_eq!(request.calling_product_id, "myapp.dot");
+        assert_eq!(
+            request.on_existing,
+            crate::host_logic::sso::messages::OnExistingAllowancePolicy::Ignore
+        );
+        assert_eq!(
+            request.resources,
+            vec![crate::host_logic::sso::messages::SsoAllocatableResource::StatementStoreAllowance]
+        );
     }
 
     #[test]

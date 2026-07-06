@@ -3506,6 +3506,11 @@ mod tests {
     #[test]
     fn resource_allocation_accepts_confirmation_then_returns_sso_response() {
         let session = sso_session_info();
+        let slot_account_key = {
+            let mini_secret = schnorrkel::MiniSecretKey::from_bytes(&[12; 32]).unwrap();
+            let keypair = mini_secret.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
+            keypair.secret.to_bytes().to_vec()
+        };
         let platform = Arc::new(StubPlatform {
             resource_allocation_confirmed: true,
             rpc_responses: sso_success_responses(
@@ -3520,7 +3525,7 @@ mod tests {
                                 payload: Ok(vec![
                                     crate::host_logic::sso::messages::SsoAllocationOutcome::Allocated(
                                         crate::host_logic::sso::messages::SsoAllocatedResource::StatementStoreAllowance {
-                                            slot_account_key: vec![1],
+                                            slot_account_key,
                                         },
                                     ),
                                     crate::host_logic::sso::messages::SsoAllocationOutcome::Rejected,
