@@ -4,8 +4,10 @@ import { expect, type FrameLocator, type Page } from "@playwright/test";
  * Open the playground inside dotli's iframe shell and wait for it to mount.
  *
  * The dotli host parses `/localhost:<port>` as a proxy directive and iframes
- * `http://localhost:3000`. We hand back the FrameLocator scoped to that
- * iframe so individual specs only need to know about playground selectors.
+ * `http://localhost:3000`. The `dotliProductId` query param is host-only; it
+ * makes local e2e use the same product id as the deployed playground examples.
+ * We hand back the FrameLocator scoped to that iframe so individual specs only
+ * need to know about playground selectors.
  */
 export async function openPlaygroundInDotli(page: Page): Promise<FrameLocator> {
   await page.addInitScript(() => {
@@ -22,7 +24,7 @@ export async function openPlaygroundInDotli(page: Page): Promise<FrameLocator> {
       window as typeof window & { __TRUAPI_PLAYGROUND_E2E__?: boolean }
     ).__TRUAPI_PLAYGROUND_E2E__ = true;
   });
-  await page.goto("/localhost:3000");
+  await page.goto("/localhost:3000?dotliProductId=truapi-playground.dot");
   // dotli renders an additional hidden iframe (host.localhost:5173?mode=direct)
   // alongside the proxied playground; scope to the playground src so the
   // FrameLocator is unique under Playwright strict mode.

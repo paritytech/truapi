@@ -544,6 +544,15 @@ pub struct AccountAliasReview {
     pub target_product_id: String,
 }
 
+/// Review shown before a product asks to access another product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct AccountAccessReview {
+    /// Product currently handling the request.
+    pub requesting_product_id: String,
+    /// Product whose account is being requested.
+    pub target_product_id: String,
+}
+
 /// Review shown before a product learns the user's primary identity.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct IdentityDisclosureReview {
@@ -576,6 +585,8 @@ pub enum UserConfirmationReview {
     ResourceAllocation(HostRequestResourceAllocationRequest),
     /// Submit a preimage to the host-selected backend.
     PreimageSubmit(PreimageSubmitReview),
+    /// Allow a product to access another product account.
+    AccountAccess(AccountAccessReview),
 }
 
 /// Local user confirmation UI for sensitive core-owned operations.

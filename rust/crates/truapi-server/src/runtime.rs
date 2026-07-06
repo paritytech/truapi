@@ -132,7 +132,7 @@ use truapi::{CallContext, CallError, CancellationReason, Subscription};
 #[cfg(test)]
 use truapi_platform::Platform;
 use truapi_platform::{
-    AccountAliasReview, CreateTransactionReview, IdentityDisclosureReview,
+    AccountAccessReview, AccountAliasReview, CreateTransactionReview, IdentityDisclosureReview,
     PermissionAuthorizationRequest, PermissionAuthorizationStatus, PreimageSubmitReview,
     ProductContext, SessionUiInfo, SignPayloadReview, SignRawReview, UserConfirmationReview,
     normalize_product_identifier,
@@ -711,12 +711,31 @@ impl Account for ProductRuntimeHost {
                     v01::HostAccountGetError::DomainNotValid,
                 ))
             })?;
-
         let Some(session) = self.authority.current_session() else {
             return Err(CallError::Domain(HostAccountGetError::V1(
                 v01::HostAccountGetError::NotConnected,
             )));
         };
+
+        let product_id = self.product_id();
+        if product_account_id.dot_ns_identifier != product_id {
+            let confirmed = self
+                .services
+                .platform
+                .confirm_user_action(UserConfirmationReview::AccountAccess(AccountAccessReview {
+                    requesting_product_id: product_id,
+                    target_product_id: product_account_id.dot_ns_identifier.clone(),
+                }))
+                .await
+                .map_err(|err| CallError::HostFailure {
+                    reason: format!("account access confirmation failed: {err:?}"),
+                })?;
+            if !confirmed {
+                return Err(CallError::Domain(HostAccountGetError::V1(
+                    v01::HostAccountGetError::Rejected,
+                )));
+            }
+        }
 
         let public_key = derive_product_public_key(
             session.public_key,
@@ -1983,7 +2002,8 @@ mod tests {
 
     #[test]
     fn get_account_requires_session() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         let cx = CallContext::new();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
@@ -2002,7 +2022,8 @@ mod tests {
 
     #[test]
     fn get_account_rejects_invalid_product_identifier() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
@@ -2021,8 +2042,96 @@ mod tests {
     }
 
     #[test]
+    fn get_account_other_product_rejects_when_user_declines() {
+        let platform = stub_platform();
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "other.dot".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountGetError::V1(v01::HostAccountGetError::Rejected))
+        ));
+        assert_eq!(
+            platform
+                .account_access_reviews
+                .lock()
+                .expect("account access review list mutex poisoned")
+                .as_slice(),
+            &[AccountAccessReview {
+                requesting_product_id: "myapp.dot".to_string(),
+                target_product_id: "other.dot".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn get_account_other_product_maps_confirmation_failure_to_host_failure() {
+        let host = ProductRuntimeHost::new(
+            Arc::new(StubPlatform {
+                account_access_error: Some("modal failed"),
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "other.dot".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
+        assert!(
+            matches!(err, CallError::HostFailure { reason } if reason.contains("modal failed"))
+        );
+    }
+
+    #[test]
+    fn get_account_other_product_accepts_confirmation_then_derives_key() {
+        let host = ProductRuntimeHost::new(
+            Arc::new(StubPlatform {
+                account_access_confirmed: true,
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let session = session_info();
+        host.test_session_state().set_session(session.clone());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "other.dot".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
+        let HostAccountGetResponse::V1(inner) = response;
+        assert_eq!(
+            inner.account.public_key,
+            derive_product_public_key(session.public_key, "other.dot", 0)
+                .unwrap()
+                .to_vec()
+        );
+    }
+
+    #[test]
     fn get_account_derives_dotli_product_key() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
@@ -2041,12 +2150,39 @@ mod tests {
 
     #[test]
     fn get_account_normalizes_product_identifier_before_deriving() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("MyApp.DOT"), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "MyApp.DOT".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
+        let HostAccountGetResponse::V1(inner) = response;
+        assert_eq!(
+            hex::encode(inner.account.public_key),
+            "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
+        );
+    }
+
+    #[test]
+    fn get_account_localhost_product_prompts_for_other_product_identifier() {
+        let host = ProductRuntimeHost::new(
+            Arc::new(StubPlatform {
+                account_access_confirmed: true,
+                ..Default::default()
+            }),
+            runtime_config("localhost:3000"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "myapp.dot".to_string(),
                 derivation_index: 0,
             },
         });

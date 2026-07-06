@@ -171,6 +171,11 @@ describe("createWasmRawCallbacks", () => {
                                 review.value.requestingProductId === "playground.dot" &&
                                 review.value.targetProductId === "wallet.dot"
                             );
+                        case "AccountAccess":
+                            return (
+                                review.value.requestingProductId === "playground.dot" &&
+                                review.value.targetProductId === "wallet.dot"
+                            );
                         case "ResourceAllocation":
                             return review.value.resources[0]?.tag === "StatementStoreAllowance";
                         case "PreimageSubmit":
@@ -256,6 +261,17 @@ describe("createWasmRawCallbacks", () => {
             await raw.confirmUserAction?.(
                 UserConfirmationReview.enc({
                     tag: "AccountAlias",
+                    value: {
+                        requestingProductId: "playground.dot",
+                        targetProductId: "wallet.dot",
+                    },
+                }),
+            ),
+        ).toBe(true);
+        expect(
+            await raw.confirmUserAction?.(
+                UserConfirmationReview.enc({
+                    tag: "AccountAccess",
                     value: {
                         requestingProductId: "playground.dot",
                         targetProductId: "wallet.dot",

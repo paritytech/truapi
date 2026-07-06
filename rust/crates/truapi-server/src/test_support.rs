@@ -31,11 +31,12 @@ use truapi::v01;
 use truapi::versioned::account::HostAccountGetAliasRequest;
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi_platform::{
-    AuthPresenter, AuthState, ChainProvider, CoreStorage as PlatformCoreStorage, CoreStorageKey,
-    Features as PlatformFeatures, HostInfo, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, PairingHostConfig, Permissions as PlatformPermissions,
-    PlatformInfo, PreimageHost, ProductContext, ProductStorage as PlatformProductStorage,
-    ThemeHost, UserConfirmation, UserConfirmationReview,
+    AccountAccessReview, AuthPresenter, AuthState, ChainProvider,
+    CoreStorage as PlatformCoreStorage, CoreStorageKey, Features as PlatformFeatures, HostInfo,
+    JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
+    PairingHostConfig, Permissions as PlatformPermissions, PlatformInfo, PreimageHost,
+    ProductContext, ProductStorage as PlatformProductStorage, ThemeHost, UserConfirmation,
+    UserConfirmationReview,
 };
 
 /// Test spawner that matches the current target.
@@ -67,6 +68,9 @@ pub(crate) struct StubPlatform {
     pub(crate) remote_permission_denied: bool,
     pub(crate) account_alias_confirmed: bool,
     pub(crate) account_alias_error: Option<&'static str>,
+    pub(crate) account_access_confirmed: bool,
+    pub(crate) account_access_error: Option<&'static str>,
+    pub(crate) account_access_reviews: Arc<Mutex<Vec<AccountAccessReview>>>,
     pub(crate) identity_disclosure_confirmed: bool,
     pub(crate) identity_disclosure_error: Option<&'static str>,
     pub(crate) identity_disclosure_calls: Arc<AtomicUsize>,
@@ -1032,6 +1036,13 @@ impl UserConfirmation for StubPlatform {
             ),
             UserConfirmationReview::AccountAlias(_) => {
                 (self.account_alias_error, self.account_alias_confirmed)
+            }
+            UserConfirmationReview::AccountAccess(review) => {
+                self.account_access_reviews
+                    .lock()
+                    .expect("account access review list mutex poisoned")
+                    .push(review);
+                (self.account_access_error, self.account_access_confirmed)
             }
             UserConfirmationReview::IdentityDisclosure(_) => {
                 self.identity_disclosure_calls
