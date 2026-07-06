@@ -5,12 +5,6 @@
 //! embedding host at unlock through [`LocalActivation::activate_local_session`]
 //! (the host owns its persistence, e.g. the OS keychain) and kept in memory
 //! for the session, zeroized on disconnect.
-//!
-//! Implemented: local session lifecycle, raw-bytes signing, and RFC-0007
-//! product entropy. Deferred (return [`AuthorityError::Unavailable`]):
-//! extrinsic-payload signing and transaction construction (need chain
-//! metadata to assemble the signing payload), ring-VRF aliases, and
-//! resource allocation (needs on-chain allowance submission).
 
 mod local_activation;
 
