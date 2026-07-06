@@ -1,4 +1,12 @@
+//! Role-neutral account authority contracts used by product runtimes.
+//!
+//! Pairing and signing hosts implement these traits differently, but
+//! `ProductRuntimeHost` can use this module's shared request/session types
+//! without knowing where the key material lives.
+
 use async_trait::async_trait;
+use core::fmt;
+use core::time::Duration;
 use std::sync::Arc;
 use truapi::latest::{
     HostAccountGetAliasResponse, HostCreateTransactionResponse,
@@ -8,7 +16,7 @@ use truapi::latest::{
     ProductAccountId, ProductAccountTxPayload,
 };
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
-use truapi::{CallContext, CallError};
+use truapi::{CallContext, CallError, CancellationReason};
 use truapi_platform::ProductContext;
 
 use crate::host_logic::session::{SessionInfo, SessionState};
@@ -53,6 +61,9 @@ pub(crate) enum AuthorityError {
     /// The selected authority session is no longer active.
     #[display("Disconnected")]
     Disconnected,
+    /// The authority call was cancelled before completion.
+    #[display("{_0}")]
+    Cancelled(AuthorityCancelError),
     /// The authority cannot service the request.
     #[display("{reason}")]
     Unavailable { reason: String },
@@ -64,6 +75,50 @@ pub(crate) enum AuthorityError {
 impl AuthorityError {
     pub(crate) fn reason(self) -> String {
         self.to_string()
+    }
+}
+
+/// Cancellation cause for an account-authority call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AuthorityCancelError {
+    request_id: String,
+    reason: CancellationReason,
+}
+
+impl AuthorityCancelError {
+    pub(crate) fn new(request_id: &str, reason: CancellationReason) -> Self {
+        Self {
+            request_id: request_id.to_string(),
+            reason,
+        }
+    }
+}
+
+impl fmt::Display for AuthorityCancelError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let request = if self.request_id.is_empty() {
+            String::new()
+        } else {
+            format!(" for {}", self.request_id)
+        };
+        match &self.reason {
+            CancellationReason::Cancelled => {
+                write!(f, "Account authority request cancelled{request}")
+            }
+            CancellationReason::TimedOut { timeout } => write!(
+                f,
+                "Account authority request timed out after {}{request}",
+                format_timeout_duration(*timeout)
+            ),
+        }
+    }
+}
+
+fn format_timeout_duration(duration: Duration) -> String {
+    if duration.subsec_millis() == 0 {
+        format!("{}s", duration.as_secs())
+    } else {
+        format!("{}ms", duration.as_millis())
     }
 }
 
