@@ -227,9 +227,19 @@ impl<'a> SsoPairingFlow<'a> {
             .fuse();
         pin_mut!(persist_session);
         futures::select! {
-            _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
+            _ = cancel => {
+                clear_auth_session(self.host.platform.as_ref()).await;
+                return Ok(SsoPairingOutcome::Cancelled);
+            },
             persist_result = persist_session => persist_result
                 .map_err(|err| format!("session persist failed: {err:?}"))?,
+        };
+        futures::select! {
+            _ = cancel => {
+                clear_auth_session(self.host.platform.as_ref()).await;
+                return Ok(SsoPairingOutcome::Cancelled);
+            },
+            default => {}
         };
         Ok(SsoPairingOutcome::Success(Box::new(session)))
     }
@@ -275,6 +285,16 @@ async fn clear_pairing_device_identity(storage: &(impl CoreStorage + ?Sized)) {
         .await
     {
         debug!("pairing device identity clear failed: {err:?}");
+    }
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.auth_session.clear"))]
+async fn clear_auth_session(storage: &(impl CoreStorage + ?Sized)) {
+    if let Err(err) = storage
+        .clear_core_storage(CoreStorageKey::AuthSession)
+        .await
+    {
+        debug!("auth session clear failed: {err:?}");
     }
 }
 
@@ -731,6 +751,50 @@ mod tests {
                 .iter()
                 .any(|method| method == "statement_unsubscribeStatement"),
             "pairing subscription should be cleaned up"
+        );
+    }
+
+    #[test]
+    fn request_login_clears_auth_session_when_cancelled_after_persist() {
+        let session_writes = Arc::new(Mutex::new(Vec::new()));
+        let session_clears = Arc::new(Mutex::new(0));
+        let platform = Arc::new(StubPlatform {
+            pairing_success_response: true,
+            session_writes: session_writes.clone(),
+            session_clears: session_clears.clone(),
+            ..Default::default()
+        });
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let cancel_host = pairing_host.clone();
+        *platform
+            .on_auth_session_write
+            .lock()
+            .expect("auth session write hook mutex poisoned") = Some(Arc::new(move || {
+            cancel_host.cancel_login();
+        }));
+
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
+        assert!(host.test_session_state().current().is_none());
+        assert_eq!(
+            session_writes
+                .lock()
+                .expect("session write list mutex poisoned")
+                .len(),
+            1
+        );
+        assert_eq!(
+            *session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            1
         );
     }
 

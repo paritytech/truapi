@@ -132,6 +132,7 @@ pub(crate) struct PairingHost {
     session_disconnects: Arc<SessionDisconnects>,
     disconnect_monitor: Mutex<Option<SsoDisconnectMonitor>>,
     login_in_flight: Mutex<Option<LoginInFlight>>,
+    login_generation: Mutex<u64>,
     statement_store_allowances:
         Mutex<HashMap<StatementStoreAllowanceCacheKey, StatementStoreAllowanceKey>>,
     /// Self-reference captured by the spawned disconnect-monitor task.
@@ -154,6 +155,7 @@ impl PairingHost {
             session_disconnects: Arc::new(SessionDisconnects::default()),
             disconnect_monitor: Mutex::new(None),
             login_in_flight: Mutex::new(None),
+            login_generation: Mutex::new(0),
             statement_store_allowances: Mutex::new(HashMap::new()),
             weak_self: weak_self.clone(),
             spawner: services.spawner.clone(),
@@ -297,6 +299,7 @@ impl PairingHost {
         }
 
         let mut login_owner = LoginInFlightOwner::new(self);
+        let login_generation = self.begin_login_attempt();
         let outcome = match SsoPairingFlow::new(self).request_session().await {
             Ok(outcome) => outcome,
             Err(err) => {
@@ -318,6 +321,16 @@ impl PairingHost {
                 }
             }
             SsoPairingOutcome::Success(session) => {
+                if !self.is_current_login_attempt(login_generation) {
+                    let _ = self
+                        .platform
+                        .clear_core_storage(CoreStorageKey::AuthSession)
+                        .await;
+                    login_owner.finish(Ok(()));
+                    return Ok(HostRequestLoginResponse::V1(
+                        v01::HostRequestLoginResponse::Rejected,
+                    ));
+                }
                 self.set_connected_session(*session);
                 login_owner.finish(Ok(()));
                 Ok(HostRequestLoginResponse::V1(
@@ -339,7 +352,33 @@ impl PairingHost {
 
     #[instrument(skip_all, fields(runtime.method = "account.cancel_login"))]
     pub(crate) fn cancel_login(&self) {
+        self.invalidate_login_attempts();
         self.auth_state.login_cancelled();
+    }
+
+    fn begin_login_attempt(&self) -> u64 {
+        let mut generation = self
+            .login_generation
+            .lock()
+            .expect("login generation mutex poisoned");
+        *generation = generation.wrapping_add(1);
+        *generation
+    }
+
+    fn invalidate_login_attempts(&self) {
+        let mut generation = self
+            .login_generation
+            .lock()
+            .expect("login generation mutex poisoned");
+        *generation = generation.wrapping_add(1);
+    }
+
+    fn is_current_login_attempt(&self, generation: u64) -> bool {
+        *self
+            .login_generation
+            .lock()
+            .expect("login generation mutex poisoned")
+            == generation
     }
 
     fn login_waiter(&self) -> Option<oneshot::Receiver<Result<(), String>>> {

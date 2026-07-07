@@ -61,6 +61,8 @@ pub(crate) fn immediate_spawner() -> Spawner {
 
 /// Test hook invoked after each recorded auth state.
 pub type AuthStateHook = Arc<dyn Fn(&AuthState) + Send + Sync>;
+/// Test hook invoked after an auth-session write is recorded.
+pub type StorageWriteHook = Arc<dyn Fn() + Send + Sync>;
 
 /// Minimal Platform impl that only answers `feature_supported`. Every
 /// other callback returns a unit value or empty stream, so the runtime
@@ -88,6 +90,7 @@ pub(crate) struct StubPlatform {
     pub(crate) session_error: Option<&'static str>,
     pub(crate) session_clears: Arc<Mutex<usize>>,
     pub(crate) session_writes: Arc<Mutex<Vec<Vec<u8>>>>,
+    pub(crate) on_auth_session_write: Arc<Mutex<Option<StorageWriteHook>>>,
     /// Every `auth_state_changed` emission in order.
     pub(crate) auth_states: Arc<Mutex<Vec<AuthState>>>,
     /// Invoked after each recorded auth state, outside any stub lock, so a
@@ -729,6 +732,14 @@ impl PlatformCoreStorage for StubPlatform {
                 .lock()
                 .expect("session write list mutex poisoned")
                 .push(value);
+            let hook = self
+                .on_auth_session_write
+                .lock()
+                .expect("auth session write hook mutex poisoned")
+                .clone();
+            if let Some(hook) = hook {
+                hook();
+            }
             return Ok(());
         }
         if let Some(reason) = self.local_storage_error {

@@ -310,7 +310,9 @@ impl ProductRuntimeHost {
             return false;
         };
         let product_id = self.product_id();
-        product_id.starts_with("localhost:") || dot_ns_identifier == product_id
+        product_id == "localhost"
+            || product_id.starts_with("localhost:")
+            || dot_ns_identifier == product_id
     }
 
     fn normalize_product_account_id(
@@ -445,7 +447,10 @@ impl ProductRuntimeHost {
             return Ok(cached);
         }
 
-        let confirmed = self
+        // A dismissed/unavailable confirmation has no durable user decision.
+        // Fail the current disclosure request closed but keep authorization in
+        // the ask/default state so the next request can prompt again.
+        let confirmed = match self
             .services
             .platform
             .confirm_user_action(UserConfirmationReview::IdentityDisclosure(
@@ -454,7 +459,10 @@ impl ProductRuntimeHost {
                 },
             ))
             .await
-            .map_err(|err| format!("identity disclosure confirmation failed: {err:?}"))?;
+        {
+            Ok(confirmed) => confirmed,
+            Err(_) => return Ok(PermissionAuthorizationStatus::NotDetermined),
+        };
         let status = if confirmed {
             PermissionAuthorizationStatus::Authorized
         } else {
@@ -844,6 +852,9 @@ impl Account for ProductRuntimeHost {
             v01::HostGetLegacyAccountsResponse {
                 accounts: vec![v01::LegacyAccount {
                     public_key: public_key.to_vec(),
+                    // TODO(#266): gate this legacy display name on
+                    // IdentityDisclosure while keeping the public key for
+                    // compatibility.
                     name: session.lite_username.clone(),
                 }],
             },
@@ -862,6 +873,19 @@ impl Account for ProductRuntimeHost {
             )));
         };
 
+        match self.identity_disclosure_authorization().await {
+            Ok(PermissionAuthorizationStatus::Authorized) => {}
+            Ok(
+                PermissionAuthorizationStatus::Denied
+                | PermissionAuthorizationStatus::NotDetermined,
+            ) => {
+                return Err(CallError::Domain(HostGetUserIdError::V1(
+                    v01::HostGetUserIdError::PermissionDenied,
+                )));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
+
         let primary_username = session
             .full_username
             .clone()
@@ -877,19 +901,6 @@ impl Account for ProductRuntimeHost {
                     reason: "No primary username for this session".to_string(),
                 }))
             })?;
-
-        match self.identity_disclosure_authorization().await {
-            Ok(PermissionAuthorizationStatus::Authorized) => {}
-            Ok(
-                PermissionAuthorizationStatus::Denied
-                | PermissionAuthorizationStatus::NotDetermined,
-            ) => {
-                return Err(CallError::Domain(HostGetUserIdError::V1(
-                    v01::HostGetUserIdError::PermissionDenied,
-                )));
-            }
-            Err(reason) => return Err(CallError::HostFailure { reason }),
-        }
 
         Ok(HostGetUserIdResponse::V1(v01::HostGetUserIdResponse {
             primary_username,
@@ -1534,6 +1545,9 @@ impl Chain for ProductRuntimeHost {
     ) -> Result<RemoteChainTransactionStopResponse, CallError<RemoteChainTransactionStopError>>
     {
         let RemoteChainTransactionStopRequest::V1(inner) = request;
+        // We intentionally forward the provider operation id here. Transaction
+        // operation ids are node-assigned and short-lived, so cross-product
+        // collision or guessing is not worth local id indirection yet.
         self.services
             .chain
             .remote_chain_transaction_stop(inner)
@@ -1718,6 +1732,9 @@ impl Preimage for ProductRuntimeHost {
             .platform
             .lookup_preimage(key)
             .filter_map(|item| async move {
+                // TODO: preserve platform stream errors as terminal
+                // subscription interrupts once subscription items can carry
+                // in-stream failures.
                 item.ok().map(|value| {
                     RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
                         value,
@@ -1734,6 +1751,13 @@ impl Preimage for ProductRuntimeHost {
         request: RemotePreimageSubmitRequest,
     ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
         let RemotePreimageSubmitRequest::V1(value) = request;
+        if self.authority.current_session().is_none() {
+            return Err(CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown {
+                    reason: "No active session".to_string(),
+                },
+            )));
+        }
         self.require_remote_permission(
             v01::RemotePermission::PreimageSubmit,
             RemotePreimageSubmitError::V1(v01::PreimageSubmitError::Unknown {
@@ -1783,6 +1807,9 @@ impl Theme for ProductRuntimeHost {
             .platform
             .subscribe_theme()
             .filter_map(|item| async {
+                // TODO: preserve platform stream errors as terminal
+                // subscription interrupts once subscription items can carry
+                // in-stream failures.
                 item.ok().map(|variant| {
                     HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem {
                         name: v01::ThemeName::Default,
@@ -1908,6 +1935,14 @@ mod tests {
 
         assert_eq!(first.follow_id("request-1"), "c1:request-1");
         assert_eq!(second.follow_id("request-1"), "c2:request-1");
+    }
+
+    #[test]
+    fn bare_localhost_product_allows_dev_product_accounts() {
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("localhost"), test_spawner());
+
+        assert!(host.is_product_account_valid_for_caller("myapp.dot"));
     }
 
     #[test]
@@ -2516,6 +2551,89 @@ mod tests {
     }
 
     #[test]
+    fn get_user_id_dismissed_identity_disclosure_stays_not_determined() {
+        let platform = Arc::new(StubPlatform {
+            identity_disclosure_error: Some("dismissed"),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+
+        let first = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+        let second = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            first,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+        assert!(matches!(
+            second,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+        let status =
+            futures::executor::block_on(host.permission_authorization_status(
+                PermissionAuthorizationRequest::IdentityDisclosure,
+            ))
+            .unwrap();
+        assert_eq!(status, PermissionAuthorizationStatus::NotDetermined);
+    }
+
+    #[test]
+    fn get_user_id_checks_identity_disclosure_before_username() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let mut session = session_info();
+        session.full_username = None;
+        session.lite_username = None;
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+
+        let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn get_user_id_reports_missing_username_after_identity_disclosure() {
+        let platform = Arc::new(StubPlatform {
+            identity_disclosure_confirmed: true,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let mut session = session_info();
+        session.full_username = None;
+        session.lite_username = None;
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+
+        let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::Unknown { ref reason }
+            )) if reason == "No primary username for this session"
+        ));
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
     fn get_user_id_respects_pre_authorized_identity_disclosure() {
         let platform = Arc::new(StubPlatform::default());
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
@@ -2609,10 +2727,40 @@ mod tests {
     #[test]
     fn preimage_submit_confirms_and_delegates_to_platform() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
         let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
         assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn preimage_submit_requires_session_before_backend_call() {
+        let preimage_submits = Arc::new(Mutex::new(Vec::new()));
+        let host = ProductRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                preimage_submits: preimage_submits.clone(),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
+
+        let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown { reason },
+            )) => assert_eq!(reason, "No active session"),
+            other => panic!("expected preimage session error, got {other:?}"),
+        }
+        assert!(
+            preimage_submits
+                .lock()
+                .expect("preimage submit list mutex poisoned")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -2626,6 +2774,7 @@ mod tests {
             }),
             test_spawner(),
         );
+        host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
         let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
