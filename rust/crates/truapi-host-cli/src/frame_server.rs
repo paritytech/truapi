@@ -36,7 +36,7 @@ impl ProductRuntimeFactory for SigningHostRuntime {
     }
 }
 
-use crate::metrics::{Category, MetricsRecorder, Outcome};
+use crate::metrics::{Category, MetricsRecorder, Outcome, classify_frame};
 
 /// Frame sink that writes each outgoing protocol frame as one binary message.
 struct WsFrameSink {
@@ -112,17 +112,20 @@ async fn serve_connection(
     while let Some(message) = read.next().await {
         match message {
             Ok(Message::Binary(bytes)) => {
+                let (category, op) = classify_frame(&bytes);
                 let started = Instant::now();
                 let result = product_runtime.receive_frame(bytes.to_vec()).await;
-                record_frame(&metrics, started, &result);
+                record_frame(&metrics, category, &op, started, &result);
                 if let Err(err) = result {
                     debug!(%err, "product runtime rejected frame");
                 }
             }
             Ok(Message::Text(text)) => {
+                let bytes = text.as_bytes().to_vec();
+                let (category, op) = classify_frame(&bytes);
                 let started = Instant::now();
-                let result = product_runtime.receive_frame(text.as_bytes().to_vec()).await;
-                record_frame(&metrics, started, &result);
+                let result = product_runtime.receive_frame(bytes).await;
+                record_frame(&metrics, category, &op, started, &result);
                 if let Err(err) = result {
                     debug!(%err, "product runtime rejected text frame");
                 }
@@ -138,12 +141,13 @@ async fn serve_connection(
     Ok(())
 }
 
-/// Record one product-frame operation: latency from receive to dispatch
-/// completion (`receive_frame` awaits the handler), and its outcome. The wire
-/// id is not decoded yet, so the category is the coarse `Frame`; decoding it
-/// into per-method categories is the next step.
+/// Record one product-frame operation: its method-derived `category`/`op` (from
+/// the decoded wire id), the latency from receive to dispatch completion
+/// (`receive_frame` awaits the handler), and its outcome.
 fn record_frame<E: std::fmt::Display>(
     metrics: &MetricsRecorder,
+    category: Category,
+    op: &str,
     started: Instant,
     result: &Result<(), E>,
 ) {
@@ -152,5 +156,5 @@ fn record_frame<E: std::fmt::Display>(
         Ok(()) => (Outcome::Success, None),
         Err(err) => (Outcome::Error, Some(err.to_string())),
     };
-    metrics.record(Category::Frame, "product_frame", latency_ms, outcome, error_class);
+    metrics.record(category, op, latency_ms, outcome, error_class);
 }

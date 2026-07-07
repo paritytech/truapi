@@ -149,9 +149,73 @@ impl MetricsRecorder {
     }
 }
 
+/// Classify a raw inbound frame into a metric `(category, op)` by decoding its
+/// wire discriminant and looking the method up in the core's wire table.
+///
+/// `op` is the trait method name (e.g. `signing_sign_raw`); `category` is a
+/// coarse bucket from the method's namespace, or `Subscription` for any
+/// subscription frame. Falls back to `(Frame, "product_frame")` when the frame
+/// does not decode or the id is unknown.
+pub fn classify_frame(frame: &[u8]) -> (Category, String) {
+    use parity_scale_codec::Decode;
+    use truapi_server::frame::ProtocolMessage;
+    use truapi_server::generated::wire_table::{WIRE_TABLE, WireKind};
+
+    let Ok(message) = ProtocolMessage::decode(&mut &*frame) else {
+        return (Category::Frame, "product_frame".to_string());
+    };
+    let id = message.payload.id;
+    for entry in WIRE_TABLE {
+        let (is_subscription, matches) = match &entry.kind {
+            WireKind::Request(r) => (false, r.request_id == id || r.response_id == id),
+            WireKind::Subscription(s) => (
+                true,
+                s.start_id == id
+                    || s.stop_id == id
+                    || s.interrupt_id == id
+                    || s.receive_id == id,
+            ),
+        };
+        if matches {
+            let category = if is_subscription {
+                Category::Subscription
+            } else {
+                category_for_method(entry.method)
+            };
+            return (category, entry.method.to_string());
+        }
+    }
+    (Category::Frame, "product_frame".to_string())
+}
+
+/// Map a method name to a coarse metric category by its namespace prefix.
+fn category_for_method(method: &str) -> Category {
+    match method.split('_').next().unwrap_or("") {
+        "signing" | "entropy" | "statement" => Category::Signing,
+        "chain" => Category::ChainRpc,
+        "local" => Category::Storage,
+        "permissions" => Category::Permission,
+        "account" => Category::Pairing,
+        "system" => Category::Session,
+        "notifications" | "preimage" | "theme" | "resource" | "coin" | "payment" | "chat" => {
+            Category::HostCallback
+        }
+        _ => Category::Frame,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn category_maps_by_namespace() {
+        assert!(matches!(category_for_method("signing_sign_raw"), Category::Signing));
+        assert!(matches!(category_for_method("chain_call"), Category::ChainRpc));
+        assert!(matches!(category_for_method("local_storage_write"), Category::Storage));
+        assert!(matches!(category_for_method("account_request_login"), Category::Pairing));
+        assert!(matches!(category_for_method("mystery_method"), Category::Frame));
+    }
 
     fn sample() -> HostMetricRecord {
         HostMetricRecord {
