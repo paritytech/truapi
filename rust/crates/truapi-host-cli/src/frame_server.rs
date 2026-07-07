@@ -7,6 +7,7 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -34,6 +35,8 @@ impl ProductRuntimeFactory for SigningHostRuntime {
         SigningHostRuntime::product_runtime(self, product, sink)
     }
 }
+
+use crate::metrics::{Category, MetricsRecorder, Outcome};
 
 /// Frame sink that writes each outgoing protocol frame as one binary message.
 struct WsFrameSink {
@@ -64,6 +67,7 @@ pub async fn accept_loop(
     runtime: Arc<dyn ProductRuntimeFactory>,
     product_id: String,
     listener: TcpListener,
+    metrics: Arc<MetricsRecorder>,
 ) -> Result<()> {
     let bound = listener.local_addr()?;
     info!(%bound, %product_id, "product frame server listening");
@@ -71,8 +75,9 @@ pub async fn accept_loop(
         let (stream, peer) = listener.accept().await?;
         let runtime = runtime.clone();
         let product_id = product_id.clone();
+        let metrics = metrics.clone();
         tokio::task::spawn_local(async move {
-            if let Err(err) = serve_connection(runtime, product_id, stream).await {
+            if let Err(err) = serve_connection(runtime, product_id, stream, metrics).await {
                 debug!(%peer, %err, "frame connection ended");
             }
         });
@@ -83,6 +88,7 @@ async fn serve_connection(
     runtime: Arc<dyn ProductRuntimeFactory>,
     product_id: String,
     stream: TcpStream,
+    metrics: Arc<MetricsRecorder>,
 ) -> Result<()> {
     let ws = accept_async(stream).await?;
     let (mut write, mut read) = ws.split();
@@ -106,15 +112,18 @@ async fn serve_connection(
     while let Some(message) = read.next().await {
         match message {
             Ok(Message::Binary(bytes)) => {
-                if let Err(err) = product_runtime.receive_frame(bytes.to_vec()).await {
+                let started = Instant::now();
+                let result = product_runtime.receive_frame(bytes.to_vec()).await;
+                record_frame(&metrics, started, &result);
+                if let Err(err) = result {
                     debug!(%err, "product runtime rejected frame");
                 }
             }
             Ok(Message::Text(text)) => {
-                if let Err(err) = product_runtime
-                    .receive_frame(text.as_bytes().to_vec())
-                    .await
-                {
+                let started = Instant::now();
+                let result = product_runtime.receive_frame(text.as_bytes().to_vec()).await;
+                record_frame(&metrics, started, &result);
+                if let Err(err) = result {
                     debug!(%err, "product runtime rejected text frame");
                 }
             }
@@ -127,4 +136,21 @@ async fn serve_connection(
     drop(outbound_tx);
     let _ = writer.await;
     Ok(())
+}
+
+/// Record one product-frame operation: latency from receive to dispatch
+/// completion (`receive_frame` awaits the handler), and its outcome. The wire
+/// id is not decoded yet, so the category is the coarse `Frame`; decoding it
+/// into per-method categories is the next step.
+fn record_frame<E: std::fmt::Display>(
+    metrics: &MetricsRecorder,
+    started: Instant,
+    result: &Result<(), E>,
+) {
+    let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let (outcome, error_class) = match result {
+        Ok(()) => (Outcome::Success, None),
+        Err(err) => (Outcome::Error, Some(err.to_string())),
+    };
+    metrics.record(Category::Frame, "product_frame", latency_ms, outcome, error_class);
 }
