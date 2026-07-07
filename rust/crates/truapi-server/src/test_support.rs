@@ -10,6 +10,8 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
+use crate::host_logic::session::SessionInfo;
+use crate::host_logic::sso::messages::{RemoteMessage, RemoteMessageData, v1};
 use crate::host_logic::sso::pairing;
 use crate::subscription::Spawner;
 #[cfg(not(target_arch = "wasm32"))]
@@ -31,11 +33,12 @@ use truapi::v01;
 use truapi::versioned::account::HostAccountGetAliasRequest;
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi_platform::{
-    AuthPresenter, AuthState, ChainProvider, CoreStorage as PlatformCoreStorage, CoreStorageKey,
-    Features as PlatformFeatures, HostInfo, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, PairingHostConfig, Permissions as PlatformPermissions,
-    PlatformInfo, PreimageHost, ProductContext, ProductStorage as PlatformProductStorage,
-    ThemeHost, UserConfirmation, UserConfirmationReview,
+    AccountAccessReview, AuthPresenter, AuthState, ChainProvider,
+    CoreStorage as PlatformCoreStorage, CoreStorageKey, Features as PlatformFeatures, HostInfo,
+    JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
+    PairingHostConfig, Permissions as PlatformPermissions, PlatformInfo, PreimageHost,
+    ProductContext, ProductStorage as PlatformProductStorage, ThemeHost, UserConfirmation,
+    UserConfirmationReview,
 };
 
 /// Test spawner that matches the current target.
@@ -58,6 +61,8 @@ pub(crate) fn immediate_spawner() -> Spawner {
 
 /// Test hook invoked after each recorded auth state.
 pub type AuthStateHook = Arc<dyn Fn(&AuthState) + Send + Sync>;
+/// Test hook invoked after an auth-session write is recorded.
+pub type StorageWriteHook = Arc<dyn Fn() + Send + Sync>;
 
 /// Minimal Platform impl that only answers `feature_supported`. Every
 /// other callback returns a unit value or empty stream, so the runtime
@@ -67,6 +72,9 @@ pub(crate) struct StubPlatform {
     pub(crate) remote_permission_denied: bool,
     pub(crate) account_alias_confirmed: bool,
     pub(crate) account_alias_error: Option<&'static str>,
+    pub(crate) account_access_confirmed: bool,
+    pub(crate) account_access_error: Option<&'static str>,
+    pub(crate) account_access_reviews: Arc<Mutex<Vec<AccountAccessReview>>>,
     pub(crate) identity_disclosure_confirmed: bool,
     pub(crate) identity_disclosure_error: Option<&'static str>,
     pub(crate) identity_disclosure_calls: Arc<AtomicUsize>,
@@ -82,6 +90,7 @@ pub(crate) struct StubPlatform {
     pub(crate) session_error: Option<&'static str>,
     pub(crate) session_clears: Arc<Mutex<usize>>,
     pub(crate) session_writes: Arc<Mutex<Vec<Vec<u8>>>>,
+    pub(crate) on_auth_session_write: Arc<Mutex<Option<StorageWriteHook>>>,
     /// Every `auth_state_changed` emission in order.
     pub(crate) auth_states: Arc<Mutex<Vec<AuthState>>>,
     /// Invoked after each recorded auth state, outside any stub lock, so a
@@ -103,12 +112,24 @@ pub(crate) struct StubPlatform {
     pub(crate) cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
     pub(crate) sent_rpc: Arc<Mutex<Vec<String>>>,
     pub(crate) rpc_responses: Vec<String>,
+    pub(crate) sso_response_script: Option<SsoResponseScript>,
     pub(crate) chain_connect_error: Option<&'static str>,
     pub(crate) chain_connect_pending: bool,
     pub(crate) preimage_submits: Arc<Mutex<Vec<Vec<u8>>>>,
     pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
     /// When set, product/core storage reads fail with this reason.
     pub(crate) local_storage_error: Option<&'static str>,
+}
+
+#[derive(Clone)]
+pub(crate) enum SsoResponseScript {
+    Success {
+        session: SessionInfo,
+        response: RemoteMessage,
+    },
+    PeerDisconnect {
+        session: SessionInfo,
+    },
 }
 
 struct DropFlagGuard(Arc<AtomicBool>);
@@ -252,9 +273,17 @@ pub(crate) fn signed_test_statement(data: Vec<u8>) -> Vec<u8> {
 /// Last submitted SSO remote message decoded from the stub RPC log.
 pub(crate) fn submitted_remote_message(
     platform: &Arc<StubPlatform>,
-    session: &crate::host_logic::session::SessionInfo,
-) -> crate::host_logic::sso::messages::RemoteMessage {
+    session: &SessionInfo,
+) -> RemoteMessage {
     let submit = wait_for_statement_submit(&platform.sent_rpc);
+    let (_, message) = submitted_sso_request_from_submit(&submit, session);
+    message
+}
+
+fn submitted_sso_request_from_submit(
+    submit: &str,
+    session: &SessionInfo,
+) -> (String, RemoteMessage) {
     let value: serde_json::Value = serde_json::from_str(&submit).unwrap();
     let statement_hex = value["params"][0].as_str().unwrap();
     let statement = hex::decode(statement_hex.strip_prefix("0x").unwrap_or(statement_hex)).unwrap();
@@ -262,11 +291,20 @@ pub(crate) fn submitted_remote_message(
         .expect("statement data should decode");
     let data = pairing::decrypt_session_statement_data(session.sso.as_ref().unwrap(), &encrypted)
         .expect("statement data should decrypt");
-    let pairing::SsoStatementData::Request { data, .. } = data else {
+    let pairing::SsoStatementData::Request { request_id, data } = data else {
         panic!("expected request statement data");
     };
-    crate::host_logic::sso::messages::RemoteMessage::decode(&mut data[0].as_slice())
-        .expect("remote message should decode")
+    let message =
+        RemoteMessage::decode(&mut data[0].as_slice()).expect("remote message should decode");
+    (request_id, message)
+}
+
+fn submitted_sso_request(
+    sent: &Arc<Mutex<Vec<String>>>,
+    session: &SessionInfo,
+) -> (String, RemoteMessage) {
+    let submit = wait_for_statement_submit(sent);
+    submitted_sso_request_from_submit(&submit, session)
 }
 
 fn wait_for_statement_submit(sent: &Arc<Mutex<Vec<String>>>) -> String {
@@ -291,9 +329,9 @@ fn wait_for_statement_submit(sent: &Arc<Mutex<Vec<String>>>) -> String {
 
 /// JSON-RPC response sequence for a successful SSO request/response exchange.
 pub(crate) fn sso_success_responses(
-    session: &crate::host_logic::session::SessionInfo,
+    session: &SessionInfo,
     message_id: &str,
-    response: crate::host_logic::sso::messages::RemoteMessage,
+    response: RemoteMessage,
 ) -> Vec<String> {
     let own_subscription_id = format!("own-sub-{message_id}");
     let peer_subscription_id = format!("peer-sub-{message_id}");
@@ -326,48 +364,22 @@ pub(crate) fn sso_success_responses(
     ]
 }
 
-/// JSON-RPC response sequence where the SSO peer sends `Disconnected`.
-pub(crate) fn sso_peer_disconnect_responses(
-    session: &crate::host_logic::session::SessionInfo,
-    message_id: &str,
-) -> Vec<String> {
-    let own_subscription_id = format!("own-sub-{message_id}");
-    let peer_subscription_id = format!("peer-sub-{message_id}");
-    vec![
-        subscribe_ack_frame("truapi:1", &own_subscription_id),
-        subscribe_ack_frame("truapi:2", &peer_subscription_id),
-        statement_submit_ack_frame("truapi:3"),
-        new_statements_frame(
-            &own_subscription_id,
-            vec![sso_statement(
-                session,
-                pairing::SsoStatementData::Response {
-                    request_id: message_id.to_string(),
-                    response_code: 0,
-                },
-                1,
-            )],
-        ),
-        new_statements_frame(
-            &peer_subscription_id,
-            vec![sso_statement(
-                session,
-                pairing::SsoStatementData::Request {
-                    request_id: format!("wallet-disconnect-{message_id}"),
-                    data: vec![
-                        crate::host_logic::sso::messages::RemoteMessage {
-                            message_id: format!("wallet-disconnect-{message_id}"),
-                            data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                                crate::host_logic::sso::messages::v1::RemoteMessage::Disconnected,
-                            ),
-                        }
-                        .encode(),
-                    ],
-                },
-                2,
-            )],
-        ),
-    ]
+/// Dynamic JSON-RPC response script for a successful SSO request/response exchange.
+pub(crate) fn sso_success_response_script(
+    session: &SessionInfo,
+    response: RemoteMessage,
+) -> SsoResponseScript {
+    SsoResponseScript::Success {
+        session: session.clone(),
+        response,
+    }
+}
+
+/// Dynamic JSON-RPC response script where the SSO peer sends `Disconnected`.
+pub(crate) fn sso_peer_disconnect_response_script(session: &SessionInfo) -> SsoResponseScript {
+    SsoResponseScript::PeerDisconnect {
+        session: session.clone(),
+    }
 }
 
 /// JSON-RPC response sequence for the background peer-disconnect monitor.
@@ -720,6 +732,14 @@ impl PlatformCoreStorage for StubPlatform {
                 .lock()
                 .expect("session write list mutex poisoned")
                 .push(value);
+            let hook = self
+                .on_auth_session_write
+                .lock()
+                .expect("auth session write hook mutex poisoned")
+                .clone();
+            if let Some(hook) = hook {
+                hook();
+            }
             return Ok(());
         }
         if let Some(reason) = self.local_storage_error {
@@ -823,12 +843,21 @@ impl PlatformFeatures for StubPlatform {
 struct RecordingConnection {
     sent: Arc<Mutex<Vec<String>>>,
     responses: Vec<String>,
+    sso_response_script: Option<SsoResponseScript>,
     auth_states: Arc<Mutex<Vec<AuthState>>>,
     pairing_success_response: bool,
     pairing_success_via_query: bool,
 }
 
 async fn wait_for_statement_subscribe_id(sent: Arc<Mutex<Vec<String>>>, index: usize) -> String {
+    wait_for_rpc_method_id(sent, "statement_subscribeStatement", index).await
+}
+
+async fn wait_for_rpc_method_id(
+    sent: Arc<Mutex<Vec<String>>>,
+    method: &str,
+    index: usize,
+) -> String {
     for _ in 0..100 {
         let ids = sent
             .lock()
@@ -836,7 +865,7 @@ async fn wait_for_statement_subscribe_id(sent: Arc<Mutex<Vec<String>>>, index: u
             .iter()
             .filter_map(|request| {
                 let value: serde_json::Value = serde_json::from_str(request).ok()?;
-                (value.get("method")?.as_str()? == "statement_subscribeStatement")
+                (value.get("method")?.as_str()? == method)
                     .then(|| value.get("id")?.as_str().map(ToString::to_string))?
             })
             .collect::<Vec<_>>();
@@ -845,7 +874,126 @@ async fn wait_for_statement_subscribe_id(sent: Arc<Mutex<Vec<String>>>, index: u
         }
         futures_timer::Delay::new(Duration::from_millis(1)).await;
     }
-    panic!("statement_subscribeStatement request {index} was not issued");
+    panic!("{method} request {index} was not issued");
+}
+
+fn retarget_sso_response(mut response: RemoteMessage, message_id: &str) -> RemoteMessage {
+    response.message_id = format!("wallet-{message_id}");
+    match &mut response.data {
+        RemoteMessageData::V1(v1::RemoteMessage::SignResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        RemoteMessageData::V1(v1::RemoteMessage::SignRawLegacyResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        RemoteMessageData::V1(v1::RemoteMessage::CreateTransactionResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        _ => {}
+    }
+    response
+}
+
+fn sso_scripted_responses(
+    sent: Arc<Mutex<Vec<String>>>,
+    script: SsoResponseScript,
+) -> BoxStream<'static, String> {
+    Box::pin(stream::unfold(0, move |state| {
+        let sent = sent.clone();
+        let script = script.clone();
+        async move {
+            match state {
+                0 => {
+                    let id = wait_for_statement_subscribe_id(sent.clone(), 0).await;
+                    Some((subscribe_ack_frame(&id, "own-sub"), 1))
+                }
+                1 => {
+                    let id = wait_for_statement_subscribe_id(sent.clone(), 1).await;
+                    Some((subscribe_ack_frame(&id, "peer-sub"), 2))
+                }
+                2 => {
+                    let id = wait_for_rpc_method_id(sent.clone(), "statement_submit", 0).await;
+                    Some((statement_submit_ack_frame(&id), 3))
+                }
+                3 => match &script {
+                    SsoResponseScript::Success { session, .. }
+                    | SsoResponseScript::PeerDisconnect { session } => {
+                        let (statement_request_id, _) = submitted_sso_request(&sent, session);
+                        Some((
+                            new_statements_frame(
+                                "own-sub",
+                                vec![sso_statement(
+                                    session,
+                                    pairing::SsoStatementData::Response {
+                                        request_id: statement_request_id,
+                                        response_code: 0,
+                                    },
+                                    1,
+                                )],
+                            ),
+                            4,
+                        ))
+                    }
+                },
+                4 => match script {
+                    SsoResponseScript::Success { session, response } => {
+                        let (_, request) = submitted_sso_request(&sent, &session);
+                        let response = retarget_sso_response(response, &request.message_id);
+                        Some((
+                            new_statements_frame(
+                                "peer-sub",
+                                vec![sso_statement(
+                                    &session,
+                                    pairing::SsoStatementData::Request {
+                                        request_id: format!(
+                                            "wallet-response-{}",
+                                            request.message_id
+                                        ),
+                                        data: vec![response.encode()],
+                                    },
+                                    2,
+                                )],
+                            ),
+                            5,
+                        ))
+                    }
+                    SsoResponseScript::PeerDisconnect { session } => {
+                        let (_, request) = submitted_sso_request(&sent, &session);
+                        let message_id = format!("wallet-disconnect-{}", request.message_id);
+                        Some((
+                            new_statements_frame(
+                                "peer-sub",
+                                vec![sso_statement(
+                                    &session,
+                                    pairing::SsoStatementData::Request {
+                                        request_id: message_id.clone(),
+                                        data: vec![
+                                            RemoteMessage {
+                                                message_id,
+                                                data: RemoteMessageData::V1(
+                                                    v1::RemoteMessage::Disconnected,
+                                                ),
+                                            }
+                                            .encode(),
+                                        ],
+                                    },
+                                    2,
+                                )],
+                            ),
+                            5,
+                        ))
+                    }
+                },
+                _ => futures::future::pending().await,
+            }
+        }
+    }))
 }
 
 impl JsonRpcConnection for RecordingConnection {
@@ -924,6 +1072,9 @@ impl JsonRpcConnection for RecordingConnection {
                 }
             }));
         }
+        if let Some(script) = self.sso_response_script.clone() {
+            return sso_scripted_responses(self.sent.clone(), script);
+        }
         if self.responses.is_empty() {
             Box::pin(futures::stream::pending())
         } else {
@@ -991,6 +1142,7 @@ impl ChainProvider for StubPlatform {
         Ok(Box::new(RecordingConnection {
             sent: self.sent_rpc.clone(),
             responses: self.rpc_responses.clone(),
+            sso_response_script: self.sso_response_script.clone(),
             auth_states: self.auth_states.clone(),
             pairing_success_response: self.pairing_success_response,
             pairing_success_via_query: self.pairing_success_via_query,
@@ -1032,6 +1184,13 @@ impl UserConfirmation for StubPlatform {
             ),
             UserConfirmationReview::AccountAlias(_) => {
                 (self.account_alias_error, self.account_alias_confirmed)
+            }
+            UserConfirmationReview::AccountAccess(review) => {
+                self.account_access_reviews
+                    .lock()
+                    .expect("account access review list mutex poisoned")
+                    .push(review);
+                (self.account_access_error, self.account_access_confirmed)
             }
             UserConfirmationReview::IdentityDisclosure(_) => {
                 self.identity_disclosure_calls

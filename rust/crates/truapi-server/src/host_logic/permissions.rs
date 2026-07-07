@@ -163,13 +163,12 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
         if let Some(cached) = peek_stored(self.storage, key.clone()).await? {
             return Ok(cached.into());
         }
-        // Only a genuine user authorization is persisted. A prompt-callback error is
-        // transient (UI unavailable, IPC timeout), not a denial, so fail closed
-        // for this call but do not cache it — the next request re-prompts rather
-        // than locking the capability out permanently with no revoke path.
+        // Only a genuine user authorization is persisted. A prompt-callback
+        // error is transient (dismissed UI, unavailable UI, IPC timeout), not
+        // a denial, so leave the authorization ask/default.
         let authorization = match self.prompt.device_permission(permission).await {
             Ok(HostDevicePermissionResponse { granted }) => granted.into(),
-            Err(_) => return Ok(PermissionAuthorizationStatus::Denied),
+            Err(_) => return Ok(PermissionAuthorizationStatus::NotDetermined),
         };
         self.persist_decision(key, authorization).await
     }
@@ -184,11 +183,11 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
         if let Some(cached) = peek_stored(self.storage, key.clone()).await? {
             return Ok(cached.into());
         }
-        // See `check_or_prompt_device`: persist only a genuine user decision; a
-        // transient callback error fails closed for this call without caching.
+        // See `check_or_prompt_device`: persist only a genuine user decision;
+        // transient callback errors leave the authorization ask/default.
         let authorization = match self.prompt.remote_permission(request).await {
             Ok(RemotePermissionResponse { granted }) => granted.into(),
-            Err(_) => return Ok(PermissionAuthorizationStatus::Denied),
+            Err(_) => return Ok(PermissionAuthorizationStatus::NotDetermined),
         };
         self.persist_decision(key, authorization).await
     }
@@ -665,25 +664,46 @@ mod tests {
     }
 
     #[test]
-    fn prompt_failure_denies_without_persisting() {
+    fn prompt_failure_stays_not_determined_without_persisting() {
         let storage = MemStorage::default();
         let prompt = FailingPrompt;
         let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
-        let decision = futures::executor::block_on(
+        let device_decision = futures::executor::block_on(
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
         )
         .unwrap();
-        assert_eq!(decision, PermissionAuthorizationStatus::Denied);
+        assert_eq!(
+            device_decision,
+            PermissionAuthorizationStatus::NotDetermined
+        );
 
-        // A transient callback error is fail-closed for this call but NOT
-        // cached, so peek still sees no authorization and the next request
-        // re-prompts rather than permanently locking out the capability.
-        let cached =
+        let remote_request = RemotePermissionRequest {
+            permission: RemotePermission::ChainSubmit,
+        };
+        let remote_decision =
+            futures::executor::block_on(service.check_or_prompt_remote(remote_request.clone()))
+                .unwrap();
+        assert_eq!(
+            remote_decision,
+            PermissionAuthorizationStatus::NotDetermined
+        );
+
+        // A transient callback error is not cached, so peek still sees no
+        // authorization and the next request re-prompts rather than
+        // permanently locking out the capability.
+        let cached_device =
             futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
                 .unwrap();
         assert_eq!(
-            cached,
+            cached_device,
+            PermissionAuthorizationStatus::NotDetermined,
+            "a transient prompt error must not be persisted"
+        );
+        let cached_remote =
+            futures::executor::block_on(service.peek_remote(&remote_request)).unwrap();
+        assert_eq!(
+            cached_remote,
             PermissionAuthorizationStatus::NotDetermined,
             "a transient prompt error must not be persisted"
         );

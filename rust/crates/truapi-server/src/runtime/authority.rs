@@ -20,6 +20,7 @@ use truapi::{CallContext, CallError, CancellationReason};
 use truapi_platform::ProductContext;
 
 use crate::host_logic::session::{SessionInfo, SessionState};
+use crate::host_logic::statement_store::statement_public_key_from_secret;
 
 /// Snapshot of an account-authority session selected by the authority.
 ///
@@ -164,6 +165,30 @@ pub(crate) enum CreateTransactionAuthorityRequest {
     },
 }
 
+/// Statement-store allowance signing material held by the authority layer.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct StatementStoreAllowanceKey {
+    pub(crate) secret: [u8; 64],
+    pub(crate) public_key: [u8; 32],
+}
+
+impl StatementStoreAllowanceKey {
+    pub(crate) fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, AuthorityError> {
+        let secret: [u8; 64] =
+            secret
+                .try_into()
+                .map_err(|secret: Vec<u8>| AuthorityError::Unavailable {
+                    reason: format!(
+                        "statement-store allowance key must be 64 bytes, got {}",
+                        secret.len()
+                    ),
+                })?;
+        let public_key = statement_public_key_from_secret(secret)
+            .map_err(|reason| AuthorityError::Unavailable { reason })?;
+        Ok(Self { secret, public_key })
+    }
+}
+
 /// Host-level account authority used by product runtimes.
 ///
 /// Pairing hosts implement this by forwarding authority requests to a paired
@@ -230,6 +255,23 @@ pub(crate) trait ProductAuthority: Send + Sync {
         product_id: String,
         request: HostRequestResourceAllocationRequest,
     ) -> Result<HostRequestResourceAllocationResponse, AuthorityError>;
+
+    /// Return statement-store allowance key material for the calling product.
+    async fn statement_store_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError>;
+
+    /// Sign exact statement-store proof bytes with a product-derived account.
+    async fn sign_statement_store_product_payload(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        account: ProductAccountId,
+        payload: Vec<u8>,
+    ) -> Result<[u8; 64], AuthorityError>;
 
     /// Derive product-scoped entropy for a connected session.
     fn derive_entropy(

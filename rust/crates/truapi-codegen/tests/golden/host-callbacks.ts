@@ -32,6 +32,21 @@ import type {
 } from "@parity/truapi";
 
 /**
+ * Review shown before a product asks to access another product account.
+ */
+export interface AccountAccessReview {
+  /**
+   * Product currently handling the request.
+   */
+  requestingProductId: string;
+
+  /**
+   * Product whose account is being requested.
+   */
+  targetProductId: string;
+}
+
+/**
  * Review shown before a product asks to alias another product account.
  */
 export interface AccountAliasReview {
@@ -234,7 +249,16 @@ export type UserConfirmationReview =
   /**
    * Submit a preimage to the host-selected backend.
    */
-  | { tag: "PreimageSubmit"; value: PreimageSubmitReview };
+  | { tag: "PreimageSubmit"; value: PreimageSubmitReview }
+  /**
+   * Allow a product to access another product account.
+   */
+  | { tag: "AccountAccess"; value: AccountAccessReview };
+
+/**
+ * Review shown before a product asks to access another product account.
+ */
+export const AccountAccessReview: S.Codec<AccountAccessReview> = S.lazy((): S.Codec<AccountAccessReview> => S.Struct({requestingProductId: S.str, targetProductId: S.str}) as S.Codec<AccountAccessReview>);
 
 /**
  * Review shown before a product asks to alias another product account.
@@ -305,7 +329,7 @@ export const SignRawReview: S.Codec<SignRawReview> = S.lazy((): S.Codec<SignRawR
 /**
  * Review shown before a user-confirmed core action continues.
  */
-export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy((): S.Codec<UserConfirmationReview> => S.TaggedUnion({SignPayload: SignPayloadReview, SignRaw: SignRawReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: HostRequestResourceAllocationRequest, PreimageSubmit: PreimageSubmitReview}));
+export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy((): S.Codec<UserConfirmationReview> => S.TaggedUnion({SignPayload: SignPayloadReview, SignRaw: SignRawReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: HostRequestResourceAllocationRequest, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview}));
 
 /**
  * Host auth UI driven by core-owned `AuthState` transitions.
