@@ -17,6 +17,7 @@ use core::task::{Context, Poll};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
@@ -216,10 +217,18 @@ impl ChainRuntime {
         let cleanup_runtime = self.clone();
         let cleanup_genesis_hash = request.genesis_hash.clone();
         let cleanup_follow_id = follow_subscription_id.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let setup_cancelled = cancelled.clone();
+        let cleanup_cancelled = cancelled.clone();
 
         let fut = async move {
             if runtime
-                .start_follow(follow_subscription_id, request, Some(tx.clone()))
+                .start_follow(
+                    follow_subscription_id,
+                    request,
+                    Some(tx.clone()),
+                    setup_cancelled,
+                )
                 .await
                 .is_err()
             {
@@ -231,6 +240,7 @@ impl ChainRuntime {
         ManagedSubscription::new(
             rx.boxed(),
             Some(Box::new(move || {
+                cleanup_cancelled.store(true, Ordering::SeqCst);
                 cleanup_runtime.cleanup_follow(&cleanup_genesis_hash, &cleanup_follow_id);
             })),
         )
@@ -541,14 +551,30 @@ impl ChainRuntime {
         local_follow_id: String,
         request: RemoteChainHeadFollowRequest,
         sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+        cancelled: Arc<AtomicBool>,
     ) -> Result<(), RuntimeFailure> {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         let connection = self
             .connection_for(FOLLOW_METHOD, &request.genesis_hash)
             .await?;
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         // Record this subscriber's sender before kicking off (or joining) the
         // single-flight setup so events route to it regardless of which caller
         // wins the setup.
-        connection.register_follow_intent(&local_follow_id, request.with_runtime, sender);
+        connection.register_follow_intent(
+            &local_follow_id,
+            request.with_runtime,
+            sender,
+            cancelled,
+        );
+        if connection.follow_cancelled_or_missing(&local_follow_id) {
+            connection.unfollow(&local_follow_id);
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         connection
             .ensure_remote_follow(local_follow_id, request.with_runtime)
             .await?;
@@ -642,12 +668,14 @@ impl ChainConnection {
         local_follow_id: &str,
         with_runtime: bool,
         sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+        cancelled: Arc<AtomicBool>,
     ) {
         let mut follows = self.follows.lock().unwrap();
         match follows.get_mut(local_follow_id) {
             Some(follow) => {
                 if sender.is_some() {
                     follow.sender = sender;
+                    follow.cancelled = cancelled;
                 }
             }
             None => {
@@ -658,9 +686,17 @@ impl ChainConnection {
                         remote_subscription_id: None,
                         abort: None,
                         sender,
+                        cancelled,
                     },
                 );
             }
+        }
+    }
+
+    fn follow_cancelled_or_missing(&self, local_follow_id: &str) -> bool {
+        match self.follows.lock().unwrap().get(local_follow_id) {
+            Some(follow) => follow.cancelled.load(Ordering::SeqCst),
+            None => true,
         }
     }
 
@@ -674,6 +710,9 @@ impl ChainConnection {
         local_follow_id: String,
         with_runtime: bool,
     ) -> Result<String, RuntimeFailure> {
+        if self.follow_cancelled_or_missing(&local_follow_id) {
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         if let Some(remote_follow_id) = self.remote_follow_id(&local_follow_id) {
             return Ok(remote_follow_id);
         }
@@ -751,17 +790,10 @@ impl ChainConnection {
         local_follow_id: String,
         with_runtime: bool,
     ) -> Result<String, RuntimeFailure> {
-        self.follows
-            .lock()
-            .unwrap()
-            .entry(local_follow_id.clone())
-            .or_insert_with(|| FollowState {
-                with_runtime,
-                remote_subscription_id: None,
-                abort: None,
-                sender: None,
-            });
-
+        if self.follow_cancelled_or_missing(&local_follow_id) {
+            self.remove_follow(&local_follow_id);
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         let mut follow = self
             .methods
             .chainhead_v1_follow(with_runtime)
@@ -776,6 +808,11 @@ impl ChainConnection {
                 RuntimeFailure::host_failure(FOLLOW_METHOD, "missing follow subscription id")
             })?
             .to_string();
+        if self.follow_cancelled_or_missing(&local_follow_id) {
+            self.remove_follow(&local_follow_id);
+            drop(follow);
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
 
         let (abort, abort_registration) = AbortHandle::new_pair();
         let connection = self.clone();
@@ -894,6 +931,7 @@ struct FollowState {
     remote_subscription_id: Option<String>,
     abort: Option<AbortHandle>,
     sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+    cancelled: Arc<AtomicBool>,
 }
 
 /// Subscription wrapper that runs an `on_drop` cleanup when the stream is
@@ -1169,9 +1207,7 @@ async fn wait_for_chain_head_best_hash_after_initialization(
                     candidate = Some(block_hash);
                 }
                 Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return candidate.ok_or_else(|| {
-                        format!("{label} follow stopped before best block")
-                    });
+                    return Err(format!("{label} follow stopped before best block"));
                 }
                 _ => {}
             },
@@ -1283,7 +1319,7 @@ mod tests {
     }
 
     #[test]
-    fn chain_head_best_hash_uses_new_block_before_stale_finalized_fallback() {
+    fn chain_head_best_hash_errors_on_stop_before_best_block() {
         let mut follow = stream::iter(vec![
             RemoteChainHeadFollowItem::Initialized {
                 finalized_block_hashes: vec![vec![0x01]],
@@ -1298,15 +1334,15 @@ mod tests {
         ])
         .boxed();
 
-        let hash = futures::executor::block_on(wait_for_chain_head_best_hash(
+        let err = futures::executor::block_on(wait_for_chain_head_best_hash(
             &mut follow,
             "test chain",
             Duration::from_secs(10),
             Duration::from_secs(2),
         ))
-        .expect("new block hash should resolve");
+        .expect_err("follow stop should be terminal before best block");
 
-        assert_eq!(hash, vec![0x03]);
+        assert_eq!(err, "test chain follow stopped before best block");
     }
 
     #[derive(Default)]
