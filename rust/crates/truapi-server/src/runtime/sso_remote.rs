@@ -26,7 +26,7 @@ use serde_json::Value;
 use subxt_rpcs::RpcClient;
 use subxt_rpcs::client::RpcSubscription;
 use tracing::instrument;
-use truapi::{CallContext, CancellationReason, CancellationToken};
+use truapi::{CancellationReason, CancellationToken};
 
 /// Host-spec B.3.3 recommends seven-day statement expiry for session traffic:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L143-L145>
@@ -50,7 +50,7 @@ struct SessionDisconnectsInner {
     waiters: Vec<(u64, SsoSessionKey, oneshot::Sender<String>)>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct SsoSessionKey {
     own: [u8; 32],
     peer: [u8; 32],
@@ -172,6 +172,13 @@ impl CancelError {
 
     pub(super) fn remote_message_id(&self) -> &str {
         &self.remote_message_id
+    }
+
+    pub(super) fn with_remote_message_id(self, remote_message_id: &str) -> Self {
+        Self {
+            reason: self.reason,
+            remote_message_id: remote_message_id.to_string(),
+        }
     }
 }
 
@@ -407,14 +414,9 @@ fn format_timeout_duration(duration: Duration) -> String {
     }
 }
 
-/// Stable message id for an SSO request: the wire request id when present,
-/// otherwise a fixed per-action fallback.
-pub(super) fn sso_message_id(cx: &CallContext, action: impl Display) -> String {
-    if cx.request_id().is_empty() {
-        format!("truapi:sso:{action}")
-    } else {
-        cx.request_id().to_string()
-    }
+/// Fresh opaque message id for one SSO request.
+pub(super) fn sso_message_id() -> String {
+    nanoid::nanoid!(8)
 }
 
 pub(super) fn fresh_statement_expiry() -> u64 {
@@ -427,6 +429,24 @@ mod tests {
     use super::*;
     use crate::test_support::sso_session_info;
     use futures::stream;
+
+    #[test]
+    fn sso_message_id_uses_short_opaque_nanoids() {
+        let first = sso_message_id();
+        let second = sso_message_id();
+
+        assert_eq!(first.len(), 8);
+        assert_eq!(second.len(), 8);
+        assert_ne!(first, "p:1");
+        assert_ne!(second, "p:1");
+        assert_ne!(first, second);
+        assert!(first.bytes().all(is_nanoid_safe_byte));
+        assert!(second.bytes().all(is_nanoid_safe_byte));
+    }
+
+    fn is_nanoid_safe_byte(value: u8) -> bool {
+        value.is_ascii_alphanumeric() || value == b'_' || value == b'-'
+    }
 
     #[test]
     fn sso_remote_response_waiter_reports_timeout_cancellation() {
