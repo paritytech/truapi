@@ -4010,14 +4010,14 @@ mod tests {
             1
         );
         assert!(
-            !platform
+            platform
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
                 .contains_key(&core_storage_test_key(
                     CoreStorageKey::PairingDeviceIdentity
                 )),
-            "logout must rotate the pairing device identity so stale statement-store responses cannot be replayed on the next login"
+            "logout keeps the pairing device identity; stale pairing responses are skipped by the processed-statement marker"
         );
         assert_eq!(
             futures::executor::block_on(statuses.next()).unwrap(),

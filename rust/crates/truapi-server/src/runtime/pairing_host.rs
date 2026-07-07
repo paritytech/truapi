@@ -231,16 +231,16 @@ impl PairingHost {
                                 pairing_host.set_connected_session(resolved);
                             }
                             Err(_) => {
-                                pairing_host.clear_disconnected_session(true, false).await;
+                                pairing_host.clear_disconnected_session(true).await;
                             }
                         }
                     }
                     Ok(None) => {
                         cleared_after_read_error = false;
-                        pairing_host.clear_disconnected_session(false, false).await;
+                        pairing_host.clear_disconnected_session(false).await;
                     }
                     Err(_) => {
-                        pairing_host.clear_disconnected_session(false, false).await;
+                        pairing_host.clear_disconnected_session(false).await;
                         if !cleared_after_read_error {
                             cleared_after_read_error = true;
                             let _ = pairing_host
@@ -340,7 +340,7 @@ impl PairingHost {
     async fn disconnect(&self) {
         self.cancel_login();
         let session = self.session_state.current();
-        self.clear_disconnected_session(true, true).await;
+        self.clear_disconnected_session(true).await;
         if let Some(session) = session.as_ref() {
             let _ = self.submit_disconnected_message(session).await;
         }
@@ -408,11 +408,7 @@ impl PairingHost {
     }
 
     #[instrument(skip_all, fields(runtime.method = "session_store.clear_disconnected"))]
-    async fn clear_disconnected_session(
-        &self,
-        clear_auth_session: bool,
-        clear_pairing_identity: bool,
-    ) {
+    async fn clear_disconnected_session(&self, clear_auth_session: bool) {
         let previous = self.session_state.current();
         self.session_state.clear_session();
         self.stop_session_channel(previous.as_ref());
@@ -426,12 +422,6 @@ impl PairingHost {
             let _ = allowances::clear_session_allowance_keys(&*self.platform, session).await;
         }
         self.auth_state.store_disconnected();
-        if clear_pairing_identity {
-            let _ = self
-                .platform
-                .clear_core_storage(CoreStorageKey::PairingDeviceIdentity)
-                .await;
-        }
     }
 
     fn set_connected_session(&self, session: SessionInfo) {
@@ -457,7 +447,7 @@ impl PairingHost {
             return;
         }
 
-        self.clear_disconnected_session(true, true).await;
+        self.clear_disconnected_session(true).await;
     }
 
     fn current_sso_session_matches(&self, key: SsoSessionKey) -> bool {

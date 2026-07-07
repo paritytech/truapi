@@ -445,6 +445,8 @@ pub enum CoreStorageKey {
         /// Stable host-derived SSO session id.
         session_id: String,
     },
+    /// Last processed SSO pairing response statement for the pairing device.
+    LastProcessedPairingStatement,
 }
 
 /// Host-private persistence for core-owned state.

@@ -109,7 +109,11 @@ export type CoreStorageKey =
   /**
    * Persisted allowance-slot keys for one paired SSO session.
    */
-  | { tag: "AllowanceKeys"; value: { sessionId: string } };
+  | { tag: "AllowanceKeys"; value: { sessionId: string } }
+  /**
+   * Last processed SSO pairing response statement for the pairing device.
+   */
+  | { tag: "LastProcessedPairingStatement"; value?: undefined };
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -283,7 +287,7 @@ export const AuthState: S.Codec<AuthState> = S.lazy((): S.Codec<AuthState> => S.
  * Storage is host-local; `storage.md` records the current status quo:
  * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
-export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>, AllowanceKeys: S.Struct({sessionId: S.str}) as S.Codec<{ sessionId: string }>}));
+export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>, AllowanceKeys: S.Struct({sessionId: S.str}) as S.Codec<{ sessionId: string }>, LastProcessedPairingStatement: S._void}));
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.

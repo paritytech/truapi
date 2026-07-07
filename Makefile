@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm wasm-crypto-test dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
+.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -71,6 +71,24 @@ check: ## Full verification suite (build, fmt, clippy, test, TS tests, playgroun
 	cd $(TRUAPI_PKG) && npm run build && npm test
 	cd $(JS_PACKAGES)/truapi-host-wasm && npm install --no-fund --no-audit && npm test
 	cd $(PLAYGROUND) && yarn build && yarn lint
+
+clean: ## Remove local build/test artifacts without deleting dependencies.
+	cargo clean
+	rm -rf \
+		$(TRUAPI_PKG)/dist \
+		$(TRUAPI_PKG)/tsconfig.tsbuildinfo \
+		$(HOST_WASM_PKG)/dist \
+		$(HOST_WASM_PKG)/tsconfig.tsbuildinfo \
+		$(PLAYGROUND)/.next \
+		$(PLAYGROUND)/out \
+		$(PLAYGROUND)/test-results \
+		$(PLAYGROUND)/tsconfig.tsbuildinfo \
+		$(PLAYGROUND)/tests/tsconfig.tsbuildinfo \
+		$(DOTLI)/.turbo \
+		$(DOTLI)/apps/host/dist \
+		$(DOTLI)/apps/protocol/dist \
+		$(DOTLI)/apps/sandbox/dist \
+		$(DOTLI)/test-results
 
 playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.
 	cd $(TRUAPI_PKG) && npm run build
