@@ -1,7 +1,7 @@
 //! SSO statement-store channel to the paired remote signing host.
 
 use super::super::authority::{
-    AuthorityCancelError, AuthorityError, CreateTransactionAuthorityRequest,
+    AuthorityCancelError, AuthorityError, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
     SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
 };
 use super::super::sso_remote::{
@@ -139,6 +139,7 @@ impl PairingHost {
                 .notify(sso, SSO_LOCAL_DISCONNECT_REASON);
         }
         self.clear_statement_store_allowance_keys(session);
+        self.clear_bulletin_allowance_keys(session);
         self.stop_disconnect_monitor();
     }
 
@@ -400,7 +401,8 @@ impl PairingHost {
             });
         };
         let outcomes = response.payload.map_err(remote_authority_error)?;
-        self.cache_statement_store_allowance_outcomes(session, &product_id, &outcomes)?;
+        self.cache_allowance_outcomes(session, &product_id, &outcomes)
+            .await?;
         Ok(latest::HostRequestResourceAllocationResponse {
             outcomes: outcomes.into_iter().map(Into::into).collect(),
         })
@@ -412,7 +414,10 @@ impl PairingHost {
         session: &SessionInfo,
         product_id: String,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
-        if let Some(cached) = self.cached_statement_store_allowance_key(session, &product_id)? {
+        if let Some(cached) = self
+            .cached_statement_store_allowance_key(session, &product_id)
+            .await?
+        {
             return Ok(cached);
         }
 
@@ -442,7 +447,10 @@ impl PairingHost {
         match outcome {
             SsoAllocationOutcome::Allocated(SsoAllocatedResource::StatementStoreAllowance {
                 slot_account_key,
-            }) => self.cache_statement_store_allowance_key(session, &product_id, slot_account_key),
+            }) => {
+                self.cache_statement_store_allowance_key(session, &product_id, slot_account_key)
+                    .await
+            }
             SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
                 reason: format!(
                     "Unexpected statement-store allowance response resource: {other:?}"
@@ -455,22 +463,87 @@ impl PairingHost {
         }
     }
 
-    fn cache_statement_store_allowance_outcomes(
+    pub(super) async fn remote_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        if let Some(cached) = self
+            .cached_bulletin_allowance_key(session, &product_id)
+            .await?
+        {
+            return Ok(cached);
+        }
+
+        let message_id = sso_message_id();
+        let message = resource_allocation_message(
+            message_id,
+            product_id.clone(),
+            vec![latest::AllocatableResource::BulletinAllowance],
+            OnExistingAllowancePolicy::Ignore,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::ResourceAllocation(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for bulletin allowance request".to_string(),
+            });
+        };
+        let mut outcomes = response
+            .payload
+            .map_err(remote_authority_error)?
+            .into_iter();
+        let outcome = outcomes.next().ok_or_else(|| AuthorityError::Unknown {
+            reason: "Empty bulletin allowance response".to_string(),
+        })?;
+        match outcome {
+            SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
+                slot_account_key,
+            }) => {
+                self.cache_bulletin_allowance_key(session, &product_id, slot_account_key)
+                    .await
+            }
+            SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
+                reason: format!("Unexpected bulletin allowance response resource: {other:?}"),
+            }),
+            SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
+            SsoAllocationOutcome::NotAvailable => Err(AuthorityError::Unavailable {
+                reason: "bulletin allowance is not available".to_string(),
+            }),
+        }
+    }
+
+    async fn cache_allowance_outcomes(
         &self,
         session: &SessionInfo,
         product_id: &str,
         outcomes: &[SsoAllocationOutcome],
     ) -> Result<(), AuthorityError> {
         for outcome in outcomes {
-            if let SsoAllocationOutcome::Allocated(
-                SsoAllocatedResource::StatementStoreAllowance { slot_account_key },
-            ) = outcome
-            {
-                self.cache_statement_store_allowance_key(
-                    session,
-                    product_id,
-                    slot_account_key.clone(),
-                )?;
+            if let SsoAllocationOutcome::Allocated(resource) = outcome {
+                match resource {
+                    SsoAllocatedResource::StatementStoreAllowance { slot_account_key } => {
+                        self.cache_statement_store_allowance_key(
+                            session,
+                            product_id,
+                            slot_account_key.clone(),
+                        )
+                        .await?;
+                    }
+                    SsoAllocatedResource::BulletinAllowance { slot_account_key } => {
+                        self.cache_bulletin_allowance_key(
+                            session,
+                            product_id,
+                            slot_account_key.clone(),
+                        )
+                        .await?;
+                    }
+                    SsoAllocatedResource::SmartContractAllowance
+                    | SsoAllocatedResource::AutoSigning { .. } => {}
+                }
             }
         }
         Ok(())

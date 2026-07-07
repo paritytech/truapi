@@ -6,9 +6,9 @@ use std::sync::Mutex;
 use futures::stream::{self, BoxStream};
 use truapi::v01;
 use truapi_platform::{
-    AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, HostInfo,
-    JsonRpcConnection, Navigation, Notifications, PairingHostConfig, Permissions, PlatformInfo,
-    PreimageHost, ProductContext, ProductStorage, ThemeHost, UserConfirmation,
+    AuthPresenter, BulletinAllowanceKey, ChainProvider, CoreStorage, CoreStorageKey, Features,
+    HostInfo, JsonRpcConnection, Navigation, Notifications, PairingHostConfig, Permissions,
+    PlatformInfo, PreimageHost, ProductContext, ProductStorage, ThemeHost, UserConfirmation,
     UserConfirmationReview,
 };
 use truapi_server::frame::ProtocolMessage;
@@ -190,7 +190,11 @@ impl ThemeHost for WireShapePlatform {
 
 #[truapi_platform::async_trait]
 impl PreimageHost for WireShapePlatform {
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+    async fn submit_preimage(
+        &self,
+        value: Vec<u8>,
+        _bulletin_allowance_key: BulletinAllowanceKey,
+    ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         Ok(value)
     }
     fn lookup_preimage(

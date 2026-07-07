@@ -125,7 +125,11 @@ fn emit_host_callbacks(
         out.push('\n');
     }
 
-    for type_def in &definition.types {
+    for type_def in definition
+        .types
+        .iter()
+        .filter(|ty| !is_callback_byte_type_name(&ty.name))
+    {
         let rendered = match &type_def.kind {
             TypeDefKind::Enum(_) => emit_enum_type(type_def)?,
             _ => emit_struct_interface(type_def)?,
@@ -702,6 +706,7 @@ fn raw_param_ts(
     local_codec_types: &BTreeSet<String>,
 ) -> String {
     match ty {
+        TypeRef::Named { name, .. } if is_callback_byte_type_name(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } if codec_types.contains(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } if local_codec_types.contains(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } => name.clone(),
@@ -726,6 +731,7 @@ fn raw_ok_ts(
     local_codec_types: &BTreeSet<String>,
 ) -> String {
     match ty {
+        TypeRef::Named { name, .. } if is_callback_byte_type_name(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } if codec_types.contains(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } if local_codec_types.contains(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } => name.clone(),
@@ -807,6 +813,7 @@ fn adapter_arg(
 ) -> String {
     let name = to_camel_case(&param.name);
     match &param.type_ref {
+        TypeRef::Named { name: ty, .. } if is_callback_byte_type_name(ty) => name,
         TypeRef::Named { name: ty, .. }
             if codec_types.contains(ty) || local_codec_types.contains(ty) =>
         {
@@ -1033,7 +1040,7 @@ fn walk_type_def(
 fn collect_local_from_type(ty: &TypeRef, local: &BTreeSet<String>, out: &mut BTreeSet<String>) {
     match ty {
         TypeRef::Named { name, args } => {
-            if local.contains(name) {
+            if local.contains(name) && !is_callback_byte_type_name(name) {
                 out.insert(name.clone());
             }
             for arg in args {
@@ -1548,6 +1555,9 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
             _ => bail!("Unsupported primitive type `{name}` in host callbacks generation"),
         },
         TypeRef::Named { name, args } => {
+            if is_callback_byte_type_name(name) {
+                return Ok("Uint8Array".to_string());
+            }
             if args.is_empty() {
                 Ok(name.clone())
             } else {
@@ -1583,6 +1593,10 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
         TypeRef::Generic(name) => Ok(name.clone()),
         TypeRef::Unit => Ok("void".to_string()),
     }
+}
+
+fn is_callback_byte_type_name(name: &str) -> bool {
+    name == "BulletinAllowanceKey"
 }
 
 fn render_jsdoc(indent: &str, docs: Option<&str>) -> String {

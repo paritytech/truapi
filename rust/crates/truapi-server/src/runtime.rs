@@ -7,6 +7,7 @@
 //! permission cache layer). Methods with no platform backing return
 //! `CallError::unavailable()`.
 
+mod allowances;
 pub(crate) mod auth_state;
 mod authority;
 mod identity;
@@ -1747,17 +1748,17 @@ impl Preimage for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "preimage.submit"))]
     async fn submit(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: RemotePreimageSubmitRequest,
     ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
         let RemotePreimageSubmitRequest::V1(value) = request;
-        if self.authority.current_session().is_none() {
+        let Some(session) = self.authority.current_session() else {
             return Err(CallError::Domain(RemotePreimageSubmitError::V1(
                 v01::PreimageSubmitError::Unknown {
                     reason: "No active session".to_string(),
                 },
             )));
-        }
+        };
         self.require_remote_permission(
             v01::RemotePermission::PreimageSubmit,
             RemotePreimageSubmitError::V1(v01::PreimageSubmitError::Unknown {
@@ -1786,9 +1787,23 @@ impl Preimage for ProductRuntimeHost {
                 },
             )));
         }
+        let cx = remote_authority_context(cx);
+        let allowance = remote_authority_call(
+            &cx,
+            self.authority
+                .bulletin_allowance_key(&cx, &session, self.product_id()),
+        )
+        .await
+        .map_err(|err| {
+            CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown {
+                    reason: err.reason(),
+                },
+            ))
+        })?;
         self.services
             .platform
-            .submit_preimage(value)
+            .submit_preimage(value, allowance)
             .await
             .map(RemotePreimageSubmitResponse::V1)
             .map_err(|err| CallError::Domain(RemotePreimageSubmitError::V1(err)))
@@ -1868,7 +1883,10 @@ impl Notifications for ProductRuntimeHost {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_logic::sso::messages::{RemoteMessageData, v1};
+    use crate::host_logic::sso::messages::{
+        OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, ResourceAllocationResponse,
+        SsoAllocatableResource, SsoAllocatedResource, SsoAllocationOutcome, v1,
+    };
     use crate::test_support::*;
     use std::sync::Mutex;
     use std::sync::atomic::Ordering;
@@ -2726,12 +2744,93 @@ mod tests {
 
     #[test]
     fn preimage_submit_confirms_and_delegates_to_platform() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        host.test_session_state().set_session(session_info());
+        let session = sso_session_info();
+        let slot_account_key = vec![12; 64];
+        let preimage_submit_allowance_keys = Arc::new(Mutex::new(Vec::new()));
+        let platform = Arc::new(StubPlatform {
+            preimage_submit_allowance_keys: preimage_submit_allowance_keys.clone(),
+            sso_response_script: Some(sso_success_response_script(
+                &session,
+                RemoteMessage {
+                    message_id: "wallet-preimage-allowance".to_string(),
+                    data: RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(
+                        ResourceAllocationResponse {
+                            responding_to: "preimage-submit".to_string(),
+                            payload: Ok(vec![SsoAllocationOutcome::Allocated(
+                                SsoAllocatedResource::BulletinAllowance {
+                                    slot_account_key: slot_account_key.clone(),
+                                },
+                            )]),
+                        },
+                    )),
+                },
+            )),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.test_session_state().set_session(session.clone());
         let cx = CallContext::new();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
         let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
         assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
+        assert_eq!(
+            preimage_submit_allowance_keys
+                .lock()
+                .expect("preimage allowance key list mutex poisoned")
+                .as_slice(),
+            &[slot_account_key]
+        );
+        let message = submitted_remote_message(&platform, &session);
+        match message.data {
+            RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationRequest(request)) => {
+                assert_eq!(
+                    request.resources,
+                    vec![SsoAllocatableResource::BulletinAllowance]
+                );
+                assert_eq!(request.on_existing, OnExistingAllowancePolicy::Ignore);
+            }
+            other => panic!("expected bulletin allowance request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preimage_submit_uses_persisted_bulletin_allowance_key() {
+        let session = sso_session_info();
+        let slot_account_key = vec![34; 64];
+        let preimage_submit_allowance_keys = Arc::new(Mutex::new(Vec::new()));
+        let platform = Arc::new(StubPlatform {
+            preimage_submit_allowance_keys: preimage_submit_allowance_keys.clone(),
+            ..Default::default()
+        });
+        futures::executor::block_on(allowances::write_allowance_key(
+            &*platform,
+            &session,
+            "unknown.dot",
+            allowances::AllowanceResource::Bulletin,
+            slot_account_key.clone(),
+        ))
+        .unwrap();
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+        let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
+        let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
+        assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
+        assert_eq!(
+            preimage_submit_allowance_keys
+                .lock()
+                .expect("preimage allowance key list mutex poisoned")
+                .as_slice(),
+            &[slot_account_key]
+        );
+        assert!(
+            platform
+                .sent_rpc
+                .lock()
+                .expect("rpc list mutex poisoned")
+                .is_empty(),
+            "persisted allowance should not send an SSO resource-allocation request"
+        );
     }
 
     #[test]

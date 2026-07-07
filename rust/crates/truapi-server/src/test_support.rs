@@ -33,7 +33,7 @@ use truapi::v01;
 use truapi::versioned::account::HostAccountGetAliasRequest;
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi_platform::{
-    AccountAccessReview, AuthPresenter, AuthState, ChainProvider,
+    AccountAccessReview, AuthPresenter, AuthState, BulletinAllowanceKey, ChainProvider,
     CoreStorage as PlatformCoreStorage, CoreStorageKey, Features as PlatformFeatures, HostInfo,
     JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
     PairingHostConfig, Permissions as PlatformPermissions, PlatformInfo, PreimageHost,
@@ -116,6 +116,7 @@ pub(crate) struct StubPlatform {
     pub(crate) chain_connect_error: Option<&'static str>,
     pub(crate) chain_connect_pending: bool,
     pub(crate) preimage_submits: Arc<Mutex<Vec<Vec<u8>>>>,
+    pub(crate) preimage_submit_allowance_keys: Arc<Mutex<Vec<Vec<u8>>>>,
     pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
     /// When set, product/core storage reads fail with this reason.
     pub(crate) local_storage_error: Option<&'static str>,
@@ -284,7 +285,7 @@ fn submitted_sso_request_from_submit(
     submit: &str,
     session: &SessionInfo,
 ) -> (String, RemoteMessage) {
-    let value: serde_json::Value = serde_json::from_str(&submit).unwrap();
+    let value: serde_json::Value = serde_json::from_str(submit).unwrap();
     let statement_hex = value["params"][0].as_str().unwrap();
     let statement = hex::decode(statement_hex.strip_prefix("0x").unwrap_or(statement_hex)).unwrap();
     let encrypted = crate::host_logic::statement_store::decode_statement_data(&statement)
@@ -1228,11 +1229,19 @@ impl ThemeHost for StubPlatform {
 
 #[truapi_platform::async_trait]
 impl PreimageHost for StubPlatform {
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+    async fn submit_preimage(
+        &self,
+        value: Vec<u8>,
+        bulletin_allowance_key: BulletinAllowanceKey,
+    ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         self.preimage_submits
             .lock()
             .expect("preimage submit list mutex poisoned")
             .push(value.clone());
+        self.preimage_submit_allowance_keys
+            .lock()
+            .expect("preimage allowance key list mutex poisoned")
+            .push(bulletin_allowance_key.into_secret_bytes().to_vec());
         Ok(value)
     }
     fn lookup_preimage(

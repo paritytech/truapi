@@ -218,10 +218,17 @@ impl truapi_platform::Permissions for WasmPlatform {
 
 #[truapi_platform::async_trait]
 impl truapi_platform::PreimageHost for WasmPlatform {
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+    async fn submit_preimage(
+        &self,
+        value: Vec<u8>,
+        bulletin_allowance_key: truapi_platform::BulletinAllowanceKey,
+    ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         invoke_bytes_return(
             &self.bridge.submit_preimage,
-            vec![Uint8Array::from(value.as_slice()).into()],
+            vec![
+                Uint8Array::from(value.as_slice()).into(),
+                Uint8Array::from(bulletin_allowance_key.as_secret_bytes()).into(),
+            ],
         )
         .await
         .map_err(|reason| v01::PreimageSubmitError::Unknown { reason })

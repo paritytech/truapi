@@ -440,6 +440,11 @@ pub enum CoreStorageKey {
         /// Permission request whose authorization is being stored.
         request: PermissionAuthorizationRequest,
     },
+    /// Persisted allowance-slot keys for one paired SSO session.
+    AllowanceKeys {
+        /// Stable host-derived SSO session id.
+        session_id: String,
+    },
 }
 
 /// Host-private persistence for core-owned state.
@@ -605,13 +610,66 @@ pub trait ThemeHost: Send + Sync {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<ThemeVariant, GenericError>>;
 }
 
+/// Secret key allocated for Bulletin preimage submission.
+#[derive(Clone, PartialEq, Eq)]
+pub struct BulletinAllowanceKey {
+    secret: [u8; 64],
+}
+
+impl BulletinAllowanceKey {
+    /// Build a Bulletin allowance key from raw secret bytes.
+    pub fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, BulletinAllowanceKeyError> {
+        let secret: [u8; 64] = secret.try_into().map_err(|secret: Vec<u8>| {
+            BulletinAllowanceKeyError::InvalidLength {
+                actual: secret.len(),
+            }
+        })?;
+        Ok(Self { secret })
+    }
+
+    /// Raw secret bytes for bridge and storage adapters.
+    pub fn as_secret_bytes(&self) -> &[u8] {
+        &self.secret
+    }
+
+    /// Consume the wrapper and return raw secret bytes.
+    pub fn into_secret_bytes(self) -> [u8; 64] {
+        self.secret
+    }
+}
+
+impl core::fmt::Debug for BulletinAllowanceKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BulletinAllowanceKey")
+            .field("secret", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Invalid Bulletin allowance key material.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+pub enum BulletinAllowanceKeyError {
+    /// Secret material was not a 64-byte sr25519 secret key.
+    #[display("bulletin allowance key must be 64 bytes, got {actual}")]
+    InvalidLength {
+        /// Actual secret byte length.
+        actual: usize,
+    },
+}
+
+impl core::error::Error for BulletinAllowanceKeyError {}
+
 /// Host preimage backend. The core owns wire mapping and subscription
 /// lifecycle; the host owns the selected backend.
 #[async_trait]
 pub trait PreimageHost: Send + Sync {
     /// Submit the preimage and return its key.
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, PreimageSubmitError> {
-        let _ = value;
+    async fn submit_preimage(
+        &self,
+        value: Vec<u8>,
+        bulletin_allowance_key: BulletinAllowanceKey,
+    ) -> Result<Vec<u8>, PreimageSubmitError> {
+        let _ = (value, bulletin_allowance_key);
         Err(PreimageSubmitError::Unknown {
             reason: "submitPreimage callback not provided by host".to_string(),
         })

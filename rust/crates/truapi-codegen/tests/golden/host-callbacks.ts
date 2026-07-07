@@ -105,7 +105,11 @@ export type CoreStorageKey =
   /**
    * Persisted authorization for one product-scoped permission request.
    */
-  | { tag: "PermissionAuthorization"; value: { productId: string; request: PermissionAuthorizationRequest } };
+  | { tag: "PermissionAuthorization"; value: { productId: string; request: PermissionAuthorizationRequest } }
+  /**
+   * Persisted allowance-slot keys for one paired SSO session.
+   */
+  | { tag: "AllowanceKeys"; value: { sessionId: string } };
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -279,7 +283,7 @@ export const AuthState: S.Codec<AuthState> = S.lazy((): S.Codec<AuthState> => S.
  * Storage is host-local; `storage.md` records the current status quo:
  * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
-export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>}));
+export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>, AllowanceKeys: S.Struct({sessionId: S.str}) as S.Codec<{ sessionId: string }>}));
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -518,7 +522,7 @@ export interface PreimageHost {
   /**
    * Submit the preimage and return its key.
    */
-  submitPreimage?(value: Uint8Array): Promise<Uint8Array>;
+  submitPreimage?(value: Uint8Array, bulletinAllowanceKey: Uint8Array): Promise<Uint8Array>;
 
   /**
    * Emits current value/miss immediately, then future updates.

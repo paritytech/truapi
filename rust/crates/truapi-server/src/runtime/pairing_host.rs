@@ -12,11 +12,12 @@ use std::sync::{Arc, Mutex, Weak};
 use futures::channel::oneshot;
 use sso_channel::SsoDisconnectMonitor;
 
+use super::allowances::{self, AllowanceCacheKey, AllowanceResource};
 use super::auth_state::AuthStateMachine;
 use super::authority::{
-    AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest, ProductAuthority,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
-    authority_session, require_current_session,
+    AuthorityError, AuthoritySession, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
+    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
+    StatementStoreAllowanceKey, authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use super::identity::resolve_session_identity_with_chain;
@@ -86,12 +87,6 @@ struct LoginInFlight {
     waiters: Vec<oneshot::Sender<Result<(), String>>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct StatementStoreAllowanceCacheKey {
-    session: SsoSessionKey,
-    product_id: String,
-}
-
 struct LoginInFlightOwner<'a> {
     host: &'a PairingHost,
     active: bool,
@@ -133,8 +128,8 @@ pub(crate) struct PairingHost {
     disconnect_monitor: Mutex<Option<SsoDisconnectMonitor>>,
     login_in_flight: Mutex<Option<LoginInFlight>>,
     login_generation: Mutex<u64>,
-    statement_store_allowances:
-        Mutex<HashMap<StatementStoreAllowanceCacheKey, StatementStoreAllowanceKey>>,
+    statement_store_allowances: Mutex<HashMap<AllowanceCacheKey, StatementStoreAllowanceKey>>,
+    bulletin_allowances: Mutex<HashMap<AllowanceCacheKey, BulletinAllowanceKey>>,
     /// Self-reference captured by the spawned disconnect-monitor task.
     weak_self: Weak<PairingHost>,
     pub(super) spawner: Spawner,
@@ -157,6 +152,7 @@ impl PairingHost {
             login_in_flight: Mutex::new(None),
             login_generation: Mutex::new(0),
             statement_store_allowances: Mutex::new(HashMap::new()),
+            bulletin_allowances: Mutex::new(HashMap::new()),
             weak_self: weak_self.clone(),
             spawner: services.spawner.clone(),
         })
@@ -426,6 +422,9 @@ impl PairingHost {
                 .clear_core_storage(CoreStorageKey::AuthSession)
                 .await;
         }
+        if let Some(session) = previous.as_ref() {
+            let _ = allowances::clear_session_allowance_keys(&*self.platform, session).await;
+        }
         self.auth_state.store_disconnected();
         if clear_pairing_identity {
             let _ = self
@@ -472,44 +471,132 @@ impl PairingHost {
         require_current_session(&self.session_state, session)
     }
 
-    fn statement_store_allowance_cache_key(
-        session: &SessionInfo,
-        product_id: &str,
-    ) -> Result<StatementStoreAllowanceCacheKey, AuthorityError> {
-        let sso = session.sso.as_ref().ok_or(AuthorityError::Disconnected)?;
-        Ok(StatementStoreAllowanceCacheKey {
-            session: SsoSessionKey::from_session(sso),
-            product_id: product_id.to_string(),
-        })
-    }
-
-    pub(super) fn cache_statement_store_allowance_key(
+    pub(super) async fn cache_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
         product_id: &str,
         slot_account_key: Vec<u8>,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
-        let cache_key = Self::statement_store_allowance_cache_key(session, product_id)?;
         let allowance = StatementStoreAllowanceKey::from_secret_bytes(slot_account_key)?;
-        self.statement_store_allowances
-            .lock()
-            .expect("statement-store allowance cache mutex poisoned")
-            .insert(cache_key, allowance.clone());
+        allowances::write_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::StatementStore,
+            allowance.secret.to_vec(),
+        )
+        .await?;
+        self.remember_statement_store_allowance_key(session, product_id, allowance.clone())?;
         Ok(allowance)
     }
 
-    pub(super) fn cached_statement_store_allowance_key(
+    fn remember_statement_store_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        allowance: StatementStoreAllowanceKey,
+    ) -> Result<(), AuthorityError> {
+        let cache_key =
+            AllowanceCacheKey::new(session, product_id, AllowanceResource::StatementStore)?;
+        self.statement_store_allowances
+            .lock()
+            .expect("statement-store allowance cache mutex poisoned")
+            .insert(cache_key, allowance);
+        Ok(())
+    }
+
+    pub(super) async fn cached_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
         product_id: &str,
     ) -> Result<Option<StatementStoreAllowanceKey>, AuthorityError> {
-        let cache_key = Self::statement_store_allowance_cache_key(session, product_id)?;
-        Ok(self
+        let cache_key =
+            AllowanceCacheKey::new(session, product_id, AllowanceResource::StatementStore)?;
+        if let Some(allowance) = self
             .statement_store_allowances
             .lock()
             .expect("statement-store allowance cache mutex poisoned")
             .get(&cache_key)
-            .cloned())
+            .cloned()
+        {
+            return Ok(Some(allowance));
+        }
+        let Some(secret) = allowances::read_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::StatementStore,
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+        let allowance = StatementStoreAllowanceKey::from_secret_bytes(secret)?;
+        self.remember_statement_store_allowance_key(session, product_id, allowance.clone())?;
+        Ok(Some(allowance))
+    }
+
+    pub(super) async fn cache_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        slot_account_key: Vec<u8>,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let allowance = BulletinAllowanceKey::from_secret_bytes(slot_account_key)?;
+        allowances::write_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::Bulletin,
+            allowance.as_secret_bytes().to_vec(),
+        )
+        .await?;
+        self.remember_bulletin_allowance_key(session, product_id, allowance.clone())?;
+        Ok(allowance)
+    }
+
+    fn remember_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        allowance: BulletinAllowanceKey,
+    ) -> Result<(), AuthorityError> {
+        let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        self.bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned")
+            .insert(cache_key, allowance);
+        Ok(())
+    }
+
+    pub(super) async fn cached_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<Option<BulletinAllowanceKey>, AuthorityError> {
+        let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        if let Some(allowance) = self
+            .bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned")
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(Some(allowance));
+        }
+        let Some(secret) = allowances::read_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::Bulletin,
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+        let allowance = BulletinAllowanceKey::from_secret_bytes(secret)?;
+        self.remember_bulletin_allowance_key(session, product_id, allowance.clone())?;
+        Ok(Some(allowance))
     }
 
     pub(super) fn clear_statement_store_allowance_keys(&self, session: Option<&SessionInfo>) {
@@ -525,7 +612,23 @@ impl PairingHost {
             return;
         };
         let session_key = SsoSessionKey::from_session(sso);
-        allowances.retain(|key, _| key.session != session_key);
+        allowances.retain(|key, _| !key.is_for_session(session_key));
+    }
+
+    pub(super) fn clear_bulletin_allowance_keys(&self, session: Option<&SessionInfo>) {
+        let mut allowances = self
+            .bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned");
+        let Some(session) = session else {
+            allowances.clear();
+            return;
+        };
+        let Some(sso) = session.sso.as_ref() else {
+            return;
+        };
+        let session_key = SsoSessionKey::from_session(sso);
+        allowances.retain(|key, _| !key.is_for_session(session_key));
     }
 
     async fn sign_payload(
@@ -590,6 +693,17 @@ impl PairingHost {
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
         let session = self.current_private_session(session)?;
         self.remote_statement_store_allowance_key(cx, &session, product_id)
+            .await
+    }
+
+    async fn bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_bulletin_allowance_key(cx, &session, product_id)
             .await
     }
 
@@ -720,6 +834,15 @@ impl ProductAuthority for PairingHost {
         product_id: String,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
         PairingHost::statement_store_allowance_key(self, cx, session, product_id).await
+    }
+
+    async fn bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        PairingHost::bulletin_allowance_key(self, cx, session, product_id).await
     }
 
     async fn sign_statement_store_product_payload(

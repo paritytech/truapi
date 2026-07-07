@@ -67,7 +67,7 @@ check: ## Full verification suite (build, fmt, clippy, test, TS tests, playgroun
 	cargo build --workspace
 	cargo +nightly fmt --check
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
-	cargo test --workspace
+	cargo test --workspace --all-features --all-targets
 	cd $(TRUAPI_PKG) && npm run build && npm test
 	cd $(JS_PACKAGES)/truapi-host-wasm && npm install --no-fund --no-audit && npm test
 	cd $(PLAYGROUND) && yarn build && yarn lint
