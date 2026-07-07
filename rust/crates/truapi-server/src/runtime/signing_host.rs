@@ -14,8 +14,8 @@ pub(crate) use local_activation::LocalActivation;
 
 use super::authority::{
     AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest, ProductAuthority,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest, authority_session,
-    require_current_session,
+    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
+    authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use crate::host_logic::entropy::derive_product_entropy;
@@ -198,6 +198,34 @@ impl ProductAuthority for SigningHost {
         Err(AuthorityError::Unavailable {
             reason: "signing host: on-chain resource allocation not yet implemented".to_string(),
         })
+    }
+
+    async fn statement_store_allowance_key(
+        &self,
+        _cx: &CallContext,
+        session: &AuthoritySession,
+        _product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        require_current_session(&self.session_state, session)?;
+        Err(AuthorityError::Unavailable {
+            reason: "signing host: statement-store allowance allocation not yet implemented"
+                .to_string(),
+        })
+    }
+
+    async fn sign_statement_store_product_payload(
+        &self,
+        _cx: &CallContext,
+        session: &AuthoritySession,
+        account: v01::ProductAccountId,
+        payload: Vec<u8>,
+    ) -> Result<[u8; 64], AuthorityError> {
+        require_current_session(&self.session_state, session)?;
+        let keypair = self.product_keypair(&account)?;
+        Ok(keypair
+            .secret
+            .sign_simple(SR25519_SIGNING_CONTEXT, &payload, &keypair.public)
+            .to_bytes())
     }
 
     fn derive_entropy(

@@ -175,8 +175,7 @@ pub fn sign_statement_fields(
     }
     fields.sort_by_key(statement_field_sort_index);
 
-    let secret =
-        SecretKey::from_bytes(&ss_secret).map_err(|err| format!("invalid ss_secret: {err}"))?;
+    let secret = statement_secret_key_from_bytes(ss_secret)?;
     let public = secret.to_public();
     if public.to_bytes() != expected_public_key {
         return Err("ss_secret does not match session statement public key".to_string());
@@ -194,6 +193,37 @@ pub fn sign_statement_fields(
     }));
     signed.extend(fields);
     Ok(signed)
+}
+
+/// Derive the sr25519 public key for a 64-byte statement-store secret.
+pub fn statement_public_key_from_secret(ss_secret: [u8; 64]) -> Result<[u8; 32], String> {
+    let secret = statement_secret_key_from_bytes(ss_secret)?;
+    Ok(secret.to_public().to_bytes())
+}
+
+fn statement_secret_key_from_bytes(ss_secret: [u8; 64]) -> Result<SecretKey, String> {
+    // Rust-generated session keys use schnorrkel's canonical scalar bytes.
+    // Legacy JS signers may send scure/ed25519-style scalar bytes instead.
+    match SecretKey::from_bytes(&ss_secret) {
+        Ok(secret) => Ok(secret),
+        Err(canonical_error) => SecretKey::from_ed25519_bytes(&ss_secret).map_err(|ed_error| {
+            format!("invalid ss_secret: canonical={canonical_error}; ed25519={ed_error}")
+        }),
+    }
+}
+
+/// Build the statement proof payload for unsigned fields.
+pub fn unsigned_statement_signing_payload(
+    mut fields: Vec<StatementField>,
+) -> Result<Vec<u8>, String> {
+    if fields
+        .iter()
+        .any(|field| matches!(field, StatementField::Proof(_)))
+    {
+        return Err("statement is already signed".to_string());
+    }
+    fields.sort_by_key(statement_field_sort_index);
+    statement_signing_payload(&fields)
 }
 
 /// Build the statement signing payload from sorted fields.
@@ -513,6 +543,32 @@ mod tests {
             response_channel: [7; 32],
             peer_request_channel: [8; 32],
         }
+    }
+
+    #[test]
+    fn scure_statement_store_secret_fixture_signs_statement() {
+        // Fixture from @novasamatech/statement-store 0.7.5 createSr25519Secret.
+        let secret: [u8; 64] = hex::decode(
+            "8848ab59e934e06a54835252b8abdf946b893055cd34a4433a32b37470f90745\
+             62bb6d70fa3ea98b6ff05ea3f3cac76b62affd2f44c66624873fc6a58e3cd776",
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+        let public_key = statement_public_key_from_secret(secret).unwrap();
+        assert_eq!(
+            hex::encode(public_key),
+            "c0c18f0e3bbb9c0cf31c6c4db37d7d34efb42035daac647a4a14c93320d33857"
+        );
+
+        let signed = sign_statement_fields(
+            secret,
+            public_key,
+            vec![StatementField::Data(vec![1, 2, 3])],
+        )
+        .unwrap();
+        let verified = decode_verified_statement_data(&signed.encode(), Some(public_key)).unwrap();
+        assert_eq!(verified.data, vec![1, 2, 3]);
     }
 
     #[test]

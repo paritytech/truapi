@@ -132,7 +132,7 @@ use truapi::{CallContext, CallError, CancellationReason, Subscription};
 #[cfg(test)]
 use truapi_platform::Platform;
 use truapi_platform::{
-    AccountAliasReview, CreateTransactionReview, IdentityDisclosureReview,
+    AccountAccessReview, AccountAliasReview, CreateTransactionReview, IdentityDisclosureReview,
     PermissionAuthorizationRequest, PermissionAuthorizationStatus, PreimageSubmitReview,
     ProductContext, SessionUiInfo, SignPayloadReview, SignRawReview, UserConfirmationReview,
     normalize_product_identifier,
@@ -310,7 +310,9 @@ impl ProductRuntimeHost {
             return false;
         };
         let product_id = self.product_id();
-        product_id.starts_with("localhost:") || dot_ns_identifier == product_id
+        product_id == "localhost"
+            || product_id.starts_with("localhost:")
+            || dot_ns_identifier == product_id
     }
 
     fn normalize_product_account_id(
@@ -445,7 +447,10 @@ impl ProductRuntimeHost {
             return Ok(cached);
         }
 
-        let confirmed = self
+        // A dismissed/unavailable confirmation has no durable user decision.
+        // Fail the current disclosure request closed but keep authorization in
+        // the ask/default state so the next request can prompt again.
+        let confirmed = match self
             .services
             .platform
             .confirm_user_action(UserConfirmationReview::IdentityDisclosure(
@@ -454,7 +459,10 @@ impl ProductRuntimeHost {
                 },
             ))
             .await
-            .map_err(|err| format!("identity disclosure confirmation failed: {err:?}"))?;
+        {
+            Ok(confirmed) => confirmed,
+            Err(_) => return Ok(PermissionAuthorizationStatus::NotDetermined),
+        };
         let status = if confirmed {
             PermissionAuthorizationStatus::Authorized
         } else {
@@ -711,12 +719,31 @@ impl Account for ProductRuntimeHost {
                     v01::HostAccountGetError::DomainNotValid,
                 ))
             })?;
-
         let Some(session) = self.authority.current_session() else {
             return Err(CallError::Domain(HostAccountGetError::V1(
                 v01::HostAccountGetError::NotConnected,
             )));
         };
+
+        let product_id = self.product_id();
+        if product_account_id.dot_ns_identifier != product_id {
+            let confirmed = self
+                .services
+                .platform
+                .confirm_user_action(UserConfirmationReview::AccountAccess(AccountAccessReview {
+                    requesting_product_id: product_id,
+                    target_product_id: product_account_id.dot_ns_identifier.clone(),
+                }))
+                .await
+                .map_err(|err| CallError::HostFailure {
+                    reason: format!("account access confirmation failed: {err:?}"),
+                })?;
+            if !confirmed {
+                return Err(CallError::Domain(HostAccountGetError::V1(
+                    v01::HostAccountGetError::Rejected,
+                )));
+            }
+        }
 
         let public_key = derive_product_public_key(
             session.public_key,
@@ -825,6 +852,9 @@ impl Account for ProductRuntimeHost {
             v01::HostGetLegacyAccountsResponse {
                 accounts: vec![v01::LegacyAccount {
                     public_key: public_key.to_vec(),
+                    // TODO(#266): gate this legacy display name on
+                    // IdentityDisclosure while keeping the public key for
+                    // compatibility.
                     name: session.lite_username.clone(),
                 }],
             },
@@ -843,6 +873,19 @@ impl Account for ProductRuntimeHost {
             )));
         };
 
+        match self.identity_disclosure_authorization().await {
+            Ok(PermissionAuthorizationStatus::Authorized) => {}
+            Ok(
+                PermissionAuthorizationStatus::Denied
+                | PermissionAuthorizationStatus::NotDetermined,
+            ) => {
+                return Err(CallError::Domain(HostGetUserIdError::V1(
+                    v01::HostGetUserIdError::PermissionDenied,
+                )));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
+
         let primary_username = session
             .full_username
             .clone()
@@ -858,19 +901,6 @@ impl Account for ProductRuntimeHost {
                     reason: "No primary username for this session".to_string(),
                 }))
             })?;
-
-        match self.identity_disclosure_authorization().await {
-            Ok(PermissionAuthorizationStatus::Authorized) => {}
-            Ok(
-                PermissionAuthorizationStatus::Denied
-                | PermissionAuthorizationStatus::NotDetermined,
-            ) => {
-                return Err(CallError::Domain(HostGetUserIdError::V1(
-                    v01::HostGetUserIdError::PermissionDenied,
-                )));
-            }
-            Err(reason) => return Err(CallError::HostFailure { reason }),
-        }
 
         Ok(HostGetUserIdResponse::V1(v01::HostGetUserIdResponse {
             primary_username,
@@ -1515,6 +1545,9 @@ impl Chain for ProductRuntimeHost {
     ) -> Result<RemoteChainTransactionStopResponse, CallError<RemoteChainTransactionStopError>>
     {
         let RemoteChainTransactionStopRequest::V1(inner) = request;
+        // We intentionally forward the provider operation id here. Transaction
+        // operation ids are node-assigned and short-lived, so cross-product
+        // collision or guessing is not worth local id indirection yet.
         self.services
             .chain
             .remote_chain_transaction_stop(inner)
@@ -1699,6 +1732,9 @@ impl Preimage for ProductRuntimeHost {
             .platform
             .lookup_preimage(key)
             .filter_map(|item| async move {
+                // TODO: preserve platform stream errors as terminal
+                // subscription interrupts once subscription items can carry
+                // in-stream failures.
                 item.ok().map(|value| {
                     RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
                         value,
@@ -1715,6 +1751,13 @@ impl Preimage for ProductRuntimeHost {
         request: RemotePreimageSubmitRequest,
     ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
         let RemotePreimageSubmitRequest::V1(value) = request;
+        if self.authority.current_session().is_none() {
+            return Err(CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown {
+                    reason: "No active session".to_string(),
+                },
+            )));
+        }
         self.require_remote_permission(
             v01::RemotePermission::PreimageSubmit,
             RemotePreimageSubmitError::V1(v01::PreimageSubmitError::Unknown {
@@ -1764,6 +1807,9 @@ impl Theme for ProductRuntimeHost {
             .platform
             .subscribe_theme()
             .filter_map(|item| async {
+                // TODO: preserve platform stream errors as terminal
+                // subscription interrupts once subscription items can carry
+                // in-stream failures.
                 item.ok().map(|variant| {
                     HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem {
                         name: v01::ThemeName::Default,
@@ -1892,6 +1938,14 @@ mod tests {
     }
 
     #[test]
+    fn bare_localhost_product_allows_dev_product_accounts() {
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("localhost"), test_spawner());
+
+        assert!(host.is_product_account_valid_for_caller("myapp.dot"));
+    }
+
+    #[test]
     fn navigate_to_uses_dotns_decision_and_then_platform() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
         let cx = CallContext::new();
@@ -1983,7 +2037,8 @@ mod tests {
 
     #[test]
     fn get_account_requires_session() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         let cx = CallContext::new();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
@@ -2002,7 +2057,8 @@ mod tests {
 
     #[test]
     fn get_account_rejects_invalid_product_identifier() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
@@ -2021,8 +2077,96 @@ mod tests {
     }
 
     #[test]
+    fn get_account_other_product_rejects_when_user_declines() {
+        let platform = stub_platform();
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "other.dot".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountGetError::V1(v01::HostAccountGetError::Rejected))
+        ));
+        assert_eq!(
+            platform
+                .account_access_reviews
+                .lock()
+                .expect("account access review list mutex poisoned")
+                .as_slice(),
+            &[AccountAccessReview {
+                requesting_product_id: "myapp.dot".to_string(),
+                target_product_id: "other.dot".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn get_account_other_product_maps_confirmation_failure_to_host_failure() {
+        let host = ProductRuntimeHost::new(
+            Arc::new(StubPlatform {
+                account_access_error: Some("modal failed"),
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "other.dot".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
+        assert!(
+            matches!(err, CallError::HostFailure { reason } if reason.contains("modal failed"))
+        );
+    }
+
+    #[test]
+    fn get_account_other_product_accepts_confirmation_then_derives_key() {
+        let host = ProductRuntimeHost::new(
+            Arc::new(StubPlatform {
+                account_access_confirmed: true,
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let session = session_info();
+        host.test_session_state().set_session(session.clone());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "other.dot".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
+        let HostAccountGetResponse::V1(inner) = response;
+        assert_eq!(
+            inner.account.public_key,
+            derive_product_public_key(session.public_key, "other.dot", 0)
+                .unwrap()
+                .to_vec()
+        );
+    }
+
+    #[test]
     fn get_account_derives_dotli_product_key() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
@@ -2041,12 +2185,39 @@ mod tests {
 
     #[test]
     fn get_account_normalizes_product_identifier_before_deriving() {
-        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("MyApp.DOT"), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "MyApp.DOT".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
+        let HostAccountGetResponse::V1(inner) = response;
+        assert_eq!(
+            hex::encode(inner.account.public_key),
+            "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
+        );
+    }
+
+    #[test]
+    fn get_account_localhost_product_prompts_for_other_product_identifier() {
+        let host = ProductRuntimeHost::new(
+            Arc::new(StubPlatform {
+                account_access_confirmed: true,
+                ..Default::default()
+            }),
+            runtime_config("localhost:3000"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "myapp.dot".to_string(),
                 derivation_index: 0,
             },
         });
@@ -2099,9 +2270,8 @@ mod tests {
     fn get_account_alias_same_domain_returns_sso_response() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "alias-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -2116,7 +2286,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2148,9 +2318,8 @@ mod tests {
     fn get_account_alias_normalizes_remote_request_identifier() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "alias-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -2165,7 +2334,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2234,9 +2403,8 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             account_alias_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "alias-2",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alias-2".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -2251,7 +2419,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2383,6 +2551,89 @@ mod tests {
     }
 
     #[test]
+    fn get_user_id_dismissed_identity_disclosure_stays_not_determined() {
+        let platform = Arc::new(StubPlatform {
+            identity_disclosure_error: Some("dismissed"),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.test_session_state().set_session(session_info());
+        let cx = CallContext::new();
+
+        let first = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+        let second = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            first,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+        assert!(matches!(
+            second,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+        let status =
+            futures::executor::block_on(host.permission_authorization_status(
+                PermissionAuthorizationRequest::IdentityDisclosure,
+            ))
+            .unwrap();
+        assert_eq!(status, PermissionAuthorizationStatus::NotDetermined);
+    }
+
+    #[test]
+    fn get_user_id_checks_identity_disclosure_before_username() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let mut session = session_info();
+        session.full_username = None;
+        session.lite_username = None;
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+
+        let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn get_user_id_reports_missing_username_after_identity_disclosure() {
+        let platform = Arc::new(StubPlatform {
+            identity_disclosure_confirmed: true,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let mut session = session_info();
+        session.full_username = None;
+        session.lite_username = None;
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+
+        let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::Unknown { ref reason }
+            )) if reason == "No primary username for this session"
+        ));
+        assert_eq!(platform.identity_disclosure_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
     fn get_user_id_respects_pre_authorized_identity_disclosure() {
         let platform = Arc::new(StubPlatform::default());
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
@@ -2476,10 +2727,40 @@ mod tests {
     #[test]
     fn preimage_submit_confirms_and_delegates_to_platform() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
         let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
         assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn preimage_submit_requires_session_before_backend_call() {
+        let preimage_submits = Arc::new(Mutex::new(Vec::new()));
+        let host = ProductRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                preimage_submits: preimage_submits.clone(),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
+
+        let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown { reason },
+            )) => assert_eq!(reason, "No active session"),
+            other => panic!("expected preimage session error, got {other:?}"),
+        }
+        assert!(
+            preimage_submits
+                .lock()
+                .expect("preimage submit list mutex poisoned")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -2493,6 +2774,7 @@ mod tests {
             }),
             test_spawner(),
         );
+        host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
         let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
@@ -2654,11 +2936,10 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "sign-raw-1",
                 sign_response_message("sign-raw-1", vec![7, 7], None),
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2712,10 +2993,7 @@ mod tests {
             .map(|request| request["params"][0].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
         unsubscribe_ids.sort();
-        assert_eq!(
-            unsubscribe_ids,
-            vec!["own-sub-sign-raw-1", "peer-sub-sign-raw-1"]
-        );
+        assert_eq!(unsubscribe_ids, vec!["own-sub", "peer-sub"]);
     }
 
     #[test]
@@ -2827,7 +3105,7 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
-            rpc_responses: sso_peer_disconnect_responses(&session, "sign-raw-disconnect"),
+            sso_response_script: Some(sso_peer_disconnect_response_script(&session)),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -2976,11 +3254,10 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_payload_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "sign-payload-1",
                 sign_response_message("sign-payload-1", vec![8, 8], Some(vec![0xab, 0xcd])),
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3017,9 +3294,8 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             create_transaction_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "create-tx-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-create-tx-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -3031,7 +3307,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3107,11 +3383,10 @@ mod tests {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "legacy-sign-raw-1",
                 sign_response_message("legacy-sign-raw-1", vec![9, 9], None),
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3161,11 +3436,10 @@ mod tests {
         let signer = derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "legacy-sign-raw-hex-1",
                 sign_response_message("legacy-sign-raw-hex-1", vec![8, 8], None),
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3235,9 +3509,8 @@ mod tests {
         let signer = derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap();
         let platform = Arc::new(StubPlatform {
             create_transaction_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "legacy-create-tx-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-legacy-create-tx-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -3249,7 +3522,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(
@@ -3370,11 +3643,15 @@ mod tests {
     #[test]
     fn resource_allocation_accepts_confirmation_then_returns_sso_response() {
         let session = sso_session_info();
+        let slot_account_key = {
+            let mini_secret = schnorrkel::MiniSecretKey::from_bytes(&[12; 32]).unwrap();
+            let keypair = mini_secret.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
+            keypair.secret.to_bytes().to_vec()
+        };
         let platform = Arc::new(StubPlatform {
             resource_allocation_confirmed: true,
-            rpc_responses: sso_success_responses(
+            sso_response_script: Some(sso_success_response_script(
                 &session,
-                "alloc-1",
                 crate::host_logic::sso::messages::RemoteMessage {
                     message_id: "wallet-alloc-1".to_string(),
                     data: crate::host_logic::sso::messages::RemoteMessageData::V1(
@@ -3384,7 +3661,7 @@ mod tests {
                                 payload: Ok(vec![
                                     crate::host_logic::sso::messages::SsoAllocationOutcome::Allocated(
                                         crate::host_logic::sso::messages::SsoAllocatedResource::StatementStoreAllowance {
-                                            slot_account_key: vec![1],
+                                            slot_account_key,
                                         },
                                     ),
                                     crate::host_logic::sso::messages::SsoAllocationOutcome::Rejected,
@@ -3394,7 +3671,7 @@ mod tests {
                         ),
                     ),
                 },
-            ),
+            )),
             ..Default::default()
         });
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
