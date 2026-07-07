@@ -156,14 +156,26 @@ impl MetricsRecorder {
 /// coarse bucket from the method's namespace, or `Subscription` for any
 /// subscription frame. Falls back to `(Frame, "product_frame")` when the frame
 /// does not decode or the id is unknown.
-pub fn classify_frame(frame: &[u8]) -> (Category, String) {
+/// A decoded inbound frame's metric identity.
+pub struct FrameClass {
+    pub category: Category,
+    pub op: String,
+    pub request_id: String,
+}
+
+pub fn classify_frame(frame: &[u8]) -> FrameClass {
     use parity_scale_codec::Decode;
     use truapi_server::frame::ProtocolMessage;
     use truapi_server::generated::wire_table::{WIRE_TABLE, WireKind};
 
     let Ok(message) = ProtocolMessage::decode(&mut &*frame) else {
-        return (Category::Frame, "product_frame".to_string());
+        return FrameClass {
+            category: Category::Frame,
+            op: "product_frame".to_string(),
+            request_id: String::new(),
+        };
     };
+    let request_id = message.request_id;
     let id = message.payload.id;
     for entry in WIRE_TABLE {
         let (is_subscription, matches) = match &entry.kind {
@@ -182,10 +194,52 @@ pub fn classify_frame(frame: &[u8]) -> (Category, String) {
             } else {
                 category_for_method(entry.method)
             };
-            return (category, entry.method.to_string());
+            return FrameClass {
+                category,
+                op: entry.method.to_string(),
+                request_id,
+            };
         }
     }
-    (Category::Frame, "product_frame".to_string())
+    FrameClass {
+        category: Category::Frame,
+        op: "product_frame".to_string(),
+        request_id,
+    }
+}
+
+/// Decode a frame emitted back to the product and extract the true operation
+/// outcome, keyed by `request_id`. Returns `Some` for response frames and for
+/// error interrupts; `None` for streamed subscription items or undecodable
+/// frames (whose outcome is left to the dispatch result).
+///
+/// Request/response payloads are versioned as `[version_index][result_disc]..`
+/// where `result_disc` is 0 for Ok and 1 for Err (truapi-server `frame.rs`), so
+/// a domain error in the response is caught even though `receive_frame` still
+/// returns Ok for it.
+pub fn response_outcome(frame: &[u8]) -> Option<(String, Outcome)> {
+    use parity_scale_codec::Decode;
+    use truapi_server::frame::ProtocolMessage;
+    use truapi_server::generated::wire_table::{WIRE_TABLE, WireKind};
+
+    let message = ProtocolMessage::decode(&mut &*frame).ok()?;
+    let id = message.payload.id;
+    for entry in WIRE_TABLE {
+        match &entry.kind {
+            WireKind::Request(r) if r.response_id == id => {
+                let outcome = match message.payload.value.get(1) {
+                    Some(1) => Outcome::Error,
+                    _ => Outcome::Success,
+                };
+                return Some((message.request_id, outcome));
+            }
+            WireKind::Subscription(s) if s.interrupt_id == id => {
+                return Some((message.request_id, Outcome::Error));
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Map a method name to a coarse metric category by its namespace prefix.
