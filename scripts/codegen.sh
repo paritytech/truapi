@@ -39,6 +39,11 @@ cargo run -p truapi-codegen -- \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
 
+rustfmt +nightly --edition 2024 \
+  rust/crates/truapi-server/src/generated/dispatcher.rs \
+  rust/crates/truapi-server/src/generated/wire_table.rs \
+  rust/crates/truapi-server/src/wasm/generated_bridge.rs
+
 node scripts/regen-explorer-versions.mjs
 
 npm exec --yes -- prettier --write \
