@@ -30,7 +30,7 @@ pub mod latest {
         AccountId, AllocatableResource, AllocationOutcome, GenericError, HostSignPayloadData,
         NotificationId, OperationStartedResult, ProductAccountId, RawPayload, RemotePermission,
         RuntimeApi, RuntimeSpec, RuntimeType, StorageQueryItem, StorageQueryType,
-        StorageResultItem, ThemeVariant,
+        StorageResultItem, ThemeVariant, TxPayloadExtension,
     };
 
     pub type LatestOf<T> = <T as Versioned>::Latest;
