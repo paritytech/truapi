@@ -29,7 +29,7 @@ for failure modes — both the skills and CI cite it.
 starts the local dotli preview and playground, opens Chromium, signs out any
 restored host session, signs in through the signer-bot SSO service, runs the
 playground Diagnosis screen, and writes
-`hosts/dotli/test-results/e2e-dotli/diagnosis-report.md`. Full automation
+`playground/test-results/e2e-dotli/diagnosis-report.md`. Full automation
 requires `SIGNER_BOT_SVC_TOKEN`; `SIGNER_BOT_BASE_URL` and
 `SIGNER_BOT_NETWORK` default to dotli CI's signer-bot service and
 `paseo-next-v2`. Without the token, use
