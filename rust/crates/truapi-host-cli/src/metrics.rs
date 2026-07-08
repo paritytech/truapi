@@ -1,9 +1,8 @@
 //! Headless-host metrics: one raw per-operation event, written as JSONL.
 //!
-//! First slice of the Host SDK simulation/stress layer. We only emit raw
-//! events here; percentiles and aggregation are computed downstream (e.g.
-//! product-loadtest ingest). Opt-in: without `METRICS_JSONL` set, recording is
-//! a no-op and the host behaves exactly as before.
+//! Raw events only; percentiles and aggregation are computed downstream.
+//! Opt-in: without `METRICS_JSONL` set, recording is a no-op and the host
+//! behaves exactly as before.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -15,12 +14,8 @@ use serde::Serialize;
 /// What kind of host operation a record measures.
 ///
 /// `Frame` is the coarse label for a whole product request frame at the
-/// WebSocket boundary, where the wire id is not yet decoded. Decoding the
-/// `ProtocolMessage` wire id into the fine-grained categories below (Signing,
-/// Storage, ChainRpc, ...) is the next step and needs a small decode export
-/// from `truapi-server`.
-// The fine-grained variants are the full metric schema, used once the wire id
-// is decoded (next step); `Frame` is all v1 emits today.
+/// WebSocket boundary; the fine-grained variants below are decoded from the
+/// wire id. The `#[allow(dead_code)]` covers variants not yet emitted.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,8 +32,7 @@ pub enum Category {
     Session,
 }
 
-/// Terminal outcome of a measured operation. `Skipped` is part of the schema
-/// for operations that never ran; v1 emits only `Success`/`Error`.
+/// Terminal outcome of a measured operation.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -76,8 +70,7 @@ impl JsonlSink {
     }
 
     fn append(&self, record: &HostMetricRecord) -> std::io::Result<()> {
-        let line = serde_json::to_string(record)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let line = serde_json::to_string(record).map_err(std::io::Error::other)?;
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -99,8 +92,7 @@ pub struct MetricsRecorder {
 }
 
 impl MetricsRecorder {
-    /// Build a recorder from the environment. Returns an `Arc` so it can be
-    /// shared across connections.
+    /// Build a recorder from the environment (see the type's env-var list).
     pub fn from_env() -> Arc<Self> {
         let sink = std::env::var("METRICS_JSONL")
             .ok()
@@ -149,13 +141,10 @@ impl MetricsRecorder {
     }
 }
 
-/// Classify a raw inbound frame into a metric `(category, op)` by decoding its
-/// wire discriminant and looking the method up in the core's wire table.
-///
-/// `op` is the trait method name (e.g. `signing_sign_raw`); `category` is a
-/// coarse bucket from the method's namespace, or `Subscription` for any
-/// subscription frame. Falls back to `(Frame, "product_frame")` when the frame
-/// does not decode or the id is unknown.
+/// Op recorded for a frame we could not classify against the wire table.
+/// This is an emitted-schema value consumed by downstream ingest.
+const UNCLASSIFIED_OP: &str = "product_frame";
+
 /// A decoded inbound frame's metric identity.
 pub struct FrameClass {
     pub category: Category,
@@ -163,6 +152,9 @@ pub struct FrameClass {
     pub request_id: String,
 }
 
+/// Classify a raw inbound frame into `(category, op)` via the wire table.
+/// Falls back to `(Frame, "product_frame")` when it does not decode or the id
+/// is unknown.
 pub fn classify_frame(frame: &[u8]) -> FrameClass {
     use parity_scale_codec::Decode;
     use truapi_server::frame::ProtocolMessage;
@@ -171,7 +163,7 @@ pub fn classify_frame(frame: &[u8]) -> FrameClass {
     let Ok(message) = ProtocolMessage::decode(&mut &*frame) else {
         return FrameClass {
             category: Category::Frame,
-            op: "product_frame".to_string(),
+            op: UNCLASSIFIED_OP.to_string(),
             request_id: String::new(),
         };
     };
@@ -209,14 +201,13 @@ pub fn classify_frame(frame: &[u8]) -> FrameClass {
 }
 
 /// Decode a frame emitted back to the product and extract the true operation
-/// outcome, keyed by `request_id`. Returns `Some` for response frames and for
-/// error interrupts; `None` for streamed subscription items or undecodable
-/// frames (whose outcome is left to the dispatch result).
+/// outcome, keyed by `request_id`. Returns `Some` for response frames; `None`
+/// for subscription frames or undecodable frames (whose outcome is left to the
+/// dispatch result).
 ///
-/// Request/response payloads are versioned as `[version_index][result_disc]..`
-/// where `result_disc` is 0 for Ok and 1 for Err (truapi-server `frame.rs`), so
-/// a domain error in the response is caught even though `receive_frame` still
-/// returns Ok for it.
+/// The response payload's result discriminant (`value[1]`: 0 = Ok, 1 = Err;
+/// see truapi-server `frame.rs`) is the true outcome, so a domain error is
+/// caught even though `receive_frame` returned Ok.
 pub fn response_outcome(frame: &[u8]) -> Option<(String, Outcome)> {
     use parity_scale_codec::Decode;
     use truapi_server::frame::ProtocolMessage;
@@ -225,24 +216,22 @@ pub fn response_outcome(frame: &[u8]) -> Option<(String, Outcome)> {
     let message = ProtocolMessage::decode(&mut &*frame).ok()?;
     let id = message.payload.id;
     for entry in WIRE_TABLE {
-        match &entry.kind {
-            WireKind::Request(r) if r.response_id == id => {
-                let outcome = match message.payload.value.get(1) {
-                    Some(1) => Outcome::Error,
-                    _ => Outcome::Success,
-                };
-                return Some((message.request_id, outcome));
-            }
-            WireKind::Subscription(s) if s.interrupt_id == id => {
-                return Some((message.request_id, Outcome::Error));
-            }
-            _ => {}
+        if let WireKind::Request(r) = &entry.kind
+            && r.response_id == id
+        {
+            let outcome = match message.payload.value.get(1) {
+                Some(1) => Outcome::Error,
+                _ => Outcome::Success,
+            };
+            return Some((message.request_id, outcome));
         }
     }
     None
 }
 
 /// Map a method name to a coarse metric category by its namespace prefix.
+/// The buckets are provisional and unused in v1 (only `Frame` is emitted);
+/// revisit them when the fine-grained category path goes live.
 fn category_for_method(method: &str) -> Category {
     match method.split('_').next().unwrap_or("") {
         "signing" | "entropy" | "statement" => Category::Signing,
@@ -306,5 +295,43 @@ mod tests {
         assert_eq!(body.lines().count(), 2);
         let first: serde_json::Value = serde_json::from_str(body.lines().next().unwrap()).unwrap();
         assert_eq!(first["op"], "product_frame");
+    }
+
+    // Pins the versioned payload layout `response_outcome` reads (`value[1]`).
+    // Built with the real core encoders, so it trips if truapi-server changes
+    // the response wire shape (see the `TODO(shared-core-wire)` in frame.rs).
+    #[test]
+    fn response_outcome_reads_versioned_result_discriminant() {
+        use parity_scale_codec::Encode;
+        use truapi_server::frame::{
+            Payload, ProtocolMessage, encode_versioned_err_payload,
+            encode_versioned_unit_ok_payload,
+        };
+        use truapi_server::generated::wire_table::{WIRE_TABLE, WireKind};
+
+        let response_id = WIRE_TABLE
+            .iter()
+            .find_map(|entry| match &entry.kind {
+                WireKind::Request(r) => Some(r.response_id),
+                _ => None,
+            })
+            .expect("wire table has at least one request method");
+        let frame = |request_id: &str, value: Vec<u8>| {
+            ProtocolMessage {
+                request_id: request_id.to_string(),
+                payload: Payload { id: response_id, value },
+            }
+            .encode()
+        };
+
+        let (id, outcome) = response_outcome(&frame("req-ok", encode_versioned_unit_ok_payload(1)))
+            .expect("response frame is classified");
+        assert_eq!(id, "req-ok");
+        assert!(matches!(outcome, Outcome::Success));
+
+        let (id, outcome) = response_outcome(&frame("req-err", encode_versioned_err_payload(0u32, 1)))
+            .expect("response frame is classified");
+        assert_eq!(id, "req-err");
+        assert!(matches!(outcome, Outcome::Error));
     }
 }

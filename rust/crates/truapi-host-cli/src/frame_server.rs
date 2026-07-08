@@ -37,7 +37,7 @@ impl ProductRuntimeFactory for SigningHostRuntime {
     }
 }
 
-use crate::metrics::{MetricsRecorder, Outcome, classify_frame, response_outcome};
+use crate::metrics::{FrameClass, MetricsRecorder, Outcome, classify_frame, response_outcome};
 
 /// True per-request outcomes, decoded from response frames as they are emitted
 /// and consumed by the request loop, keyed by `request_id`.
@@ -52,10 +52,10 @@ struct WsFrameSink {
 
 impl FrameSink for WsFrameSink {
     fn emit_frame(&self, frame: Vec<u8>) {
-        if let Some((request_id, outcome)) = response_outcome(&frame) {
-            if let Ok(mut map) = self.outcomes.lock() {
-                map.insert(request_id, outcome);
-            }
+        if let Some((request_id, outcome)) = response_outcome(&frame)
+            && let Ok(mut map) = self.outcomes.lock()
+        {
+            map.insert(request_id, outcome);
         }
         let _ = self.outbound.send(Message::Binary(frame));
     }
@@ -155,17 +155,17 @@ async fn serve_connection(
     Ok(())
 }
 
-/// Record one product-frame operation: its method-derived `category`/`op`, the
-/// latency from receive to dispatch completion, and its true outcome.
-///
-/// A dispatch-level failure (`receive_frame` returns Err) is an error. On a
-/// clean dispatch, the outcome is the one the response frame carried (captured
-/// by the sink under this request's id): a domain error in the response is an
-/// error even though `receive_frame` returned Ok. If no response was captured
-/// (e.g. a subscription start), the clean dispatch counts as success.
+/// Error class recorded when dispatch succeeded but the response frame carried
+/// a domain error. This is an emitted-schema value consumed by downstream ingest.
+const RESPONSE_ERROR_CLASS: &str = "response_error";
+
+/// Record one product-frame op: its `(category, op)`, receive-to-dispatch
+/// latency, and true outcome. A clean dispatch (`Ok`) still counts as an
+/// error when the captured response frame carried a domain error; a dispatch
+/// with no captured response counts as success.
 fn record_frame<E: std::fmt::Display>(
     metrics: &MetricsRecorder,
-    class: &crate::metrics::FrameClass,
+    class: &FrameClass,
     started: Instant,
     result: &Result<(), E>,
     outcomes: &OutcomeMap,
@@ -174,7 +174,7 @@ fn record_frame<E: std::fmt::Display>(
     let (outcome, error_class) = match result {
         Err(err) => (Outcome::Error, Some(err.to_string())),
         Ok(()) => match outcomes.lock().ok().and_then(|mut m| m.remove(&class.request_id)) {
-            Some(Outcome::Error) => (Outcome::Error, Some("response_error".to_string())),
+            Some(Outcome::Error) => (Outcome::Error, Some(RESPONSE_ERROR_CLASS.to_string())),
             Some(other) => (other, None),
             None => (Outcome::Success, None),
         },
