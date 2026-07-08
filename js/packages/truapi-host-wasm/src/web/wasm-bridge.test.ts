@@ -26,7 +26,7 @@ const suite = built ? describe : describe.skip;
 
 suite("real WASM core ↔ createMockHost bridge", () => {
     it("the core invokes createMockHost callbacks across the JS↔SCALE↔WASM boundary", async () => {
-        const { initSync, WasmHostCore } = await import(glueUrl.href);
+        const { initSync, WasmPairingHostRuntime } = await import(glueUrl.href);
         const { createWasmRawCallbacks } = await import("../generated/host-callbacks-adapter.js");
         initSync({ module: readFileSync(wasmUrl) });
 
@@ -38,11 +38,14 @@ suite("real WASM core ↔ createMockHost bridge", () => {
             return readCoreStorage(key);
         };
 
+        // The pairing-host runtime takes the platform callbacks and host config;
+        // the per-product core is derived from it with its own frame sink.
         const raw = createWasmRawCallbacks(mock.callbacks);
-        // The core emits response frames through `emitFrame`; the worker sets it
-        // outside the generated adapter, so the harness supplies it too.
-        (raw as unknown as { emitFrame: (bytes: Uint8Array) => void }).emitFrame = () => {};
-        new WasmHostCore(raw, mockRuntimeConfig());
+        const { productId, ...hostConfig } = mockRuntimeConfig();
+        const runtime = new WasmPairingHostRuntime(raw, hostConfig);
+        // The core emits response frames through `emitFrame`; the worker supplies
+        // it per-core outside the generated adapter, so the harness does too.
+        runtime.productRuntime({ productId }, { emitFrame: () => {} });
         // The real core reads its auth session on startup, which crosses the bridge
         // into the mock's readCoreStorage with a SCALE-decoded CoreStorageKey.
         await new Promise((resolve) => setTimeout(resolve, 200));

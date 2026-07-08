@@ -1,9 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import { ok } from "neverthrow";
 
-import type { CoreStorageKey } from "../generated/host-callbacks.js";
+import type {
+    BulletinAllowanceSigner,
+    CoreStorageKey,
+} from "../generated/host-callbacks.js";
 import { createMockHost, mockRuntimeConfig } from "./create-mock-host.js";
-import { createWebWorkerProvider } from "./index.js";
+import { createWebWorkerPairingHostRuntime } from "./index.js";
+import type { WebWorkerHostCallbacks } from "./index.js";
+
+/** A `BulletinAllowanceSigner` stand-in; the mock `submitPreimage` ignores it. */
+const noopBulletinAllowanceSigner: BulletinAllowanceSigner = {
+    publicKey: new Uint8Array(32),
+    sign: async () => new Uint8Array(64),
+};
 
 describe("createMockHost callbacks", () => {
     it("product storage round-trips and is namespaced from core", async () => {
@@ -68,7 +78,7 @@ describe("createMockHost callbacks", () => {
     it("confirms per config and records chain sends", async () => {
         const denied = createMockHost({ confirmUserActions: false });
         expect(
-            await denied.callbacks.confirmUserAction?.({
+            await denied.callbacks.confirmUserAction({
                 tag: "ResourceAllocation",
                 value: { resources: [] },
             }),
@@ -92,14 +102,14 @@ describe("createMockHost callbacks", () => {
 
     it("records confirmations and cancelled notifications", async () => {
         const host = createMockHost();
-        await host.callbacks.confirmUserAction?.({
+        await host.callbacks.confirmUserAction({
             tag: "ResourceAllocation",
             value: { resources: [] },
         });
         expect(host.confirmations()).toEqual(["ResourceAllocation"]);
 
         const { id } = await host.callbacks.pushNotification({ text: "x" });
-        await host.callbacks.cancelNotification?.(id);
+        await host.callbacks.cancelNotification(id);
         expect(host.cancelledNotifications()).toEqual([id]);
     });
 
@@ -112,9 +122,12 @@ describe("createMockHost callbacks", () => {
 
     it("preimage submit then lookup round-trips", async () => {
         const { callbacks } = createMockHost();
-        const key = await callbacks.submitPreimage?.(new Uint8Array([4, 5, 6]));
+        const key = await callbacks.submitPreimage(
+            new Uint8Array([4, 5, 6]),
+            noopBulletinAllowanceSigner,
+        );
         expect(key).toBeDefined();
-        const found = await callbacks.lookupPreimage(key!)[Symbol.asyncIterator]().next();
+        const found = await callbacks.lookupPreimage(key)[Symbol.asyncIterator]().next();
         expect(found.value).toEqual(ok(new Uint8Array([4, 5, 6])));
     });
 });
@@ -148,21 +161,53 @@ class FakeWorker {
     }
 }
 
-describe("createMockHost with createWebWorkerProvider", () => {
+/** Lift the mock's flat callbacks into the namespaced `RequiredHostCallbacks`
+ *  shape the worker runtime type expects. `createWasmRawCallbacks` normalizes
+ *  the flat shape at runtime, but the runtime factory's parameter is typed
+ *  namespaced, so a test that passes the mock through it re-nests here. */
+function namespaceMockCallbacks(
+    flat: ReturnType<typeof createMockHost>["callbacks"],
+): WebWorkerHostCallbacks {
+    return {
+        navigation: flat,
+        notifications: flat,
+        permissions: flat,
+        features: flat,
+        productStorage: flat,
+        coreStorage: flat,
+        chain: flat,
+        auth: flat,
+        userConfirmation: flat,
+        theme: flat,
+        preimage: flat,
+    };
+}
+
+describe("createMockHost with createWebWorkerPairingHostRuntime", () => {
     it("initializes a worker provider with the mock callbacks (no real WASM)", async () => {
         const worker = new FakeWorker();
         const host = createMockHost();
-        const providerPromise = createWebWorkerProvider(
+        const { productId, ...hostConfig } = mockRuntimeConfig();
+        const runtimePromise = createWebWorkerPairingHostRuntime(
             worker as unknown as Worker,
-            host.callbacks,
-            { runtimeConfig: mockRuntimeConfig() },
+            namespaceMockCallbacks(host.callbacks),
+            { hostConfig },
         );
         worker.emit({ kind: "loaded" });
         worker.emit({ kind: "ready" });
+        const runtime = await runtimePromise;
+
+        const providerPromise = runtime.createProvider({ productId });
+        const createCore = [...worker.messages].reverse().find((m) => m.kind === "createCore");
+        expect(createCore).toBeDefined();
+        worker.emit({ kind: "coreReady", coreId: createCore!.coreId });
 
         const provider = await providerPromise;
         expect(provider).toBeDefined();
         const init = worker.messages.find((message) => message.kind === "init");
         expect(init).toBeDefined();
+
+        provider.dispose();
+        runtime.dispose();
     });
 });

@@ -1,7 +1,7 @@
 // A deterministic, in-memory mock host. `createMockHost` returns a complete
 // `HostCallbacks` set (the JS sibling of `truapi-platform`'s `MockPlatform`)
 // plus recordings for assertions. Hand `host.callbacks` to
-// `createWebWorkerProvider` (or `createIframeHost`) to run the real
+// `createWebWorkerPairingHostRuntime` (or `createIframeHost`) to run the real
 // truapi-server WASM core against a mocked OS seam: storage is in-memory,
 // permissions answer from a fixed policy, navigation/notifications are
 // recorded, and the chain connection is silent (or replays canned frames).
@@ -23,10 +23,10 @@ import type {
 import type {
   AuthState,
   CoreStorageKey,
-  HostCallbacks,
+  FlatHostCallbacks,
   JsonRpcConnection,
 } from "../generated/host-callbacks.js";
-import type { HostCoreRuntimeConfig } from "../runtime.js";
+import type { ProductRuntimeConfig } from "../runtime.js";
 
 /** How the mock answers a permission prompt for one capability. */
 export type PermissionPolicy = "allow-all" | "deny-all";
@@ -59,8 +59,11 @@ export interface MockHostConfig {
 
 /** A mock host: the callbacks to wire into a provider, plus assertion oracles. */
 export interface MockHost {
-  /** Hand this to `createWebWorkerProvider` / `createIframeHost`. */
-  callbacks: HostCallbacks;
+  /**
+   * The flat host-callback surface. Pass to `createWasmRawCallbacks` (which
+   * accepts the flat shape) or hand to `createWebWorkerPairingHostRuntime`.
+   */
+  callbacks: Required<FlatHostCallbacks>;
   /** URLs the core asked the host to open, in order. */
   navigations(): string[];
   /** Notifications the core asked the host to show, in order. */
@@ -130,10 +133,11 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
       : `core:${key.tag}`;
   const granted = (policy: PermissionPolicy): boolean => policy === "allow-all";
 
-  // `Required<HostCallbacks>` (not bare `HostCallbacks`): every optional callback
-  // must be present, so a capability added to the generated surface fails `tsc`
-  // here until the mock covers it. This is the load-bearing coverage guarantee.
-  const callbacks: Required<HostCallbacks> = {
+  // `Required<FlatHostCallbacks>` (not bare `FlatHostCallbacks`): every optional
+  // callback must be present, so a capability added to the generated surface
+  // fails `tsc` here until the mock covers it. This is the load-bearing coverage
+  // guarantee. `createWasmRawCallbacks` accepts this flat shape directly.
+  const callbacks: Required<FlatHostCallbacks> = {
     // ProductStorage
     async read(key) {
       return storage.get(productKey(key));
@@ -254,14 +258,14 @@ export function createMockHost(config: MockHostConfig = {}): MockHost {
 }
 
 /**
- * A default {@link HostCoreRuntimeConfig} for a mock host. Override any field;
+ * A default {@link ProductRuntimeConfig} for a mock host. Override any field;
  * the genesis hash and product id are placeholders suitable for tests.
  */
 export function mockRuntimeConfig(
-  overrides: Partial<HostCoreRuntimeConfig> = {},
-): HostCoreRuntimeConfig {
+  overrides: Partial<ProductRuntimeConfig> = {},
+): ProductRuntimeConfig {
   return {
-    productId: "mock.product",
+    productId: "mock.dot",
     host: {
       name: "Mock Host",
       icon: "https://example.invalid/mock.png",
