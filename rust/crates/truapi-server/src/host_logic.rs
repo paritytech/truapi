@@ -4,6 +4,7 @@
 //! storage, URL handler, notification center). Everything else lives here so
 //! iOS, Android, and web hosts share one canonical implementation.
 
+pub mod allowance_signer;
 pub mod dotns;
 pub mod entropy;
 pub mod features;

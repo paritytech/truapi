@@ -17,7 +17,9 @@ use truapi::latest::{
 };
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, CancellationReason};
-use truapi_platform::ProductContext;
+use truapi_platform::{BulletinAllowanceKeyError, ProductContext};
+
+pub(crate) use truapi_platform::BulletinAllowanceKey;
 
 use crate::host_logic::session::{SessionInfo, SessionState};
 use crate::host_logic::statement_store::statement_public_key_from_secret;
@@ -76,6 +78,14 @@ pub(crate) enum AuthorityError {
 impl AuthorityError {
     pub(crate) fn reason(self) -> String {
         self.to_string()
+    }
+}
+
+impl From<BulletinAllowanceKeyError> for AuthorityError {
+    fn from(err: BulletinAllowanceKeyError) -> Self {
+        AuthorityError::Unavailable {
+            reason: err.to_string(),
+        }
     }
 }
 
@@ -263,6 +273,14 @@ pub(crate) trait ProductAuthority: Send + Sync {
         session: &AuthoritySession,
         product_id: String,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError>;
+
+    /// Return Bulletin allowance key material for the calling product.
+    async fn bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError>;
 
     /// Sign exact statement-store proof bytes with a product-derived account.
     async fn sign_statement_store_product_payload(

@@ -32,6 +32,21 @@ import type {
 } from "@parity/truapi";
 
 /**
+ * Review shown before a product asks to access another product account.
+ */
+export interface AccountAccessReview {
+  /**
+   * Product currently handling the request.
+   */
+  requestingProductId: string;
+
+  /**
+   * Product whose account is being requested.
+   */
+  targetProductId: string;
+}
+
+/**
  * Review shown before a product asks to alias another product account.
  */
 export interface AccountAliasReview {
@@ -72,6 +87,13 @@ export type AuthState =
   | { tag: "LoginFailed"; value: { reason: string } };
 
 /**
+ * Host-facing signer for Bulletin preimage submission.
+ */
+export interface BulletinAllowanceSigner {
+
+}
+
+/**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  *
@@ -90,7 +112,15 @@ export type CoreStorageKey =
   /**
    * Persisted authorization for one product-scoped permission request.
    */
-  | { tag: "PermissionAuthorization"; value: { productId: string; request: PermissionAuthorizationRequest } };
+  | { tag: "PermissionAuthorization"; value: { productId: string; request: PermissionAuthorizationRequest } }
+  /**
+   * Persisted allowance-slot keys for one paired SSO session.
+   */
+  | { tag: "AllowanceKeys"; value: { sessionId: string } }
+  /**
+   * Last processed SSO pairing response statement for the pairing device.
+   */
+  | { tag: "LastProcessedPairingStatement"; value?: undefined };
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -234,12 +264,26 @@ export type UserConfirmationReview =
   /**
    * Submit a preimage to the host-selected backend.
    */
-  | { tag: "PreimageSubmit"; value: PreimageSubmitReview };
+  | { tag: "PreimageSubmit"; value: PreimageSubmitReview }
+  /**
+   * Allow a product to access another product account.
+   */
+  | { tag: "AccountAccess"; value: AccountAccessReview };
+
+/**
+ * Review shown before a product asks to access another product account.
+ */
+export const AccountAccessReview: S.Codec<AccountAccessReview> = S.lazy((): S.Codec<AccountAccessReview> => S.Struct({requestingProductId: S.str, targetProductId: S.str}) as S.Codec<AccountAccessReview>);
 
 /**
  * Review shown before a product asks to alias another product account.
  */
 export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Codec<AccountAliasReview> => S.Struct({requestingProductId: S.str, targetProductId: S.str}) as S.Codec<AccountAliasReview>);
+
+/**
+ * Host-facing signer for Bulletin preimage submission.
+ */
+export const BulletinAllowanceSigner: S.Codec<BulletinAllowanceSigner> = S.lazy((): S.Codec<BulletinAllowanceSigner> => S.Struct({}) as S.Codec<BulletinAllowanceSigner>);
 
 /**
  * Core-owned host-private storage slots. Products never address these slots;
@@ -248,7 +292,7 @@ export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Code
  * Storage is host-local; `storage.md` records the current status quo:
  * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
-export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>}));
+export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>, AllowanceKeys: S.Struct({sessionId: S.str}) as S.Codec<{ sessionId: string }>, LastProcessedPairingStatement: S._void}));
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -292,7 +336,7 @@ export const SignRawReview: S.Codec<SignRawReview> = S.lazy((): S.Codec<SignRawR
 /**
  * Review shown before a user-confirmed core action continues.
  */
-export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy((): S.Codec<UserConfirmationReview> => S.TaggedUnion({SignPayload: SignPayloadReview, SignRaw: SignRawReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: HostRequestResourceAllocationRequest, PreimageSubmit: PreimageSubmitReview}));
+export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy((): S.Codec<UserConfirmationReview> => S.TaggedUnion({SignPayload: SignPayloadReview, SignRaw: SignRawReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: HostRequestResourceAllocationRequest, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview}));
 
 /**
  * Host auth UI driven by core-owned `AuthState` transitions.
@@ -481,7 +525,7 @@ export interface PreimageHost {
   /**
    * Submit the preimage and return its key.
    */
-  submitPreimage?(value: Uint8Array): Promise<Uint8Array>;
+  submitPreimage?(value: Uint8Array, bulletinAllowanceSigner: BulletinAllowanceSigner): Promise<Uint8Array>;
 
   /**
    * Emits current value/miss immediately, then future updates.
