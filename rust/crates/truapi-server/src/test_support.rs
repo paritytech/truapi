@@ -104,6 +104,8 @@ pub(crate) struct StubPlatform {
     /// Set when the pending theme stream is dropped.
     pub(crate) theme_stream_dropped: Arc<AtomicBool>,
     pub(crate) pairing_success_response: bool,
+    /// Deliver a wallet failure status on the pairing subscription.
+    pub(crate) pairing_failure_response: bool,
     /// Deliver the pairing success statement only through a snapshot
     /// query page; the live subscription stays silent.
     pub(crate) pairing_success_via_query: bool,
@@ -492,13 +494,22 @@ pub(crate) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65
 }
 
 pub(crate) fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
-    let core_public_key =
-        P256PublicKey::from_sec1_bytes(&core_encryption_public_key_from_deeplink(deeplink))
-            .expect("core encryption public key should decode");
-    let wallet_ephemeral_secret = P256SecretKey::from_slice(&[3; 32]).unwrap();
-    let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
-    let mut wallet_ephemeral_public_bytes = [0u8; 65];
-    wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
+    wallet_handshake_statement_with_response(
+        deeplink,
+        pairing::v2::EncryptedResponse::Success(Box::new(wallet_handshake_success())),
+        0x44,
+    )
+}
+
+pub(crate) fn failed_wallet_handshake_statement(deeplink: &str, reason: &str) -> Vec<u8> {
+    wallet_handshake_statement_with_response(
+        deeplink,
+        pairing::v2::EncryptedResponse::Failed(reason.to_string()),
+        0x45,
+    )
+}
+
+fn wallet_handshake_success() -> pairing::v2::Success {
     let wallet_persistent_public: [u8; 65] = P256SecretKey::from_slice(&[2; 32])
         .unwrap()
         .public_key()
@@ -506,14 +517,28 @@ pub(crate) fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
         .as_bytes()
         .try_into()
         .unwrap();
-    let answer = pairing::v2::EncryptedResponse::Success(Box::new(pairing::v2::Success {
+    pairing::v2::Success {
         identity_account_id: peer_statement_keypair().1,
         root_account_id: session_info().public_key,
         identity_chat_private_key: [0x77; 32],
         sso_enc_pub_key: wallet_persistent_public,
         device_enc_pub_key: wallet_persistent_public,
         root_entropy_source: [0x66; 32],
-    }));
+    }
+}
+
+fn wallet_handshake_statement_with_response(
+    deeplink: &str,
+    answer: pairing::v2::EncryptedResponse,
+    nonce_seed: u8,
+) -> Vec<u8> {
+    let core_public_key =
+        P256PublicKey::from_sec1_bytes(&core_encryption_public_key_from_deeplink(deeplink))
+            .expect("core encryption public key should decode");
+    let wallet_ephemeral_secret = P256SecretKey::from_slice(&[3; 32]).unwrap();
+    let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
+    let mut wallet_ephemeral_public_bytes = [0u8; 65];
+    wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
     let shared_secret = diffie_hellman(
         wallet_ephemeral_secret.to_nonzero_scalar(),
         core_public_key.as_affine(),
@@ -521,7 +546,7 @@ pub(crate) fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
     let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
     let mut aes_key = [0u8; 32];
     hkdf.expand(&[], &mut aes_key).unwrap();
-    let nonce = [0x44; pairing::AES_GCM_NONCE_LEN];
+    let nonce = [nonce_seed; pairing::AES_GCM_NONCE_LEN];
     let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
     let mut encrypted_message = nonce.to_vec();
     encrypted_message.extend(
@@ -848,6 +873,7 @@ struct RecordingConnection {
     sso_response_script: Option<SsoResponseScript>,
     auth_states: Arc<Mutex<Vec<AuthState>>>,
     pairing_success_response: bool,
+    pairing_failure_response: bool,
     pairing_success_via_query: bool,
 }
 
@@ -1042,6 +1068,41 @@ impl JsonRpcConnection for RecordingConnection {
                 }
             }));
         }
+        if self.pairing_failure_response {
+            let auth_states = self.auth_states.clone();
+            let sent = self.sent.clone();
+            return Box::pin(stream::unfold(0, move |state| {
+                let auth_states = auth_states.clone();
+                let sent = sent.clone();
+                async move {
+                    match state {
+                        0 => {
+                            let id = wait_for_statement_subscribe_id(sent.clone(), 0).await;
+                            Some((subscribe_ack_frame(&id, "pairing-sub"), 1))
+                        }
+                        1 => {
+                            for _ in 0..100 {
+                                if let Some(deeplink) = first_pairing_deeplink(&auth_states) {
+                                    return Some((
+                                        new_statements_frame(
+                                            "pairing-sub",
+                                            vec![failed_wallet_handshake_statement(
+                                                &deeplink,
+                                                "The operation couldn't be completed. (SubstrateSdk.JSONRPCError error 1.)",
+                                            )],
+                                        ),
+                                        2,
+                                    ));
+                                }
+                                futures_timer::Delay::new(Duration::from_millis(1)).await;
+                            }
+                            panic!("pairing deeplink was not presented");
+                        }
+                        _ => futures::future::pending().await,
+                    }
+                }
+            }));
+        }
         if self.pairing_success_response {
             let auth_states = self.auth_states.clone();
             let sent = self.sent.clone();
@@ -1147,6 +1208,7 @@ impl ChainProvider for StubPlatform {
             sso_response_script: self.sso_response_script.clone(),
             auth_states: self.auth_states.clone(),
             pairing_success_response: self.pairing_success_response,
+            pairing_failure_response: self.pairing_failure_response,
             pairing_success_via_query: self.pairing_success_via_query,
         }))
     }
