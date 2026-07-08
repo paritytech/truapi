@@ -282,6 +282,18 @@ pub(crate) trait ProductAuthority: Send + Sync {
         product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError>;
 
+    /// Evict any cached Bulletin allowance key for the product and allocate a
+    /// fresh one, increasing the existing allowance.
+    ///
+    /// Called after a submission is rejected for an exhausted/missing
+    /// allowance, where reusing the cached key would loop forever.
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError>;
+
     /// Sign exact statement-store proof bytes with a product-derived account.
     async fn sign_statement_store_product_payload(
         &self,

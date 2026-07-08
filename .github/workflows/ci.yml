@@ -33,11 +33,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
         with:
           toolchain: stable
+          targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: cargo build
         run: cargo build --workspace --all-targets --all-features
+
+      - name: cargo build (wasm32)
+        # Guards the wasm host bridge and its offline subxt surface, which the
+        # host-target build never compiles.
+        run: cargo build -p truapi-server --target wasm32-unknown-unknown --no-default-features
 
       - name: cargo +nightly fmt --check
         run: cargo +nightly fmt --check

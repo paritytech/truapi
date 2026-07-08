@@ -64,10 +64,12 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+subxt = { version = "0.50.2", default-features = false, features = ["native"] }
 subxt-rpcs = { version = "0.50.1", default-features = false, features = ["native"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
+subxt = { version = "0.50.2", default-features = false, features = ["web"] }
 subxt-rpcs = { version = "0.50.1", default-features = false, features = ["web"] }
 wasm-bindgen = "0.2.118"
 wasm-bindgen-futures = "0.4"
@@ -84,6 +86,9 @@ web-sys = { version = "0.3", features = [
     "MessageEvent",
     "WebSocket",
 ] }
+
+[dev-dependencies]
+scale-info = "2.11"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

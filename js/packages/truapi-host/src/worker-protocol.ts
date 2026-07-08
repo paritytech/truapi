@@ -84,12 +84,6 @@ export type MainToWorker =
     }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
-  | {
-      kind: "signBulletinAllowance";
-      requestId: number;
-      signerId: number;
-      input: Uint8Array;
-    }
   | { kind: "subscriptionItem"; subId: number; value: unknown }
   | { kind: "chainConnectAck"; connId: number; ok: true }
   | { kind: "chainConnectAck"; connId: number; ok: false; error: string }
@@ -157,18 +151,6 @@ export type WorkerToMain =
       requestId: number;
       name: CallbackName;
       args: CallbackArgs;
-    }
-  | {
-      kind: "signBulletinAllowanceResponse";
-      requestId: number;
-      ok: true;
-      signature: Uint8Array;
-    }
-  | {
-      kind: "signBulletinAllowanceResponse";
-      requestId: number;
-      ok: false;
-      error: string;
     }
   | {
       kind: "subscriptionStart";

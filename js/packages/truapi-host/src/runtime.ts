@@ -68,6 +68,14 @@ export interface ProductRuntimeConfig {
   people: {
     genesisHash: string | Uint8Array;
   };
+  /**
+   * Bulletin-chain genesis hash used for in-core preimage submission. Omit
+   * when the host does not expose the Bulletin chain; preimage submission then
+   * fails before prompting the user.
+   */
+  bulletin?: {
+    genesisHash: string | Uint8Array;
+  };
   pairing: {
     deeplinkScheme: string;
   };

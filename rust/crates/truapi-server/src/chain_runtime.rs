@@ -1270,6 +1270,89 @@ pub(crate) async fn wait_for_chain_head_storage_value(
     }
 }
 
+/// Wait for `Initialized` on a fresh `with_runtime: true` follow, returning
+/// the newest finalized block hash and the finalized-block runtime spec.
+pub(crate) async fn wait_for_chain_head_initialized(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    label: &'static str,
+    timeout: Duration,
+) -> Result<(Vec<u8>, RuntimeSpec), String> {
+    let timeout = futures_timer::Delay::new(timeout).fuse();
+    pin_mut!(timeout);
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::Initialized {
+                    finalized_block_hashes,
+                    finalized_block_runtime,
+                }) => {
+                    let hash = finalized_block_hashes
+                        .last()
+                        .cloned()
+                        .ok_or_else(|| format!("{label} follow initialized without finalized blocks"))?;
+                    let spec = match finalized_block_runtime {
+                        Some(RuntimeType::Valid(spec)) => spec,
+                        Some(RuntimeType::Invalid { error }) => {
+                            return Err(format!("{label} follow reported an invalid runtime: {error}"));
+                        }
+                        None => {
+                            return Err(format!("{label} follow initialized without runtime metadata"));
+                        }
+                    };
+                    return Ok((hash, spec));
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(format!("{label} follow stopped before initialization"));
+                }
+                _ => {}
+            },
+            () = timeout => return Err(format!("{label} follow initialization timed out")),
+        }
+    }
+}
+
+/// Wait for one runtime-call operation's output from a `chainHead_v1_follow`
+/// stream.
+pub(crate) async fn wait_for_chain_head_call_output(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    operation_id: &str,
+    label: &'static str,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    let timeout = futures_timer::Delay::new(timeout).fuse();
+    pin_mut!(timeout);
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::OperationCallDone { operation_id: item_operation_id, output })
+                    if item_operation_id == operation_id =>
+                {
+                    return Ok(output);
+                }
+                Some(RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
+                    if item_operation_id == operation_id =>
+                {
+                    return Err(format!("{label} runtime call was inaccessible"));
+                }
+                Some(RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
+                    if item_operation_id == operation_id =>
+                {
+                    return Err(error);
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(format!("{label} follow stopped during runtime call"));
+                }
+                _ => {}
+            },
+            () = timeout => return Err(format!("{label} runtime call timed out")),
+        }
+    }
+}
+
 #[cfg(test)]
 fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
     hex::decode(value.strip_prefix("0x").unwrap_or(value)).map_err(|_| "invalid hex".to_string())

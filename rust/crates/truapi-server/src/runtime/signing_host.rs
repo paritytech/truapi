@@ -225,6 +225,18 @@ impl ProductAuthority for SigningHost {
         })
     }
 
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        _cx: &CallContext,
+        session: &AuthoritySession,
+        _product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        require_current_session(&self.session_state, session)?;
+        Err(AuthorityError::Unavailable {
+            reason: "signing host: bulletin allowance allocation not yet implemented".to_string(),
+        })
+    }
+
     async fn sign_statement_store_product_payload(
         &self,
         _cx: &CallContext,
@@ -339,6 +351,7 @@ mod tests {
         let services = RuntimeServices::new(
             platform.clone(),
             config.people_chain_genesis_hash,
+            config.bulletin_chain_genesis_hash,
             test_spawner(),
         );
         let signing_host = SigningHostRole::new(platform);

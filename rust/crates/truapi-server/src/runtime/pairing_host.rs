@@ -589,6 +589,26 @@ impl PairingHost {
         Ok(Some(allowance))
     }
 
+    /// Drop the cached and persisted Bulletin allowance key for one product.
+    pub(super) async fn evict_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<(), AuthorityError> {
+        let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        self.bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned")
+            .remove(&cache_key);
+        allowances::remove_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::Bulletin,
+        )
+        .await
+    }
+
     pub(super) fn clear_statement_store_allowance_keys(&self, session: Option<&SessionInfo>) {
         let mut allowances = self
             .statement_store_allowances
@@ -694,6 +714,17 @@ impl PairingHost {
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         let session = self.current_private_session(session)?;
         self.remote_bulletin_allowance_key(cx, &session, product_id)
+            .await
+    }
+
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_refresh_bulletin_allowance_key(cx, &session, product_id)
             .await
     }
 
@@ -833,6 +864,15 @@ impl ProductAuthority for PairingHost {
         product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         PairingHost::bulletin_allowance_key(self, cx, session, product_id).await
+    }
+
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        PairingHost::refresh_bulletin_allowance_key(self, cx, session, product_id).await
     }
 
     async fn sign_statement_store_product_payload(

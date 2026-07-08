@@ -9,8 +9,6 @@
 //! Async capability traits use `async_trait` so the combined [`Platform`]
 //! surface can be used as a trait object by the runtime.
 
-use std::sync::Arc;
-
 use futures::stream::BoxStream;
 use parity_scale_codec::{Decode, Encode};
 use unicode_normalization::UnicodeNormalization;
@@ -24,8 +22,7 @@ use truapi::latest::{
     HostRequestResourceAllocationRequest, HostSignPayloadRequest,
     HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
     HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
-    PreimageSubmitError, ProductAccountTxPayload, RemotePermissionRequest,
-    RemotePermissionResponse, ThemeVariant,
+    ProductAccountTxPayload, RemotePermissionRequest, RemotePermissionResponse, ThemeVariant,
 };
 use url::Url;
 
@@ -50,6 +47,11 @@ pub struct PairingHostConfig {
     pub host: HostRuntimeConfig,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
+    /// Bulletin-chain genesis hash used for in-core preimage submission.
+    ///
+    /// `None` when the host does not expose the Bulletin chain; preimage
+    /// submission then fails before prompting the user.
+    pub bulletin_chain_genesis_hash: Option<[u8; 32]>,
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
     ///
     /// Host-spec L.2-L.3 define the `polkadotapp://pair` route and construction
@@ -68,6 +70,11 @@ pub struct SigningHostConfig {
     pub host: HostRuntimeConfig,
     /// People-chain genesis hash used for statement-store product calls.
     pub people_chain_genesis_hash: [u8; 32],
+    /// Bulletin-chain genesis hash used for in-core preimage submission.
+    ///
+    /// `None` when the host does not expose the Bulletin chain; preimage
+    /// submission then fails before prompting the user.
+    pub bulletin_chain_genesis_hash: Option<[u8; 32]>,
 }
 
 /// Product identity attached to one product-facing TrUAPI connection.
@@ -149,9 +156,17 @@ impl PairingHostConfig {
         let config = Self {
             host: HostRuntimeConfig::new(host_info, platform_info)?,
             people_chain_genesis_hash,
+            bulletin_chain_genesis_hash: None,
             pairing_deeplink_scheme,
         };
         Ok(config)
+    }
+
+    /// Set the Bulletin-chain genesis hash used for in-core preimage
+    /// submission.
+    pub fn with_bulletin_chain_genesis_hash(mut self, genesis_hash: [u8; 32]) -> Self {
+        self.bulletin_chain_genesis_hash = Some(genesis_hash);
+        self
     }
 }
 
@@ -166,7 +181,15 @@ impl SigningHostConfig {
         Ok(Self {
             host: HostRuntimeConfig::new(host_info, platform_info)?,
             people_chain_genesis_hash,
+            bulletin_chain_genesis_hash: None,
         })
+    }
+
+    /// Set the Bulletin-chain genesis hash used for in-core preimage
+    /// submission.
+    pub fn with_bulletin_chain_genesis_hash(mut self, genesis_hash: [u8; 32]) -> Self {
+        self.bulletin_chain_genesis_hash = Some(genesis_hash);
+        self
     }
 }
 
@@ -613,9 +636,11 @@ pub trait ThemeHost: Send + Sync {
 }
 
 /// Secret key allocated for Bulletin preimage submission.
-#[derive(Clone, derive_more::Debug, PartialEq, Eq)]
+///
+/// The core is the sole holder: the secret never crosses the host boundary.
+/// Zeroized on drop, and its `Debug` redacts the material.
+#[derive(Clone, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct BulletinAllowanceKey {
-    #[debug("{:?}", "<redacted>")]
     secret: [u8; 64],
 }
 
@@ -630,14 +655,25 @@ impl BulletinAllowanceKey {
         Ok(Self { secret })
     }
 
-    /// Raw secret bytes for bridge and storage adapters.
-    pub fn as_secret_bytes(&self) -> &[u8] {
+    /// Borrow the raw secret bytes for in-core signing.
+    pub fn as_secret_bytes(&self) -> &[u8; 64] {
         &self.secret
     }
+}
 
-    /// Consume the wrapper and return raw secret bytes.
-    pub fn into_secret_bytes(self) -> [u8; 64] {
-        self.secret
+impl PartialEq for BulletinAllowanceKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.secret == other.secret
+    }
+}
+
+impl Eq for BulletinAllowanceKey {}
+
+impl core::fmt::Debug for BulletinAllowanceKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BulletinAllowanceKey")
+            .field("secret", &"<redacted>")
+            .finish()
     }
 }
 
@@ -652,71 +688,11 @@ pub enum BulletinAllowanceKeyError {
     },
 }
 
-/// Bulletin allowance signing capability exposed across the platform boundary.
-///
-/// Rust owns the allowance key format and secret material. Host code only gets
-/// `public_key + sign(payload)`, enough for PAPI to build and submit the
-/// Bulletin transaction without reintroducing allowance key parsing in host code.
-type BulletinAllowanceSignFn =
-    dyn Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync;
-
-/// Host-facing signer for Bulletin preimage submission.
-#[derive(Clone, derive_more::Debug)]
-pub struct BulletinAllowanceSigner {
-    public_key: [u8; 32],
-    /// Rust-owned signing capability passed to host code without exposing the
-    /// raw allowance secret.
-    #[debug("{:?}", "<redacted>")]
-    sign: Arc<BulletinAllowanceSignFn>,
-}
-
-impl BulletinAllowanceSigner {
-    /// Build a signer from a public key and signing function.
-    pub fn new(
-        public_key: [u8; 32],
-        sign: impl Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync + 'static,
-    ) -> Self {
-        Self {
-            public_key,
-            sign: Arc::new(sign),
-        }
-    }
-
-    /// Public key of the allowance account.
-    pub fn public_key(&self) -> [u8; 32] {
-        self.public_key
-    }
-
-    /// Sign a SCALE transaction payload with the allowance account.
-    pub fn sign(&self, payload: &[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> {
-        (self.sign)(payload)
-    }
-}
-
-/// Bulletin allowance signing failed.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
-#[display("{reason}")]
-pub struct BulletinAllowanceSignError {
-    /// Human-readable failure reason.
-    pub reason: String,
-}
-
-/// Host preimage backend. The core owns wire mapping and subscription
-/// lifecycle; the host owns the selected backend.
+/// Host preimage backend. The core builds, signs, and submits the Bulletin
+/// `TransactionStorage.store` transaction itself; the host only owns preimage
+/// content retrieval (P2P/IPFS lookup).
 #[async_trait]
 pub trait PreimageHost: Send + Sync {
-    /// Submit the preimage and return its key.
-    async fn submit_preimage(
-        &self,
-        value: Vec<u8>,
-        bulletin_allowance_signer: BulletinAllowanceSigner,
-    ) -> Result<Vec<u8>, PreimageSubmitError> {
-        let _ = (value, bulletin_allowance_signer);
-        Err(PreimageSubmitError::Unknown {
-            reason: "submitPreimage callback not provided by host".to_string(),
-        })
-    }
-
     /// Emits current value/miss immediately, then future updates.
     fn lookup_preimage(
         &self,

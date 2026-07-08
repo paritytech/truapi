@@ -31,11 +31,6 @@ import type {
   ThemeVariant,
 } from "@parity/truapi";
 
-export interface BulletinAllowanceSigner {
-  publicKey: Uint8Array;
-  sign(input: Uint8Array): Promise<Uint8Array>;
-}
-
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -524,15 +519,11 @@ export interface Permissions {
 }
 
 /**
- * Host preimage backend. The core owns wire mapping and subscription
- * lifecycle; the host owns the selected backend.
+ * Host preimage backend. The core builds, signs, and submits the Bulletin
+ * `TransactionStorage.store` transaction itself; the host only owns preimage
+ * content retrieval (P2P/IPFS lookup).
  */
 export interface PreimageHost {
-  /**
-   * Submit the preimage and return its key.
-   */
-  submitPreimage?(value: Uint8Array, bulletinAllowanceSigner: BulletinAllowanceSigner): Promise<Uint8Array>;
-
   /**
    * Emits current value/miss immediately, then future updates.
    */

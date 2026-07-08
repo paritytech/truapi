@@ -3,6 +3,7 @@ use schnorrkel::{PublicKey, SecretKey, Signature};
 use truapi::v01;
 
 use super::StatementStoreParseError;
+use crate::host_logic::extrinsic::sr25519_secret_from_bytes;
 use crate::host_logic::product_account::SR25519_SIGNING_CONTEXT;
 use crate::host_logic::session::SsoSessionInfo;
 
@@ -203,13 +204,9 @@ pub fn statement_public_key_from_secret(ss_secret: [u8; 64]) -> Result<[u8; 32],
 
 fn statement_secret_key_from_bytes(ss_secret: [u8; 64]) -> Result<SecretKey, String> {
     // Rust-generated session keys use schnorrkel's canonical scalar bytes.
-    // Legacy JS signers may send scure/ed25519-style scalar bytes instead.
-    match SecretKey::from_bytes(&ss_secret) {
-        Ok(secret) => Ok(secret),
-        Err(canonical_error) => SecretKey::from_ed25519_bytes(&ss_secret).map_err(|ed_error| {
-            format!("invalid ss_secret: canonical={canonical_error}; ed25519={ed_error}")
-        }),
-    }
+    // Legacy JS signers may send scure/ed25519-style scalar bytes instead;
+    // the shared parser keeps the fallback.
+    sr25519_secret_from_bytes(&ss_secret).map_err(|reason| format!("invalid ss_secret: {reason}"))
 }
 
 /// Build the statement proof payload for unsigned fields.
