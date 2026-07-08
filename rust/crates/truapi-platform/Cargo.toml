@@ -8,7 +8,7 @@ license = "MIT"
 [dependencies]
 truapi = { path = "../truapi" }
 async-trait = "0.1"
-derive_more = { version = "2", features = ["display"] }
+derive_more = { version = "2", features = ["display", "error"] }
 futures = "0.3"
 parity-scale-codec = { version = "3", features = ["derive"] }
 unicode-normalization = "0.1"

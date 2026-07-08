@@ -89,37 +89,21 @@ pub struct SsoSessionInfo {
     pub peer_request_channel: [u8; 32],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-enum PersistedSessionBlob {
-    #[codec(index = 3)]
-    V3(SessionInfo),
-}
-
 /// Encode the active-session fields the core currently understands into an
-/// opaque host-global session blob. Later SSO channel state should bump
-/// the enum variant instead of extending this layout silently.
+/// opaque host-global session blob.
 pub fn encode_persisted_session(info: &SessionInfo) -> Vec<u8> {
-    PersistedSessionBlob::V3(info.clone()).encode()
+    info.encode()
 }
 
 /// Decode a core-owned persisted session blob.
 pub fn decode_persisted_session(blob: &[u8]) -> Result<SessionInfo, String> {
-    let Some(version) = blob.first() else {
-        return Err("invalid session blob: missing version".to_string());
-    };
-    if *version != 3 {
-        return Err(format!("unsupported session blob version {version}"));
-    }
-
     let mut input = blob;
-    let decoded = PersistedSessionBlob::decode(&mut input)
-        .map_err(|err| format!("invalid session blob: {err}"))?;
+    let decoded =
+        SessionInfo::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?;
     if !input.is_empty() {
         return Err("invalid session blob: trailing bytes".to_string());
     }
-    match decoded {
-        PersistedSessionBlob::V3(info) => Ok(info),
-    }
+    Ok(decoded)
 }
 
 /// Holds the currently-active session and broadcasts connection-status
@@ -288,25 +272,6 @@ mod tests {
         let decoded = decode_persisted_session(&blob).expect("session should decode");
 
         assert_eq!(decoded, session);
-    }
-
-    #[test]
-    fn persisted_session_rejects_unknown_version() {
-        let mut blob = encode_persisted_session(&info(0x42));
-        blob[0] = 0xff;
-
-        let err = decode_persisted_session(&blob).unwrap_err();
-
-        assert_eq!(err, "unsupported session blob version 255");
-    }
-
-    #[test]
-    fn persisted_session_rejects_legacy_v2() {
-        let blob = vec![2];
-
-        let err = decode_persisted_session(&blob).unwrap_err();
-
-        assert_eq!(err, "unsupported session blob version 2");
     }
 
     #[test]

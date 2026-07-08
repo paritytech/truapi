@@ -68,8 +68,8 @@ function rawCallbacks(bridge: WorkerCallbackBridge): Required<Pick<RawCallbacks,
       bridge.callbackRequest("devicePermission", [request]) as ReturnType<RawCallbacks["devicePermission"]>,
     remotePermission: (request) =>
       bridge.callbackRequest("remotePermission", [request]) as ReturnType<RawCallbacks["remotePermission"]>,
-    submitPreimage: (value) =>
-      bridge.callbackRequest("submitPreimage", [value]) as ReturnType<RawCallbacks["submitPreimage"]>,
+    submitPreimage: (value, bulletinAllowanceSigner) =>
+      bridge.callbackRequest("submitPreimage", [value, bulletinAllowanceSigner]) as ReturnType<RawCallbacks["submitPreimage"]>,
     read: (key) =>
       bridge.callbackRequest("read", [key]) as ReturnType<RawCallbacks["read"]>,
     write: (key, value) =>

@@ -97,9 +97,25 @@ impl<'a> SsoPairingFlow<'a> {
     pub(super) async fn request_session(
         &self,
     ) -> Result<SsoPairingOutcome, CallError<HostRequestLoginError>> {
-        let pairing_identity = read_or_create_pairing_device_identity(self.host.platform.as_ref())
-            .await
-            .map_err(|reason| self.fail_before_pairing(reason))?;
+        let (mut pairing_identity, reused_identity) =
+            read_or_create_pairing_device_identity(self.host.platform.as_ref())
+                .await
+                .map_err(|reason| self.fail_before_pairing(reason))?;
+        // Match legacy host-papp: keep the pairing device identity stable so
+        // the wallet can reuse the registered host statement-store slot, but
+        // also remember the last handled handshake statement. Statement-store
+        // subscriptions replay retained topic data, so after a reload/logout a
+        // stale Success must be skipped before the user re-authenticates.
+        let last_processed_statement =
+            read_last_processed_pairing_statement(self.host.platform.as_ref())
+                .await
+                .map_err(|reason| self.fail_before_pairing(reason))?;
+        if reused_identity && last_processed_statement.is_none() {
+            debug!("regenerating unmarked pairing device identity");
+            pairing_identity = create_fresh_pairing_device_identity(self.host.platform.as_ref())
+                .await
+                .map_err(|reason| self.fail_before_pairing(reason))?;
+        }
         let bootstrap =
             create_pairing_bootstrap_from_identity(&self.host.host_config, pairing_identity)
                 .map_err(|err| self.fail_before_pairing(err.to_string()))?;
@@ -122,9 +138,11 @@ impl<'a> SsoPairingFlow<'a> {
             active: true,
         };
 
-        match self.run_pairing_flow(&bootstrap, cancel_rx).await {
+        match self
+            .run_pairing_flow(&bootstrap, cancel_rx, last_processed_statement)
+            .await
+        {
             Ok(outcome @ SsoPairingOutcome::Cancelled) => {
-                clear_pairing_device_identity(self.host.platform.as_ref()).await;
                 reset_guard.disarm();
                 Ok(outcome)
             }
@@ -134,7 +152,6 @@ impl<'a> SsoPairingFlow<'a> {
             }
             Err(reason) => {
                 self.host.auth_state.login_failed(reason.clone());
-                clear_pairing_device_identity(self.host.platform.as_ref()).await;
                 Err(CallError::HostFailure { reason })
             }
         }
@@ -158,6 +175,7 @@ impl<'a> SsoPairingFlow<'a> {
         &self,
         bootstrap: &PairingBootstrap,
         cancel_rx: oneshot::Receiver<()>,
+        last_processed_statement: Option<Vec<u8>>,
     ) -> Result<SsoPairingOutcome, String> {
         let mut cancel = cancel_rx.fuse();
         let statement_store = self.host.statement_store.clone();
@@ -184,6 +202,7 @@ impl<'a> SsoPairingFlow<'a> {
             live_subscription,
             bootstrap.topic,
             bootstrap.encryption_secret_key,
+            last_processed_statement,
             self.host.spawner.clone(),
         )
         .fuse();
@@ -193,6 +212,8 @@ impl<'a> SsoPairingFlow<'a> {
             _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
             response_result = pairing_response => response_result?,
         };
+        write_last_processed_pairing_statement(self.host.platform.as_ref(), &response.statement)
+            .await;
         let sso = establish_sso_session_info(
             bootstrap,
             response.peer_statement_account_id,
@@ -261,30 +282,48 @@ async fn create_fresh_pairing_device_identity(
 #[instrument(skip_all, fields(runtime.method = "sso.pairing_device.read_or_create"))]
 async fn read_or_create_pairing_device_identity(
     storage: &(impl CoreStorage + ?Sized),
-) -> Result<PairingDeviceIdentity, String> {
+) -> Result<(PairingDeviceIdentity, bool), String> {
     let stored = storage
         .read_core_storage(CoreStorageKey::PairingDeviceIdentity)
         .await
         .map_err(|err| format!("pairing device identity read failed: {err:?}"))?;
     if let Some(stored) = stored {
         match PairingDeviceIdentity::decode(&mut stored.as_slice()) {
-            Ok(identity) => return Ok(identity),
+            Ok(identity) => return Ok((identity, true)),
             Err(err) => {
                 debug!("discarding invalid stored pairing device identity: {err}");
             }
         }
     }
 
-    create_fresh_pairing_device_identity(storage).await
+    create_fresh_pairing_device_identity(storage)
+        .await
+        .map(|identity| (identity, false))
 }
 
-#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.clear"))]
-async fn clear_pairing_device_identity(storage: &(impl CoreStorage + ?Sized)) {
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.last_processed.read"))]
+async fn read_last_processed_pairing_statement(
+    storage: &(impl CoreStorage + ?Sized),
+) -> Result<Option<Vec<u8>>, String> {
+    storage
+        .read_core_storage(CoreStorageKey::LastProcessedPairingStatement)
+        .await
+        .map_err(|err| format!("last processed pairing statement read failed: {err:?}"))
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.last_processed.write"))]
+async fn write_last_processed_pairing_statement(
+    storage: &(impl CoreStorage + ?Sized),
+    statement: &[u8],
+) {
     if let Err(err) = storage
-        .clear_core_storage(CoreStorageKey::PairingDeviceIdentity)
+        .write_core_storage(
+            CoreStorageKey::LastProcessedPairingStatement,
+            statement.to_vec(),
+        )
         .await
     {
-        debug!("pairing device identity clear failed: {err:?}");
+        debug!("last processed pairing statement write failed: {err:?}");
     }
 }
 
@@ -299,6 +338,7 @@ async fn clear_auth_session(storage: &(impl CoreStorage + ?Sized)) {
 }
 
 struct PairingSuccess {
+    statement: Vec<u8>,
     peer_statement_account_id: [u8; 32],
     success: v2::Success,
 }
@@ -323,6 +363,7 @@ impl PairingSuccess {
             v2::EncryptedResponse::Pending(_) => Ok(None),
             v2::EncryptedResponse::Failed(reason) => Err(reason),
             v2::EncryptedResponse::Success(success) => Ok(Some(Self {
+                statement: statement.to_vec(),
                 peer_statement_account_id: verified.signer,
                 success: *success,
             })),
@@ -336,6 +377,7 @@ async fn wait_for_v2_pairing_success(
     mut live_subscription: RpcSubscription<Value>,
     topic: [u8; 32],
     core_encryption_secret_key: [u8; 32],
+    last_processed_statement: Option<Vec<u8>>,
     spawner: Spawner,
 ) -> Result<PairingSuccess, String> {
     let (query_tx, mut query_rx) = mpsc::unbounded();
@@ -349,7 +391,11 @@ async fn wait_for_v2_pairing_success(
                     return Err("pairing statement-store live subscription ended".to_string());
                 };
                 let value = item.map_err(|err| format!("pairing statement-store live error: {err}"))?;
-                if let Some(success) = handle_v2_pairing_result(&value, core_encryption_secret_key)? {
+                if let Some(success) = handle_v2_pairing_result(
+                    &value,
+                    core_encryption_secret_key,
+                    last_processed_statement.as_deref(),
+                )? {
                     return Ok(success);
                 }
             }
@@ -365,11 +411,13 @@ async fn wait_for_v2_pairing_success(
                     query_active = true;
                     let rpc_client = rpc_client.clone();
                     let query_tx = query_tx.clone();
+                    let last_processed_statement = last_processed_statement.clone();
                     let fut = async move {
                         let result = run_pairing_snapshot_query(
                             rpc_client,
                             topic,
                             core_encryption_secret_key,
+                            last_processed_statement,
                         ).await;
                         let _ = query_tx.unbounded_send(result);
                     };
@@ -389,6 +437,7 @@ async fn run_pairing_snapshot_query(
     rpc_client: RpcClient,
     topic: [u8; 32],
     core_encryption_secret_key: [u8; 32],
+    last_processed_statement: Option<Vec<u8>>,
 ) -> Result<Option<PairingSuccess>, String> {
     let topics = [topic];
     let mut subscription = statement_store_rpc::subscribe_match_all(&rpc_client, &topics)
@@ -403,7 +452,11 @@ async fn run_pairing_snapshot_query(
                     return Ok(None);
                 };
                 let value = item.map_err(|err| format!("pairing statement-store query item failed: {err}"))?;
-                if let Some(success) = handle_v2_pairing_result(&value, core_encryption_secret_key)? {
+                if let Some(success) = handle_v2_pairing_result(
+                    &value,
+                    core_encryption_secret_key,
+                    last_processed_statement.as_deref(),
+                )? {
                     return Ok(Some(success));
                 }
                 let page = parse_new_statements_result("query".to_string(), &value)
@@ -422,10 +475,14 @@ async fn run_pairing_snapshot_query(
 fn handle_v2_pairing_result(
     value: &Value,
     core_encryption_secret_key: [u8; 32],
+    last_processed_statement: Option<&[u8]>,
 ) -> Result<Option<PairingSuccess>, String> {
     let page =
         parse_new_statements_result("pairing".to_string(), value).map_err(|err| err.to_string())?;
     for statement in page.statements {
+        if last_processed_statement == Some(statement.as_slice()) {
+            continue;
+        }
         if let Some(success) =
             PairingSuccess::from_v2_statement(&statement, core_encryption_secret_key)?
         {
@@ -508,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn request_login_clears_cancelled_pairing_device_identity_between_attempts() {
+    fn request_login_regenerates_unmarked_pairing_device_identity_between_attempts() {
         let platform = stub_platform();
         let (host, pairing_host) =
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
@@ -544,19 +601,19 @@ mod tests {
             pairing_device_from_deeplink(&deeplinks[1])
         );
         assert!(
-            !platform
+            platform
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
                 .contains_key(&core_storage_test_key(
                     CoreStorageKey::PairingDeviceIdentity
                 )),
-            "cancelled pairing must clear the device identity so stale statement-store responses cannot be replayed"
+            "cancelled pairing keeps the latest identity; the next unmarked reuse regenerates it"
         );
     }
 
     #[test]
-    fn request_login_reuses_stored_pairing_device_identity() {
+    fn request_login_reuses_marked_stored_pairing_device_identity() {
         let platform = stub_platform();
         let identity = generate_pairing_device_identity().unwrap();
         platform
@@ -566,6 +623,14 @@ mod tests {
             .insert(
                 core_storage_test_key(CoreStorageKey::PairingDeviceIdentity),
                 identity.encode(),
+            );
+        platform
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(
+                core_storage_test_key(CoreStorageKey::LastProcessedPairingStatement),
+                vec![0xde, 0xad],
             );
         let (host, pairing_host) =
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
@@ -598,14 +663,14 @@ mod tests {
             )
         );
         assert!(
-            !platform
+            platform
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
                 .contains_key(&core_storage_test_key(
                     CoreStorageKey::PairingDeviceIdentity
                 )),
-            "cancelled pairing still clears a reused identity"
+            "cancelled pairing keeps the marked device identity"
         );
     }
 
@@ -861,6 +926,7 @@ mod tests {
             rpc_client,
             bootstrap.topic,
             bootstrap.encryption_secret_key,
+            None,
         ))
         .unwrap()
         .expect("snapshot query should return pairing success");
@@ -882,6 +948,38 @@ mod tests {
         assert_eq!(
             methods.first().map(String::as_str),
             Some("statement_subscribeStatement")
+        );
+    }
+
+    #[test]
+    fn pairing_result_skips_last_processed_statement() {
+        let (host_config, _) = runtime_config("myapp.dot");
+        let pairing_identity = generate_pairing_device_identity().unwrap();
+        let bootstrap =
+            create_pairing_bootstrap_from_identity(&host_config, pairing_identity).unwrap();
+        let statement = wallet_handshake_statement(&bootstrap.deeplink);
+        let page = serde_json::json!({
+            "event": "newStatements",
+            "data": {
+                "statements": [format!("0x{}", hex::encode(&statement))],
+                "remaining": 0,
+            },
+        });
+
+        let ignored = handle_v2_pairing_result(
+            &page,
+            bootstrap.encryption_secret_key,
+            Some(statement.as_slice()),
+        )
+        .unwrap();
+        assert!(ignored.is_none());
+
+        let accepted = handle_v2_pairing_result(&page, bootstrap.encryption_secret_key, None)
+            .unwrap()
+            .expect("unmarked statement should be accepted");
+        assert_eq!(
+            accepted.peer_statement_account_id,
+            peer_statement_keypair().1
         );
     }
 
