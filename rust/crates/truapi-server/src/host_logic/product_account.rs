@@ -1,6 +1,6 @@
 //! Product account derivation shared by all hosts.
 //!
-//! Mirrors dotli's `packages/auth/src/account.ts`: derive an sr25519 public
+//! Mirrors host product-account derivation: derive an sr25519 public
 //! key through soft HDKD junctions `["product", product_id, derivation_index]`.
 //! Host-spec C.5-C.7 define the product-account derivation, SS58 address, and
 //! `ProductAccountId` shape:
