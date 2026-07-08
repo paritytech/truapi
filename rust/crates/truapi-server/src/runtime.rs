@@ -312,6 +312,9 @@ impl ProductRuntimeHost {
             return false;
         };
         let product_id = self.product_id();
+        // Localhost products are development-only wildcards once a host admits
+        // them. Production hosts must reject localhost products before creating
+        // the product runtime.
         product_id == "localhost"
             || product_id.starts_with("localhost:")
             || dot_ns_identifier == product_id
@@ -4053,7 +4056,7 @@ mod tests {
                 .contains_key(&core_storage_test_key(
                     CoreStorageKey::PairingDeviceIdentity
                 )),
-            "logout keeps the pairing device identity; stale pairing responses are skipped by the processed-statement marker"
+            "logout may leave the old pairing identity in storage; the next login rotates it before presenting QR"
         );
         assert_eq!(
             futures::executor::block_on(statuses.next()).unwrap(),
