@@ -43,8 +43,8 @@ pub enum NavigateDecision {
 impl NavigateDecision {
     /// Canonical URL string for the three `Open*` variants; `None` for
     /// `Reject`. `DotName` and `Localhost` keep the dotns/localhost identity
-    /// visible so env-aware hosts (e.g. dotli rewriting `.dot` to `.dot.li`)
-    /// can re-parse and do their own assembly without losing information.
+    /// visible so env-aware hosts can rewrite `.dot` names for their active
+    /// environment and re-parse without losing information.
     pub fn canonical_url(&self) -> Option<String> {
         match self {
             Self::DotName { identifier, path } => Some(join_url("https://", identifier, path)),
@@ -63,7 +63,7 @@ fn join_url(scheme: &str, host: &str, path: &str) -> String {
     }
 }
 
-/// Classify a URL the way dotli's `handleNavigateTo` does: try `.dot` first,
+/// Classify a URL the way the host navigation handler does: try `.dot` first,
 /// then `localhost`, then normalize as external.
 pub fn parse_navigate(input: &str) -> NavigateDecision {
     let trimmed = input.trim();
