@@ -101,17 +101,16 @@ impl<'a> SsoPairingFlow<'a> {
             read_or_create_pairing_device_identity(self.host.platform.as_ref())
                 .await
                 .map_err(|reason| self.fail_before_pairing(reason))?;
-        // Match legacy host-papp: keep the pairing device identity stable so
-        // the wallet can reuse the registered host statement-store slot, but
-        // also remember the last handled handshake statement. Statement-store
-        // subscriptions replay retained topic data, so after a reload/logout a
-        // stale Success must be skipped before the user re-authenticates.
         let last_processed_statement =
             read_last_processed_pairing_statement(self.host.platform.as_ref())
                 .await
                 .map_err(|reason| self.fail_before_pairing(reason))?;
-        if reused_identity && last_processed_statement.is_none() {
-            debug!("regenerating unmarked pairing device identity");
+        // Pairing success statements are retained by statement-store. Reusing a
+        // previous pairing identity means reusing its topic, where the only
+        // retained response may be the last processed success. Rotate before
+        // presenting QR so every explicit login waits on a fresh wallet scan.
+        if reused_identity {
+            debug!("regenerating stored pairing device identity");
             pairing_identity = create_fresh_pairing_device_identity(self.host.platform.as_ref())
                 .await
                 .map_err(|reason| self.fail_before_pairing(reason))?;
@@ -343,12 +342,18 @@ struct PairingSuccess {
     success: v2::Success,
 }
 
+enum PairingStatementOutcome {
+    Pending,
+    Failed(String),
+    Success(PairingSuccess),
+}
+
 impl PairingSuccess {
     #[instrument(skip_all, fields(runtime.method = "sso.pairing.decode_statement"))]
     fn from_v2_statement(
         statement: &[u8],
         core_encryption_secret_key: [u8; 32],
-    ) -> Result<Option<Self>, String> {
+    ) -> Result<PairingStatementOutcome, String> {
         let verified =
             decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
         let VersionedHandshakeResponse::V2 {
@@ -360,9 +365,9 @@ impl PairingSuccess {
             public_key,
             &encrypted_message,
         )? {
-            v2::EncryptedResponse::Pending(_) => Ok(None),
-            v2::EncryptedResponse::Failed(reason) => Err(reason),
-            v2::EncryptedResponse::Success(success) => Ok(Some(Self {
+            v2::EncryptedResponse::Pending(_) => Ok(PairingStatementOutcome::Pending),
+            v2::EncryptedResponse::Failed(reason) => Ok(PairingStatementOutcome::Failed(reason)),
+            v2::EncryptedResponse::Success(success) => Ok(PairingStatementOutcome::Success(Self {
                 statement: statement.to_vec(),
                 peer_statement_account_id: verified.signer,
                 success: *success,
@@ -483,10 +488,10 @@ fn handle_v2_pairing_result(
         if last_processed_statement == Some(statement.as_slice()) {
             continue;
         }
-        if let Some(success) =
-            PairingSuccess::from_v2_statement(&statement, core_encryption_secret_key)?
-        {
-            return Ok(Some(success));
+        match PairingSuccess::from_v2_statement(&statement, core_encryption_secret_key)? {
+            PairingStatementOutcome::Pending => {}
+            PairingStatementOutcome::Failed(reason) => return Err(reason),
+            PairingStatementOutcome::Success(success) => return Ok(Some(success)),
         }
     }
 
@@ -613,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn request_login_reuses_marked_stored_pairing_device_identity() {
+    fn request_login_regenerates_marked_stored_pairing_device_identity() {
         let platform = stub_platform();
         let identity = generate_pairing_device_identity().unwrap();
         platform
@@ -655,7 +660,7 @@ mod tests {
                 _ => None,
             })
             .expect("pairing state should be emitted");
-        assert_eq!(
+        assert_ne!(
             pairing_device_from_deeplink(&deeplink),
             (
                 identity.statement_store_public_key,
@@ -670,7 +675,7 @@ mod tests {
                 .contains_key(&core_storage_test_key(
                     CoreStorageKey::PairingDeviceIdentity
                 )),
-            "cancelled pairing keeps the marked device identity"
+            "cancelled pairing keeps the rotated identity; the next login rotates again"
         );
     }
 
@@ -686,7 +691,7 @@ mod tests {
         };
         let statement = signed_test_statement(handshake.encode());
         let notification = format!(
-            r#"{{"jsonrpc":"2.0","method":"statement_subscribeStatement","params":{{"subscription":"remote-sub","result":{{"event":"newStatements","data":{{"statements":["0x{}"],"remaining":0}}}}}}}}"#,
+            r#"{{"jsonrpc":"2.0","method":"statement_statement","params":{{"subscription":"remote-sub","result":{{"event":"newStatements","data":{{"statements":["0x{}"],"remaining":0}}}}}}}}"#,
             hex::encode(statement)
         );
         let platform = Arc::new(StubPlatform {
@@ -816,6 +821,49 @@ mod tests {
                 .iter()
                 .any(|method| method == "statement_unsubscribeStatement"),
             "pairing subscription should be cleaned up"
+        );
+    }
+
+    #[test]
+    fn request_login_surfaces_wallet_failure_status() {
+        let session_writes = Arc::new(Mutex::new(Vec::new()));
+        let platform = Arc::new(StubPlatform {
+            pairing_failure_response: true,
+            session_writes: session_writes.clone(),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
+
+        let expected_reason =
+            "The operation couldn't be completed. (SubstrateSdk.JSONRPCError error 1.)";
+        assert_eq!(
+            err,
+            CallError::HostFailure {
+                reason: expected_reason.to_string()
+            }
+        );
+        assert!(
+            session_writes
+                .lock()
+                .expect("session writes mutex poisoned")
+                .is_empty()
+        );
+        let auth_states = platform
+            .auth_states
+            .lock()
+            .expect("auth state list mutex poisoned");
+        assert!(
+            auth_states
+                .iter()
+                .any(|state| matches!(state, AuthState::LoginFailed { reason } if reason == expected_reason)),
+            "wallet failure should be surfaced to the modal: {auth_states:?}"
         );
     }
 
