@@ -7,6 +7,13 @@
 
 import type { RawCallbacks } from "./host-callbacks-adapter.js";
 
+import type { BulletinAllowanceSigner } from "./host-callbacks.js";
+
+export interface WorkerBulletinAllowanceSigner {
+  publicKey: Uint8Array;
+  signerId: number;
+}
+
 import type {
   ChainConnect,
 } from "../runtime.js";
@@ -38,6 +45,7 @@ export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];
 
 export interface WorkerCallbackBridge {
   callbackRequest(name: CallbackName, args: readonly unknown[]): Promise<unknown>;
+  registerBulletinAllowanceSigner(signer: BulletinAllowanceSigner): WorkerBulletinAllowanceSigner;
   startSubscription<T>(
     name: SubscriptionName,
     payload: Uint8Array | null,
@@ -69,7 +77,7 @@ function rawCallbacks(bridge: WorkerCallbackBridge): Required<Pick<RawCallbacks,
     remotePermission: (request) =>
       bridge.callbackRequest("remotePermission", [request]) as ReturnType<RawCallbacks["remotePermission"]>,
     submitPreimage: (value, bulletinAllowanceSigner) =>
-      bridge.callbackRequest("submitPreimage", [value, bulletinAllowanceSigner]) as ReturnType<RawCallbacks["submitPreimage"]>,
+      bridge.callbackRequest("submitPreimage", [value, bridge.registerBulletinAllowanceSigner(bulletinAllowanceSigner)]) as ReturnType<RawCallbacks["submitPreimage"]>,
     read: (key) =>
       bridge.callbackRequest("read", [key]) as ReturnType<RawCallbacks["read"]>,
     write: (key, value) =>
