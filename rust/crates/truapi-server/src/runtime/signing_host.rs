@@ -13,9 +13,9 @@ use std::sync::{Arc, Mutex};
 pub(crate) use local_activation::LocalActivation;
 
 use super::authority::{
-    AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest, ProductAuthority,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
-    authority_session, require_current_session,
+    AuthorityError, AuthoritySession, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
+    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
+    StatementStoreAllowanceKey, authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use crate::host_logic::entropy::derive_product_entropy;
@@ -210,6 +210,18 @@ impl ProductAuthority for SigningHost {
         Err(AuthorityError::Unavailable {
             reason: "signing host: statement-store allowance allocation not yet implemented"
                 .to_string(),
+        })
+    }
+
+    async fn bulletin_allowance_key(
+        &self,
+        _cx: &CallContext,
+        session: &AuthoritySession,
+        _product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        require_current_session(&self.session_state, session)?;
+        Err(AuthorityError::Unavailable {
+            reason: "signing host: bulletin allowance allocation not yet implemented".to_string(),
         })
     }
 

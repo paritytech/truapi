@@ -138,7 +138,11 @@ async function createProviderFromRuntime(
 }
 
 async function readyProvider(worker: FakeWorker, options: ReadyOptions = {}) {
-    const providerPromise = createProviderFromRuntime(asWorker(worker), makeHostCallbacks(), options);
+    const providerPromise = createProviderFromRuntime(
+        asWorker(worker),
+        makeHostCallbacks(),
+        options,
+    );
     worker.emit({ kind: "loaded" });
     worker.emit({ kind: "ready" });
     return finishProviderReady(worker, providerPromise);
@@ -188,9 +192,13 @@ describe("createWebWorkerPairingHostRuntime", () => {
     it("creates multiple product cores on one worker runtime", async () => {
         const worker = new FakeWorker();
         const config = runtimeConfig();
-        const runtimePromise = createWebWorkerPairingHostRuntime(asWorker(worker), makeHostCallbacks(), {
-            hostConfig: hostConfigFromRuntimeConfig(config),
-        });
+        const runtimePromise = createWebWorkerPairingHostRuntime(
+            asWorker(worker),
+            makeHostCallbacks(),
+            {
+                hostConfig: hostConfigFromRuntimeConfig(config),
+            },
+        );
         worker.emit({ kind: "loaded" });
         worker.emit({ kind: "ready" });
         const runtime = await runtimePromise;
@@ -276,9 +284,8 @@ describe("createWebWorkerPairingHostRuntime", () => {
         const previous = devGlobal.__truapi;
         delete devGlobal.__truapi;
         const moduleUrl = `./create-worker-host-runtime.js?dev-global-${Date.now()}`;
-        const { createWebWorkerPairingHostRuntime: freshCreateWebWorkerPairingHostRuntime } = (await import(
-            moduleUrl
-        )) as typeof import("./create-worker-host-runtime.js");
+        const { createWebWorkerPairingHostRuntime: freshCreateWebWorkerPairingHostRuntime } =
+            (await import(moduleUrl)) as typeof import("./create-worker-host-runtime.js");
 
         expect(typeof devGlobal.__truapi!.setLogLevel).toBe("function");
         devGlobal.__truapi!.setLogLevel("trace");
@@ -475,6 +482,74 @@ describe("createWebWorkerPairingHostRuntime", () => {
             requestId: 3,
             ok: true,
             value: undefined,
+        });
+
+        provider.dispose();
+    });
+
+    it("revives Bulletin allowance signer handles for submitPreimage", async () => {
+        const worker = new FakeWorker();
+        const publicKey = new Uint8Array(32);
+        publicKey.set([1, 2, 3]);
+        const value = new Uint8Array([10, 11, 12]);
+        const signingPayload = new Uint8Array([4, 5, 6]);
+        const signature = new Uint8Array(64);
+        signature.set([9, 8, 7]);
+        const result = new Uint8Array([30, 31, 32]);
+        const seen: {
+            publicKey?: Uint8Array;
+            signature?: Uint8Array;
+            value?: Uint8Array;
+        } = {};
+
+        const submitPreimage: PreimageHost["submitPreimage"] = async (submittedValue, signer) => {
+            seen.value = submittedValue;
+            seen.publicKey = signer.publicKey;
+            seen.signature = await signer.sign(signingPayload);
+            return result;
+        };
+        const providerPromise = createProviderFromRuntime(
+            asWorker(worker),
+            makeHostCallbacks({ submitPreimage }),
+            { runtimeConfig: runtimeConfig() },
+        );
+        worker.emit({ kind: "loaded" });
+        worker.emit({ kind: "ready" });
+        const provider = await finishProviderReady(worker, providerPromise);
+
+        worker.emit({
+            kind: "callbackRequest",
+            requestId: 21,
+            name: "submitPreimage",
+            args: [value, { publicKey, signerId: 7 }],
+        });
+        await settle();
+
+        const signRequest = lastMessageOfKind(worker, "signBulletinAllowance");
+        expect(signRequest.kind).toBe("signBulletinAllowance");
+        expect(signRequest.signerId).toBe(7);
+        expect(signRequest.input).toEqual(signingPayload);
+        expect(typeof signRequest.requestId).toBe("number");
+
+        worker.emit({
+            kind: "signBulletinAllowanceResponse",
+            requestId: signRequest.requestId,
+            ok: true,
+            signature,
+        });
+        await settle();
+        await settle();
+
+        expect(seen).toEqual({
+            value,
+            publicKey,
+            signature,
+        });
+        expect(worker.messages.at(-1)).toEqual({
+            kind: "callbackResponse",
+            requestId: 21,
+            ok: true,
+            value: result,
         });
 
         provider.dispose();

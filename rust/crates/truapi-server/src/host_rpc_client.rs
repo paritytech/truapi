@@ -5,7 +5,6 @@
 //! [`subxt_rpcs::RpcClientT`]: request correlation, subscription routing, and
 //! best-effort unsubscribe on subscription drop.
 
-use core::fmt;
 use core::mem;
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -57,16 +56,9 @@ struct SubscriptionSink {
     tx: mpsc::UnboundedSender<Result<Box<RawValue>, RpcError>>,
 }
 
-#[derive(Debug)]
-struct HostRpcClientError(String);
-
-impl fmt::Display for HostRpcClientError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for HostRpcClientError {}
+#[derive(Debug, derive_more::Display, derive_more::Error)]
+#[display("{}", _0)]
+struct HostRpcClientError(#[error(not(source))] String);
 
 #[derive(Serialize)]
 struct JsonRpcRequest<'a> {

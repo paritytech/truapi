@@ -9,6 +9,8 @@
 //! Async capability traits use `async_trait` so the combined [`Platform`]
 //! surface can be used as a trait object by the runtime.
 
+use std::sync::Arc;
+
 use futures::stream::BoxStream;
 use parity_scale_codec::{Decode, Encode};
 use unicode_normalization::UnicodeNormalization;
@@ -210,7 +212,7 @@ fn require_non_empty(field: &'static str, value: &str) -> Result<(), RuntimeConf
 }
 
 /// Runtime config validation error.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum RuntimeConfigValidationError {
     /// Required string field was empty or whitespace-only.
     #[display("{field} must not be empty")]
@@ -243,8 +245,6 @@ pub enum RuntimeConfigValidationError {
         product_id: String,
     },
 }
-
-impl core::error::Error for RuntimeConfigValidationError {}
 
 /// Product-scoped key-value storage.
 ///
@@ -440,6 +440,13 @@ pub enum CoreStorageKey {
         /// Permission request whose authorization is being stored.
         request: PermissionAuthorizationRequest,
     },
+    /// Persisted allowance-slot keys for one paired SSO session.
+    AllowanceKeys {
+        /// Stable host-derived SSO session id.
+        session_id: String,
+    },
+    /// Last processed SSO pairing response statement for the pairing device.
+    LastProcessedPairingStatement,
 }
 
 /// Host-private persistence for core-owned state.
@@ -605,13 +612,121 @@ pub trait ThemeHost: Send + Sync {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<ThemeVariant, GenericError>>;
 }
 
+/// Secret key allocated for Bulletin preimage submission.
+#[derive(Clone, PartialEq, Eq)]
+pub struct BulletinAllowanceKey {
+    secret: [u8; 64],
+}
+
+impl BulletinAllowanceKey {
+    /// Build a Bulletin allowance key from raw secret bytes.
+    pub fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, BulletinAllowanceKeyError> {
+        let secret: [u8; 64] = secret.try_into().map_err(|secret: Vec<u8>| {
+            BulletinAllowanceKeyError::InvalidLength {
+                actual: secret.len(),
+            }
+        })?;
+        Ok(Self { secret })
+    }
+
+    /// Raw secret bytes for bridge and storage adapters.
+    pub fn as_secret_bytes(&self) -> &[u8] {
+        &self.secret
+    }
+
+    /// Consume the wrapper and return raw secret bytes.
+    pub fn into_secret_bytes(self) -> [u8; 64] {
+        self.secret
+    }
+}
+
+impl core::fmt::Debug for BulletinAllowanceKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BulletinAllowanceKey")
+            .field("secret", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Invalid Bulletin allowance key material.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
+pub enum BulletinAllowanceKeyError {
+    /// Secret material was not a 64-byte sr25519 secret key.
+    #[display("bulletin allowance key must be 64 bytes, got {actual}")]
+    InvalidLength {
+        /// Actual secret byte length.
+        actual: usize,
+    },
+}
+
+/// Bulletin allowance signing capability exposed across the platform boundary.
+///
+/// Rust owns the allowance key format and secret material. Host code only gets
+/// `public_key + sign(payload)`, enough for PAPI to build and submit the
+/// Bulletin transaction without reintroducing Nova key parsing in dotli.
+type BulletinAllowanceSignFn =
+    dyn Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync;
+
+/// Host-facing signer for Bulletin preimage submission.
+#[derive(Clone)]
+pub struct BulletinAllowanceSigner {
+    public_key: [u8; 32],
+    /// Rust-owned signing capability passed to host code without exposing the
+    /// raw allowance secret.
+    sign: Arc<BulletinAllowanceSignFn>,
+}
+
+impl BulletinAllowanceSigner {
+    /// Build a signer from a public key and signing function.
+    pub fn new(
+        public_key: [u8; 32],
+        sign: impl Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            public_key,
+            sign: Arc::new(sign),
+        }
+    }
+
+    /// Public key of the allowance account.
+    pub fn public_key(&self) -> [u8; 32] {
+        self.public_key
+    }
+
+    /// Sign a SCALE transaction payload with the allowance account.
+    pub fn sign(&self, payload: &[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> {
+        (self.sign)(payload)
+    }
+}
+
+impl core::fmt::Debug for BulletinAllowanceSigner {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BulletinAllowanceSigner")
+            .field("public_key", &self.public_key)
+            .field("sign", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Bulletin allowance signing failed.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
+#[display("{reason}")]
+pub struct BulletinAllowanceSignError {
+    /// Human-readable failure reason.
+    pub reason: String,
+}
+
 /// Host preimage backend. The core owns wire mapping and subscription
 /// lifecycle; the host owns the selected backend.
 #[async_trait]
 pub trait PreimageHost: Send + Sync {
     /// Submit the preimage and return its key.
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, PreimageSubmitError> {
-        let _ = value;
+    async fn submit_preimage(
+        &self,
+        value: Vec<u8>,
+        bulletin_allowance_signer: BulletinAllowanceSigner,
+    ) -> Result<Vec<u8>, PreimageSubmitError> {
+        let _ = (value, bulletin_allowance_signer);
         Err(PreimageSubmitError::Unknown {
             reason: "submitPreimage callback not provided by host".to_string(),
         })
