@@ -125,7 +125,16 @@ fn emit_host_callbacks(
         out.push('\n');
     }
 
-    for type_def in &definition.types {
+    if has_callback_signer_type(definition) {
+        out.push_str(&emit_callback_signer_interface());
+        out.push('\n');
+    }
+
+    for type_def in definition
+        .types
+        .iter()
+        .filter(|ty| !is_callback_special_type_name(&ty.name))
+    {
         let rendered = match &type_def.kind {
             TypeDefKind::Enum(_) => emit_enum_type(type_def)?,
             _ => emit_struct_interface(type_def)?,
@@ -256,6 +265,7 @@ fn emit_wasm_adapter(
         out,
         r#"
         import type {{
+          BulletinAllowanceSigner,
           FlatHostCallbacks,
           RequiredHostCallbacks,
         }} from "./host-callbacks.js";
@@ -356,6 +366,21 @@ fn emit_worker_callbacks(
         "#
     )
     .unwrap();
+    if has_callback_signer_type(definition) {
+        writedoc!(
+            out,
+            r#"
+            import type {{ BulletinAllowanceSigner }} from "./host-callbacks.js";
+
+            export interface WorkerBulletinAllowanceSigner {{
+              publicKey: Uint8Array;
+              signerId: number;
+            }}
+
+            "#
+        )
+        .unwrap();
+    }
     emit_import_block(&mut out, true, "../runtime.js", &runtime_types);
     if !runtime_types.is_empty() {
         out.push('\n');
@@ -366,19 +391,22 @@ fn emit_worker_callbacks(
     out.push_str(&const_name_array("SUBSCRIPTION_NAMES", &subscriptions));
     out.push_str("export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];\n\n");
 
-    writedoc!(
-        out,
-        r#"
-        export interface WorkerCallbackBridge {{
-          callbackRequest(name: CallbackName, args: readonly unknown[]): Promise<unknown>;
-          startSubscription<T>(
-            name: SubscriptionName,
-            payload: Uint8Array | null,
-            sendItem: (value: T) => void,
-          ): () => void;
-        "#
-    )
-    .unwrap();
+    out.push_str("export interface WorkerCallbackBridge {\n");
+    out.push_str(
+        "  callbackRequest(name: CallbackName, args: readonly unknown[]): Promise<unknown>;\n",
+    );
+    if has_callback_signer_type(definition) {
+        writeln!(
+            out,
+            "  registerBulletinAllowanceSigner(signer: BulletinAllowanceSigner): WorkerBulletinAllowanceSigner;"
+        )
+        .unwrap();
+    }
+    out.push_str("  startSubscription<T>(\n");
+    out.push_str("    name: SubscriptionName,\n");
+    out.push_str("    payload: Uint8Array | null,\n");
+    out.push_str("    sendItem: (value: T) => void,\n");
+    out.push_str("  ): () => void;\n");
     for (trait_def, method) in &trait_object_callbacks {
         writeln!(
             out,
@@ -388,14 +416,7 @@ fn emit_worker_callbacks(
         )
         .unwrap();
     }
-    writedoc!(
-        out,
-        r#"
-        }}
-
-        "#
-    )
-    .unwrap();
+    out.push_str("}\n\n");
 
     out.push_str(&emit_worker_callback_factory(
         "rawCallbacks",
@@ -498,10 +519,24 @@ fn emit_worker_callback_entry(method: &PlatformMethod) -> Result<String> {
         .map(|p| to_camel_case(&p.name))
         .collect::<Vec<_>>()
         .join(", ");
-    let arg_array = if args.is_empty() {
+    let arg_exprs = method
+        .params
+        .iter()
+        .map(|p| {
+            let name = to_camel_case(&p.name);
+            if matches!(&p.type_ref, TypeRef::Named { name, .. } if is_callback_signer_type_name(name))
+            {
+                format!("bridge.registerBulletinAllowanceSigner({name})")
+            } else {
+                name
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let arg_array = if arg_exprs.is_empty() {
         "[]".to_string()
     } else {
-        format!("[{args}]")
+        format!("[{arg_exprs}]")
     };
     if method.return_shape.is_async {
         Ok(format!(
@@ -702,6 +737,10 @@ fn raw_param_ts(
     local_codec_types: &BTreeSet<String>,
 ) -> String {
     match ty {
+        TypeRef::Named { name, .. } if is_callback_byte_type_name(name) => "Uint8Array".to_string(),
+        TypeRef::Named { name, .. } if is_callback_signer_type_name(name) => {
+            "BulletinAllowanceSigner".to_string()
+        }
         TypeRef::Named { name, .. } if codec_types.contains(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } if local_codec_types.contains(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } => name.clone(),
@@ -726,6 +765,10 @@ fn raw_ok_ts(
     local_codec_types: &BTreeSet<String>,
 ) -> String {
     match ty {
+        TypeRef::Named { name, .. } if is_callback_byte_type_name(name) => "Uint8Array".to_string(),
+        TypeRef::Named { name, .. } if is_callback_signer_type_name(name) => {
+            "BulletinAllowanceSigner".to_string()
+        }
         TypeRef::Named { name, .. } if codec_types.contains(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } if local_codec_types.contains(name) => "Uint8Array".to_string(),
         TypeRef::Named { name, .. } => name.clone(),
@@ -807,6 +850,7 @@ fn adapter_arg(
 ) -> String {
     let name = to_camel_case(&param.name);
     match &param.type_ref {
+        TypeRef::Named { name: ty, .. } if is_callback_special_type_name(ty) => name,
         TypeRef::Named { name: ty, .. }
             if codec_types.contains(ty) || local_codec_types.contains(ty) =>
         {
@@ -1033,7 +1077,7 @@ fn walk_type_def(
 fn collect_local_from_type(ty: &TypeRef, local: &BTreeSet<String>, out: &mut BTreeSet<String>) {
     match ty {
         TypeRef::Named { name, args } => {
-            if local.contains(name) {
+            if local.contains(name) && !is_callback_special_type_name(name) {
                 out.insert(name.clone());
             }
             for arg in args {
@@ -1495,6 +1539,9 @@ fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
         }
     }
     for type_def in &definition.types {
+        if is_callback_special_type_name(&type_def.name) {
+            continue;
+        }
         collect_from_type_def(type_def, &mut out);
     }
     // Filter out names defined locally (the capability trait interfaces and
@@ -1548,6 +1595,12 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
             _ => bail!("Unsupported primitive type `{name}` in host callbacks generation"),
         },
         TypeRef::Named { name, args } => {
+            if is_callback_byte_type_name(name) {
+                return Ok("Uint8Array".to_string());
+            }
+            if is_callback_signer_type_name(name) {
+                return Ok("BulletinAllowanceSigner".to_string());
+            }
             if args.is_empty() {
                 Ok(name.clone())
             } else {
@@ -1582,6 +1635,36 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
         },
         TypeRef::Generic(name) => Ok(name.clone()),
         TypeRef::Unit => Ok("void".to_string()),
+    }
+}
+
+fn is_callback_byte_type_name(name: &str) -> bool {
+    name == "BulletinAllowanceKey"
+}
+
+fn is_callback_signer_type_name(name: &str) -> bool {
+    name == "BulletinAllowanceSigner"
+}
+
+fn is_callback_special_type_name(name: &str) -> bool {
+    is_callback_byte_type_name(name) || is_callback_signer_type_name(name)
+}
+
+fn has_callback_signer_type(definition: &PlatformDefinition) -> bool {
+    definition
+        .types
+        .iter()
+        .any(|ty| is_callback_signer_type_name(&ty.name))
+}
+
+fn emit_callback_signer_interface() -> String {
+    formatdoc! {
+        r#"
+        export interface BulletinAllowanceSigner {{
+          publicKey: Uint8Array;
+          sign(input: Uint8Array): Promise<Uint8Array>;
+        }}
+        "#
     }
 }
 
