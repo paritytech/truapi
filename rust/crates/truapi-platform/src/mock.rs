@@ -32,9 +32,9 @@ use truapi::v01;
 
 use crate::async_trait;
 use crate::{
-    AuthPresenter, AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features,
-    JsonRpcConnection, Navigation, Notifications, Permissions, PreimageHost, ProductStorage,
-    ThemeHost, UserConfirmation, UserConfirmationReview,
+    AuthPresenter, AuthState, BulletinAllowanceSigner, ChainProvider, CoreStorage, CoreStorageKey,
+    Features, JsonRpcConnection, Navigation, Notifications, Permissions, PreimageHost,
+    ProductStorage, ThemeHost, UserConfirmation, UserConfirmationReview,
 };
 
 /// How the mock answers a permission prompt for one capability.
@@ -70,6 +70,10 @@ pub enum ConfirmKind {
     ResourceAllocation,
     /// [`UserConfirmationReview::PreimageSubmit`].
     PreimageSubmit,
+    /// [`UserConfirmationReview::IdentityDisclosure`].
+    IdentityDisclosure,
+    /// [`UserConfirmationReview::AccountAccess`].
+    AccountAccess,
 }
 
 impl ConfirmKind {
@@ -81,6 +85,8 @@ impl ConfirmKind {
             UserConfirmationReview::AccountAlias(_) => ConfirmKind::AccountAlias,
             UserConfirmationReview::ResourceAllocation(_) => ConfirmKind::ResourceAllocation,
             UserConfirmationReview::PreimageSubmit(_) => ConfirmKind::PreimageSubmit,
+            UserConfirmationReview::IdentityDisclosure(_) => ConfirmKind::IdentityDisclosure,
+            UserConfirmationReview::AccountAccess(_) => ConfirmKind::AccountAccess,
         }
     }
 }
@@ -258,6 +264,12 @@ fn core_key(key: &CoreStorageKey) -> String {
             product_id,
             request,
         } => format!("core:permission:{product_id}:{request:?}"),
+        CoreStorageKey::AllowanceKeys { session_id } => {
+            format!("core:allowance-keys:{session_id}")
+        }
+        CoreStorageKey::LastProcessedPairingStatement => {
+            "core:last-processed-pairing-statement".to_string()
+        }
     }
 }
 
@@ -471,7 +483,7 @@ impl JsonRpcConnection for MockConnection {
 impl ChainProvider for MockPlatform {
     async fn connect(
         &self,
-        _genesis_hash: Vec<u8>,
+        _genesis_hash: [u8; 32],
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
         match &self.config.chain {
             ChainBehavior::ConnectError(reason) => Err(v01::GenericError {
@@ -531,7 +543,11 @@ impl ThemeHost for MockPlatform {
 
 #[async_trait]
 impl PreimageHost for MockPlatform {
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+    async fn submit_preimage(
+        &self,
+        value: Vec<u8>,
+        _bulletin_allowance_signer: BulletinAllowanceSigner,
+    ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         if let Some(reason) = &self.config.faults.preimage_submit_error {
             return Err(v01::PreimageSubmitError::Unknown {
                 reason: reason.clone(),
@@ -783,10 +799,15 @@ mod tests {
         );
     }
 
+    /// A no-op bulletin allowance signer for preimage tests (the mock ignores it).
+    fn test_allowance_signer() -> BulletinAllowanceSigner {
+        BulletinAllowanceSigner::new([0u8; 32], |_| Ok([0u8; 64]))
+    }
+
     #[test]
     fn preimage_submit_then_lookup_round_trips() {
         let p = MockPlatform::new();
-        let key = block_on(p.submit_preimage(vec![1, 2, 3])).unwrap();
+        let key = block_on(p.submit_preimage(vec![1, 2, 3], test_allowance_signer())).unwrap();
         let found = block_on(p.lookup_preimage(key).next()).unwrap().unwrap();
         assert_eq!(found, Some(vec![1, 2, 3]));
         // An unknown key misses.
@@ -805,13 +826,13 @@ mod tests {
             },
             ..Default::default()
         });
-        assert!(block_on(p.submit_preimage(vec![1])).is_err());
+        assert!(block_on(p.submit_preimage(vec![1], test_allowance_signer())).is_err());
     }
 
     #[test]
     fn chain_silent_records_sends_and_parks() {
         let p = MockPlatform::new();
-        let conn = block_on(p.connect(vec![0u8; 32])).unwrap();
+        let conn = block_on(p.connect([0u8; 32])).unwrap();
         conn.send("req-1".to_string());
         assert_eq!(p.sent_rpc(), vec!["req-1".to_string()]);
         // Silent: the response stream never yields (parks rather than ends).
@@ -824,7 +845,7 @@ mod tests {
             chain: ChainBehavior::Scripted(vec!["frame-1".into(), "frame-2".into()]),
             ..Default::default()
         });
-        let conn = block_on(p.connect(vec![0u8; 32])).unwrap();
+        let conn = block_on(p.connect([0u8; 32])).unwrap();
         let frames: Vec<String> = block_on(conn.responses().collect());
         assert_eq!(frames, vec!["frame-1".to_string(), "frame-2".to_string()]);
     }
@@ -835,7 +856,7 @@ mod tests {
             chain: ChainBehavior::Closed,
             ..Default::default()
         });
-        let conn = block_on(p.connect(vec![0u8; 32])).unwrap();
+        let conn = block_on(p.connect([0u8; 32])).unwrap();
         // Closed ends at once (None), so disconnect paths fail fast instead of
         // parking like Silent.
         assert!(block_on(conn.responses().next()).is_none());
@@ -847,7 +868,7 @@ mod tests {
             chain: ChainBehavior::ConnectError("offline".into()),
             ..Default::default()
         });
-        assert!(block_on(p.connect(vec![0u8; 32])).is_err());
+        assert!(block_on(p.connect([0u8; 32])).is_err());
     }
 
     #[test]
