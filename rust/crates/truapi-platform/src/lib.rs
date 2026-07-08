@@ -656,7 +656,7 @@ pub enum BulletinAllowanceKeyError {
 ///
 /// Rust owns the allowance key format and secret material. Host code only gets
 /// `public_key + sign(payload)`, enough for PAPI to build and submit the
-/// Bulletin transaction without reintroducing Nova key parsing in dotli.
+/// Bulletin transaction without reintroducing allowance key parsing in host code.
 type BulletinAllowanceSignFn =
     dyn Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync;
 
