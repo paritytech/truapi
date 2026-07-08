@@ -247,7 +247,10 @@ impl BulletinRpc {
         let Some(operation_id) = broadcast.operation_id else {
             return Err(BulletinSubmitError::BroadcastSlotUnavailable);
         };
-        *self.active_broadcast.lock().expect("broadcast slot poisoned") = Some(operation_id);
+        *self
+            .active_broadcast
+            .lock()
+            .expect("broadcast slot poisoned") = Some(operation_id);
 
         self.enter_phase("watch");
         let (inclusion_block, extrinsic_index) = self
@@ -279,12 +282,11 @@ impl BulletinRpc {
         runtime_spec: RuntimeSpec,
     ) -> Result<OfflineChainState, BulletinSubmitError> {
         let spec_version = runtime_spec.spec_version;
-        let transaction_version =
-            runtime_spec
-                .transaction_version
-                .ok_or_else(|| BulletinSubmitError::ChainUnavailable {
-                    reason: "runtime spec lacks a transaction version".to_string(),
-                })?;
+        let transaction_version = runtime_spec.transaction_version.ok_or_else(|| {
+            BulletinSubmitError::ChainUnavailable {
+                reason: "runtime spec lacks a transaction version".to_string(),
+            }
+        })?;
 
         let cached = self
             .metadata_cache
@@ -318,10 +320,8 @@ impl BulletinRpc {
                     decode_runtime_metadata(&response)
                         .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })?,
                 );
-                *self
-                    .metadata_cache
-                    .lock()
-                    .expect("metadata cache poisoned") = Some((spec_version, metadata.clone()));
+                *self.metadata_cache.lock().expect("metadata cache poisoned") =
+                    Some((spec_version, metadata.clone()));
                 metadata
             }
         };
@@ -375,10 +375,9 @@ impl BulletinRpc {
         finalized_hash: &[u8],
         allowance: &BulletinAllowanceKey,
     ) -> Result<u64, BulletinSubmitError> {
-        let account = crate::host_logic::extrinsic::public_key_from_secret_bytes(
-            allowance.as_secret_bytes(),
-        )
-        .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
+        let account =
+            crate::host_logic::extrinsic::public_key_from_secret_bytes(allowance.as_secret_bytes())
+                .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
         let output = self
             .runtime_call(
                 follow_id,
@@ -455,10 +454,9 @@ impl BulletinRpc {
         our_nonce: u64,
         allowance: &BulletinAllowanceKey,
     ) -> Result<(Vec<u8>, u32), BulletinSubmitError> {
-        let account = crate::host_logic::extrinsic::public_key_from_secret_bytes(
-            allowance.as_secret_bytes(),
-        )
-        .expect("validated earlier in the submit flow");
+        let account =
+            crate::host_logic::extrinsic::public_key_from_secret_bytes(allowance.as_secret_bytes())
+                .expect("validated earlier in the submit flow");
 
         let stopped = || BulletinSubmitError::BroadcastUnverified {
             reason: "chain follow stopped".to_string(),
@@ -486,10 +484,7 @@ impl BulletinRpc {
                         None => body_queue.push_front(block),
                     }
                 } else if let Some(block) = gate_queue.pop_front() {
-                    match self
-                        .start_nonce_probe(follow_id, &block, &account)
-                        .await?
-                    {
+                    match self.start_nonce_probe(follow_id, &block, &account).await? {
                         Some(operation_id) => pending_nonce = Some((operation_id, block)),
                         None => gate_queue.push_front(block),
                     }
@@ -536,24 +531,17 @@ impl BulletinRpc {
                         }
                     })?;
                     if u64::from(nonce) > our_nonce {
-                        // The account advanced at or before `block`: walk back
-                        // through unchecked ancestors and check their bodies.
-                        let mut cursor = block.clone();
-                        let mut walk = vec![block];
-                        while let Some(parent) = parents.get(&cursor) {
-                            if checked.contains(parent) {
-                                break;
-                            }
-                            walk.push(parent.clone());
-                            cursor = parent.clone();
-                        }
-                        for hash in walk {
+                        // The account advanced at or before `block`: check its
+                        // body and those of its unchecked ancestors.
+                        for hash in ancestors_to_check(&parents, &checked, block) {
                             if !body_queue.contains(&hash) {
                                 body_queue.push_back(hash);
                             }
                         }
                     } else {
-                        checked.insert(block);
+                        // This block does not contain our tx; release its pin.
+                        checked.insert(block.clone());
+                        self.unpin(follow_id, vec![block]).await;
                     }
                 }
                 RemoteChainHeadFollowItem::OperationBodyDone {
@@ -826,5 +814,101 @@ impl BulletinRpc {
 
     fn current_phase(&self) -> Phase {
         *self.phase.lock().expect("phase slot poisoned")
+    }
+}
+
+/// Collect `start` and its not-yet-checked ancestors from a provider-supplied
+/// `parents` map, oldest lookups first.
+///
+/// `parents` comes from untrusted `NewBlock` follow events, so the walk guards
+/// against self-parent and cyclic links with a visited set: without it a
+/// crafted `parent == block` link would spin forever, and since the enclosing
+/// watch loop never `.await`s inside the walk, the whole worker would freeze
+/// and hold the submit lock permanently.
+fn ancestors_to_check(
+    parents: &HashMap<Vec<u8>, Vec<u8>>,
+    checked: &HashSet<Vec<u8>>,
+    start: Vec<u8>,
+) -> Vec<Vec<u8>> {
+    let mut cursor = start.clone();
+    let mut visited: HashSet<Vec<u8>> = HashSet::from([start.clone()]);
+    let mut walk = vec![start];
+    while let Some(parent) = parents.get(&cursor) {
+        if checked.contains(parent) || !visited.insert(parent.clone()) {
+            break;
+        }
+        walk.push(parent.clone());
+        cursor = parent.clone();
+    }
+    walk
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn h(byte: u8) -> Vec<u8> {
+        vec![byte]
+    }
+
+    #[test]
+    fn ancestors_walk_collects_unchecked_chain() {
+        // c -> b -> a, none checked: walk collects all three newest-first.
+        let parents = HashMap::from([(h(3), h(2)), (h(2), h(1))]);
+        let checked = HashSet::new();
+        assert_eq!(
+            ancestors_to_check(&parents, &checked, h(3)),
+            vec![h(3), h(2), h(1)]
+        );
+    }
+
+    #[test]
+    fn ancestors_walk_stops_at_checked_parent() {
+        let parents = HashMap::from([(h(3), h(2)), (h(2), h(1))]);
+        let checked = HashSet::from([h(2)]);
+        assert_eq!(ancestors_to_check(&parents, &checked, h(3)), vec![h(3)]);
+    }
+
+    #[test]
+    fn ancestors_walk_terminates_on_self_parent() {
+        // A crafted self-referential parent must not loop forever.
+        let parents = HashMap::from([(h(5), h(5))]);
+        let checked = HashSet::new();
+        assert_eq!(ancestors_to_check(&parents, &checked, h(5)), vec![h(5)]);
+    }
+
+    #[test]
+    fn ancestors_walk_terminates_on_cycle() {
+        // A -> B -> A cycle must terminate once it wraps around.
+        let parents = HashMap::from([(h(1), h(2)), (h(2), h(1))]);
+        let checked = HashSet::new();
+        assert_eq!(
+            ancestors_to_check(&parents, &checked, h(1)),
+            vec![h(1), h(2)]
+        );
+    }
+
+    #[test]
+    fn error_reason_strings_are_stable() {
+        assert_eq!(
+            BulletinSubmitError::AllowanceRejected {
+                phase: AllowanceRejectionPhase::DryRun
+            }
+            .reason(),
+            "allowance rejected: dry-run"
+        );
+        assert_eq!(BulletinSubmitError::NonceRace.reason(), "nonce race: retry");
+        assert_eq!(
+            BulletinSubmitError::Timeout { phase: "watch" }.reason(),
+            "timeout: watch, inclusion unverified"
+        );
+        assert_eq!(
+            BulletinSubmitError::IncludedButFailed {
+                pallet: "TransactionStorage".to_string(),
+                error: "BadContext".to_string()
+            }
+            .reason(),
+            "dispatch error: TransactionStorage.BadContext"
+        );
     }
 }

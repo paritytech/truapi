@@ -27,7 +27,6 @@ use std::sync::Arc;
 use crate::chain_runtime::RuntimeFailure;
 use crate::host_logic::bulletin::preimage_key;
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
-use crate::runtime::bulletin_rpc::BulletinSubmitError;
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::PermissionsService;
 use crate::host_logic::product_account::{
@@ -36,6 +35,7 @@ use crate::host_logic::product_account::{
 use crate::host_logic::session::SessionInfo;
 #[cfg(test)]
 use crate::host_logic::session::SessionState;
+use crate::runtime::bulletin_rpc::BulletinSubmitError;
 #[cfg(test)]
 use crate::subscription::Spawner;
 pub(crate) use authority::ProductAuthority;
@@ -1763,9 +1763,10 @@ impl Preimage for ProductRuntimeHost {
         if let Ok(key_bytes) = <[u8; 32]>::try_from(key.as_slice())
             && let Some(value) = self.services.cached_preimage(&key_bytes)
         {
-            let item = RemotePreimageLookupSubscribeItem::V1(
-                v01::RemotePreimageLookupSubscribeItem { value: Some(value) },
-            );
+            let item =
+                RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
+                    value: Some(value),
+                });
             let stream =
                 futures::stream::once(async move { item }).chain(futures::stream::pending());
             return Subscription::new(Box::pin(stream));
@@ -1787,7 +1788,16 @@ impl Preimage for ProductRuntimeHost {
                     // subscription interrupts once subscription items can carry
                     // in-stream failures.
                     let value = item.ok()?;
-                    let value = value.filter(|value| preimage_key(value)[..] == key[..]);
+                    let value = value.filter(|value| {
+                        let matches = preimage_key(value)[..] == key[..];
+                        if !matches {
+                            tracing::warn!(
+                                "preimage lookup returned a value whose hash does not match the \
+                                 requested key; downgrading to a miss"
+                            );
+                        }
+                        matches
+                    });
                     Some(RemotePreimageLookupSubscribeItem::V1(
                         v01::RemotePreimageLookupSubscribeItem { value },
                     ))
@@ -1845,7 +1855,10 @@ impl Preimage for ProductRuntimeHost {
         .await
         .map_err(|err| preimage_submit_error(err.reason()))?;
 
-        match bulletin.submit_preimage(cx, &allowance, value.clone()).await {
+        match bulletin
+            .submit_preimage(cx, &allowance, value.clone())
+            .await
+        {
             Ok(key) => {
                 self.prime_preimage_cache(&value, &key);
                 Ok(RemotePreimageSubmitResponse::V1(key))
@@ -1864,7 +1877,10 @@ impl Preimage for ProductRuntimeHost {
                 )
                 .await
                 .map_err(|err| preimage_submit_error(err.reason()))?;
-                match bulletin.submit_preimage(cx, &allowance, value.clone()).await {
+                match bulletin
+                    .submit_preimage(cx, &allowance, value.clone())
+                    .await
+                {
                     Ok(key) => {
                         self.prime_preimage_cache(&value, &key);
                         Ok(RemotePreimageSubmitResponse::V1(key))

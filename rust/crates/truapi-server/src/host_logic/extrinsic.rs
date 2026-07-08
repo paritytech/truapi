@@ -80,9 +80,9 @@ impl Signer<SubstrateConfig> for Sr25519Signer {
     }
 
     fn sign(&self, signer_payload: &[u8]) -> MultiSignature {
-        let signature = self
-            .secret
-            .sign_simple(SR25519_SIGNING_CONTEXT, signer_payload, &self.public);
+        let signature =
+            self.secret
+                .sign_simple(SR25519_SIGNING_CONTEXT, signer_payload, &self.public);
         MultiSignature::Sr25519(signature.to_bytes())
     }
 }
@@ -162,10 +162,7 @@ pub(crate) enum TransactionValidity {
 
 /// SCALE-encode the `TaggedTransactionQueue_validate_transaction` parameters:
 /// `TransactionSource::External` ++ opaque extrinsic ++ 32-byte block hash.
-pub(crate) fn validate_transaction_call_parameters(
-    extrinsic: &[u8],
-    block_hash: &[u8],
-) -> Vec<u8> {
+pub(crate) fn validate_transaction_call_parameters(extrinsic: &[u8], block_hash: &[u8]) -> Vec<u8> {
     /// `sp_runtime::transaction_validity::TransactionSource::External`, the
     /// source the pool assigns to transactions arriving over the network,
     /// matching how a broadcast transaction is later validated.
@@ -406,16 +403,7 @@ pub(crate) mod tests {
         // The subxt validity types are Decode-only; build the SCALE bytes by
         // hand from the sp-runtime layout.
         let mut bytes = vec![0u8];
-        bytes.extend(
-            (
-                5u64,
-                Vec::<Vec<u8>>::new(),
-                vec![vec![1u8, 2]],
-                32u64,
-                true,
-            )
-                .encode(),
-        );
+        bytes.extend((5u64, Vec::<Vec<u8>>::new(), vec![vec![1u8, 2]], 32u64, true).encode());
         assert_eq!(
             decode_transaction_validity(&bytes).unwrap(),
             TransactionValidity::Valid(TransactionValid {

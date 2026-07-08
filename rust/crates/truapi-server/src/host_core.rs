@@ -201,13 +201,12 @@ impl SigningHostRuntime {
         P: Platform + 'static,
     {
         let platform: Arc<dyn Platform> = platform;
-        let services =
-            RuntimeServices::new(
-                platform.clone(),
-                config.people_chain_genesis_hash,
-                config.bulletin_chain_genesis_hash,
-                spawner,
-            );
+        let services = RuntimeServices::new(
+            platform.clone(),
+            config.people_chain_genesis_hash,
+            config.bulletin_chain_genesis_hash,
+            spawner,
+        );
         let signing_host = SigningHostRole::new(platform);
         Self {
             services,

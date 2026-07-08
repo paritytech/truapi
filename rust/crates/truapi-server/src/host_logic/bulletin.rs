@@ -7,9 +7,9 @@
 
 use parity_scale_codec::{Compact, Encode};
 use subxt::config::DefaultExtrinsicParamsBuilder;
+use subxt::config::substrate::SubstrateConfig;
 use subxt::ext::scale_encode::{self, EncodeAsFields, FieldIter, TypeResolver};
 use subxt::ext::scale_type_resolver::{Primitive, visitor};
-use subxt::config::substrate::SubstrateConfig;
 use subxt::tx::StaticPayload;
 use subxt::utils::H256;
 use truapi_platform::BulletinAllowanceKey;
@@ -92,9 +92,7 @@ pub(crate) fn build_signed_store_extrinsic(
         .call_data(&payload)
         .map_err(|err| format!("store call encoding failed: {err}"))?;
     if call_data != canonical_call {
-        return Err(
-            "metadata-encoded store call diverges from the canonical encoding".to_string(),
-        );
+        return Err("metadata-encoded store call diverges from the canonical encoding".to_string());
     }
     drop(canonical_call);
 
@@ -263,10 +261,8 @@ mod tests {
     }
 
     fn metadata_from_v14(metadata: v14::RuntimeMetadataV14) -> ArcMetadata {
-        let prefixed = RuntimeMetadataPrefixed(
-            u32::from_le_bytes(*b"meta"),
-            RuntimeMetadata::V14(metadata),
-        );
+        let prefixed =
+            RuntimeMetadataPrefixed(u32::from_le_bytes(*b"meta"), RuntimeMetadata::V14(metadata));
         ArcMetadata::from(Metadata::try_from(prefixed).unwrap())
     }
 
@@ -433,7 +429,10 @@ mod tests {
             vec![1, 2, 3],
         )
         .unwrap_err();
-        assert!(error.contains("does not match the audited index"), "{error}");
+        assert!(
+            error.contains("does not match the audited index"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -523,8 +522,7 @@ mod tests {
         // Accepted gap: an unknown extension whose extra is a bare `Option`
         // silently encodes `None` instead of erroring.
         let mut metadata = bulletin_metadata_v14();
-        let option_type =
-            extension_by_identifier(&metadata, "CheckMetadataHash").additional_signed;
+        let option_type = extension_by_identifier(&metadata, "CheckMetadataHash").additional_signed;
         let empty_type = extension_by_identifier(&metadata, "CheckSpecVersion").ty;
         let mut fake = extension_by_identifier(&metadata, "CheckSpecVersion");
         fake.identifier = "FakeOptionExt".to_string();

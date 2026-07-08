@@ -96,7 +96,11 @@ impl PreimageCache {
         if value.len() > PREIMAGE_CACHE_MAX_BYTES {
             return;
         }
-        if let Some(index) = self.entries.iter().position(|(existing, _)| *existing == key) {
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|(existing, _)| *existing == key)
+        {
             let (_, old) = self.entries.remove(index).expect("index in range");
             self.total_bytes -= old.len();
         }

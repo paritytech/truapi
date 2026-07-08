@@ -6,9 +6,9 @@ use std::sync::Mutex;
 use futures::stream::{self, BoxStream};
 use truapi::v01;
 use truapi_platform::{
-    AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features,
-    HostInfo, JsonRpcConnection, Navigation, Notifications, PairingHostConfig, Permissions,
-    PlatformInfo, PreimageHost, ProductContext, ProductStorage, ThemeHost, UserConfirmation,
+    AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, HostInfo,
+    JsonRpcConnection, Navigation, Notifications, PairingHostConfig, Permissions, PlatformInfo,
+    PreimageHost, ProductContext, ProductStorage, ThemeHost, UserConfirmation,
     UserConfirmationReview,
 };
 use truapi_server::frame::ProtocolMessage;
