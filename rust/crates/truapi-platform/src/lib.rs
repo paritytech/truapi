@@ -9,6 +9,8 @@
 //! Async capability traits use `async_trait` so the combined [`Platform`]
 //! surface can be used as a trait object by the runtime.
 
+use std::sync::Arc;
+
 use futures::stream::BoxStream;
 use parity_scale_codec::{Decode, Encode};
 use unicode_normalization::UnicodeNormalization;
@@ -210,7 +212,7 @@ fn require_non_empty(field: &'static str, value: &str) -> Result<(), RuntimeConf
 }
 
 /// Runtime config validation error.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum RuntimeConfigValidationError {
     /// Required string field was empty or whitespace-only.
     #[display("{field} must not be empty")]
@@ -243,8 +245,6 @@ pub enum RuntimeConfigValidationError {
         product_id: String,
     },
 }
-
-impl core::error::Error for RuntimeConfigValidationError {}
 
 /// Product-scoped key-value storage.
 ///
@@ -649,7 +649,7 @@ impl core::fmt::Debug for BulletinAllowanceKey {
 }
 
 /// Invalid Bulletin allowance key material.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum BulletinAllowanceKeyError {
     /// Secret material was not a 64-byte sr25519 secret key.
     #[display("bulletin allowance key must be 64 bytes, got {actual}")]
@@ -659,7 +659,62 @@ pub enum BulletinAllowanceKeyError {
     },
 }
 
-impl core::error::Error for BulletinAllowanceKeyError {}
+/// Bulletin allowance signing capability exposed across the platform boundary.
+///
+/// Rust owns the allowance key format and secret material. Host code only gets
+/// `public_key + sign(payload)`, enough for PAPI to build and submit the
+/// Bulletin transaction without reintroducing Nova key parsing in dotli.
+type BulletinAllowanceSignFn =
+    dyn Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync;
+
+/// Host-facing signer for Bulletin preimage submission.
+#[derive(Clone)]
+pub struct BulletinAllowanceSigner {
+    public_key: [u8; 32],
+    /// Rust-owned signing capability passed to host code without exposing the
+    /// raw allowance secret.
+    sign: Arc<BulletinAllowanceSignFn>,
+}
+
+impl BulletinAllowanceSigner {
+    /// Build a signer from a public key and signing function.
+    pub fn new(
+        public_key: [u8; 32],
+        sign: impl Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            public_key,
+            sign: Arc::new(sign),
+        }
+    }
+
+    /// Public key of the allowance account.
+    pub fn public_key(&self) -> [u8; 32] {
+        self.public_key
+    }
+
+    /// Sign a SCALE transaction payload with the allowance account.
+    pub fn sign(&self, payload: &[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> {
+        (self.sign)(payload)
+    }
+}
+
+impl core::fmt::Debug for BulletinAllowanceSigner {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BulletinAllowanceSigner")
+            .field("public_key", &self.public_key)
+            .field("sign", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Bulletin allowance signing failed.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
+#[display("{reason}")]
+pub struct BulletinAllowanceSignError {
+    /// Human-readable failure reason.
+    pub reason: String,
+}
 
 /// Host preimage backend. The core owns wire mapping and subscription
 /// lifecycle; the host owns the selected backend.
@@ -669,9 +724,9 @@ pub trait PreimageHost: Send + Sync {
     async fn submit_preimage(
         &self,
         value: Vec<u8>,
-        bulletin_allowance_key: BulletinAllowanceKey,
+        bulletin_allowance_signer: BulletinAllowanceSigner,
     ) -> Result<Vec<u8>, PreimageSubmitError> {
-        let _ = (value, bulletin_allowance_key);
+        let _ = (value, bulletin_allowance_signer);
         Err(PreimageSubmitError::Unknown {
             reason: "submitPreimage callback not provided by host".to_string(),
         })

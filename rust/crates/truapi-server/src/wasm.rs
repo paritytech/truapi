@@ -18,13 +18,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, Stream, StreamExt};
-use js_sys::{Array, Function, Reflect, Uint8Array};
+use js_sys::{Array, Function, Object, Reflect, Uint8Array};
 use parity_scale_codec::Decode;
 use send_wrapper::SendWrapper;
 use truapi::v01;
 use truapi_platform::{
-    ChainProvider, HostInfo, JsonRpcConnection, PairingHostConfig, PlatformInfo, ProductContext,
-    RuntimeConfigValidationError,
+    BulletinAllowanceSigner, ChainProvider, HostInfo, JsonRpcConnection, PairingHostConfig,
+    PlatformInfo, ProductContext, RuntimeConfigValidationError,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -342,6 +342,34 @@ fn invoke_optional_bytes_return(
             .map(|array| Some(array.to_vec()))
             .map_err(|_| expected.to_string())
     })
+}
+
+fn bulletin_allowance_signer_to_js(signer: BulletinAllowanceSigner) -> JsValue {
+    let object = Object::new();
+    let public_key = signer.public_key();
+    let public_key = Uint8Array::from(public_key.as_slice());
+    Reflect::set(&object, &JsValue::from_str("publicKey"), &public_key)
+        .expect("setting publicKey on a new object should not fail");
+
+    let sign = Closure::wrap(Box::new(move |input: JsValue| -> js_sys::Promise {
+        let signer = signer.clone();
+        wasm_bindgen_futures::future_to_promise(async move {
+            let input = input.dyn_into::<Uint8Array>().map_err(|_| {
+                JsValue::from_str("BulletinAllowanceSigner.sign expects Uint8Array")
+            })?;
+            let signature = signer
+                .sign(&input.to_vec())
+                .map_err(|err| JsValue::from_str(&err.reason))?;
+            Ok(Uint8Array::from(signature.as_slice()).into())
+        })
+    }) as Box<dyn FnMut(JsValue) -> js_sys::Promise>);
+    Reflect::set(&object, &JsValue::from_str("sign"), sign.as_ref())
+        .expect("setting sign on a new object should not fail");
+    // The host callback owns the JS signer for the async tx submission. The
+    // object exposes no raw secret, only this Rust-backed signing capability.
+    sign.forget();
+
+    object.into()
 }
 
 fn decode_bytes<T: Decode>(bytes: Vec<u8>, message: &str) -> Result<T, String> {

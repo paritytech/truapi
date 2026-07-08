@@ -11,9 +11,9 @@ use truapi::v01;
 use wasm_bindgen::JsValue;
 
 use super::{
-    WasmPlatform, call_js_function, decode_bytes, decode_js_item, generic, get_function,
-    invoke_bool, invoke_bytes_return, invoke_js_subscription, invoke_optional_bytes_return,
-    invoke_unit, parse_optional_bytes_item,
+    WasmPlatform, bulletin_allowance_signer_to_js, call_js_function, decode_bytes, decode_js_item,
+    generic, get_function, invoke_bool, invoke_bytes_return, invoke_js_subscription,
+    invoke_optional_bytes_return, invoke_unit, parse_optional_bytes_item,
 };
 
 /// JS-side callbacks invoked by the wasm platform bridge. Methods with
@@ -221,13 +221,13 @@ impl truapi_platform::PreimageHost for WasmPlatform {
     async fn submit_preimage(
         &self,
         value: Vec<u8>,
-        bulletin_allowance_key: truapi_platform::BulletinAllowanceKey,
+        bulletin_allowance_signer: truapi_platform::BulletinAllowanceSigner,
     ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         invoke_bytes_return(
             &self.bridge.submit_preimage,
             vec![
                 Uint8Array::from(value.as_slice()).into(),
-                Uint8Array::from(bulletin_allowance_key.as_secret_bytes()).into(),
+                bulletin_allowance_signer_to_js(bulletin_allowance_signer),
             ],
         )
         .await

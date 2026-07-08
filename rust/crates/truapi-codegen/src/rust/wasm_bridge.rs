@@ -36,9 +36,10 @@ pub fn generate_wasm_bridge(
         use wasm_bindgen::JsValue;
 
         use super::{{
-            WasmPlatform, call_js_function, decode_bytes, decode_js_item, generic, get_function,
-            invoke_bool, invoke_bytes_return, invoke_js_subscription, invoke_optional_bytes_return,
-            invoke_unit, parse_optional_bytes_item,
+            WasmPlatform, bulletin_allowance_signer_to_js, call_js_function, decode_bytes,
+            decode_js_item, generic, get_function, invoke_bool, invoke_bytes_return,
+            invoke_js_subscription, invoke_optional_bytes_return, invoke_unit,
+            parse_optional_bytes_item,
         }};
 
         /// JS-side callbacks invoked by the wasm platform bridge. Methods with
@@ -527,6 +528,9 @@ fn js_arg_expr(name: &str, ty: &TypeRef, ctx: &BridgeCtx<'_>) -> Result<String> 
     if is_callback_byte_type(ty) {
         return Ok(format!("Uint8Array::from({name}.as_secret_bytes()).into()"));
     }
+    if is_callback_signer_type(ty) {
+        return Ok(format!("bulletin_allowance_signer_to_js({name})"));
+    }
     if ctx.is_api_codec(ty) || ctx.is_local_codec(ty) {
         return Ok(format!(
             "Uint8Array::from({name}.encode().as_slice()).into()"
@@ -825,7 +829,7 @@ fn collect_local_from_type<'a>(
 ) {
     match ty {
         TypeRef::Named { name, args } => {
-            if local.contains(name.as_str()) && !is_callback_byte_type_name(name) {
+            if local.contains(name.as_str()) && !is_callback_special_type_name(name) {
                 out.insert(name);
             }
             for arg in args {
@@ -848,6 +852,18 @@ fn is_callback_byte_type(ty: &TypeRef) -> bool {
     matches!(ty, TypeRef::Named { name, .. } if is_callback_byte_type_name(name))
 }
 
+fn is_callback_signer_type(ty: &TypeRef) -> bool {
+    matches!(ty, TypeRef::Named { name, .. } if is_callback_signer_type_name(name))
+}
+
+fn is_callback_special_type_name(name: &str) -> bool {
+    is_callback_byte_type_name(name) || is_callback_signer_type_name(name)
+}
+
 fn is_callback_byte_type_name(name: &str) -> bool {
     name == "BulletinAllowanceKey"
+}
+
+fn is_callback_signer_type_name(name: &str) -> bool {
+    name == "BulletinAllowanceSigner"
 }

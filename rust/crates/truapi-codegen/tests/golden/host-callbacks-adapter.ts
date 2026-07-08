@@ -25,6 +25,7 @@ import {
   UserConfirmationReview,
 } from "./host-callbacks.js";
 import type {
+  BulletinAllowanceSigner,
   FlatHostCallbacks,
   RequiredHostCallbacks,
 } from "./host-callbacks.js";
@@ -49,7 +50,7 @@ export interface RawCallbacks {
   cancelNotification(id: NotificationId): Promise<void>;
   devicePermission(request: Uint8Array): Promise<Uint8Array>;
   remotePermission(request: Uint8Array): Promise<Uint8Array>;
-  submitPreimage(value: Uint8Array, bulletinAllowanceKey: Uint8Array): Promise<Uint8Array>;
+  submitPreimage(value: Uint8Array, bulletinAllowanceSigner: BulletinAllowanceSigner): Promise<Uint8Array>;
   lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
   read(key: string): Promise<Uint8Array | null | undefined>;
   write(key: string, value: Uint8Array): Promise<void>;
@@ -75,7 +76,7 @@ export function createWasmRawCallbacks(
     cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
     devicePermission: async (request) => HostDevicePermissionResponse.enc(await callbacks.permissions.devicePermission(HostDevicePermissionRequest.dec(request))),
     remotePermission: async (request) => RemotePermissionResponse.enc(await callbacks.permissions.remotePermission(RemotePermissionRequest.dec(request))),
-    submitPreimage: async (value, bulletinAllowanceKey) => await callbacks.preimage.submitPreimage(value, bulletinAllowanceKey),
+    submitPreimage: async (value, bulletinAllowanceSigner) => await callbacks.preimage.submitPreimage(value, bulletinAllowanceSigner),
     lookupPreimage: (key, sendItem) => driveResultStream(callbacks.preimage.lookupPreimage(key), sendItem),
     read: async (key) => await callbacks.productStorage.read(key),
     write: async (key, value) => await callbacks.productStorage.write(key, value),

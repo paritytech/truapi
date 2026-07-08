@@ -31,6 +31,11 @@ import type {
   ThemeVariant,
 } from "@parity/truapi";
 
+export interface BulletinAllowanceSigner {
+  publicKey: Uint8Array;
+  sign(input: Uint8Array): Promise<Uint8Array>;
+}
+
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -526,7 +531,7 @@ export interface PreimageHost {
   /**
    * Submit the preimage and return its key.
    */
-  submitPreimage?(value: Uint8Array, bulletinAllowanceKey: Uint8Array): Promise<Uint8Array>;
+  submitPreimage?(value: Uint8Array, bulletinAllowanceSigner: BulletinAllowanceSigner): Promise<Uint8Array>;
 
   /**
    * Emits current value/miss immediately, then future updates.

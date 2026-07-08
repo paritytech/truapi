@@ -24,6 +24,7 @@ use core::time::Duration;
 use std::sync::Arc;
 
 use crate::chain_runtime::RuntimeFailure;
+use crate::host_logic::allowance_signer::bulletin_allowance_signer_from_key;
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::PermissionsService;
@@ -1801,9 +1802,14 @@ impl Preimage for ProductRuntimeHost {
                 },
             ))
         })?;
+        let signer = bulletin_allowance_signer_from_key(allowance).map_err(|reason| {
+            CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown { reason },
+            ))
+        })?;
         self.services
             .platform
-            .submit_preimage(value, allowance)
+            .submit_preimage(value, signer)
             .await
             .map(RemotePreimageSubmitResponse::V1)
             .map_err(|err| CallError::Domain(RemotePreimageSubmitError::V1(err)))
@@ -2742,13 +2748,27 @@ mod tests {
         }
     }
 
+    fn bulletin_slot_account_key_fixture() -> Vec<u8> {
+        hex::decode(
+            "0eef5183411d40c32446bb1cbaabd70004a17af6012a577c735d054f04059208\
+             573dfc9b6ffeb1c786a16349e70f9836876a743c31c0a7a2a70727a852eec372",
+        )
+        .unwrap()
+    }
+
+    fn expected_bulletin_slot_account_public_key() -> Vec<u8> {
+        hex::decode("10c68432943c68a6e1be650818b5e08db79e57823de9f34df7ba36d404d91e1d").unwrap()
+    }
+
     #[test]
     fn preimage_submit_confirms_and_delegates_to_platform() {
         let session = sso_session_info();
-        let slot_account_key = vec![12; 64];
-        let preimage_submit_allowance_keys = Arc::new(Mutex::new(Vec::new()));
+        let slot_account_key = bulletin_slot_account_key_fixture();
+        let preimage_submit_allowance_public_keys = Arc::new(Mutex::new(Vec::new()));
+        let preimage_submit_signatures = Arc::new(Mutex::new(Vec::new()));
         let platform = Arc::new(StubPlatform {
-            preimage_submit_allowance_keys: preimage_submit_allowance_keys.clone(),
+            preimage_submit_allowance_public_keys: preimage_submit_allowance_public_keys.clone(),
+            preimage_submit_signatures: preimage_submit_signatures.clone(),
             sso_response_script: Some(sso_success_response_script(
                 &session,
                 RemoteMessage {
@@ -2774,11 +2794,18 @@ mod tests {
         let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
         assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
         assert_eq!(
-            preimage_submit_allowance_keys
+            preimage_submit_allowance_public_keys
                 .lock()
-                .expect("preimage allowance key list mutex poisoned")
+                .expect("preimage allowance public key list mutex poisoned")
                 .as_slice(),
-            &[slot_account_key]
+            &[expected_bulletin_slot_account_public_key()]
+        );
+        assert_eq!(
+            preimage_submit_signatures
+                .lock()
+                .expect("preimage allowance signature list mutex poisoned")[0]
+                .len(),
+            64
         );
         let message = submitted_remote_message(&platform, &session);
         match message.data {
@@ -2796,10 +2823,12 @@ mod tests {
     #[test]
     fn preimage_submit_uses_persisted_bulletin_allowance_key() {
         let session = sso_session_info();
-        let slot_account_key = vec![34; 64];
-        let preimage_submit_allowance_keys = Arc::new(Mutex::new(Vec::new()));
+        let slot_account_key = bulletin_slot_account_key_fixture();
+        let preimage_submit_allowance_public_keys = Arc::new(Mutex::new(Vec::new()));
+        let preimage_submit_signatures = Arc::new(Mutex::new(Vec::new()));
         let platform = Arc::new(StubPlatform {
-            preimage_submit_allowance_keys: preimage_submit_allowance_keys.clone(),
+            preimage_submit_allowance_public_keys: preimage_submit_allowance_public_keys.clone(),
+            preimage_submit_signatures: preimage_submit_signatures.clone(),
             ..Default::default()
         });
         futures::executor::block_on(allowances::write_allowance_key(
@@ -2817,11 +2846,18 @@ mod tests {
         let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
         assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
         assert_eq!(
-            preimage_submit_allowance_keys
+            preimage_submit_allowance_public_keys
                 .lock()
-                .expect("preimage allowance key list mutex poisoned")
+                .expect("preimage allowance public key list mutex poisoned")
                 .as_slice(),
-            &[slot_account_key]
+            &[expected_bulletin_slot_account_public_key()]
+        );
+        assert_eq!(
+            preimage_submit_signatures
+                .lock()
+                .expect("preimage allowance signature list mutex poisoned")[0]
+                .len(),
+            64
         );
         assert!(
             platform

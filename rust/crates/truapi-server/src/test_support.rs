@@ -33,7 +33,7 @@ use truapi::v01;
 use truapi::versioned::account::HostAccountGetAliasRequest;
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi_platform::{
-    AccountAccessReview, AuthPresenter, AuthState, BulletinAllowanceKey, ChainProvider,
+    AccountAccessReview, AuthPresenter, AuthState, BulletinAllowanceSigner, ChainProvider,
     CoreStorage as PlatformCoreStorage, CoreStorageKey, Features as PlatformFeatures, HostInfo,
     JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
     PairingHostConfig, Permissions as PlatformPermissions, PlatformInfo, PreimageHost,
@@ -116,7 +116,8 @@ pub(crate) struct StubPlatform {
     pub(crate) chain_connect_error: Option<&'static str>,
     pub(crate) chain_connect_pending: bool,
     pub(crate) preimage_submits: Arc<Mutex<Vec<Vec<u8>>>>,
-    pub(crate) preimage_submit_allowance_keys: Arc<Mutex<Vec<Vec<u8>>>>,
+    pub(crate) preimage_submit_allowance_public_keys: Arc<Mutex<Vec<Vec<u8>>>>,
+    pub(crate) preimage_submit_signatures: Arc<Mutex<Vec<Vec<u8>>>>,
     pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
     /// When set, product/core storage reads fail with this reason.
     pub(crate) local_storage_error: Option<&'static str>,
@@ -1232,16 +1233,23 @@ impl PreimageHost for StubPlatform {
     async fn submit_preimage(
         &self,
         value: Vec<u8>,
-        bulletin_allowance_key: BulletinAllowanceKey,
+        bulletin_allowance_signer: BulletinAllowanceSigner,
     ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         self.preimage_submits
             .lock()
             .expect("preimage submit list mutex poisoned")
             .push(value.clone());
-        self.preimage_submit_allowance_keys
+        self.preimage_submit_allowance_public_keys
             .lock()
-            .expect("preimage allowance key list mutex poisoned")
-            .push(bulletin_allowance_key.into_secret_bytes().to_vec());
+            .expect("preimage allowance public key list mutex poisoned")
+            .push(bulletin_allowance_signer.public_key().to_vec());
+        let signature = bulletin_allowance_signer
+            .sign(b"preimage-submit-test")
+            .map_err(|err| v01::PreimageSubmitError::Unknown { reason: err.reason })?;
+        self.preimage_submit_signatures
+            .lock()
+            .expect("preimage allowance signature list mutex poisoned")
+            .push(signature.to_vec());
         Ok(value)
     }
     fn lookup_preimage(
