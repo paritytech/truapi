@@ -11,9 +11,16 @@ pub(crate) fn bulletin_allowance_signer_from_key(
 ) -> Result<BulletinAllowanceSigner, String> {
     let secret = key.into_secret_bytes();
     let public_key = public_key_from_allowance_secret(secret)?;
+    // The host receives only the allowance public key plus this Rust-backed
+    // signing capability while constructing the `TransactionStorage.store`
+    // extrinsic; the allowance secret stays in Rust.
     Ok(BulletinAllowanceSigner::new(public_key, move |payload| {
-        sign_with_allowance_secret(secret, payload)
-            .map_err(|reason| BulletinAllowanceSignError { reason })
+        let secret = secret_key_from_allowance_secret(secret)
+            .map_err(|reason| BulletinAllowanceSignError { reason })?;
+        let public = secret.to_public();
+        Ok(secret
+            .sign_simple(SR25519_SIGNING_CONTEXT, payload, &public)
+            .to_bytes())
     }))
 }
 
@@ -21,14 +28,6 @@ pub(crate) fn bulletin_allowance_signer_from_key(
 pub(crate) fn public_key_from_allowance_secret(secret: [u8; 64]) -> Result<[u8; 32], String> {
     Ok(secret_key_from_allowance_secret(secret)?
         .to_public()
-        .to_bytes())
-}
-
-fn sign_with_allowance_secret(secret: [u8; 64], payload: &[u8]) -> Result<[u8; 64], String> {
-    let secret = secret_key_from_allowance_secret(secret)?;
-    let public = secret.to_public();
-    Ok(secret
-        .sign_simple(SR25519_SIGNING_CONTEXT, payload, &public)
         .to_bytes())
 }
 

@@ -1562,8 +1562,8 @@ impl Chain for ProductRuntimeHost {
 // ---------------------------------------------------------------------------
 // Deferred product surfaces.
 //
-// Payment and full account proof are explicitly out of current dotli parity,
-// but products should still observe dotli's typed "not implemented" errors
+// Payment and full account proof are explicitly out of current host parity,
+// but products should still observe the host's typed "not implemented" errors
 // rather than a generic transport failure.
 // Chat and CoinPayment remain outside this milestone and keep their generated
 // trait defaults until another host/product needs real implementations.
