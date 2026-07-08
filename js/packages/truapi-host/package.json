@@ -1,9 +1,18 @@
 {
-  "name": "@parity/truapi-host-wasm",
+  "name": "@parity/truapi-host",
   "version": "0.1.0",
   "description": "WASM-backed TrUAPI host runtime: embeds the Rust core, with web iframe and Web Worker entry points",
   "license": "MIT",
   "author": "Parity Technologies <admin@parity.io>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paritytech/truapi.git",
+    "directory": "js/packages/truapi-host"
+  },
+  "homepage": "https://github.com/paritytech/truapi#readme",
+  "bugs": {
+    "url": "https://github.com/paritytech/truapi/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -31,7 +40,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -b",
