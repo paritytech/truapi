@@ -613,8 +613,9 @@ pub trait ThemeHost: Send + Sync {
 }
 
 /// Secret key allocated for Bulletin preimage submission.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, derive_more::Debug, PartialEq, Eq)]
 pub struct BulletinAllowanceKey {
+    #[debug("{:?}", "<redacted>")]
     secret: [u8; 64],
 }
 
@@ -640,14 +641,6 @@ impl BulletinAllowanceKey {
     }
 }
 
-impl core::fmt::Debug for BulletinAllowanceKey {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("BulletinAllowanceKey")
-            .field("secret", &"<redacted>")
-            .finish()
-    }
-}
-
 /// Invalid Bulletin allowance key material.
 #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum BulletinAllowanceKeyError {
@@ -668,11 +661,12 @@ type BulletinAllowanceSignFn =
     dyn Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync;
 
 /// Host-facing signer for Bulletin preimage submission.
-#[derive(Clone)]
+#[derive(Clone, derive_more::Debug)]
 pub struct BulletinAllowanceSigner {
     public_key: [u8; 32],
     /// Rust-owned signing capability passed to host code without exposing the
     /// raw allowance secret.
+    #[debug("{:?}", "<redacted>")]
     sign: Arc<BulletinAllowanceSignFn>,
 }
 
@@ -696,15 +690,6 @@ impl BulletinAllowanceSigner {
     /// Sign a SCALE transaction payload with the allowance account.
     pub fn sign(&self, payload: &[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> {
         (self.sign)(payload)
-    }
-}
-
-impl core::fmt::Debug for BulletinAllowanceSigner {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("BulletinAllowanceSigner")
-            .field("public_key", &self.public_key)
-            .field("sign", &"<redacted>")
-            .finish()
     }
 }
 
