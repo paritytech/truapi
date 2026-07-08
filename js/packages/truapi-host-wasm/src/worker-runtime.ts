@@ -81,6 +81,19 @@ const pendingCallbacks = new Map<
   (result: { ok: true; value: unknown } | { ok: false; error: string }) => void
 >();
 
+interface BulletinAllowanceSigner {
+  publicKey: Uint8Array;
+  sign(input: Uint8Array): Promise<Uint8Array>;
+}
+
+interface BulletinAllowanceSignerHandle {
+  publicKey: Uint8Array;
+  signerId: number;
+}
+
+let nextBulletinAllowanceSignerId = 0;
+const bulletinAllowanceSigners = new Map<number, BulletinAllowanceSigner>();
+
 let nextSubId = 0;
 const subscriptionItemListeners = new Map<number, (value: unknown) => void>();
 
@@ -95,11 +108,37 @@ function callbackRequest(
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const requestId = ++nextRequestId;
+    const signerIds = collectBulletinAllowanceSignerIds(args);
     pendingCallbacks.set(requestId, (r) => {
+      for (const signerId of signerIds) {
+        bulletinAllowanceSigners.delete(signerId);
+      }
       if (r.ok) resolve(r.value);
       else reject(new Error(r.error));
     });
     postToMain({ kind: "callbackRequest", requestId, name, args });
+  });
+}
+
+function registerBulletinAllowanceSigner(
+  signer: BulletinAllowanceSigner,
+): BulletinAllowanceSignerHandle {
+  const signerId = ++nextBulletinAllowanceSignerId;
+  bulletinAllowanceSigners.set(signerId, signer);
+  return { publicKey: signer.publicKey, signerId };
+}
+
+function collectBulletinAllowanceSignerIds(args: readonly unknown[]): number[] {
+  return args.flatMap((arg) => {
+    if (
+      typeof arg === "object" &&
+      arg !== null &&
+      "signerId" in arg &&
+      typeof arg.signerId === "number"
+    ) {
+      return [arg.signerId];
+    }
+    return [];
   });
 }
 
@@ -180,6 +219,7 @@ function chainConnect(
 function buildRawCallbacks() {
   return createWorkerRawCallbacks({
     callbackRequest,
+    registerBulletinAllowanceSigner,
     startSubscription,
     chainConnect,
   });
@@ -312,6 +352,9 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       }
       break;
     }
+    case "signBulletinAllowance":
+      void handleSignBulletinAllowance(msg.requestId, msg.signerId, msg.input);
+      break;
     case "subscriptionItem": {
       const listener = subscriptionItemListeners.get(msg.subId);
       if (listener) listener(msg.value);
@@ -342,6 +385,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       } catch (err) {
         postToMain({ kind: "disposeError", error: errorMessage(err) });
       }
+      bulletinAllowanceSigners.clear();
       runtime = null;
       break;
     default: {
@@ -362,6 +406,40 @@ function disposeCore(coreId: number): void {
     core.free();
   } catch (err) {
     postToMain({ kind: "disposeError", error: errorMessage(err) });
+  }
+}
+
+async function handleSignBulletinAllowance(
+  requestId: number,
+  signerId: number,
+  input: Uint8Array,
+): Promise<void> {
+  const signer = bulletinAllowanceSigners.get(signerId);
+  if (!signer) {
+    postToMain({
+      kind: "signBulletinAllowanceResponse",
+      requestId,
+      ok: false,
+      error: `unknown Bulletin allowance signer: ${signerId}`,
+    });
+    return;
+  }
+
+  try {
+    const signature = await signer.sign(input);
+    postToMain({
+      kind: "signBulletinAllowanceResponse",
+      requestId,
+      ok: true,
+      signature,
+    });
+  } catch (err) {
+    postToMain({
+      kind: "signBulletinAllowanceResponse",
+      requestId,
+      ok: false,
+      error: errorMessage(err),
+    });
   }
 }
 
