@@ -336,24 +336,23 @@ async fn clear_auth_session(storage: &(impl CoreStorage + ?Sized)) {
     }
 }
 
+/// Decoded wallet handshake success plus the statement metadata needed to
+/// persist the authenticated session and remember the handled statement.
 struct PairingSuccess {
     statement: Vec<u8>,
     peer_statement_account_id: [u8; 32],
     success: v2::Success,
 }
 
-enum PairingStatementOutcome {
-    Pending,
-    Failed(String),
-    Success(PairingSuccess),
-}
-
 impl PairingSuccess {
+    /// Decode one retained statement-store response for the current pairing
+    /// topic. `Ok(None)` means the wallet has not produced a final response for
+    /// this statement yet; wallet failure statuses are surfaced as `Err`.
     #[instrument(skip_all, fields(runtime.method = "sso.pairing.decode_statement"))]
     fn from_v2_statement(
         statement: &[u8],
         core_encryption_secret_key: [u8; 32],
-    ) -> Result<PairingStatementOutcome, String> {
+    ) -> Result<Option<Self>, String> {
         let verified =
             decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
         let VersionedHandshakeResponse::V2 {
@@ -365,9 +364,9 @@ impl PairingSuccess {
             public_key,
             &encrypted_message,
         )? {
-            v2::EncryptedResponse::Pending(_) => Ok(PairingStatementOutcome::Pending),
-            v2::EncryptedResponse::Failed(reason) => Ok(PairingStatementOutcome::Failed(reason)),
-            v2::EncryptedResponse::Success(success) => Ok(PairingStatementOutcome::Success(Self {
+            v2::EncryptedResponse::Pending(_) => Ok(None),
+            v2::EncryptedResponse::Failed(reason) => Err(reason),
+            v2::EncryptedResponse::Success(success) => Ok(Some(Self {
                 statement: statement.to_vec(),
                 peer_statement_account_id: verified.signer,
                 success: *success,
@@ -488,10 +487,10 @@ fn handle_v2_pairing_result(
         if last_processed_statement == Some(statement.as_slice()) {
             continue;
         }
-        match PairingSuccess::from_v2_statement(&statement, core_encryption_secret_key)? {
-            PairingStatementOutcome::Pending => {}
-            PairingStatementOutcome::Failed(reason) => return Err(reason),
-            PairingStatementOutcome::Success(success) => return Ok(Some(success)),
+        if let Some(success) =
+            PairingSuccess::from_v2_statement(&statement, core_encryption_secret_key)?
+        {
+            return Ok(Some(success));
         }
     }
 
