@@ -24,9 +24,8 @@ pub(crate) struct RuntimeServices {
     pub(crate) platform: Arc<dyn Platform>,
     pub(crate) chain: ChainRuntime,
     pub(crate) statement_store: StatementStoreRpc,
-    /// In-core Bulletin submission, `None` when no bulletin genesis was
-    /// configured by the host.
-    pub(crate) bulletin: Option<BulletinRpc>,
+    /// In-core Bulletin submission over the configured Bulletin chain.
+    pub(crate) bulletin: BulletinRpc,
     /// Values from confirmed in-core submissions, served to `lookup_subscribe`
     /// until the host's content backend has them. Byte-bounded, oldest-first.
     preimage_cache: Mutex<PreimageCache>,
@@ -36,12 +35,12 @@ pub(crate) struct RuntimeServices {
 
 impl RuntimeServices {
     /// Build role-neutral runtime services from the platform, the People-chain
-    /// genesis hash used by statement-store backed protocols, and the optional
+    /// genesis hash used by statement-store backed protocols, and the
     /// Bulletin-chain genesis hash used for in-core preimage submission.
     pub(crate) fn new(
         platform: Arc<dyn Platform>,
         people_chain_genesis_hash: [u8; 32],
-        bulletin_chain_genesis_hash: Option<[u8; 32]>,
+        bulletin_chain_genesis_hash: [u8; 32],
         spawner: Spawner,
     ) -> Arc<Self> {
         let chain_provider = Arc::new(HostChainProvider {
@@ -50,8 +49,7 @@ impl RuntimeServices {
         let chain = ChainRuntime::new(chain_provider, spawner.clone());
         let statement_store =
             StatementStoreRpc::new(platform.clone(), people_chain_genesis_hash, spawner.clone());
-        let bulletin = bulletin_chain_genesis_hash
-            .map(|genesis_hash| BulletinRpc::new(chain.clone(), genesis_hash));
+        let bulletin = BulletinRpc::new(chain.clone(), bulletin_chain_genesis_hash);
         Arc::new(Self {
             platform,
             chain,

@@ -258,19 +258,18 @@ impl ProductRuntimeHost {
             },
             truapi_platform::PlatformInfo::default(),
             [0; 32],
+            [0xbb; 32],
             "polkadotapp".to_string(),
         )
         .expect("compat runtime config is valid")
     }
 
-    /// Compat host with a Bulletin genesis configured, so preimage submission
-    /// reaches the permission/confirmation gates instead of the pre-prompt
-    /// unconfigured check.
+    /// Compat host used by preimage tests.
     #[cfg(test)]
     fn new_compat_with_bulletin(platform: Arc<dyn Platform>, spawner: Spawner) -> Self {
         Self::new_pairing_for_tests(
             platform,
-            Self::compat_host_config().with_bulletin_chain_genesis_hash([0xbb; 32]),
+            Self::compat_host_config(),
             ProductContext::new("unknown.dot".to_string())
                 .expect("compat product context is valid"),
             spawner,
@@ -1819,13 +1818,7 @@ impl Preimage for ProductRuntimeHost {
         let Some(session) = self.authority.current_session() else {
             return Err(preimage_submit_error("No active session".to_string()));
         };
-        // Fail before any user-facing prompt when the host cannot submit
-        // bulletin transactions at all (no bulletin genesis configured).
-        let Some(bulletin) = self.services.bulletin.as_ref() else {
-            return Err(preimage_submit_error(
-                "bulletin chain unavailable on this host".to_string(),
-            ));
-        };
+        let bulletin = &self.services.bulletin;
         self.require_remote_permission(
             v01::RemotePermission::PreimageSubmit,
             RemotePreimageSubmitError::V1(v01::PreimageSubmitError::Unknown {
@@ -2858,39 +2851,6 @@ mod tests {
             )) => assert_eq!(reason, "No active session"),
             other => panic!("expected preimage session error, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn preimage_submit_unconfigured_bulletin_fails_before_prompts() {
-        // Default compat host has no bulletin genesis, so submission must fail
-        // before any permission prompt or user confirmation, and before any
-        // chain traffic.
-        let platform = Arc::new(StubPlatform {
-            remote_permission_denied: true,
-            ..Default::default()
-        });
-        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
-        host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
-        let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
-
-        let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
-
-        match err {
-            CallError::Domain(RemotePreimageSubmitError::V1(
-                v01::PreimageSubmitError::Unknown { reason },
-            )) => assert_eq!(reason, "bulletin chain unavailable on this host"),
-            other => panic!("expected bulletin-unavailable error, got {other:?}"),
-        }
-        // The pre-prompt gate wins over the (denied) permission check, and no
-        // chain request was sent.
-        assert!(
-            platform
-                .sent_rpc
-                .lock()
-                .expect("rpc list mutex poisoned")
-                .is_empty()
-        );
     }
 
     #[test]

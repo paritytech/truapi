@@ -57,6 +57,7 @@ pub fn test_runtime_config() -> (PairingHostConfig, ProductContext) {
             },
             PlatformInfo::default(),
             [0xa2; 32],
+            [0xbb; 32],
             "polkadotapp".to_string(),
         )
         .expect("test host runtime config is valid"),

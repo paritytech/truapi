@@ -419,7 +419,7 @@ mod tests {
 
     fn signing_host_runtime(product_id: &str) -> (ProductRuntimeHost, Arc<SigningHostRole>) {
         let platform: Arc<dyn truapi_platform::Platform> = Arc::new(StubPlatform::default());
-        let services = RuntimeServices::new(platform.clone(), [0; 32], None, test_spawner());
+        let services = RuntimeServices::new(platform.clone(), [0; 32], [0xbb; 32], test_spawner());
         let signing_host = SigningHostRole::new(platform);
         futures::executor::block_on(signing_host.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");

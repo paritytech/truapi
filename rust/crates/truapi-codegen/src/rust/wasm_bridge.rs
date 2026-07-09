@@ -20,11 +20,6 @@ pub fn generate_wasm_bridge(
     let trait_names = platform_trait_names(definition);
     validate_errors(&traits, &ctx)?;
     let mut out = String::new();
-    let signer_import = if traits_use_callback_signer(&traits) {
-        "bulletin_allowance_signer_to_js, "
-    } else {
-        ""
-    };
     writedoc!(
         out,
         r#"
@@ -41,7 +36,7 @@ pub fn generate_wasm_bridge(
         use wasm_bindgen::JsValue;
 
         use super::{{
-            WasmPlatform, {signer_import}call_js_function, decode_bytes,
+            WasmPlatform, call_js_function, decode_bytes,
             decode_js_item, generic, get_function, invoke_bool, invoke_bytes_return,
             invoke_js_subscription, invoke_optional_bytes_return, invoke_unit,
             parse_optional_bytes_item,
@@ -533,9 +528,6 @@ fn js_arg_expr(name: &str, ty: &TypeRef, ctx: &BridgeCtx<'_>) -> Result<String> 
     if is_callback_byte_type(ty) {
         return Ok(format!("Uint8Array::from({name}.as_secret_bytes()).into()"));
     }
-    if is_callback_signer_type(ty) {
-        return Ok(format!("bulletin_allowance_signer_to_js({name})"));
-    }
     if ctx.is_api_codec(ty) || ctx.is_local_codec(ty) {
         return Ok(format!(
             "Uint8Array::from({name}.encode().as_slice()).into()"
@@ -857,32 +849,10 @@ fn is_callback_byte_type(ty: &TypeRef) -> bool {
     matches!(ty, TypeRef::Named { name, .. } if is_callback_byte_type_name(name))
 }
 
-fn is_callback_signer_type(ty: &TypeRef) -> bool {
-    matches!(ty, TypeRef::Named { name, .. } if is_callback_signer_type_name(name))
-}
-
-/// Whether any composed trait method takes a callback signer parameter, which
-/// determines whether the generated bridge references
-/// `bulletin_allowance_signer_to_js`.
-fn traits_use_callback_signer(traits: &[&PlatformTrait]) -> bool {
-    traits.iter().any(|trait_def| {
-        trait_def.methods.iter().any(|method| {
-            method
-                .params
-                .iter()
-                .any(|param| is_callback_signer_type(&param.type_ref))
-        })
-    })
-}
-
 fn is_callback_special_type_name(name: &str) -> bool {
-    is_callback_byte_type_name(name) || is_callback_signer_type_name(name)
+    is_callback_byte_type_name(name)
 }
 
 fn is_callback_byte_type_name(name: &str) -> bool {
     name == "BulletinAllowanceKey"
-}
-
-fn is_callback_signer_type_name(name: &str) -> bool {
-    name == "BulletinAllowanceSigner"
 }

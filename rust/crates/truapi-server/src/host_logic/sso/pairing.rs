@@ -486,6 +486,7 @@ mod tests {
                 version: Some("192.32".to_string()),
             },
             [0; 32],
+            [0xbb; 32],
             "polkadotapp".to_string(),
         )
         .expect("test runtime config is valid")

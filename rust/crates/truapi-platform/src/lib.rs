@@ -48,10 +48,7 @@ pub struct PairingHostConfig {
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
     /// Bulletin-chain genesis hash used for in-core preimage submission.
-    ///
-    /// `None` when the host does not expose the Bulletin chain; preimage
-    /// submission then fails before prompting the user.
-    pub bulletin_chain_genesis_hash: Option<[u8; 32]>,
+    pub bulletin_chain_genesis_hash: [u8; 32],
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
     ///
     /// Host-spec L.2-L.3 define the `polkadotapp://pair` route and construction
@@ -71,10 +68,7 @@ pub struct SigningHostConfig {
     /// People-chain genesis hash used for statement-store product calls.
     pub people_chain_genesis_hash: [u8; 32],
     /// Bulletin-chain genesis hash used for in-core preimage submission.
-    ///
-    /// `None` when the host does not expose the Bulletin chain; preimage
-    /// submission then fails before prompting the user.
-    pub bulletin_chain_genesis_hash: Option<[u8; 32]>,
+    pub bulletin_chain_genesis_hash: [u8; 32],
 }
 
 /// Product identity attached to one product-facing TrUAPI connection.
@@ -145,6 +139,7 @@ impl PairingHostConfig {
         host_info: HostInfo,
         platform_info: PlatformInfo,
         people_chain_genesis_hash: [u8; 32],
+        bulletin_chain_genesis_hash: [u8; 32],
         pairing_deeplink_scheme: String,
     ) -> Result<Self, RuntimeConfigValidationError> {
         require_non_empty("pairing_deeplink_scheme", &pairing_deeplink_scheme)?;
@@ -156,17 +151,10 @@ impl PairingHostConfig {
         let config = Self {
             host: HostRuntimeConfig::new(host_info, platform_info)?,
             people_chain_genesis_hash,
-            bulletin_chain_genesis_hash: None,
+            bulletin_chain_genesis_hash,
             pairing_deeplink_scheme,
         };
         Ok(config)
-    }
-
-    /// Set the Bulletin-chain genesis hash used for in-core preimage
-    /// submission.
-    pub fn with_bulletin_chain_genesis_hash(mut self, genesis_hash: [u8; 32]) -> Self {
-        self.bulletin_chain_genesis_hash = Some(genesis_hash);
-        self
     }
 }
 
@@ -177,19 +165,13 @@ impl SigningHostConfig {
         host_info: HostInfo,
         platform_info: PlatformInfo,
         people_chain_genesis_hash: [u8; 32],
+        bulletin_chain_genesis_hash: [u8; 32],
     ) -> Result<Self, RuntimeConfigValidationError> {
         Ok(Self {
             host: HostRuntimeConfig::new(host_info, platform_info)?,
             people_chain_genesis_hash,
-            bulletin_chain_genesis_hash: None,
+            bulletin_chain_genesis_hash,
         })
-    }
-
-    /// Set the Bulletin-chain genesis hash used for in-core preimage
-    /// submission.
-    pub fn with_bulletin_chain_genesis_hash(mut self, genesis_hash: [u8; 32]) -> Self {
-        self.bulletin_chain_genesis_hash = Some(genesis_hash);
-        self
     }
 }
 
@@ -639,7 +621,7 @@ pub trait ThemeHost: Send + Sync {
 ///
 /// The core is the sole holder: the secret never crosses the host boundary.
 /// Zeroized on drop, and its `Debug` redacts the material.
-#[derive(Clone, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
+#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct BulletinAllowanceKey {
     secret: [u8; 64],
 }
@@ -660,14 +642,6 @@ impl BulletinAllowanceKey {
         &self.secret
     }
 }
-
-impl PartialEq for BulletinAllowanceKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.secret == other.secret
-    }
-}
-
-impl Eq for BulletinAllowanceKey {}
 
 impl core::fmt::Debug for BulletinAllowanceKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

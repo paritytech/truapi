@@ -403,6 +403,7 @@ mod tests {
             },
             PlatformInfo::default(),
             [0; 32],
+            [0xbb; 32],
         )
         .expect("signing host config is valid");
         let services = RuntimeServices::new(

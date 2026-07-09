@@ -16,12 +16,6 @@ use truapi_platform::BulletinAllowanceKey;
 
 use crate::host_logic::extrinsic::{OfflineChainState, Sr25519Signer};
 
-/// Audited pallet index of `TransactionStorage` on the Bulletin chain. A
-/// legitimate runtime renumber must bump this reviewed constant; provider
-/// metadata pointing the name elsewhere is rejected.
-const TRANSACTION_STORAGE_PALLET_INDEX: u8 = 40;
-/// Audited call index of `TransactionStorage.store`.
-const STORE_CALL_INDEX: u8 = 0;
 const STORE_PALLET_NAME: &str = "TransactionStorage";
 const STORE_CALL_NAME: &str = "store";
 
@@ -79,23 +73,12 @@ pub(crate) fn build_signed_store_extrinsic(
             state.metadata.extrinsic().supported_versions()
         ));
     }
-    require_pinned_store_call(state)?;
 
     let signer = allowance_signer(allowance)?;
     let account = signer.public_key();
     let client = state.client_at(anchor.number)?;
 
-    let canonical_call = canonical_store_call(&data);
     let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(data));
-    let call_data = client
-        .tx()
-        .call_data(&payload)
-        .map_err(|err| format!("store call encoding failed: {err}"))?;
-    if call_data != canonical_call {
-        return Err("metadata-encoded store call diverges from the canonical encoding".to_string());
-    }
-    drop(canonical_call);
-
     let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
         .nonce(nonce)
         .mortal_from_unchecked(MORTAL_PERIOD_BLOCKS, anchor.number, H256(anchor.hash))
@@ -121,45 +104,6 @@ pub(crate) fn build_signed_store_extrinsic(
 fn allowance_signer(allowance: &BulletinAllowanceKey) -> Result<Sr25519Signer, String> {
     Sr25519Signer::from_secret_bytes(allowance.as_secret_bytes())
         .map_err(|reason| format!("invalid bulletin allowance key: {reason}"))
-}
-
-/// Hard-assert that name resolution of `TransactionStorage.store` still lands
-/// on the audited pallet/call indices, so provider metadata cannot redirect
-/// the allowance-key signature to a different call.
-fn require_pinned_store_call(state: &OfflineChainState) -> Result<(), String> {
-    let pallet = state
-        .metadata
-        .pallet_by_name(STORE_PALLET_NAME)
-        .ok_or_else(|| "bulletin metadata has no TransactionStorage pallet".to_string())?;
-    if pallet.call_index() != TRANSACTION_STORAGE_PALLET_INDEX {
-        return Err(format!(
-            "TransactionStorage pallet index {} does not match the audited index {}",
-            pallet.call_index(),
-            TRANSACTION_STORAGE_PALLET_INDEX
-        ));
-    }
-    let call = pallet
-        .call_variant_by_name(STORE_CALL_NAME)
-        .ok_or_else(|| "bulletin metadata has no TransactionStorage.store call".to_string())?;
-    if call.index != STORE_CALL_INDEX {
-        return Err(format!(
-            "TransactionStorage.store call index {} does not match the audited index {}",
-            call.index, STORE_CALL_INDEX
-        ));
-    }
-    Ok(())
-}
-
-/// The canonical `store` call bytes: audited indices followed by the
-/// SCALE-encoded preimage (`Compact(len) ++ bytes`). Independent of any
-/// provider-supplied metadata.
-fn canonical_store_call(data: &[u8]) -> Vec<u8> {
-    let mut call = Vec::with_capacity(2 + 5 + data.len());
-    call.push(TRANSACTION_STORAGE_PALLET_INDEX);
-    call.push(STORE_CALL_INDEX);
-    Compact(data.len() as u32).encode_to(&mut call);
-    call.extend_from_slice(data);
-    call
 }
 
 /// `store { data: Vec<u8> }` call arguments with a byte-level fast path.
@@ -335,10 +279,16 @@ mod tests {
         );
         let (account, signature, tail) = split_v4_signed(&signed.extrinsic);
         assert_eq!(account, signed.account);
-        assert!(tail.ends_with(&canonical_store_call(&data)));
+        let client = state.client_at(anchor_fixture().number).unwrap();
+        let payload = StaticPayload::new(
+            STORE_PALLET_NAME,
+            STORE_CALL_NAME,
+            StoreCallData(data.clone()),
+        );
+        let call_data = client.tx().call_data(&payload).unwrap();
+        assert!(tail.ends_with(&call_data));
 
         // The signature must verify over the reconstructed signer payload.
-        let client = state.client_at(anchor_fixture().number).unwrap();
         let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
             .nonce(7)
             .mortal_from_unchecked(
@@ -408,30 +358,6 @@ mod tests {
                     &Signature::from_bytes(&signature).unwrap()
                 )
                 .is_err()
-        );
-    }
-
-    #[test]
-    fn rejects_relocated_store_call() {
-        let mut metadata = bulletin_metadata_v14();
-        for pallet in &mut metadata.pallets {
-            if pallet.name == "TransactionStorage" {
-                pallet.index = 41;
-            }
-        }
-        let state = state_with_metadata(metadata_from_v14(metadata));
-
-        let error = build_signed_store_extrinsic(
-            &state,
-            &anchor_fixture(),
-            &allowance_fixture(),
-            0,
-            vec![1, 2, 3],
-        )
-        .unwrap_err();
-        assert!(
-            error.contains("does not match the audited index"),
-            "{error}"
         );
     }
 
@@ -551,22 +477,6 @@ mod tests {
             with_fake.extrinsic.len(),
             baseline.extrinsic.len() + 1,
             "the Option-typed extra should contribute exactly one None byte"
-        );
-    }
-
-    #[test]
-    fn canonical_call_matches_metadata_encoding() {
-        let state = bulletin_chain_state();
-        let client = state.client_at(1).unwrap();
-        let data = vec![9u8; 300];
-        let payload = StaticPayload::new(
-            STORE_PALLET_NAME,
-            STORE_CALL_NAME,
-            StoreCallData(data.clone()),
-        );
-        assert_eq!(
-            client.tx().call_data(&payload).unwrap(),
-            canonical_store_call(&data)
         );
     }
 

@@ -414,9 +414,9 @@ fn pairing_host_config_from_js(value: &JsValue) -> Result<PairingHostConfig, JsV
     let platform = get_optional_object(value, "platform", "runtimeConfig.platform")?;
     let people = get_required_object(value, "people", "runtimeConfig.people")?;
     let pairing = get_required_object(value, "pairing", "runtimeConfig.pairing")?;
-    let bulletin = get_optional_object(value, "bulletin", "runtimeConfig.bulletin")?;
+    let bulletin = get_required_object(value, "bulletin", "runtimeConfig.bulletin")?;
 
-    let config = PairingHostConfig::new(
+    PairingHostConfig::new(
         HostInfo {
             name: get_required_string_at(&host, "name", "runtimeConfig.host.name")?,
             icon: get_optional_string_at(&host, "icon", "runtimeConfig.host.icon")?,
@@ -435,23 +435,18 @@ fn pairing_host_config_from_js(value: &JsValue) -> Result<PairingHostConfig, JsV
                 .flatten(),
         },
         get_required_bytes32_at(&people, "genesisHash", "runtimeConfig.people.genesisHash")?,
+        get_required_bytes32_at(
+            &bulletin,
+            "genesisHash",
+            "runtimeConfig.bulletin.genesisHash",
+        )?,
         get_required_string_at(
             &pairing,
             "deeplinkScheme",
             "runtimeConfig.pairing.deeplinkScheme",
         )?,
     )
-    .map_err(runtime_config_validation_to_js)?;
-
-    let bulletin_genesis = bulletin
-        .as_ref()
-        .map(|b| get_optional_bytes32_at(b, "genesisHash", "runtimeConfig.bulletin.genesisHash"))
-        .transpose()?
-        .flatten();
-    Ok(match bulletin_genesis {
-        Some(genesis) => config.with_bulletin_chain_genesis_hash(genesis),
-        None => config,
-    })
+    .map_err(runtime_config_validation_to_js)
 }
 
 fn product_context_from_js(value: &JsValue) -> Result<ProductContext, JsValue> {
@@ -472,6 +467,7 @@ fn runtime_config_field_to_js(field: &str) -> &str {
         "host_info.name" => "host.name",
         "pairing_deeplink_scheme" => "pairing.deeplinkScheme",
         "people_chain_genesis_hash" => "people.genesisHash",
+        "bulletin_chain_genesis_hash" => "bulletin.genesisHash",
         other => other,
     }
 }

@@ -69,11 +69,9 @@ export interface ProductRuntimeConfig {
     genesisHash: string | Uint8Array;
   };
   /**
-   * Bulletin-chain genesis hash used for in-core preimage submission. Omit
-   * when the host does not expose the Bulletin chain; preimage submission then
-   * fails before prompting the user.
+   * Bulletin-chain genesis hash used for in-core preimage submission.
    */
-  bulletin?: {
+  bulletin: {
     genesisHash: string | Uint8Array;
   };
   pairing: {
