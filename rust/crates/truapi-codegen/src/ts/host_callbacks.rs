@@ -266,7 +266,6 @@ fn emit_wasm_adapter(
         r#"
         import type {{
           BulletinAllowanceSigner,
-          FlatHostCallbacks,
           RequiredHostCallbacks,
         }} from "./host-callbacks.js";
 
@@ -290,9 +289,8 @@ fn emit_wasm_adapter(
         /** Adapt typed host callbacks into the raw SCALE callback surface the
          *  WASM core invokes. */
         export function createWasmRawCallbacks(
-          host: RequiredHostCallbacks | Required<FlatHostCallbacks>,
+          callbacks: RequiredHostCallbacks,
         ): RawCallbacks {{
-          const callbacks = normalizeHostCallbacks(host);
           return {{
         "#,
     )
@@ -310,8 +308,6 @@ fn emit_wasm_adapter(
         }
     }
     out.push_str("  };\n}\n");
-    out.push('\n');
-    out.push_str(&emit_normalize_host_callbacks(&traits));
     Ok(out)
 }
 
@@ -1448,11 +1444,6 @@ fn emit_host_callback_composites(composes: &[String], docs: Option<&str>) -> Str
             "{jsdoc}export interface HostCallbacks {{}}\n\nexport interface RequiredHostCallbacks {{}}\n"
         );
     }
-    let extends = composes
-        .iter()
-        .map(|name| name.to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
     let host_members = composes
         .iter()
         .map(|trait_name| format!("  {}: {};", callback_namespace(trait_name), trait_name))
@@ -1471,44 +1462,12 @@ fn emit_host_callback_composites(composes: &[String], docs: Option<&str>) -> Str
         .join("\n");
     formatdoc! {
         r#"
-        /** @deprecated Use the namespaced `HostCallbacks` shape instead. */
-        export interface FlatHostCallbacks extends {extends} {{}}
-
         {jsdoc}export interface HostCallbacks {{
         {host_members}
         }}
 
         export interface RequiredHostCallbacks {{
         {required_members}
-        }}
-        "#,
-    }
-}
-
-fn emit_normalize_host_callbacks(traits: &[&PlatformTrait]) -> String {
-    let namespace_guard = traits
-        .first()
-        .map(|trait_def| callback_namespace(&trait_def.name))
-        .unwrap_or_default();
-    let members = traits
-        .iter()
-        .map(|trait_def| {
-            let namespace = callback_namespace(&trait_def.name);
-            format!("    {namespace}: host,")
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    formatdoc! {
-        r#"
-        function normalizeHostCallbacks(
-          host: RequiredHostCallbacks | Required<FlatHostCallbacks>,
-        ): RequiredHostCallbacks {{
-          if ("{namespace_guard}" in host) {{
-            return host;
-          }}
-          return {{
-        {members}
-          }};
         }}
         "#,
     }
