@@ -525,9 +525,6 @@ fn js_arg_expr(name: &str, ty: &TypeRef, ctx: &BridgeCtx<'_>) -> Result<String> 
     if is_bytes(ty) {
         return Ok(format!("Uint8Array::from({name}.as_slice()).into()"));
     }
-    if is_callback_byte_type(ty) {
-        return Ok(format!("Uint8Array::from({name}.as_secret_bytes()).into()"));
-    }
     if ctx.is_api_codec(ty) || ctx.is_local_codec(ty) {
         return Ok(format!(
             "Uint8Array::from({name}.encode().as_slice()).into()"
@@ -826,7 +823,7 @@ fn collect_local_from_type<'a>(
 ) {
     match ty {
         TypeRef::Named { name, args } => {
-            if local.contains(name.as_str()) && !is_callback_special_type_name(name) {
+            if local.contains(name.as_str()) {
                 out.insert(name);
             }
             for arg in args {
@@ -843,16 +840,4 @@ fn collect_local_from_type<'a>(
         }
         TypeRef::Primitive(_) | TypeRef::Generic(_) | TypeRef::Unit => {}
     }
-}
-
-fn is_callback_byte_type(ty: &TypeRef) -> bool {
-    matches!(ty, TypeRef::Named { name, .. } if is_callback_byte_type_name(name))
-}
-
-fn is_callback_special_type_name(name: &str) -> bool {
-    is_callback_byte_type_name(name)
-}
-
-fn is_callback_byte_type_name(name: &str) -> bool {
-    name == "BulletinAllowanceKey"
 }

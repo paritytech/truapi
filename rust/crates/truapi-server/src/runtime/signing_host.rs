@@ -374,11 +374,11 @@ mod tests {
     };
     use super::super::{ProductAuthority, ProductRuntimeHost, RuntimeServices, SigningHostRole};
     use super::{BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, raw_payload_bytes};
+    use crate::host_logic::extrinsic::tests::split_v4;
     use crate::host_logic::product_account::{
         derive_product_keypair, derive_root_keypair_from_entropy,
     };
     use crate::test_support::{StubPlatform, test_spawner};
-    use parity_scale_codec::{Compact, Decode};
     use truapi::api::{Account, Entropy, Signing};
     use truapi::versioned::account::{HostAccountGetError, HostAccountGetRequest};
     use truapi::versioned::entropy::HostDeriveEntropyRequest;
@@ -511,20 +511,6 @@ mod tests {
             }],
             tx_ext_version,
         }
-    }
-
-    /// Split a length-prefixed V4 signed extrinsic into
-    /// (account, signature, trailing bytes).
-    fn split_v4(extrinsic: &[u8]) -> ([u8; 32], [u8; 64], Vec<u8>) {
-        let mut input = extrinsic;
-        let len = Compact::<u32>::decode(&mut input).unwrap().0 as usize;
-        assert_eq!(input.len(), len);
-        assert_eq!(input[0], 0x84);
-        assert_eq!(input[1], 0x00);
-        let account: [u8; 32] = input[2..34].try_into().unwrap();
-        assert_eq!(input[34], 0x01);
-        let signature: [u8; 64] = input[35..99].try_into().unwrap();
-        (account, signature, input[99..].to_vec())
     }
 
     #[test]

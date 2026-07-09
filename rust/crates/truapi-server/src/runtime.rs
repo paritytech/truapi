@@ -147,6 +147,10 @@ pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
 /// after 180 seconds:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L303-L307>
 const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+/// Whole-submission budget for an in-core Bulletin preimage submit, covering
+/// build + dry-run + broadcast + best-block inclusion. Passed explicitly to the
+/// chain layer, which uses the call context only for cancellation.
+const PREIMAGE_SUBMIT_BUDGET: Duration = Duration::from_secs(180);
 
 fn remote_authority_context(cx: &CallContext) -> CallContext {
     let mut cx = cx.clone();
@@ -1851,14 +1855,11 @@ impl Preimage for ProductRuntimeHost {
         .await
         .map_err(|err| preimage_submit_error(err.reason()))?;
 
-        match bulletin
-            .submit_preimage(cx, &allowance, value.clone())
+        let key = match bulletin
+            .submit_preimage(cx, PREIMAGE_SUBMIT_BUDGET, &allowance, &value)
             .await
         {
-            Ok(key) => {
-                self.prime_preimage_cache(&value, &key);
-                Ok(RemotePreimageSubmitResponse::V1(key))
-            }
+            Ok(key) => key,
             // A rejected allowance is the one case a refresh-and-retry can fix:
             // evict the exhausted key, allocate a fresh (increased) allowance,
             // and try exactly once more.
@@ -1873,29 +1874,26 @@ impl Preimage for ProductRuntimeHost {
                 )
                 .await
                 .map_err(|err| preimage_submit_error(err.reason()))?;
-                match bulletin
-                    .submit_preimage(cx, &allowance, value.clone())
+                bulletin
+                    .submit_preimage(cx, PREIMAGE_SUBMIT_BUDGET, &allowance, &value)
                     .await
-                {
-                    Ok(key) => {
-                        self.prime_preimage_cache(&value, &key);
-                        Ok(RemotePreimageSubmitResponse::V1(key))
-                    }
-                    Err(err) => Err(preimage_submit_error(err.reason())),
-                }
+                    .map_err(|err| preimage_submit_error(err.reason()))?
             }
-            Err(err) => Err(preimage_submit_error(err.reason())),
-        }
+            Err(err) => return Err(preimage_submit_error(err.reason())),
+        };
+        // Move the owned body into the lookup cache (no extra copy) so an
+        // immediate product lookup hits before the content backend has it.
+        self.prime_preimage_cache(&key, value);
+        Ok(RemotePreimageSubmitResponse::V1(key))
     }
 }
 
 impl ProductRuntimeHost {
-    /// Prime the in-core lookup cache with a just-submitted preimage so an
-    /// immediate product lookup hits before the content backend has it.
-    fn prime_preimage_cache(&self, value: &[u8], key: &[u8]) {
+    /// Cache a just-submitted preimage under its key for immediate lookups.
+    fn prime_preimage_cache(&self, key: &[u8], value: Vec<u8>) {
         if let Ok(key_bytes) = <[u8; 32]>::try_from(key) {
-            debug_assert_eq!(key_bytes, preimage_key(value));
-            self.services.cache_preimage(key_bytes, value.to_vec());
+            debug_assert_eq!(key_bytes, preimage_key(&value));
+            self.services.cache_preimage(key_bytes, value);
         }
     }
 }

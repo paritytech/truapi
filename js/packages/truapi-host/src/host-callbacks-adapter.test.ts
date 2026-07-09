@@ -208,10 +208,6 @@ describe("createWasmRawCallbacks", () => {
           },
         },
         preimage: {
-          submitPreimage: async (value) => {
-            calls.push(["submitPreimage", [...value]]);
-            return new Uint8Array([7, 8, 9]);
-          },
           lookupPreimage: (key) => {
             calls.push(["lookupPreimage", [...key]]);
             return preimages();
@@ -325,9 +321,6 @@ describe("createWasmRawCallbacks", () => {
         }),
       ),
     ).toBe(true);
-    expect(await raw.submitPreimage!(new Uint8Array([6]))).toEqual(
-      new Uint8Array([7, 8, 9]),
-    );
 
     await settle();
     await settle();
@@ -342,7 +335,6 @@ describe("createWasmRawCallbacks", () => {
       ["writeCoreStorage", { tag: "AuthSession", value: undefined }, [3, 2, 1]],
       ["clearCoreStorage", { tag: "AuthSession", value: undefined }],
       ["confirmUserAction:PreimageSubmit", 42n],
-      ["submitPreimage", [6]],
     ]);
 
     disposePreimages?.();

@@ -11,15 +11,15 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
-use std::time::Duration;
+use std::time::{Duration, Instant};
 #[cfg(target_arch = "wasm32")]
-use web_time::Duration;
+use web_time::{Duration, Instant};
 
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt, pin_mut};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::Encode;
 use subxt::metadata::ArcMetadata;
-use subxt::tx::{TransactionInvalid, TransactionUnknown};
+use subxt::tx::{TransactionInvalid, TransactionUnknown, ValidationResult};
 use tracing::{instrument, warn};
 use truapi::CallContext;
 use truapi::v01::{
@@ -35,17 +35,20 @@ use crate::chain_runtime::{
     ChainRuntime, wait_for_chain_head_call_output, wait_for_chain_head_storage_value,
 };
 use crate::host_logic::bulletin::{
-    MortalityAnchor, build_signed_store_extrinsic, preimage_key, system_events_storage_key,
+    MortalityAnchor, STORE_CALL_NAME, STORE_PALLET_NAME, build_signed_store_extrinsic,
+    preimage_key, store_data_field_matches_key, system_events_storage_key,
 };
 use crate::host_logic::extrinsic::{
-    DecodedDispatchError, ExtrinsicOutcome, OfflineChainState, TransactionValidity,
-    best_supported_metadata_version, decode_header_block_number, decode_runtime_metadata,
+    DecodedDispatchError, ExtrinsicOutcome, OfflineChainState, best_supported_metadata_version,
+    decode_account_nonce, decode_header_block_number, decode_runtime_metadata,
     decode_transaction_validity, extrinsic_outcome_from_events,
     validate_transaction_call_parameters,
 };
 
-/// Whole-submission budget, including best-block inclusion.
-const SUBMIT_TIMEOUT: Duration = Duration::from_secs(180);
+/// Retry once when a broadcast is not included after the watch budget. This
+/// covers the post-allocation propagation window where dry-run can succeed
+/// against one node while the authoring path silently drops the broadcast.
+const SUBMIT_ATTEMPTS: usize = 2;
 /// Budget for the follow to deliver `Initialized`.
 const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(10);
 /// Budget for a fresh follow to report the current best block after
@@ -75,6 +78,17 @@ type Phase = &'static str;
 struct SubmissionHead {
     best_hash: Vec<u8>,
     runtime_spec: RuntimeSpec,
+}
+
+/// The broadcast transaction the watch loop looks for, plus the chain state
+/// needed to content-match its body against the preimage key.
+struct SubmittedTransaction<'a> {
+    state: &'a OfflineChainState,
+    anchor: &'a MortalityAnchor,
+    extrinsic_hash: [u8; 32],
+    preimage_key: &'a [u8; 32],
+    our_nonce: u64,
+    account: &'a [u8; 32],
 }
 
 /// Typed submission failure driving the retry decision at the runtime call
@@ -110,6 +124,10 @@ pub(crate) enum AllowanceRejectionPhase {
 }
 
 impl BulletinSubmitError {
+    fn is_retryable_watch_timeout(&self) -> bool {
+        matches!(self, Self::Timeout { phase } if *phase == "watch")
+    }
+
     /// Structured reason string carried in the wire error.
     pub(crate) fn reason(&self) -> String {
         match self {
@@ -171,8 +189,9 @@ impl BulletinRpc {
     pub(crate) async fn submit_preimage(
         &self,
         cx: &CallContext,
+        budget: Duration,
         allowance: &BulletinAllowanceKey,
-        value: Vec<u8>,
+        value: &[u8],
     ) -> Result<Vec<u8>, BulletinSubmitError> {
         // Serialize submissions, keeping the lock wait cancellable.
         let lock = self.submit_lock.lock().fuse();
@@ -183,28 +202,49 @@ impl BulletinRpc {
             _ = lock_cancelled => return Err(BulletinSubmitError::Cancelled),
         };
 
+        // The whole-submission budget is set by the Preimage::submit boundary
+        // and passed in explicitly; the context is used only for cancellation.
         // The budget starts once the lock is held; dropping the flow on
         // timeout/cancel drops its follow (releasing pins), and the explicit
         // stop below covers any live broadcast on every exit path.
-        let flow = self.submit_flow(allowance, value).fuse();
-        let timeout = futures_timer::Delay::new(SUBMIT_TIMEOUT).fuse();
-        let cancelled = cx.cancel().cancelled().fuse();
-        pin_mut!(flow, timeout, cancelled);
-        let result = futures::select! {
-            result = flow => result,
-            () = timeout => Err(BulletinSubmitError::Timeout { phase: self.current_phase() }),
-            _ = cancelled => Err(BulletinSubmitError::Cancelled),
-        };
-        self.stop_active_broadcast().await;
-        result
+        let started = Instant::now();
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let Some(remaining) = budget.checked_sub(started.elapsed()) else {
+                return Err(BulletinSubmitError::Timeout {
+                    phase: self.current_phase(),
+                });
+            };
+            let flow = self.submit_flow(allowance, value).fuse();
+            let timeout = futures_timer::Delay::new(remaining).fuse();
+            let cancelled = cx.cancel().cancelled().fuse();
+            pin_mut!(flow, timeout, cancelled);
+            let result = futures::select! {
+                result = flow => result,
+                () = timeout => Err(BulletinSubmitError::Timeout { phase: self.current_phase() }),
+                _ = cancelled => Err(BulletinSubmitError::Cancelled),
+            };
+            self.stop_active_broadcast().await;
+            match result {
+                Err(err) if attempt < SUBMIT_ATTEMPTS && err.is_retryable_watch_timeout() => {
+                    warn!(
+                        attempt,
+                        reason = %err.reason(),
+                        "Bulletin preimage broadcast not included; retrying"
+                    );
+                }
+                result => return result,
+            }
+        }
     }
 
     async fn submit_flow(
         &self,
         allowance: &BulletinAllowanceKey,
-        value: Vec<u8>,
+        value: &[u8],
     ) -> Result<Vec<u8>, BulletinSubmitError> {
-        let key = preimage_key(&value);
+        let key = preimage_key(value);
 
         self.enter_phase("connect");
         let follow_id = format!(
@@ -226,9 +266,12 @@ impl BulletinRpc {
             .await?;
 
         self.enter_phase("build");
+        let account =
+            crate::host_logic::extrinsic::public_key_from_secret_bytes(allowance.as_secret_bytes())
+                .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
         let anchor = self.mortality_anchor(&follow_id, &head.best_hash).await?;
         let nonce = self
-            .account_nonce(&follow_id, &mut follow, &head.best_hash, allowance)
+            .account_nonce(&follow_id, &mut follow, &head.best_hash, &account)
             .await?;
         let signed = build_signed_store_extrinsic(&state, &anchor, allowance, nonce, value)
             .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
@@ -259,7 +302,18 @@ impl BulletinRpc {
 
         self.enter_phase("watch");
         let (inclusion_block, extrinsic_index) = self
-            .watch_for_inclusion(&follow_id, &mut follow, extrinsic_hash, nonce, allowance)
+            .watch_for_inclusion(
+                &follow_id,
+                &mut follow,
+                SubmittedTransaction {
+                    state: &state,
+                    anchor: &anchor,
+                    extrinsic_hash,
+                    preimage_key: &key,
+                    our_nonce: nonce,
+                    account: &account,
+                },
+            )
             .await?;
 
         self.enter_phase("events");
@@ -378,11 +432,8 @@ impl BulletinRpc {
         follow_id: &str,
         follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
         finalized_hash: &[u8],
-        allowance: &BulletinAllowanceKey,
+        account: &[u8; 32],
     ) -> Result<u64, BulletinSubmitError> {
-        let account =
-            crate::host_logic::extrinsic::public_key_from_secret_bytes(allowance.as_secret_bytes())
-                .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
         let output = self
             .runtime_call(
                 follow_id,
@@ -392,11 +443,8 @@ impl BulletinRpc {
                 account.to_vec(),
             )
             .await?;
-        let nonce =
-            u32::decode(&mut &output[..]).map_err(|err| BulletinSubmitError::ChainUnavailable {
-                reason: format!("invalid account nonce response: {err}"),
-            })?;
-        Ok(nonce.into())
+        decode_account_nonce(&output)
+            .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })
     }
 
     /// Dry-run the signed extrinsic against the anchor block. Broadcast never
@@ -422,26 +470,26 @@ impl BulletinRpc {
         let validity = decode_transaction_validity(&output)
             .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })?;
         match validity {
-            TransactionValidity::Valid(_) => Ok(()),
-            TransactionValidity::Invalid(
+            ValidationResult::Valid(_) => Ok(()),
+            ValidationResult::Invalid(
                 TransactionInvalid::Payment
                 | TransactionInvalid::Custom(_)
                 | TransactionInvalid::BadSigner,
             ) => Err(BulletinSubmitError::AllowanceRejected {
                 phase: AllowanceRejectionPhase::DryRun,
             }),
-            TransactionValidity::Invalid(
-                TransactionInvalid::Future | TransactionInvalid::Stale,
-            ) => Err(BulletinSubmitError::NonceRace),
-            TransactionValidity::Invalid(other) => Err(BulletinSubmitError::InvalidTransaction {
+            ValidationResult::Invalid(TransactionInvalid::Future | TransactionInvalid::Stale) => {
+                Err(BulletinSubmitError::NonceRace)
+            }
+            ValidationResult::Invalid(other) => Err(BulletinSubmitError::InvalidTransaction {
                 kind: format!("{other:?}"),
             }),
-            TransactionValidity::Unknown(TransactionUnknown::CannotLookup) => {
+            ValidationResult::Unknown(TransactionUnknown::CannotLookup) => {
                 Err(BulletinSubmitError::ChainUnavailable {
                     reason: "transaction validity could not be looked up".to_string(),
                 })
             }
-            TransactionValidity::Unknown(other) => Err(BulletinSubmitError::InvalidTransaction {
+            ValidationResult::Unknown(other) => Err(BulletinSubmitError::InvalidTransaction {
                 kind: format!("{other:?}"),
             }),
         }
@@ -455,14 +503,16 @@ impl BulletinRpc {
         &self,
         follow_id: &str,
         follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-        extrinsic_hash: [u8; 32],
-        our_nonce: u64,
-        allowance: &BulletinAllowanceKey,
+        tx: SubmittedTransaction<'_>,
     ) -> Result<(Vec<u8>, u32), BulletinSubmitError> {
-        let account =
-            crate::host_logic::extrinsic::public_key_from_secret_bytes(allowance.as_secret_bytes())
-                .expect("validated earlier in the submit flow");
-
+        let SubmittedTransaction {
+            state,
+            anchor,
+            extrinsic_hash,
+            preimage_key,
+            our_nonce,
+            account,
+        } = tx;
         let stopped = || BulletinSubmitError::BroadcastUnverified {
             reason: "chain follow stopped".to_string(),
         };
@@ -489,7 +539,7 @@ impl BulletinRpc {
                         None => body_queue.push_front(block),
                     }
                 } else if let Some(block) = gate_queue.pop_front() {
-                    match self.start_nonce_probe(follow_id, &block, &account).await? {
+                    match self.start_nonce_probe(follow_id, &block, account).await? {
                         Some(operation_id) => pending_nonce = Some((operation_id, block)),
                         None => gate_queue.push_front(block),
                     }
@@ -530,12 +580,9 @@ impl BulletinRpc {
                     .is_some_and(|(id, _)| *id == operation_id) =>
                 {
                     let (_, block) = pending_nonce.take().expect("checked above");
-                    let nonce = u32::decode(&mut &output[..]).map_err(|err| {
-                        BulletinSubmitError::BroadcastUnverified {
-                            reason: format!("invalid nonce probe response: {err}"),
-                        }
-                    })?;
-                    if u64::from(nonce) > our_nonce {
+                    let nonce = decode_account_nonce(&output)
+                        .map_err(|reason| BulletinSubmitError::BroadcastUnverified { reason })?;
+                    if nonce > our_nonce {
                         // The account advanced at or before `block`: check its
                         // body and those of its unchecked ancestors.
                         for hash in ancestors_to_check(&parents, &checked, block) {
@@ -565,6 +612,18 @@ impl BulletinRpc {
                         // best-block inclusion. A future API option can let
                         // callers prefer finalized inclusion.
                         return Ok((block, index as u32));
+                    }
+                    match matching_store_extrinsic_index(state, anchor.number, value, preimage_key)
+                        .await
+                    {
+                        Ok(Some(index)) => return Ok((block, index)),
+                        Ok(None) => {}
+                        Err(reason) => {
+                            warn!(
+                                reason = %reason,
+                                "Bulletin store-call body match failed"
+                            );
+                        }
                     }
                     checked.insert(block.clone());
                     self.unpin(follow_id, vec![block]).await;
@@ -949,6 +1008,32 @@ fn valid_runtime(
             reason: missing_reason.to_string(),
         }),
     }
+}
+
+async fn matching_store_extrinsic_index(
+    state: &OfflineChainState,
+    block_number: u64,
+    extrinsics: Vec<Vec<u8>>,
+    preimage_key: &[u8; 32],
+) -> Result<Option<u32>, String> {
+    let client = state.client_at(block_number)?;
+    let extrinsics = client.extrinsics().from_bytes(extrinsics).await;
+    for extrinsic in extrinsics.iter() {
+        let extrinsic = extrinsic.map_err(|err| format!("cannot decode block extrinsic: {err}"))?;
+        if extrinsic.pallet_name() != STORE_PALLET_NAME || extrinsic.call_name() != STORE_CALL_NAME
+        {
+            continue;
+        }
+
+        let mut fields = extrinsic.iter_call_data_fields();
+        let Some(field) = fields.next() else {
+            continue;
+        };
+        if fields.next().is_none() && store_data_field_matches_key(field.bytes(), preimage_key) {
+            return Ok(Some(extrinsic.index() as u32));
+        }
+    }
+    Ok(None)
 }
 
 /// Collect `start` and its not-yet-checked ancestors from a provider-supplied

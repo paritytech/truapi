@@ -19,7 +19,7 @@ use subxt::error::DispatchError;
 use subxt::ext::frame_metadata::RuntimeMetadataPrefixed;
 use subxt::metadata::{ArcMetadata, Metadata};
 use subxt::tx::Signer;
-use subxt::tx::{TransactionInvalid, TransactionUnknown, TransactionValid};
+use subxt::tx::{TransactionInvalid, TransactionUnknown, TransactionValid, ValidationResult};
 use subxt::utils::{AccountId32, H256, MultiAddress, MultiSignature};
 use truapi::v01;
 
@@ -229,12 +229,11 @@ pub(crate) fn decode_header_block_number(header: &[u8]) -> Result<u64, String> {
     Ok(header.number)
 }
 
-/// Decoded `TaggedTransactionQueue_validate_transaction` output.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TransactionValidity {
-    Valid(TransactionValid),
-    Invalid(TransactionInvalid),
-    Unknown(TransactionUnknown),
+/// Decode an `AccountNonceApi_account_nonce` runtime-call result.
+pub(crate) fn decode_account_nonce(bytes: &[u8]) -> Result<u64, String> {
+    u32::decode(&mut &bytes[..])
+        .map(u64::from)
+        .map_err(|err| format!("invalid account nonce response: {err}"))
 }
 
 /// SCALE-encode the `TaggedTransactionQueue_validate_transaction` parameters:
@@ -251,22 +250,24 @@ pub(crate) fn validate_transaction_call_parameters(extrinsic: &[u8], block_hash:
     parameters
 }
 
-/// Decode `TransactionValidity = Result<ValidTransaction,
-/// TransactionValidityError>` from a validate-transaction runtime call.
+/// Decode the runtime's `TransactionValidity = Result<ValidTransaction,
+/// TransactionValidityError>` into subxt's [`ValidationResult`].
 ///
-/// Only the outer discriminants are hand-decoded; payloads reuse subxt's
-/// public transaction-validity types so variant indices stay canonical.
-pub(crate) fn decode_transaction_validity(bytes: &[u8]) -> Result<TransactionValidity, String> {
+/// subxt's own `ValidationResult::try_from_bytes` is `pub(crate)` and only
+/// reachable through an online backend, so the outer discriminants are
+/// hand-decoded here; the payloads reuse subxt's public transaction-validity
+/// types so variant indices stay canonical.
+pub(crate) fn decode_transaction_validity(bytes: &[u8]) -> Result<ValidationResult, String> {
     let map_err = |err: parity_scale_codec::Error| format!("invalid TransactionValidity: {err}");
     match (bytes.first(), bytes.get(1)) {
         (Some(0), _) => TransactionValid::decode(&mut &bytes[1..])
-            .map(TransactionValidity::Valid)
+            .map(ValidationResult::Valid)
             .map_err(map_err),
         (Some(1), Some(0)) => TransactionInvalid::decode(&mut &bytes[2..])
-            .map(TransactionValidity::Invalid)
+            .map(ValidationResult::Invalid)
             .map_err(map_err),
         (Some(1), Some(1)) => TransactionUnknown::decode(&mut &bytes[2..])
-            .map(TransactionValidity::Unknown)
+            .map(ValidationResult::Unknown)
             .map_err(map_err),
         _ => Err(format!(
             "invalid TransactionValidity discriminant: 0x{}",
@@ -483,7 +484,7 @@ pub(crate) mod tests {
         bytes.extend((5u64, Vec::<Vec<u8>>::new(), vec![vec![1u8, 2]], 32u64, true).encode());
         assert_eq!(
             decode_transaction_validity(&bytes).unwrap(),
-            TransactionValidity::Valid(TransactionValid {
+            ValidationResult::Valid(TransactionValid {
                 priority: 5,
                 requires: vec![],
                 provides: vec![vec![1, 2]],
@@ -495,13 +496,13 @@ pub(crate) mod tests {
         // Invalid::Payment is variant index 1.
         assert_eq!(
             decode_transaction_validity(&[1, 0, 1]).unwrap(),
-            TransactionValidity::Invalid(TransactionInvalid::Payment)
+            ValidationResult::Invalid(TransactionInvalid::Payment)
         );
 
         // Unknown::CannotLookup is variant index 0.
         assert_eq!(
             decode_transaction_validity(&[1, 1, 0]).unwrap(),
-            TransactionValidity::Unknown(TransactionUnknown::CannotLookup)
+            ValidationResult::Unknown(TransactionUnknown::CannotLookup)
         );
 
         assert!(decode_transaction_validity(&[9]).is_err());
@@ -532,7 +533,7 @@ pub(crate) mod tests {
 
     /// Split a length-prefixed V4 signed extrinsic into
     /// (account, signature, trailing-bytes-after-signature).
-    fn split_v4(extrinsic: &[u8]) -> ([u8; 32], [u8; 64], Vec<u8>) {
+    pub(crate) fn split_v4(extrinsic: &[u8]) -> ([u8; 32], [u8; 64], Vec<u8>) {
         let mut input = extrinsic;
         let len = Compact::<u32>::decode(&mut input).unwrap().0 as usize;
         assert_eq!(input.len(), len, "compact length must cover the remainder");
