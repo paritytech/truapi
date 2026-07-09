@@ -879,6 +879,8 @@ fn emit_adapter_entry(
     local_codec_types: &BTreeSet<String>,
     platform_trait_names: &BTreeSet<String>,
 ) -> Result<String> {
+    validate_adapter_codec_boundary(method, codec_types, local_codec_types)?;
+
     let raw = raw_callback_wire_name(trait_def, method, platform_trait_names);
     let host_method = format!("callbacks.{}.{}", callback_namespace(&trait_def.name), raw);
     if trait_object_return_name(method, platform_trait_names).is_some() {
@@ -908,6 +910,99 @@ fn emit_adapter_entry(
         PlatformInner::TraitObject(_) => unreachable!("trait-object callbacks are handled above"),
     };
     Ok(format!("{raw}: {impl_expr},"))
+}
+
+fn validate_adapter_codec_boundary(
+    method: &PlatformMethod,
+    codec_types: &BTreeSet<String>,
+    local_codec_types: &BTreeSet<String>,
+) -> Result<()> {
+    for param in &method.params {
+        validate_adapter_codec_boundary_type(
+            &param.type_ref,
+            codec_types,
+            local_codec_types,
+            &format!("parameter `{}`", param.name),
+            &method.name,
+        )?;
+    }
+
+    match &method.return_shape.inner {
+        PlatformInner::Result { ok, .. } | PlatformInner::Plain(ok) => {
+            validate_adapter_codec_boundary_type(
+                ok,
+                codec_types,
+                local_codec_types,
+                "return value",
+                &method.name,
+            )?;
+        }
+        PlatformInner::Stream(item) => {
+            validate_adapter_codec_boundary_type(
+                stream_item(item),
+                codec_types,
+                local_codec_types,
+                "stream item",
+                &method.name,
+            )?;
+        }
+        PlatformInner::Unit | PlatformInner::TraitObject(_) => {}
+    }
+
+    Ok(())
+}
+
+fn validate_adapter_codec_boundary_type(
+    ty: &TypeRef,
+    codec_types: &BTreeSet<String>,
+    local_codec_types: &BTreeSet<String>,
+    position: &str,
+    method_name: &str,
+) -> Result<()> {
+    if contains_non_direct_codec_type(ty, codec_types, local_codec_types) {
+        bail!(
+            "unsupported compound codec type in host callback `{method_name}` {position}: {ty:?}"
+        );
+    }
+    Ok(())
+}
+
+/// The WASM adapter only knows how to translate a direct codec payload:
+/// `Codec` maps to raw `Uint8Array` and the adapter emits `Codec.dec/enc`.
+/// Containers such as `Vec<Codec>`, `Option<Codec>`, or `(Codec, ...)` would
+/// still be declared as raw bytes at the WASM boundary, but no generated code
+/// knows how to encode or decode the container. Reject those shapes at codegen.
+fn contains_non_direct_codec_type(
+    ty: &TypeRef,
+    codec_types: &BTreeSet<String>,
+    local_codec_types: &BTreeSet<String>,
+) -> bool {
+    fn walk(
+        ty: &TypeRef,
+        nested: bool,
+        codec_types: &BTreeSet<String>,
+        local_codec_types: &BTreeSet<String>,
+    ) -> bool {
+        match ty {
+            TypeRef::Named { name, args } => {
+                if codec_types.contains(name) || local_codec_types.contains(name) {
+                    nested
+                } else {
+                    args.iter()
+                        .any(|arg| walk(arg, true, codec_types, local_codec_types))
+                }
+            }
+            TypeRef::Vec(inner) | TypeRef::Option(inner) | TypeRef::Array(inner, _) => {
+                walk(inner, true, codec_types, local_codec_types)
+            }
+            TypeRef::Tuple(items) => items
+                .iter()
+                .any(|item| walk(item, true, codec_types, local_codec_types)),
+            TypeRef::Primitive(_) | TypeRef::Generic(_) | TypeRef::Unit => false,
+        }
+    }
+
+    walk(ty, false, codec_types, local_codec_types)
 }
 
 /// The adapter implementation expression for a unary callback: decode codec
@@ -1654,4 +1749,123 @@ fn render_ts_doc_line(line: &str) -> String {
         .replace("`]", "`")
         .replace("Ok(())", "success")
         .replace("None", "`undefined`")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn named(name: &str) -> TypeRef {
+        TypeRef::Named {
+            name: name.to_string(),
+            args: Vec::new(),
+        }
+    }
+
+    fn codec_types() -> BTreeSet<String> {
+        [
+            "GenericError",
+            "HostFeatureSupportedRequest",
+            "HostFeatureSupportedResponse",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
+    fn platform_with_method(method: PlatformMethod) -> PlatformDefinition {
+        PlatformDefinition {
+            traits: vec![PlatformTrait {
+                name: "Features".to_string(),
+                docs: None,
+                methods: vec![method],
+            }],
+            types: Vec::new(),
+            super_trait: None,
+        }
+    }
+
+    fn method_with_return(ok: TypeRef) -> PlatformMethod {
+        PlatformMethod {
+            name: "feature_supported".to_string(),
+            docs: None,
+            params: vec![PlatformParam {
+                name: "request".to_string(),
+                type_ref: named("HostFeatureSupportedRequest"),
+            }],
+            return_shape: PlatformReturn {
+                is_async: true,
+                inner: PlatformInner::Result {
+                    ok,
+                    err: named("GenericError"),
+                },
+            },
+            has_default: false,
+        }
+    }
+
+    fn method_with_param(param: TypeRef) -> PlatformMethod {
+        PlatformMethod {
+            name: "feature_supported".to_string(),
+            docs: None,
+            params: vec![PlatformParam {
+                name: "request".to_string(),
+                type_ref: param,
+            }],
+            return_shape: PlatformReturn {
+                is_async: true,
+                inner: PlatformInner::Result {
+                    ok: named("HostFeatureSupportedResponse"),
+                    err: named("GenericError"),
+                },
+            },
+            has_default: false,
+        }
+    }
+
+    fn assert_rejects_compound_codec(method: PlatformMethod, expected: &str) {
+        let definition = platform_with_method(method);
+        let err = emit_wasm_adapter(&definition, &codec_types(), &BTreeSet::new())
+            .expect_err("compound codec boundary should fail codegen")
+            .to_string();
+        assert!(
+            err.contains("unsupported compound codec type"),
+            "unexpected error: {err}"
+        );
+        assert!(err.contains(expected), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn wasm_adapter_rejects_compound_codec_return_shapes() {
+        let codec = named("HostFeatureSupportedResponse");
+        assert_rejects_compound_codec(
+            method_with_return(TypeRef::Vec(Box::new(codec.clone()))),
+            "return value",
+        );
+        assert_rejects_compound_codec(
+            method_with_return(TypeRef::Option(Box::new(codec.clone()))),
+            "return value",
+        );
+        assert_rejects_compound_codec(
+            method_with_return(TypeRef::Tuple(vec![codec])),
+            "return value",
+        );
+    }
+
+    #[test]
+    fn wasm_adapter_rejects_compound_codec_param_shapes() {
+        let codec = named("HostFeatureSupportedRequest");
+        assert_rejects_compound_codec(
+            method_with_param(TypeRef::Vec(Box::new(codec.clone()))),
+            "parameter `request`",
+        );
+        assert_rejects_compound_codec(
+            method_with_param(TypeRef::Option(Box::new(codec.clone()))),
+            "parameter `request`",
+        );
+        assert_rejects_compound_codec(
+            method_with_param(TypeRef::Tuple(vec![codec])),
+            "parameter `request`",
+        );
+    }
 }
