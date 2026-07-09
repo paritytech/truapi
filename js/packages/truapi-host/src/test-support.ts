@@ -1,71 +1,80 @@
-import type {
-  FlatHostCallbacks,
-  RequiredHostCallbacks,
-} from "./generated/host-callbacks.js";
+import type { RequiredHostCallbacks } from "./generated/host-callbacks.js";
 
 /** `HostCallbacks` with every optional member required, for exhaustive test fixtures. */
 export type CompleteHostCallbacks = RequiredHostCallbacks;
 
-type FlatHostCallbackOverrides = Partial<Required<FlatHostCallbacks>>;
+type HostCallbackOverrides = {
+  [K in keyof RequiredHostCallbacks]?: Partial<RequiredHostCallbacks[K]>;
+};
 
 /** Default no-op host callbacks with optional per-test overrides. */
 export function makeHostCallbacks(
-  overrides: FlatHostCallbackOverrides = {},
+  overrides: HostCallbackOverrides = {},
 ): CompleteHostCallbacks {
-  const flat: Required<FlatHostCallbacks> = {
-    navigateTo: async () => {},
-    pushNotification: async () => ({ id: 0 }),
-    cancelNotification: async () => {},
-    devicePermission: async () => ({ granted: false }),
-    remotePermission: async () => ({ granted: false }),
-    featureSupported: async () => ({ supported: false }),
-    readCoreStorage: async () => undefined,
-    writeCoreStorage: async () => {},
-    clearCoreStorage: async () => {},
-    read: async () => undefined,
-    write: async () => {},
-    clear: async () => {},
-    authStateChanged: () => {},
-    confirmUserAction: async () => false,
-    submitPreimage: async () => new Uint8Array(),
-    async *lookupPreimage() {},
-    async *subscribeTheme() {},
-    connect: async () => ({
-      send() {},
-      async *responses() {},
-      close() {},
-    }),
-    ...overrides,
-  };
-  return {
-    navigation: { navigateTo: flat.navigateTo },
+  const defaults: CompleteHostCallbacks = {
+    navigation: { navigateTo: async () => {} },
     notifications: {
-      pushNotification: flat.pushNotification,
-      cancelNotification: flat.cancelNotification,
+      pushNotification: async () => ({ id: 0 }),
+      cancelNotification: async () => {},
     },
     permissions: {
-      devicePermission: flat.devicePermission,
-      remotePermission: flat.remotePermission,
+      devicePermission: async () => ({ granted: false }),
+      remotePermission: async () => ({ granted: false }),
     },
-    features: { featureSupported: flat.featureSupported },
+    features: { featureSupported: async () => ({ supported: false }) },
     productStorage: {
-      read: flat.read,
-      write: flat.write,
-      clear: flat.clear,
+      read: async () => undefined,
+      write: async () => {},
+      clear: async () => {},
     },
     coreStorage: {
-      readCoreStorage: flat.readCoreStorage,
-      writeCoreStorage: flat.writeCoreStorage,
-      clearCoreStorage: flat.clearCoreStorage,
+      readCoreStorage: async () => undefined,
+      writeCoreStorage: async () => {},
+      clearCoreStorage: async () => {},
     },
-    auth: { authStateChanged: flat.authStateChanged },
-    userConfirmation: { confirmUserAction: flat.confirmUserAction },
+    auth: { authStateChanged: () => {} },
+    userConfirmation: { confirmUserAction: async () => false },
     preimage: {
-      submitPreimage: flat.submitPreimage,
-      lookupPreimage: flat.lookupPreimage,
+      submitPreimage: async () => new Uint8Array(),
+      async *lookupPreimage() {},
     },
-    theme: { subscribeTheme: flat.subscribeTheme },
-    chain: { connect: flat.connect },
+    theme: { async *subscribeTheme() {} },
+    chain: {
+      connect: async () => ({
+        send() {},
+        async *responses() {},
+        close() {},
+      }),
+    },
+  };
+
+  return {
+    navigation: { ...defaults.navigation, ...overrides.navigation },
+    notifications: {
+      ...defaults.notifications,
+      ...overrides.notifications,
+    },
+    permissions: {
+      ...defaults.permissions,
+      ...overrides.permissions,
+    },
+    features: { ...defaults.features, ...overrides.features },
+    productStorage: {
+      ...defaults.productStorage,
+      ...overrides.productStorage,
+    },
+    coreStorage: {
+      ...defaults.coreStorage,
+      ...overrides.coreStorage,
+    },
+    auth: { ...defaults.auth, ...overrides.auth },
+    userConfirmation: {
+      ...defaults.userConfirmation,
+      ...overrides.userConfirmation,
+    },
+    preimage: { ...defaults.preimage, ...overrides.preimage },
+    theme: { ...defaults.theme, ...overrides.theme },
+    chain: { ...defaults.chain, ...overrides.chain },
   };
 }
 
