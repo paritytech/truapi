@@ -1,6 +1,6 @@
 //! People-chain identity lookup for paired SSO sessions.
 //!
-//! dotli's previous host-papp path read `Resources.Consumers[account]` from
+//! The previous host-papp path read `Resources.Consumers[account]` from
 //! the People chain and used only the username fields. Keep this module narrow:
 //! it builds that storage key and decodes the leading username fields from the
 //! SCALE value. The record begins with a fixed identifier public key; credibility

@@ -7,6 +7,9 @@
 //! The cache layer is shared but keys are typed so a device grant cannot
 //! authorize a remote operation by accident. Keys are also scoped by product id
 //! so one product's authorization never grants another product's request.
+//! Identity disclosure is also represented as a product-scoped authorization,
+//! but the prompt itself is handled by the account runtime because it uses the
+//! richer user-confirmation surface rather than the device/remote callbacks.
 
 use parity_scale_codec::{Decode, Encode};
 
@@ -104,6 +107,13 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
                 self.peek_device(permission).await
             }
             PermissionAuthorizationRequest::Remote(request) => self.peek_remote(request).await,
+            PermissionAuthorizationRequest::IdentityDisclosure => {
+                authorization_status(
+                    self.storage,
+                    identity_disclosure_core_storage_key(self.product_id),
+                )
+                .await
+            }
         }
     }
 
@@ -136,6 +146,9 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
             PermissionAuthorizationRequest::Remote(request) => {
                 remote_core_storage_key(self.product_id, request)
             }
+            PermissionAuthorizationRequest::IdentityDisclosure => {
+                identity_disclosure_core_storage_key(self.product_id)
+            }
         };
         set_authorization_status(self.storage, key, status).await
     }
@@ -150,13 +163,12 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
         if let Some(cached) = peek_stored(self.storage, key.clone()).await? {
             return Ok(cached.into());
         }
-        // Only a genuine user authorization is persisted. A prompt-callback error is
-        // transient (UI unavailable, IPC timeout), not a denial, so fail closed
-        // for this call but do not cache it — the next request re-prompts rather
-        // than locking the capability out permanently with no revoke path.
+        // Only a genuine user authorization is persisted. A prompt-callback
+        // error is transient (dismissed UI, unavailable UI, IPC timeout), not
+        // a denial, so leave the authorization ask/default.
         let authorization = match self.prompt.device_permission(permission).await {
             Ok(HostDevicePermissionResponse { granted }) => granted.into(),
-            Err(_) => return Ok(PermissionAuthorizationStatus::Denied),
+            Err(_) => return Ok(PermissionAuthorizationStatus::NotDetermined),
         };
         self.persist_decision(key, authorization).await
     }
@@ -171,11 +183,11 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
         if let Some(cached) = peek_stored(self.storage, key.clone()).await? {
             return Ok(cached.into());
         }
-        // See `check_or_prompt_device`: persist only a genuine user decision; a
-        // transient callback error fails closed for this call without caching.
+        // See `check_or_prompt_device`: persist only a genuine user decision;
+        // transient callback errors leave the authorization ask/default.
         let authorization = match self.prompt.remote_permission(request).await {
             Ok(RemotePermissionResponse { granted }) => granted.into(),
-            Err(_) => return Ok(PermissionAuthorizationStatus::Denied),
+            Err(_) => return Ok(PermissionAuthorizationStatus::NotDetermined),
         };
         self.persist_decision(key, authorization).await
     }
@@ -246,6 +258,13 @@ fn remote_core_storage_key(product_id: &str, request: &RemotePermissionRequest) 
     CoreStorageKey::PermissionAuthorization {
         product_id: product_id.to_string(),
         request: PermissionAuthorizationRequest::Remote(canonical_remote_request(request)),
+    }
+}
+
+fn identity_disclosure_core_storage_key(product_id: &str) -> CoreStorageKey {
+    CoreStorageKey::PermissionAuthorization {
+        product_id: product_id.to_string(),
+        request: PermissionAuthorizationRequest::IdentityDisclosure,
     }
 }
 
@@ -366,9 +385,14 @@ mod tests {
                 permission: RemotePermission::ChainSubmit,
             },
         );
+        let identity = identity_disclosure_core_storage_key("product.dot");
+        let other_product_identity = identity_disclosure_core_storage_key("other.dot");
 
         assert_ne!(camera, other_product);
         assert_ne!(camera, remote);
+        assert_ne!(camera, identity);
+        assert_ne!(remote, identity);
+        assert_ne!(identity, other_product_identity);
     }
 
     #[test]
@@ -585,6 +609,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn identity_disclosure_authorization_round_trips() {
+        let storage = MemStorage::default();
+        let prompt = ScriptedPrompt::new(vec![], vec![]);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
+        let request = PermissionAuthorizationRequest::IdentityDisclosure;
+
+        assert_eq!(
+            futures::executor::block_on(service.authorization_status(&request)).unwrap(),
+            PermissionAuthorizationStatus::NotDetermined
+        );
+
+        futures::executor::block_on(
+            service.set_authorization_status(&request, PermissionAuthorizationStatus::Authorized),
+        )
+        .unwrap();
+        assert_eq!(
+            futures::executor::block_on(service.authorization_status(&request)).unwrap(),
+            PermissionAuthorizationStatus::Authorized
+        );
+
+        let other_product_service = PermissionsService::new(&storage, &prompt, "other.dot");
+        assert_eq!(
+            futures::executor::block_on(other_product_service.authorization_status(&request))
+                .unwrap(),
+            PermissionAuthorizationStatus::NotDetermined
+        );
+    }
+
     /// Prompt callback that always errors, to exercise the transient-failure
     /// path (fail closed for the current call, but do not persist the error).
     struct FailingPrompt;
@@ -611,25 +664,46 @@ mod tests {
     }
 
     #[test]
-    fn prompt_failure_denies_without_persisting() {
+    fn prompt_failure_stays_not_determined_without_persisting() {
         let storage = MemStorage::default();
         let prompt = FailingPrompt;
         let service = PermissionsService::new(&storage, &prompt, "product.dot");
 
-        let decision = futures::executor::block_on(
+        let device_decision = futures::executor::block_on(
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
         )
         .unwrap();
-        assert_eq!(decision, PermissionAuthorizationStatus::Denied);
+        assert_eq!(
+            device_decision,
+            PermissionAuthorizationStatus::NotDetermined
+        );
 
-        // A transient callback error is fail-closed for this call but NOT
-        // cached, so peek still sees no authorization and the next request
-        // re-prompts rather than permanently locking out the capability.
-        let cached =
+        let remote_request = RemotePermissionRequest {
+            permission: RemotePermission::ChainSubmit,
+        };
+        let remote_decision =
+            futures::executor::block_on(service.check_or_prompt_remote(remote_request.clone()))
+                .unwrap();
+        assert_eq!(
+            remote_decision,
+            PermissionAuthorizationStatus::NotDetermined
+        );
+
+        // A transient callback error is not cached, so peek still sees no
+        // authorization and the next request re-prompts rather than
+        // permanently locking out the capability.
+        let cached_device =
             futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
                 .unwrap();
         assert_eq!(
-            cached,
+            cached_device,
+            PermissionAuthorizationStatus::NotDetermined,
+            "a transient prompt error must not be persisted"
+        );
+        let cached_remote =
+            futures::executor::block_on(service.peek_remote(&remote_request)).unwrap();
+        assert_eq!(
+            cached_remote,
             PermissionAuthorizationStatus::NotDetermined,
             "a transient prompt error must not be persisted"
         );

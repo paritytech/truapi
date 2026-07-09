@@ -12,21 +12,23 @@
 //! (`Unsupported`, `HostFailure`, ...). This avoids leaking json-rpc plumbing
 //! into the public API.
 
-// Temporary for this stack layer: runtime wiring lands in the next child PR.
-#![allow(dead_code)]
-
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+#[cfg(target_arch = "wasm32")]
+use web_time::Duration;
 
 use futures::FutureExt;
 use futures::channel::mpsc;
 use futures::future::{AbortHandle, Abortable};
 use futures::future::{BoxFuture, Shared};
 use futures::stream::BoxStream;
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, pin_mut};
 use parity_scale_codec::{Decode, Error as ScaleError, Input};
 use primitive_types::H256;
 use serde::de::{Deserializer, Error as DeError};
@@ -215,10 +217,18 @@ impl ChainRuntime {
         let cleanup_runtime = self.clone();
         let cleanup_genesis_hash = request.genesis_hash.clone();
         let cleanup_follow_id = follow_subscription_id.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let setup_cancelled = cancelled.clone();
+        let cleanup_cancelled = cancelled.clone();
 
         let fut = async move {
             if runtime
-                .start_follow(follow_subscription_id, request, Some(tx.clone()))
+                .start_follow(
+                    follow_subscription_id,
+                    request,
+                    Some(tx.clone()),
+                    setup_cancelled,
+                )
                 .await
                 .is_err()
             {
@@ -230,6 +240,7 @@ impl ChainRuntime {
         ManagedSubscription::new(
             rx.boxed(),
             Some(Box::new(move || {
+                cleanup_cancelled.store(true, Ordering::SeqCst);
                 cleanup_runtime.cleanup_follow(&cleanup_genesis_hash, &cleanup_follow_id);
             })),
         )
@@ -540,14 +551,30 @@ impl ChainRuntime {
         local_follow_id: String,
         request: RemoteChainHeadFollowRequest,
         sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+        cancelled: Arc<AtomicBool>,
     ) -> Result<(), RuntimeFailure> {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         let connection = self
             .connection_for(FOLLOW_METHOD, &request.genesis_hash)
             .await?;
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         // Record this subscriber's sender before kicking off (or joining) the
         // single-flight setup so events route to it regardless of which caller
         // wins the setup.
-        connection.register_follow_intent(&local_follow_id, request.with_runtime, sender);
+        connection.register_follow_intent(
+            &local_follow_id,
+            request.with_runtime,
+            sender,
+            cancelled,
+        );
+        if connection.follow_cancelled_or_missing(&local_follow_id) {
+            connection.unfollow(&local_follow_id);
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         connection
             .ensure_remote_follow(local_follow_id, request.with_runtime)
             .await?;
@@ -641,12 +668,14 @@ impl ChainConnection {
         local_follow_id: &str,
         with_runtime: bool,
         sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+        cancelled: Arc<AtomicBool>,
     ) {
         let mut follows = self.follows.lock().unwrap();
         match follows.get_mut(local_follow_id) {
             Some(follow) => {
                 if sender.is_some() {
                     follow.sender = sender;
+                    follow.cancelled = cancelled;
                 }
             }
             None => {
@@ -657,9 +686,17 @@ impl ChainConnection {
                         remote_subscription_id: None,
                         abort: None,
                         sender,
+                        cancelled,
                     },
                 );
             }
+        }
+    }
+
+    fn follow_cancelled_or_missing(&self, local_follow_id: &str) -> bool {
+        match self.follows.lock().unwrap().get(local_follow_id) {
+            Some(follow) => follow.cancelled.load(Ordering::SeqCst),
+            None => true,
         }
     }
 
@@ -673,6 +710,9 @@ impl ChainConnection {
         local_follow_id: String,
         with_runtime: bool,
     ) -> Result<String, RuntimeFailure> {
+        if self.follow_cancelled_or_missing(&local_follow_id) {
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         if let Some(remote_follow_id) = self.remote_follow_id(&local_follow_id) {
             return Ok(remote_follow_id);
         }
@@ -750,17 +790,10 @@ impl ChainConnection {
         local_follow_id: String,
         with_runtime: bool,
     ) -> Result<String, RuntimeFailure> {
-        self.follows
-            .lock()
-            .unwrap()
-            .entry(local_follow_id.clone())
-            .or_insert_with(|| FollowState {
-                with_runtime,
-                remote_subscription_id: None,
-                abort: None,
-                sender: None,
-            });
-
+        if self.follow_cancelled_or_missing(&local_follow_id) {
+            self.remove_follow(&local_follow_id);
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
         let mut follow = self
             .methods
             .chainhead_v1_follow(with_runtime)
@@ -775,6 +808,11 @@ impl ChainConnection {
                 RuntimeFailure::host_failure(FOLLOW_METHOD, "missing follow subscription id")
             })?
             .to_string();
+        if self.follow_cancelled_or_missing(&local_follow_id) {
+            self.remove_follow(&local_follow_id);
+            drop(follow);
+            return Err(RuntimeFailure::unavailable(FOLLOW_METHOD));
+        }
 
         let (abort, abort_registration) = AbortHandle::new_pair();
         let connection = self.clone();
@@ -893,6 +931,7 @@ struct FollowState {
     remote_subscription_id: Option<String>,
     abort: Option<AbortHandle>,
     sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+    cancelled: Arc<AtomicBool>,
 }
 
 /// Subscription wrapper that runs an `on_drop` cleanup when the stream is
@@ -1110,6 +1149,127 @@ pub(crate) fn encode_hex(value: &[u8]) -> String {
     format!("0x{}", hex::encode(value))
 }
 
+/// Wait for a usable best block hash from a `chainHead_v1_follow` stream.
+pub(crate) async fn wait_for_chain_head_best_hash(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    label: &'static str,
+    initialization_timeout: Duration,
+    best_hash_timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    let timeout = futures_timer::Delay::new(initialization_timeout).fuse();
+    pin_mut!(timeout);
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::Initialized { finalized_block_hashes, .. }) => {
+                    let fallback = finalized_block_hashes.last().cloned();
+                    return wait_for_chain_head_best_hash_after_initialization(
+                        follow,
+                        label,
+                        fallback,
+                        best_hash_timeout,
+                    )
+                    .await;
+                }
+                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                    return Ok(best_block_hash);
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(format!("{label} follow stopped before initialization"));
+                }
+                _ => {}
+            },
+            () = timeout => return Err(format!("{label} follow initialization timed out")),
+        }
+    }
+}
+
+async fn wait_for_chain_head_best_hash_after_initialization(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    label: &'static str,
+    fallback: Option<Vec<u8>>,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    let timeout = futures_timer::Delay::new(timeout).fuse();
+    pin_mut!(timeout);
+    let mut candidate = fallback;
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                    return Ok(best_block_hash);
+                }
+                Some(RemoteChainHeadFollowItem::NewBlock { block_hash, .. }) => {
+                    candidate = Some(block_hash);
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(format!("{label} follow stopped before best block"));
+                }
+                _ => {}
+            },
+            () = timeout => {
+                return candidate.ok_or_else(|| {
+                    format!("{label} follow best block timed out")
+                });
+            },
+        }
+    }
+}
+
+/// Wait for one storage operation's value from a `chainHead_v1_follow` stream.
+pub(crate) async fn wait_for_chain_head_storage_value(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    operation_id: &str,
+    key: &[u8],
+    label: &'static str,
+    timeout: Duration,
+) -> Result<Option<Vec<u8>>, String> {
+    let timeout = futures_timer::Delay::new(timeout).fuse();
+    pin_mut!(timeout);
+    let mut value = None;
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::OperationStorageItems { operation_id: item_operation_id, items })
+                    if item_operation_id == operation_id =>
+                {
+                    for item in items {
+                        if item.key == key {
+                            value = item.value;
+                        }
+                    }
+                }
+                Some(RemoteChainHeadFollowItem::OperationStorageDone { operation_id: item_operation_id })
+                    if item_operation_id == operation_id =>
+                {
+                    return Ok(value);
+                }
+                Some(RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
+                    if item_operation_id == operation_id =>
+                {
+                    return Ok(None);
+                }
+                Some(RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
+                    if item_operation_id == operation_id =>
+                {
+                    return Err(error);
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(format!("{label} follow stopped during storage lookup"));
+                }
+                _ => {}
+            },
+            () = timeout => return Err(format!("{label} storage lookup timed out")),
+        }
+    }
+}
+
 #[cfg(test)]
 fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
     hex::decode(value.strip_prefix("0x").unwrap_or(value)).map_err(|_| "invalid hex".to_string())
@@ -1120,7 +1280,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use futures::channel::mpsc as fut_mpsc;
-    use futures::stream::BoxStream;
+    use futures::stream::{self, BoxStream};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn spawner_for_tests() -> Spawner {
@@ -1132,6 +1292,57 @@ mod tests {
         {
             Arc::new(futures::executor::block_on)
         }
+    }
+
+    #[test]
+    fn chain_head_best_hash_prefers_best_block_after_initialization() {
+        let mut follow = stream::iter(vec![
+            RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: vec![vec![0x01]],
+                finalized_block_runtime: None,
+            },
+            RemoteChainHeadFollowItem::BestBlockChanged {
+                best_block_hash: vec![0x02],
+            },
+        ])
+        .boxed();
+
+        let hash = futures::executor::block_on(wait_for_chain_head_best_hash(
+            &mut follow,
+            "test chain",
+            Duration::from_secs(10),
+            Duration::from_secs(2),
+        ))
+        .expect("best hash should resolve");
+
+        assert_eq!(hash, vec![0x02]);
+    }
+
+    #[test]
+    fn chain_head_best_hash_errors_on_stop_before_best_block() {
+        let mut follow = stream::iter(vec![
+            RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: vec![vec![0x01]],
+                finalized_block_runtime: None,
+            },
+            RemoteChainHeadFollowItem::NewBlock {
+                block_hash: vec![0x03],
+                parent_block_hash: vec![0x01],
+                new_runtime: None,
+            },
+            RemoteChainHeadFollowItem::Stop,
+        ])
+        .boxed();
+
+        let err = futures::executor::block_on(wait_for_chain_head_best_hash(
+            &mut follow,
+            "test chain",
+            Duration::from_secs(10),
+            Duration::from_secs(2),
+        ))
+        .expect_err("follow stop should be terminal before best block");
+
+        assert_eq!(err, "test chain follow stopped before best block");
     }
 
     #[derive(Default)]

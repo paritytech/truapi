@@ -9,6 +9,8 @@
 //! Async capability traits use `async_trait` so the combined [`Platform`]
 //! surface can be used as a trait object by the runtime.
 
+use std::sync::Arc;
+
 use futures::stream::BoxStream;
 use parity_scale_codec::{Decode, Encode};
 use unicode_normalization::UnicodeNormalization;
@@ -42,10 +44,17 @@ pub struct HostRuntimeConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairingHostConfig {
     /// Host identity shown to the signing host during pairing.
+    ///
+    /// Host-spec B.1.3 defines the host metadata consumed by the signing host:
+    /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L48-L60>
     pub host: HostRuntimeConfig,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
+    ///
+    /// Host-spec L.2-L.3 define the `polkadotapp://pair` route and construction
+    /// rules:
+    /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/L-url-schemes.md?plain=1#L17-L33>
     pub pairing_deeplink_scheme: String,
 }
 
@@ -70,6 +79,9 @@ pub struct SigningHostConfig {
 pub struct ProductContext {
     /// Product identifier used for account derivation and product-scoped
     /// storage/permission namespaces.
+    ///
+    /// Host-spec C.7 defines accepted product id forms:
+    /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L109-L128>
     pub product_id: String,
 }
 
@@ -200,7 +212,7 @@ fn require_non_empty(field: &'static str, value: &str) -> Result<(), RuntimeConf
 }
 
 /// Runtime config validation error.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum RuntimeConfigValidationError {
     /// Required string field was empty or whitespace-only.
     #[display("{field} must not be empty")]
@@ -233,8 +245,6 @@ pub enum RuntimeConfigValidationError {
         product_id: String,
     },
 }
-
-impl core::error::Error for RuntimeConfigValidationError {}
 
 /// Product-scoped key-value storage.
 ///
@@ -305,6 +315,8 @@ pub enum PermissionAuthorizationRequest {
     Device(HostDevicePermissionRequest),
     /// Remote/product-scoped permission such as chain submit or HTTP access.
     Remote(RemotePermissionRequest),
+    /// Product-scoped permission to disclose the user's primary identity.
+    IdentityDisclosure,
 }
 
 /// Authorization status for a permission request.
@@ -382,6 +394,9 @@ pub trait Features: Send + Sync {
 ///
 /// The platform provides a way to get a JSON-RPC connection for a given chain.
 /// The server runtime manages the chainHead v1 state machine on top of this.
+/// Host-spec N.6 requires products to access chains through host-mediated
+/// providers:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/N-shared-infrastructure.md?plain=1#L91-L102>
 #[async_trait]
 pub trait ChainProvider: Send + Sync {
     /// Open a JSON-RPC connection for the chain identified by `genesis_hash`.
@@ -409,6 +424,9 @@ pub trait JsonRpcConnection: Send + Sync {
 
 /// Core-owned host-private storage slots. Products never address these slots;
 /// the host chooses the backing store for each slot.
+///
+/// Storage is host-local; `storage.md` records the current status quo:
+/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CoreStorageKey {
     /// Opaque SSO/auth session blob.
@@ -422,6 +440,13 @@ pub enum CoreStorageKey {
         /// Permission request whose authorization is being stored.
         request: PermissionAuthorizationRequest,
     },
+    /// Persisted allowance-slot keys for one paired SSO session.
+    AllowanceKeys {
+        /// Stable host-derived SSO session id.
+        session_id: String,
+    },
+    /// Last processed SSO pairing response statement for the pairing device.
+    LastProcessedPairingStatement,
 }
 
 /// Host-private persistence for core-owned state.
@@ -444,7 +469,7 @@ pub trait CoreStorage: Send + Sync {
 
 /// Decoded session fields a host shell needs to render account UI without
 /// parsing the opaque session blob the core persists through [`CoreStorage`].
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Encode, Decode)]
 pub struct SessionUiInfo {
     /// 32-byte sr25519 root public key of the active session.
     pub public_key: [u8; 32],
@@ -459,7 +484,7 @@ pub struct SessionUiInfo {
 /// Auth/session lifecycle state the core projects for host UI. The core owns
 /// every transition and emits states in order; hosts render the current state
 /// and never derive auth UI from any other signal.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Encode, Decode)]
 pub enum AuthState {
     /// No active session and no login in progress.
     #[default]
@@ -526,6 +551,22 @@ pub struct AccountAliasReview {
     pub target_product_id: String,
 }
 
+/// Review shown before a product asks to access another product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct AccountAccessReview {
+    /// Product currently handling the request.
+    pub requesting_product_id: String,
+    /// Product whose account is being requested.
+    pub target_product_id: String,
+}
+
+/// Review shown before a product learns the user's primary identity.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct IdentityDisclosureReview {
+    /// Product currently handling the request.
+    pub product_id: String,
+}
+
 /// Review shown before a preimage is submitted.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct PreimageSubmitReview {
@@ -545,16 +586,20 @@ pub enum UserConfirmationReview {
     CreateTransaction(CreateTransactionReview),
     /// Allow a product to request another product account alias.
     AccountAlias(AccountAliasReview),
+    /// Allow a product to learn the user's primary identity.
+    IdentityDisclosure(IdentityDisclosureReview),
     /// Allocate resources for the requesting product.
     ResourceAllocation(HostRequestResourceAllocationRequest),
     /// Submit a preimage to the host-selected backend.
     PreimageSubmit(PreimageSubmitReview),
+    /// Allow a product to access another product account.
+    AccountAccess(AccountAccessReview),
 }
 
-/// Local user confirmation UI for session-channel operations.
+/// Local user confirmation UI for sensitive core-owned operations.
 #[async_trait]
 pub trait UserConfirmation: Send + Sync {
-    /// Confirm a reviewed action before the core asks the SSO peer.
+    /// Confirm a reviewed action before the core continues.
     async fn confirm_user_action(
         &self,
         review: UserConfirmationReview,
@@ -567,13 +612,106 @@ pub trait ThemeHost: Send + Sync {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<ThemeVariant, GenericError>>;
 }
 
+/// Secret key allocated for Bulletin preimage submission.
+#[derive(Clone, derive_more::Debug, PartialEq, Eq)]
+pub struct BulletinAllowanceKey {
+    #[debug("{:?}", "<redacted>")]
+    secret: [u8; 64],
+}
+
+impl BulletinAllowanceKey {
+    /// Build a Bulletin allowance key from raw secret bytes.
+    pub fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, BulletinAllowanceKeyError> {
+        let secret: [u8; 64] = secret.try_into().map_err(|secret: Vec<u8>| {
+            BulletinAllowanceKeyError::InvalidLength {
+                actual: secret.len(),
+            }
+        })?;
+        Ok(Self { secret })
+    }
+
+    /// Raw secret bytes for bridge and storage adapters.
+    pub fn as_secret_bytes(&self) -> &[u8] {
+        &self.secret
+    }
+
+    /// Consume the wrapper and return raw secret bytes.
+    pub fn into_secret_bytes(self) -> [u8; 64] {
+        self.secret
+    }
+}
+
+/// Invalid Bulletin allowance key material.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
+pub enum BulletinAllowanceKeyError {
+    /// Secret material was not a 64-byte sr25519 secret key.
+    #[display("bulletin allowance key must be 64 bytes, got {actual}")]
+    InvalidLength {
+        /// Actual secret byte length.
+        actual: usize,
+    },
+}
+
+/// Bulletin allowance signing capability exposed across the platform boundary.
+///
+/// Rust owns the allowance key format and secret material. Host code only gets
+/// `public_key + sign(payload)`, enough for PAPI to build and submit the
+/// Bulletin transaction without reintroducing allowance key parsing in host code.
+type BulletinAllowanceSignFn =
+    dyn Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync;
+
+/// Host-facing signer for Bulletin preimage submission.
+#[derive(Clone, derive_more::Debug)]
+pub struct BulletinAllowanceSigner {
+    public_key: [u8; 32],
+    /// Rust-owned signing capability passed to host code without exposing the
+    /// raw allowance secret.
+    #[debug("{:?}", "<redacted>")]
+    sign: Arc<BulletinAllowanceSignFn>,
+}
+
+impl BulletinAllowanceSigner {
+    /// Build a signer from a public key and signing function.
+    pub fn new(
+        public_key: [u8; 32],
+        sign: impl Fn(&[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            public_key,
+            sign: Arc::new(sign),
+        }
+    }
+
+    /// Public key of the allowance account.
+    pub fn public_key(&self) -> [u8; 32] {
+        self.public_key
+    }
+
+    /// Sign a SCALE transaction payload with the allowance account.
+    pub fn sign(&self, payload: &[u8]) -> Result<[u8; 64], BulletinAllowanceSignError> {
+        (self.sign)(payload)
+    }
+}
+
+/// Bulletin allowance signing failed.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
+#[display("{reason}")]
+pub struct BulletinAllowanceSignError {
+    /// Human-readable failure reason.
+    pub reason: String,
+}
+
 /// Host preimage backend. The core owns wire mapping and subscription
 /// lifecycle; the host owns the selected backend.
 #[async_trait]
 pub trait PreimageHost: Send + Sync {
     /// Submit the preimage and return its key.
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, PreimageSubmitError> {
-        let _ = value;
+    async fn submit_preimage(
+        &self,
+        value: Vec<u8>,
+        bulletin_allowance_signer: BulletinAllowanceSigner,
+    ) -> Result<Vec<u8>, PreimageSubmitError> {
+        let _ = (value, bulletin_allowance_signer);
         Err(PreimageSubmitError::Unknown {
             reason: "submitPreimage callback not provided by host".to_string(),
         })

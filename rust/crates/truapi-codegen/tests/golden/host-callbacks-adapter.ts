@@ -20,6 +20,7 @@ import type {
   NotificationId,
 } from "@parity/truapi";
 import {
+  BulletinAllowanceSigner,
   CoreStorageKey,
   UserConfirmationReview,
 } from "./host-callbacks.js";
@@ -41,7 +42,7 @@ export interface RawCallbacks {
   cancelNotification(id: NotificationId): Promise<void>;
   devicePermission(request: Uint8Array): Promise<Uint8Array>;
   remotePermission(request: Uint8Array): Promise<Uint8Array>;
-  submitPreimage(value: Uint8Array): Promise<Uint8Array>;
+  submitPreimage(value: Uint8Array, bulletinAllowanceSigner: Uint8Array): Promise<Uint8Array>;
   lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
   read(key: string): Promise<Uint8Array | null | undefined>;
   write(key: string, value: Uint8Array): Promise<void>;
@@ -67,7 +68,7 @@ export function createWasmRawCallbacks(
     cancelNotification: async (id) => await host.cancelNotification(id),
     devicePermission: async (request) => HostDevicePermissionResponse.enc(await host.devicePermission(HostDevicePermissionRequest.dec(request))),
     remotePermission: async (request) => RemotePermissionResponse.enc(await host.remotePermission(RemotePermissionRequest.dec(request))),
-    submitPreimage: async (value) => await host.submitPreimage(value),
+    submitPreimage: async (value, bulletinAllowanceSigner) => await host.submitPreimage(value, BulletinAllowanceSigner.dec(bulletinAllowanceSigner)),
     lookupPreimage: (key, sendItem) => driveResultStream(host.lookupPreimage(key), sendItem),
     read: async (key) => await host.read(key),
     write: async (key, value) => await host.write(key, value),
