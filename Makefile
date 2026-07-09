@@ -65,6 +65,7 @@ test: ## Run Rust + TypeScript client tests.
 
 check: ## Full verification suite (build, fmt, clippy, test, TS tests, playground build + lint).
 	cargo build --workspace
+	cargo check --target wasm32-unknown-unknown -p truapi-server
 	cargo +nightly fmt --check
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
 	cargo test --workspace --all-features --all-targets

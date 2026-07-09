@@ -363,11 +363,9 @@ fn bulletin_allowance_signer_to_js(signer: BulletinAllowanceSigner) -> JsValue {
             Ok(Uint8Array::from(signature.as_slice()).into())
         })
     }) as Box<dyn FnMut(JsValue) -> js_sys::Promise>);
-    Reflect::set(&object, &JsValue::from_str("sign"), sign.as_ref())
+    let sign = sign.into_js_value();
+    Reflect::set(&object, &JsValue::from_str("sign"), &sign)
         .expect("setting sign on a new object should not fail");
-    // The host callback owns the JS signer for the async tx submission. The
-    // object exposes no raw secret, only this Rust-backed signing capability.
-    sign.forget();
 
     object.into()
 }
