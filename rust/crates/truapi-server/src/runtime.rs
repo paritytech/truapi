@@ -970,9 +970,9 @@ fn account_get_error_from_authority(err: AuthorityError) -> v01::HostAccountGetE
         AuthorityError::Cancelled(err) => v01::HostAccountGetError::Unknown {
             reason: err.to_string(),
         },
-        AuthorityError::Unavailable { reason } | AuthorityError::Unknown { reason } => {
-            v01::HostAccountGetError::Unknown { reason }
-        }
+        AuthorityError::Unavailable { reason }
+        | AuthorityError::NotSupported { reason }
+        | AuthorityError::Unknown { reason } => v01::HostAccountGetError::Unknown { reason },
     }
 }
 
@@ -987,9 +987,9 @@ fn signing_call_error<E>(
         AuthorityError::Cancelled(err) => v01::HostSignPayloadError::Unknown {
             reason: err.to_string(),
         },
-        AuthorityError::Unavailable { reason } | AuthorityError::Unknown { reason } => {
-            v01::HostSignPayloadError::Unknown { reason }
-        }
+        AuthorityError::Unavailable { reason }
+        | AuthorityError::NotSupported { reason }
+        | AuthorityError::Unknown { reason } => v01::HostSignPayloadError::Unknown { reason },
     }))
 }
 
@@ -1004,6 +1004,9 @@ fn transaction_call_error<E>(
         AuthorityError::Cancelled(err) => v01::HostCreateTransactionError::Unknown {
             reason: err.to_string(),
         },
+        AuthorityError::NotSupported { reason } => {
+            v01::HostCreateTransactionError::NotSupported { reason }
+        }
         AuthorityError::Unavailable { reason } | AuthorityError::Unknown { reason } => {
             v01::HostCreateTransactionError::Unknown { reason }
         }

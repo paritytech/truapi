@@ -1,12 +1,15 @@
-//! Offline, metadata-driven extrinsic construction shared by chain-facing
-//! runtime services.
+//! Offline extrinsic construction shared by chain-facing runtime services.
 //!
-//! Built on subxt's offline client: the caller supplies fetched runtime
-//! metadata, spec/transaction versions, and an explicit nonce/mortality
-//! anchor; nothing here performs I/O. Bulletin preimage submission is the
-//! first consumer; local `create_transaction` assembly is the planned second.
+//! Two assembly modes, both offline (no I/O): one metadata-driven, one from
+//! pre-encoded parts.
+//!
+//! - Bulletin preimage submission builds a call from fetched runtime metadata
+//!   via subxt's offline client (typed nonce/mortality params).
+//! - Local `create_transaction` ([`build_signed_extrinsic_v4`]) assembles a
+//!   signed V4 extrinsic from caller-supplied, already-SCALE-encoded parts, so
+//!   it needs no metadata at all.
 
-use parity_scale_codec::{Compact, Decode};
+use parity_scale_codec::{Compact, Decode, Encode};
 use schnorrkel::{PublicKey, SecretKey};
 use subxt::client::{OfflineClient, OfflineClientAtBlock};
 use subxt::config::substrate::{
@@ -17,7 +20,8 @@ use subxt::ext::frame_metadata::RuntimeMetadataPrefixed;
 use subxt::metadata::{ArcMetadata, Metadata};
 use subxt::tx::Signer;
 use subxt::tx::{TransactionInvalid, TransactionUnknown, TransactionValid};
-use subxt::utils::{AccountId32, H256, MultiSignature};
+use subxt::utils::{AccountId32, H256, MultiAddress, MultiSignature};
+use truapi::v01;
 
 use crate::host_logic::product_account::SR25519_SIGNING_CONTEXT;
 
@@ -59,6 +63,15 @@ impl Sr25519Signer {
         Ok(Self { secret, public })
     }
 
+    /// Build a signer from an already-derived schnorrkel keypair (e.g. a
+    /// signing-host product key), reusing the same `sign`/`account_id` path.
+    pub(crate) fn from_keypair(keypair: &schnorrkel::Keypair) -> Self {
+        Self {
+            secret: keypair.secret.clone(),
+            public: keypair.public,
+        }
+    }
+
     /// Public key of the signing account.
     pub(crate) fn public_key(&self) -> [u8; 32] {
         self.public.to_bytes()
@@ -85,6 +98,70 @@ impl Signer<SubstrateConfig> for Sr25519Signer {
                 .sign_simple(SR25519_SIGNING_CONTEXT, signer_payload, &self.public);
         MultiSignature::Sr25519(signature.to_bytes())
     }
+}
+
+/// The V4 signer payload: `call_data ++ Σextra ++ Σadditional_signed`, replaced
+/// by its blake2_256 hash only when it exceeds 256 bytes.
+///
+/// Note the order differs from the extrinsic body (which puts `extra` before
+/// the call): the call comes first here, extras next, implicits last.
+fn v4_signer_payload(call_data: &[u8], extensions: &[v01::TxPayloadExtension]) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(call_data.len());
+    payload.extend_from_slice(call_data);
+    for ext in extensions {
+        payload.extend_from_slice(&ext.extra);
+    }
+    for ext in extensions {
+        payload.extend_from_slice(&ext.additional_signed);
+    }
+    if payload.len() > 256 {
+        sp_crypto_hashing::blake2_256(&payload).to_vec()
+    } else {
+        payload
+    }
+}
+
+/// Assemble a signed Extrinsic V4 from caller-supplied, already-SCALE-encoded
+/// parts, entirely offline.
+///
+/// Body layout (matches `frame_decode::encode_v4_signed` and subxt's own
+/// assembler byte-for-byte):
+///
+/// ```text
+/// Compact(len) ++ 0x84 ++ 0x00 ++ signer(32) ++ 0x01 ++ signature(64)
+///              ++ Σ extension.extra ++ call_data
+/// ```
+///
+/// `0x84` is the V4 "signed" version byte, `0x00` the `MultiAddress::Id`
+/// discriminant, `0x01` the `MultiSignature::Sr25519` discriminant. `extra`
+/// bytes go in the body (in the given order, which must be the runtime's
+/// canonical extension order); `additional_signed` bytes appear only in the
+/// signed payload. The chain binding (genesis, spec/tx version, mortality
+/// anchor, nonce, tip) lives inside the caller's extension bytes, so nothing
+/// here is metadata-driven.
+pub(crate) fn build_signed_extrinsic_v4(
+    signer: &Sr25519Signer,
+    call_data: &[u8],
+    extensions: &[v01::TxPayloadExtension],
+) -> Vec<u8> {
+    /// `0b1000_0000 | 4`: the "signed" bit plus extrinsic format version 4.
+    const EXTRINSIC_V4_SIGNED: u8 = 0x84;
+
+    let signature = signer.sign(&v4_signer_payload(call_data, extensions));
+    let address = MultiAddress::<AccountId32, u32>::Id(signer.account_id());
+
+    let mut inner = Vec::new();
+    inner.push(EXTRINSIC_V4_SIGNED);
+    address.encode_to(&mut inner);
+    signature.encode_to(&mut inner);
+    for ext in extensions {
+        inner.extend_from_slice(&ext.extra);
+    }
+    inner.extend_from_slice(call_data);
+
+    // `Vec<u8>::encode` prepends the SCALE compact length, giving the outer
+    // length-prefixed opaque extrinsic.
+    inner.encode()
 }
 
 /// Everything needed to build transactions offline for one chain at one
@@ -436,5 +513,112 @@ pub(crate) mod tests {
         assert_eq!(parameters[0], 2);
         assert_eq!(&parameters[1..3], &[0xaa, 0xbb]);
         assert_eq!(&parameters[3..], &[0xcc; 32]);
+    }
+
+    fn test_signer() -> Sr25519Signer {
+        let keypair = schnorrkel::MiniSecretKey::from_bytes(&[3; 32])
+            .unwrap()
+            .expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
+        Sr25519Signer::from_keypair(&keypair)
+    }
+
+    fn ext(id: &str, extra: &[u8], additional: &[u8]) -> v01::TxPayloadExtension {
+        v01::TxPayloadExtension {
+            id: id.to_string(),
+            extra: extra.to_vec(),
+            additional_signed: additional.to_vec(),
+        }
+    }
+
+    /// Split a length-prefixed V4 signed extrinsic into
+    /// (account, signature, trailing-bytes-after-signature).
+    fn split_v4(extrinsic: &[u8]) -> ([u8; 32], [u8; 64], Vec<u8>) {
+        let mut input = extrinsic;
+        let len = Compact::<u32>::decode(&mut input).unwrap().0 as usize;
+        assert_eq!(input.len(), len, "compact length must cover the remainder");
+        assert_eq!(input[0], 0x84, "V4 signed version byte");
+        assert_eq!(input[1], 0x00, "MultiAddress::Id discriminant");
+        let account: [u8; 32] = input[2..34].try_into().unwrap();
+        assert_eq!(input[34], 0x01, "MultiSignature::Sr25519 discriminant");
+        let signature: [u8; 64] = input[35..99].try_into().unwrap();
+        (account, signature, input[99..].to_vec())
+    }
+
+    #[test]
+    fn v4_layout_and_signature_verify() {
+        let signer = test_signer();
+        let call_data = vec![0x2a, 0x00, 0xde, 0xad];
+        let extensions = vec![
+            ext("CheckNonce", &[0x04], &[]),
+            ext("CheckGenesis", &[], &[9; 32]),
+        ];
+
+        let extrinsic = build_signed_extrinsic_v4(&signer, &call_data, &extensions);
+        let (account, signature, tail) = split_v4(&extrinsic);
+
+        // Body tail is Σextra ++ call_data (extra before call).
+        let mut expected_tail = Vec::new();
+        expected_tail.extend_from_slice(&extensions[0].extra);
+        expected_tail.extend_from_slice(&extensions[1].extra);
+        expected_tail.extend_from_slice(&call_data);
+        assert_eq!(account, signer.public_key());
+        assert_eq!(tail, expected_tail);
+
+        // Signature verifies over call ++ Σextra ++ Σadditional (call first).
+        let mut payload = call_data.clone();
+        payload.extend_from_slice(&extensions[0].extra);
+        payload.extend_from_slice(&extensions[1].extra);
+        payload.extend_from_slice(&extensions[0].additional_signed);
+        payload.extend_from_slice(&extensions[1].additional_signed);
+        let public = PublicKey::from_bytes(&account).unwrap();
+        assert!(
+            public
+                .verify_simple(
+                    SR25519_SIGNING_CONTEXT,
+                    &payload,
+                    &schnorrkel::Signature::from_bytes(&signature).unwrap()
+                )
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn v4_signer_payload_hashes_when_over_256_bytes() {
+        let signer = test_signer();
+        let call_data = vec![1u8; 200];
+        // Push the payload (call ++ extra ++ additional) over 256 bytes.
+        let extensions = vec![ext("Big", &[2u8; 60], &[3u8; 60])];
+        let extrinsic = build_signed_extrinsic_v4(&signer, &call_data, &extensions);
+        let (account, signature, _) = split_v4(&extrinsic);
+        let public = PublicKey::from_bytes(&account).unwrap();
+        let sig = schnorrkel::Signature::from_bytes(&signature).unwrap();
+
+        let mut raw = call_data.clone();
+        raw.extend_from_slice(&extensions[0].extra);
+        raw.extend_from_slice(&extensions[0].additional_signed);
+        assert!(raw.len() > 256);
+        let hashed = sp_crypto_hashing::blake2_256(&raw);
+
+        // Signs over the hash, not the raw concatenation.
+        assert!(
+            public
+                .verify_simple(SR25519_SIGNING_CONTEXT, &hashed, &sig)
+                .is_ok()
+        );
+        assert!(
+            public
+                .verify_simple(SR25519_SIGNING_CONTEXT, &raw, &sig)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn v4_preserves_extension_order() {
+        let signer = test_signer();
+        let call_data = vec![0xff];
+        // Deliberately not in sorted order; the assembler must not reorder.
+        let extensions = vec![ext("B", &[0xbb], &[]), ext("A", &[0xaa], &[])];
+        let (_, _, tail) = split_v4(&build_signed_extrinsic_v4(&signer, &call_data, &extensions));
+        assert_eq!(tail, vec![0xbb, 0xaa, 0xff]);
     }
 }

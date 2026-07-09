@@ -70,6 +70,10 @@ pub(crate) enum AuthorityError {
     /// The authority cannot service the request.
     #[display("{reason}")]
     Unavailable { reason: String },
+    /// The authority cannot service this request shape (e.g. an unsupported
+    /// transaction-extension version).
+    #[display("{reason}")]
+    NotSupported { reason: String },
     /// Catch-all authority failure.
     #[display("{reason}")]
     Unknown { reason: String },

@@ -19,6 +19,7 @@ use super::authority::{
 };
 use super::connected_session_ui_info;
 use crate::host_logic::entropy::derive_product_entropy;
+use crate::host_logic::extrinsic::{Sr25519Signer, build_signed_extrinsic_v4};
 use crate::host_logic::product_account::{
     ProductAccountError, SR25519_SIGNING_CONTEXT, derive_product_keypair,
     derive_root_keypair_from_entropy,
@@ -166,14 +167,45 @@ impl ProductAuthority for SigningHost {
     async fn create_transaction(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _request: CreateTransactionAuthorityRequest,
+        session: &AuthoritySession,
+        request: CreateTransactionAuthorityRequest,
     ) -> Result<v01::HostCreateTransactionResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: transaction construction needs chain metadata (not yet \
-                     implemented)"
-                .to_string(),
-        })
+        require_current_session(&self.session_state, session)?;
+        match request {
+            CreateTransactionAuthorityRequest::Product(payload) => {
+                // The product account is authoritative and caller-scoping is
+                // enforced upstream, so the derived key defines the signer.
+                let keypair = self.product_keypair(&payload.signer)?;
+                build_local_transaction(
+                    &keypair,
+                    &payload.call_data,
+                    &payload.extensions,
+                    payload.tx_ext_version,
+                )
+            }
+            CreateTransactionAuthorityRequest::LegacyAccount {
+                product_account,
+                request,
+            } => {
+                let keypair = self.product_keypair(&product_account)?;
+                // Defense-in-depth: the slot-zero key must match the legacy
+                // signer the caller asked for (also validated upstream). Never
+                // sign with a diverging key.
+                if keypair.public.to_bytes() != request.signer {
+                    return Err(AuthorityError::Unknown {
+                        reason: "signing host: legacy signer does not match the product \
+                                 slot-zero account"
+                            .to_string(),
+                    });
+                }
+                build_local_transaction(
+                    &keypair,
+                    &request.call_data,
+                    &request.extensions,
+                    request.tx_ext_version,
+                )
+            }
+        }
     }
 
     async fn account_alias(
@@ -274,6 +306,28 @@ fn product_authority_error(err: ProductAccountError) -> AuthorityError {
     }
 }
 
+/// Assemble and sign a transaction locally from caller-supplied, pre-encoded
+/// parts. Only Extrinsic V4 (`tx_ext_version == 0`) is supported; the caller's
+/// extension bytes carry the whole chain binding, so no metadata is consulted.
+fn build_local_transaction(
+    keypair: &schnorrkel::Keypair,
+    call_data: &[u8],
+    extensions: &[v01::TxPayloadExtension],
+    tx_ext_version: u8,
+) -> Result<v01::HostCreateTransactionResponse, AuthorityError> {
+    if tx_ext_version != 0 {
+        return Err(AuthorityError::NotSupported {
+            reason: format!(
+                "signing host: unsupported tx_ext_version {tx_ext_version}; only V4 \
+                 (tx_ext_version = 0) is supported for local transaction construction"
+            ),
+        });
+    }
+    let signer = Sr25519Signer::from_keypair(keypair);
+    let transaction = build_signed_extrinsic_v4(&signer, call_data, extensions);
+    Ok(v01::HostCreateTransactionResponse { transaction })
+}
+
 /// Wrap raw sign-message bytes in the `<Bytes>…</Bytes>` envelope unless
 /// already wrapped, matching the polkadot-app raw-signing convention.
 ///
@@ -315,13 +369,16 @@ fn decode_payload_string(payload: String) -> Result<Vec<u8>, AuthorityError> {
 mod tests {
     use std::sync::Arc;
 
-    use super::super::authority::{AuthorityError, SignRawAuthorityRequest};
+    use super::super::authority::{
+        AuthorityError, CreateTransactionAuthorityRequest, SignRawAuthorityRequest,
+    };
     use super::super::{ProductAuthority, ProductRuntimeHost, RuntimeServices, SigningHostRole};
     use super::{BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, raw_payload_bytes};
     use crate::host_logic::product_account::{
         derive_product_keypair, derive_root_keypair_from_entropy,
     };
     use crate::test_support::{StubPlatform, test_spawner};
+    use parity_scale_codec::{Compact, Decode};
     use truapi::api::{Account, Entropy, Signing};
     use truapi::versioned::account::{HostAccountGetError, HostAccountGetRequest};
     use truapi::versioned::entropy::HostDeriveEntropyRequest;
@@ -432,6 +489,181 @@ mod tests {
         let err =
             futures::executor::block_on(runtime.sign_raw(&cx, request)).expect_err("no session");
         assert!(matches!(err, CallError::Domain(HostSignRawError::V1(_))));
+    }
+
+    fn product_account(index: u32) -> v01::ProductAccountId {
+        v01::ProductAccountId {
+            dot_ns_identifier: "myapp.dot".to_string(),
+            derivation_index: index,
+        }
+    }
+
+    fn tx_payload(tx_ext_version: u8) -> v01::ProductAccountTxPayload {
+        v01::ProductAccountTxPayload {
+            signer: product_account(0),
+            genesis_hash: [0xaa; 32],
+            call_data: vec![0x00, 0x00],
+            extensions: vec![v01::TxPayloadExtension {
+                id: "CheckNonce".to_string(),
+                extra: vec![1],
+                additional_signed: vec![2, 3],
+            }],
+            tx_ext_version,
+        }
+    }
+
+    /// Split a length-prefixed V4 signed extrinsic into
+    /// (account, signature, trailing bytes).
+    fn split_v4(extrinsic: &[u8]) -> ([u8; 32], [u8; 64], Vec<u8>) {
+        let mut input = extrinsic;
+        let len = Compact::<u32>::decode(&mut input).unwrap().0 as usize;
+        assert_eq!(input.len(), len);
+        assert_eq!(input[0], 0x84);
+        assert_eq!(input[1], 0x00);
+        let account: [u8; 32] = input[2..34].try_into().unwrap();
+        assert_eq!(input[34], 0x01);
+        let signature: [u8; 64] = input[35..99].try_into().unwrap();
+        (account, signature, input[99..].to_vec())
+    }
+
+    #[test]
+    fn create_transaction_product_builds_verifiable_v4() {
+        let (_services, activation) = signing_runtime();
+        futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = activation.current_session().expect("active session");
+        let cx = CallContext::new();
+
+        let response = futures::executor::block_on(activation.create_transaction(
+            &cx,
+            &session,
+            CreateTransactionAuthorityRequest::Product(tx_payload(0)),
+        ))
+        .expect("create_transaction ok");
+
+        let (account, signature, tail) = split_v4(&response.transaction);
+        assert_eq!(tail, vec![1, 0x00, 0x00], "body tail is extra ++ call_data");
+
+        let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        assert_eq!(account, keypair.public.to_bytes());
+
+        // Payload = call_data ++ extra ++ additional_signed (call first).
+        let payload = vec![0x00, 0x00, 1, 2, 3];
+        let signature = schnorrkel::Signature::from_bytes(&signature).unwrap();
+        assert!(
+            keypair
+                .public
+                .verify_simple(b"substrate", &payload, &signature)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn create_transaction_rejects_nonzero_tx_ext_version() {
+        let (_services, activation) = signing_runtime();
+        futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = activation.current_session().expect("active session");
+        let cx = CallContext::new();
+
+        let err = futures::executor::block_on(activation.create_transaction(
+            &cx,
+            &session,
+            CreateTransactionAuthorityRequest::Product(tx_payload(1)),
+        ))
+        .expect_err("v5 unsupported");
+        assert!(
+            matches!(err, AuthorityError::NotSupported { reason } if reason.contains("tx_ext_version 1"))
+        );
+    }
+
+    #[test]
+    fn create_transaction_legacy_signer_mismatch_errors() {
+        let (_services, activation) = signing_runtime();
+        futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = activation.current_session().expect("active session");
+        let cx = CallContext::new();
+
+        let payload = tx_payload(0);
+        let request = CreateTransactionAuthorityRequest::LegacyAccount {
+            product_account: product_account(0),
+            request: v01::LegacyAccountTxPayload {
+                signer: [0xff; 32], // does not match the derived slot-zero key
+                genesis_hash: payload.genesis_hash,
+                call_data: payload.call_data.clone(),
+                extensions: payload.extensions.clone(),
+                tx_ext_version: 0,
+            },
+        };
+        let err =
+            futures::executor::block_on(activation.create_transaction(&cx, &session, request))
+                .expect_err("mismatched legacy signer");
+        assert!(
+            matches!(err, AuthorityError::Unknown { reason } if reason.contains("does not match"))
+        );
+    }
+
+    #[test]
+    fn create_transaction_legacy_builds_verifiable_v4() {
+        let (_services, activation) = signing_runtime();
+        futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = activation.current_session().expect("active session");
+        let cx = CallContext::new();
+
+        let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+
+        let request = CreateTransactionAuthorityRequest::LegacyAccount {
+            product_account: product_account(0),
+            request: v01::LegacyAccountTxPayload {
+                signer: keypair.public.to_bytes(), // matches the derived slot-zero key
+                genesis_hash: [0xaa; 32],
+                call_data: vec![0x00, 0x00],
+                extensions: vec![v01::TxPayloadExtension {
+                    id: "CheckNonce".to_string(),
+                    extra: vec![1],
+                    additional_signed: vec![2, 3],
+                }],
+                tx_ext_version: 0,
+            },
+        };
+        let response =
+            futures::executor::block_on(activation.create_transaction(&cx, &session, request))
+                .expect("legacy create_transaction ok");
+
+        let (account, signature, tail) = split_v4(&response.transaction);
+        assert_eq!(account, keypair.public.to_bytes());
+        assert_eq!(tail, vec![1, 0x00, 0x00]);
+        let signature = schnorrkel::Signature::from_bytes(&signature).unwrap();
+        assert!(
+            keypair
+                .public
+                .verify_simple(b"substrate", &[0x00, 0x00, 1, 2, 3], &signature)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn create_transaction_requires_active_session() {
+        let (_services, activation) = signing_runtime();
+        // A session snapshot cannot exist without activation, so construct the
+        // request against a role that has never been activated.
+        let (_s2, other) = signing_runtime();
+        futures::executor::block_on(other.activate_local_session(ENTROPY.to_vec())).unwrap();
+        let stale_session = other.current_session().expect("session");
+        futures::executor::block_on(other.disconnect());
+        let cx = CallContext::new();
+
+        let err = futures::executor::block_on(activation.create_transaction(
+            &cx,
+            &stale_session,
+            CreateTransactionAuthorityRequest::Product(tx_payload(0)),
+        ))
+        .expect_err("no active session");
+        assert_eq!(err, AuthorityError::Disconnected);
     }
 
     #[test]
