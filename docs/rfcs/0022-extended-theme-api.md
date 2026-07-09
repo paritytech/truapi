@@ -3,7 +3,7 @@ title: "Extended theme subscribe API"
 owner: "@filippovecchiato"
 ---
 
-# RFC — Extended theme subscribe API
+# RFC 0022 — Extended theme subscribe API
 
 |                 |                                                                  |
 | --------------- | ---------------------------------------------------------------- |
