@@ -1270,49 +1270,6 @@ pub(crate) async fn wait_for_chain_head_storage_value(
     }
 }
 
-/// Wait for `Initialized` on a fresh `with_runtime: true` follow, returning
-/// the newest finalized block hash and the finalized-block runtime spec.
-pub(crate) async fn wait_for_chain_head_initialized(
-    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-    label: &'static str,
-    timeout: Duration,
-) -> Result<(Vec<u8>, RuntimeSpec), String> {
-    let timeout = futures_timer::Delay::new(timeout).fuse();
-    pin_mut!(timeout);
-    loop {
-        let next = follow.next().fuse();
-        pin_mut!(next);
-        futures::select! {
-            item = next => match item {
-                Some(RemoteChainHeadFollowItem::Initialized {
-                    finalized_block_hashes,
-                    finalized_block_runtime,
-                }) => {
-                    let hash = finalized_block_hashes
-                        .last()
-                        .cloned()
-                        .ok_or_else(|| format!("{label} follow initialized without finalized blocks"))?;
-                    let spec = match finalized_block_runtime {
-                        Some(RuntimeType::Valid(spec)) => spec,
-                        Some(RuntimeType::Invalid { error }) => {
-                            return Err(format!("{label} follow reported an invalid runtime: {error}"));
-                        }
-                        None => {
-                            return Err(format!("{label} follow initialized without runtime metadata"));
-                        }
-                    };
-                    return Ok((hash, spec));
-                }
-                Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return Err(format!("{label} follow stopped before initialization"));
-                }
-                _ => {}
-            },
-            () = timeout => return Err(format!("{label} follow initialization timed out")),
-        }
-    }
-}
-
 /// Wait for one runtime-call operation's output from a `chainHead_v1_follow`
 /// stream.
 pub(crate) async fn wait_for_chain_head_call_output(

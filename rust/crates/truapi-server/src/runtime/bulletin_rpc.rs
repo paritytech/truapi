@@ -27,13 +27,12 @@ use truapi::v01::{
     RemoteChainHeadFollowItem, RemoteChainHeadFollowRequest, RemoteChainHeadHeaderRequest,
     RemoteChainHeadStorageRequest, RemoteChainHeadUnpinRequest,
     RemoteChainTransactionBroadcastRequest, RemoteChainTransactionStopRequest, RuntimeSpec,
-    StorageQueryItem, StorageQueryType,
+    RuntimeType, StorageQueryItem, StorageQueryType,
 };
 use truapi_platform::BulletinAllowanceKey;
 
 use crate::chain_runtime::{
-    ChainRuntime, wait_for_chain_head_call_output, wait_for_chain_head_initialized,
-    wait_for_chain_head_storage_value,
+    ChainRuntime, wait_for_chain_head_call_output, wait_for_chain_head_storage_value,
 };
 use crate::host_logic::bulletin::{
     MortalityAnchor, build_signed_store_extrinsic, preimage_key, system_events_storage_key,
@@ -45,10 +44,14 @@ use crate::host_logic::extrinsic::{
     validate_transaction_call_parameters,
 };
 
-/// Whole-submission budget, matching the host-side timeout this flow replaces.
-const SUBMIT_TIMEOUT: Duration = Duration::from_secs(120);
+/// Whole-submission budget, including best-block inclusion.
+const SUBMIT_TIMEOUT: Duration = Duration::from_secs(180);
 /// Budget for the follow to deliver `Initialized`.
 const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(10);
+/// Budget for a fresh follow to report the current best block after
+/// `Initialized`. Falling back to finalized is safe for cold starts; active
+/// chains normally report best immediately.
+const BEST_BLOCK_TIMEOUT: Duration = Duration::from_secs(2);
 /// Budget for one pre-broadcast runtime call or storage read.
 const OPERATION_TIMEOUT: Duration = Duration::from_secs(20);
 /// Delay before retrying an operation start that hit `LimitReached`, and
@@ -69,6 +72,11 @@ const ALLOWANCE_REJECTED_MODULE_ERRORS: &[&str] =
 /// Where a submission failed, for phase-tagged timeout reasons.
 type Phase = &'static str;
 
+struct SubmissionHead {
+    best_hash: Vec<u8>,
+    runtime_spec: RuntimeSpec,
+}
+
 /// Typed submission failure driving the retry decision at the runtime call
 /// site. Wire mapping stays `v01::PreimageSubmitError::Unknown { reason }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +91,7 @@ pub(crate) enum BulletinSubmitError {
     NonceRace,
     /// The server had no free broadcast slot; retryable, nothing was sent.
     BroadcastSlotUnavailable,
-    /// The 120 s budget elapsed; `phase` names the step reached.
+    /// The submission budget elapsed; `phase` names the step reached.
     Timeout { phase: Phase },
     /// The transaction was broadcast but inclusion could not be verified.
     BroadcastUnverified { reason: String },
@@ -210,26 +218,23 @@ impl BulletinRpc {
                 with_runtime: true,
             },
         );
-        let (finalized_hash, runtime_spec) =
-            wait_for_chain_head_initialized(&mut follow, "Bulletin", INITIALIZATION_TIMEOUT)
-                .await
-                .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })?;
+        let head = wait_for_submission_head(&mut follow).await?;
 
         self.enter_phase("metadata");
         let state = self
-            .offline_chain_state(&follow_id, &mut follow, &finalized_hash, runtime_spec)
+            .offline_chain_state(&follow_id, &mut follow, &head.best_hash, head.runtime_spec)
             .await?;
 
         self.enter_phase("build");
-        let anchor = self.mortality_anchor(&follow_id, &finalized_hash).await?;
+        let anchor = self.mortality_anchor(&follow_id, &head.best_hash).await?;
         let nonce = self
-            .account_nonce(&follow_id, &mut follow, &finalized_hash, allowance)
+            .account_nonce(&follow_id, &mut follow, &head.best_hash, allowance)
             .await?;
         let signed = build_signed_store_extrinsic(&state, &anchor, allowance, nonce, value)
             .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
 
         self.enter_phase("dry-run");
-        self.dry_run(&follow_id, &mut follow, &finalized_hash, &signed.extrinsic)
+        self.dry_run(&follow_id, &mut follow, &head.best_hash, &signed.extrinsic)
             .await?;
 
         self.enter_phase("broadcast");
@@ -556,6 +561,9 @@ impl BulletinRpc {
                         sp_crypto_hashing::blake2_256(extrinsic) == extrinsic_hash
                     });
                     if let Some(index) = matched {
+                        // Match the prior PAPI host behavior: resolve on
+                        // best-block inclusion. A future API option can let
+                        // callers prefer finalized inclusion.
                         return Ok((block, index as u32));
                     }
                     checked.insert(block.clone());
@@ -817,6 +825,132 @@ impl BulletinRpc {
     }
 }
 
+async fn wait_for_submission_head(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+) -> Result<SubmissionHead, BulletinSubmitError> {
+    let timeout = futures_timer::Delay::new(INITIALIZATION_TIMEOUT).fuse();
+    pin_mut!(timeout);
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::Initialized {
+                    finalized_block_hashes,
+                    finalized_block_runtime,
+                }) => {
+                    let finalized_hash = finalized_block_hashes
+                        .last()
+                        .cloned()
+                        .ok_or_else(|| BulletinSubmitError::ChainUnavailable {
+                            reason: "Bulletin follow initialized without finalized blocks"
+                                .to_string(),
+                        })?;
+                    let runtime_spec = valid_runtime(
+                        finalized_block_runtime,
+                        "Bulletin follow initialized without runtime metadata",
+                    )?;
+                    return wait_for_submission_best_after_initialization(
+                        follow,
+                        finalized_hash,
+                        runtime_spec,
+                    )
+                    .await;
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(BulletinSubmitError::ChainUnavailable {
+                        reason: "Bulletin follow stopped before initialization".to_string(),
+                    });
+                }
+                _ => {}
+            },
+            () = timeout => {
+                return Err(BulletinSubmitError::ChainUnavailable {
+                    reason: "Bulletin follow initialization timed out".to_string(),
+                });
+            },
+        }
+    }
+}
+
+async fn wait_for_submission_best_after_initialization(
+    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
+    finalized_hash: Vec<u8>,
+    finalized_runtime: RuntimeSpec,
+) -> Result<SubmissionHead, BulletinSubmitError> {
+    let timeout = futures_timer::Delay::new(BEST_BLOCK_TIMEOUT).fuse();
+    pin_mut!(timeout);
+    let mut known_runtimes = HashMap::from([(finalized_hash.clone(), finalized_runtime.clone())]);
+    let mut candidate_hash = finalized_hash;
+    let mut candidate_runtime = finalized_runtime.clone();
+
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                    let runtime_spec = known_runtimes
+                        .get(&best_block_hash)
+                        .cloned()
+                        .unwrap_or_else(|| candidate_runtime.clone());
+                    return Ok(SubmissionHead {
+                        best_hash: best_block_hash,
+                        runtime_spec,
+                    });
+                }
+                Some(RemoteChainHeadFollowItem::NewBlock {
+                    block_hash,
+                    parent_block_hash,
+                    new_runtime,
+                }) => {
+                    let runtime_spec = if let Some(runtime) = new_runtime {
+                        valid_runtime(
+                            Some(runtime),
+                            "Bulletin follow reported a new block without runtime metadata",
+                        )?
+                    } else {
+                        known_runtimes
+                            .get(&parent_block_hash)
+                            .cloned()
+                            .unwrap_or_else(|| candidate_runtime.clone())
+                    };
+                    known_runtimes.insert(block_hash.clone(), runtime_spec.clone());
+                    candidate_hash = block_hash;
+                    candidate_runtime = runtime_spec;
+                }
+                Some(RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err(BulletinSubmitError::ChainUnavailable {
+                        reason: "Bulletin follow stopped before best block".to_string(),
+                    });
+                }
+                _ => {}
+            },
+            () = timeout => {
+                return Ok(SubmissionHead {
+                    best_hash: candidate_hash,
+                    runtime_spec: candidate_runtime,
+                });
+            },
+        }
+    }
+}
+
+fn valid_runtime(
+    runtime: Option<RuntimeType>,
+    missing_reason: &'static str,
+) -> Result<RuntimeSpec, BulletinSubmitError> {
+    match runtime {
+        Some(RuntimeType::Valid(spec)) => Ok(spec),
+        Some(RuntimeType::Invalid { error }) => Err(BulletinSubmitError::ChainUnavailable {
+            reason: format!("Bulletin follow reported an invalid runtime: {error}"),
+        }),
+        None => Err(BulletinSubmitError::ChainUnavailable {
+            reason: missing_reason.to_string(),
+        }),
+    }
+}
+
 /// Collect `start` and its not-yet-checked ancestors from a provider-supplied
 /// `parents` map, oldest lookups first.
 ///
@@ -849,6 +983,42 @@ mod tests {
 
     fn h(byte: u8) -> Vec<u8> {
         vec![byte]
+    }
+
+    fn runtime_spec(spec_version: u32) -> RuntimeSpec {
+        RuntimeSpec {
+            spec_name: "test".to_string(),
+            impl_name: "test".to_string(),
+            spec_version,
+            impl_version: 1,
+            transaction_version: Some(1),
+            apis: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn submission_head_uses_best_block_runtime_update() {
+        let mut follow = futures::stream::iter(vec![
+            RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: vec![h(1)],
+                finalized_block_runtime: Some(RuntimeType::Valid(runtime_spec(1))),
+            },
+            RemoteChainHeadFollowItem::NewBlock {
+                block_hash: h(2),
+                parent_block_hash: h(1),
+                new_runtime: Some(RuntimeType::Valid(runtime_spec(2))),
+            },
+            RemoteChainHeadFollowItem::BestBlockChanged {
+                best_block_hash: h(2),
+            },
+        ])
+        .boxed();
+
+        let head =
+            futures::executor::block_on(wait_for_submission_head(&mut follow)).expect("head");
+
+        assert_eq!(head.best_hash, h(2));
+        assert_eq!(head.runtime_spec.spec_version, 2);
     }
 
     #[test]
