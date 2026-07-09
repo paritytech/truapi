@@ -19,8 +19,10 @@ The package exposes tree-shakeable subpath exports — import only what your env
 
 The ignored bundle under `dist/wasm/web/` is built with host-owned chain access.
 Hosts wire their JSON-RPC provider through `chainConnect`; if they omit it,
-chain calls fail with the core's standard unavailable error. The bundled WASM is
-about 1 MB (release build with `wasm-opt`).
+chain calls fail with the core's standard unavailable error. Release builds use
+the workspace size-optimized Rust profile plus `wasm-opt -Oz`, validate that
+debug/name/producers custom sections were stripped, and emit `.wasm.gz` and
+`.wasm.br` sidecars for hosts that serve precompressed assets.
 
 Build them after editing `rust/crates/truapi-server` and before packaging, publishing, or running
 tests that load the raw WASM bundle (requires `wasm-pack` on PATH):

@@ -94,7 +94,7 @@ jobs:
 
       - name: Install wasm-pack
         if: steps.version.outputs.proceed == 'true' && contains(steps.version.outputs.packages, '@parity/truapi-host|')
-        run: cargo install wasm-pack --version 0.13.1 --locked
+        run: cargo install wasm-pack --version 0.14.0 --locked
 
       - name: Build packages
         if: steps.version.outputs.proceed == 'true'
