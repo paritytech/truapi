@@ -26,7 +26,6 @@ import {
 } from "./host-callbacks.js";
 import type {
   BulletinAllowanceSigner,
-  FlatHostCallbacks,
   RequiredHostCallbacks,
 } from "./host-callbacks.js";
 
@@ -61,9 +60,8 @@ export interface RawCallbacks {
 /** Adapt typed host callbacks into the raw SCALE callback surface the
  *  WASM core invokes. */
 export function createWasmRawCallbacks(
-  host: RequiredHostCallbacks | Required<FlatHostCallbacks>,
+  callbacks: RequiredHostCallbacks,
 ): RawCallbacks {
-  const callbacks = normalizeHostCallbacks(host);
   return {
     authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
     chainConnect: chainConnectAdapter(callbacks.chain),
@@ -83,26 +81,5 @@ export function createWasmRawCallbacks(
     clear: async (key) => await callbacks.productStorage.clear(key),
     subscribeTheme: (sendItem) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(ThemeVariant.enc(item))),
     confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
-  };
-}
-
-function normalizeHostCallbacks(
-  host: RequiredHostCallbacks | Required<FlatHostCallbacks>,
-): RequiredHostCallbacks {
-  if ("auth" in host) {
-    return host;
-  }
-  return {
-    auth: host,
-    chain: host,
-    coreStorage: host,
-    features: host,
-    navigation: host,
-    notifications: host,
-    permissions: host,
-    preimage: host,
-    productStorage: host,
-    theme: host,
-    userConfirmation: host,
   };
 }

@@ -582,9 +582,6 @@ export interface UserConfirmation {
   confirmUserAction(review: UserConfirmationReview): Promise<boolean>;
 }
 
-/** @deprecated Use the namespaced `HostCallbacks` shape instead. */
-export interface FlatHostCallbacks extends Navigation, Notifications, Permissions, Features, ProductStorage, CoreStorage, ChainProvider, AuthPresenter, UserConfirmation, ThemeHost, PreimageHost {}
-
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
