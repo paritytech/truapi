@@ -19,6 +19,17 @@ import type {
   ChainConnect,
 } from "../runtime.js";
 
+import type { BulletinAllowanceSigner } from "./host-callbacks.js";
+
+export interface WorkerBulletinAllowanceSigner {
+  publicKey: Uint8Array;
+  signerId: number;
+}
+
+import type {
+  ChainConnect,
+} from "../runtime.js";
+
 export const CALLBACK_NAMES = [
   "authStateChanged",
   "readCoreStorage",
