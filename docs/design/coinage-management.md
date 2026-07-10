@@ -193,6 +193,8 @@ Callers do not select the class. Per-token cost is reported in the operation sta
 
 Unloads support **prepaid** (fee from external funds) or **from-output** (fee deducted from unloaded value). The component picks automatically based on available external fee funds. Callers do not select.
 
+**From-output failure recovery.** A failed from-output dispatch temporarily locks the fee alias with exponential backoff (`2^retries × base_lock_period`) instead of permanently consuming it. The component tracks a monotonic `retry_counter` per alias and resubmits once the lock expires. No value is destroyed on dispatch failure.
+
 ## 7. Operation lifecycle
 
 ### 7.1 Status states

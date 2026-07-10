@@ -241,6 +241,8 @@ Unloads support two fee modes:
 
 The layer picks the mode automatically per unload: prepaid if the fee account holds sufficient external funds at submission time, from-output otherwise. The caller does not specify.
 
+**From-output failure recovery.** When a from-output unload's dispatch fails, the pallet temporarily locks the first (fee) alias instead of permanently consuming it. The lock duration doubles on each consecutive failure (`2^retries × base_lock_period`). The layer tracks a monotonic `retry_counter` per alias and may resubmit the same alias once its lock expires, signing the proof over `alias_proofs[1..] ++ retry_counter ++ inherited_implication`. No value is destroyed on from-output dispatch failure; the alias remains reusable until a successful dispatch finally consumes it.
+
 ## 7. Operations
 
 ### 7.1 Handles
