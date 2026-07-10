@@ -33,11 +33,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
         with:
           toolchain: stable
+          targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: cargo build
         run: cargo build --workspace --all-targets --all-features
+
+      - name: cargo check wasm32
+        run: cargo check --target wasm32-unknown-unknown -p truapi-server
 
       - name: cargo +nightly fmt --check
         run: cargo +nightly fmt --check
@@ -76,6 +80,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
         with:
           toolchain: nightly
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
