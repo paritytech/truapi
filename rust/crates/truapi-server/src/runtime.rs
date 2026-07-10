@@ -51,7 +51,7 @@ use authority::{
 use futures::{FutureExt, StreamExt, pin_mut};
 #[cfg(test)]
 use parity_scale_codec::Encode;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
     Preimage, ResourceAllocation, Signing, System, Theme,
@@ -145,11 +145,22 @@ pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
 /// after 180 seconds:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L303-L307>
 const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+/// Preimage submission is exercised by host diagnosis with a 60s method
+/// watchdog. Keep the allowance request below that so products receive a
+/// TrUAPI error instead of an outer harness timeout.
+const PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(45);
 
 fn remote_authority_context(cx: &CallContext) -> CallContext {
+    remote_authority_context_with_default(cx, DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT)
+}
+
+fn remote_authority_context_with_default(
+    cx: &CallContext,
+    default_timeout: Duration,
+) -> CallContext {
     let mut cx = cx.clone();
     if cx.timeout().is_none() {
-        cx.set_timeout(DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT);
+        cx.set_timeout(default_timeout);
     }
     cx
 }
@@ -1737,14 +1748,18 @@ impl Preimage for ProductRuntimeHost {
             .platform
             .lookup_preimage(key)
             .filter_map(|item| async move {
-                // TODO: preserve platform stream errors as terminal
-                // subscription interrupts once subscription items can carry
-                // in-stream failures.
-                item.ok().map(|value| {
-                    RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
-                        value,
-                    })
-                })
+                match item {
+                    Ok(value) => Some(RemotePreimageLookupSubscribeItem::V1(
+                        v01::RemotePreimageLookupSubscribeItem { value },
+                    )),
+                    Err(error) => {
+                        warn!(
+                            reason = %error.reason,
+                            "preimage lookup platform stream failed"
+                        );
+                        None
+                    }
+                }
             });
         Subscription::new(Box::pin(stream))
     }
@@ -1791,7 +1806,8 @@ impl Preimage for ProductRuntimeHost {
                 },
             )));
         }
-        let cx = remote_authority_context(cx);
+        let cx =
+            remote_authority_context_with_default(cx, PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT);
         let allowance = remote_authority_call(
             &cx,
             self.authority

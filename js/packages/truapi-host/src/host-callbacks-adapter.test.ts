@@ -330,7 +330,6 @@ describe("createWasmRawCallbacks", () => {
     );
 
     await settle();
-    await settle();
 
     expect(preimageEvents).toEqual([null, [4, 5, 6]]);
     expect(calls).toEqual([
@@ -367,7 +366,6 @@ describe("createWasmRawCallbacks", () => {
     );
 
     await settle();
-    await settle();
 
     expect(seen).toEqual(["Dark", "Light"]);
     dispose?.();
@@ -393,7 +391,6 @@ describe("createWasmRawCallbacks", () => {
       (error) => errors.push(error),
     );
 
-    await settle();
     await settle();
 
     expect(seen).toEqual(["Dark"]);
@@ -421,7 +418,6 @@ describe("createWasmRawCallbacks", () => {
       (error) => errors.push(error),
     );
 
-    await settle();
     await settle();
 
     expect(seen).toEqual(["Dark"]);
