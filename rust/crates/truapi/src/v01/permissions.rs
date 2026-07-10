@@ -31,8 +31,9 @@ pub enum HostDevicePermissionRequest {
 
 /// One remote-operation permission requested by the product (RFC 0002).
 ///
-/// `ChainSubmit`, `PreimageSubmit`, and `StatementSubmit` are also triggered
-/// implicitly by the corresponding business calls when not yet granted.
+/// `ChainSubmit`, `PreimageSubmit`, `StatementSubmit`, and `ContactSend` are
+/// also triggered implicitly by the corresponding business calls when not yet
+/// granted.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Display)]
 pub enum RemotePermission {
     /// Outbound HTTP/WebSocket access to a set of domains.
@@ -53,6 +54,9 @@ pub enum RemotePermission {
     /// Submitting statements on behalf of the user via `remote_statement_store_submit`.
     #[display("submit statements")]
     StatementSubmit,
+    /// Sending contact requests on behalf of the user via `host_contacts_send` (RFC 0022).
+    #[display("send contact requests")]
+    ContactSend,
 }
 
 /// remote-permission request (RFC 0002).

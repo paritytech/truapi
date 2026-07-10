@@ -12,6 +12,7 @@ use truapi::api::{
     Chain,
     Chat,
     CoinPayment,
+    Contacts,
     Entropy,
     LocalStorage,
     Notifications,
@@ -43,6 +44,7 @@ where
     register_chain(dispatcher, host.clone());
     register_chat(dispatcher, host.clone());
     register_coin_payment(dispatcher, host.clone());
+    register_contacts(dispatcher, host.clone());
     register_entropy(dispatcher, host.clone());
     register_local_storage(dispatcher, host.clone());
     register_notifications(dispatcher, host.clone());
@@ -991,6 +993,112 @@ where
                     }
                 };
                 Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentListenForItem, _>(stream))
+            })
+        });
+    }
+}
+
+fn register_contacts<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
+where
+    P: Contacts + Send + Sync + 'static,
+{
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::CONTACTS_RESOLVE, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::contacts::HostContactsResolveRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::contacts::HostContactsResolveError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::contacts::HostContactsResolveError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::contacts::HostContactsResolveResponse = match host.resolve(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::CONTACTS_DERIVE_SHARED_KEY, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::contacts::HostContactsDeriveSharedKeyRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::contacts::HostContactsDeriveSharedKeyError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::contacts::HostContactsDeriveSharedKeyError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::contacts::HostContactsDeriveSharedKeyResponse = match host.derive_shared_key(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::CONTACTS_SEND, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::contacts::HostContactsSendRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::contacts::HostContactsSendError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::contacts::HostContactsSendError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                match host.send(&cx, request).await {
+                    Ok(()) => Ok(encode_versioned_unit_ok_payload(target_version)),
+                    Err(err) => {
+                        Ok(encode_versioned_err_payload(err, target_version))
+                    }
+                }
+            })
+        });
+    }
+    {
+        let host = host;
+        dispatcher.on_subscription(wire_table::CONTACTS_SUBSCRIBE, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let _ = bytes;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.subscribe(&cx).await {
+                    Ok(sub) => sub,
+                    Err(err) => {
+                        return Err(encode_versioned_interrupt_payload(err, <versioned::contacts::HostContactsSubscribeError as Versioned>::LATEST));
+                    }
+                };
+                Ok(subscription_stream::<versioned::contacts::HostContactsSubscribeItem, _>(stream))
             })
         });
     }
