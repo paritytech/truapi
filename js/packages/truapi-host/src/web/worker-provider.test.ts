@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { ok } from "neverthrow";
+import { err, ok } from "neverthrow";
 
 import {
   HostPushNotificationRequest,
@@ -796,6 +796,44 @@ describe("createWebWorkerPairingHostRuntime", () => {
       kind: "subscriptionItem",
       subId: 4,
       value: new Uint8Array([1]),
+    });
+
+    provider.dispose();
+  });
+
+  it("propagates host subscription stream errors to the worker", async () => {
+    const worker = new FakeWorker();
+    const providerPromise = createProviderFromRuntime(
+      asWorker(worker),
+      makeHostCallbacks({
+        theme: {
+          subscribeTheme: async function* () {
+            yield err<ThemeVariant, GenericError>({
+              reason: "theme stream failed",
+            });
+          },
+        },
+      }),
+      { runtimeConfig: runtimeConfig() },
+    );
+    worker.emit({ kind: "loaded" });
+    worker.emit({ kind: "ready" });
+    const provider = await finishProviderReady(worker, providerPromise);
+
+    worker.emit({
+      kind: "subscriptionStart",
+      subId: 7,
+      name: "subscribeTheme",
+      payload: null,
+    });
+
+    await settle();
+    await settle();
+
+    expect(worker.messages.at(-1)).toEqual({
+      kind: "subscriptionError",
+      subId: 7,
+      error: "theme stream failed",
     });
 
     provider.dispose();

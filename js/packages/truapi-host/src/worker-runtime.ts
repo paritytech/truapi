@@ -9,6 +9,7 @@ import type {
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";
+import type { GenericError } from "@parity/truapi";
 import {
   createWorkerRawCallbacks,
   type CallbackName,
@@ -20,6 +21,12 @@ import {
   type PermissionAuthorizationRuntime,
 } from "./worker-permission-authorization.js";
 import { errorMessage } from "./error.js";
+import {
+  dispatchChainResponse,
+  dispatchSubscriptionError,
+  dispatchSubscriptionItem,
+  type SubscriptionListeners,
+} from "./worker-dispatch.js";
 
 interface WorkerProductRuntime {
   receiveFrame(frame: Uint8Array): Promise<void>;
@@ -86,7 +93,7 @@ let nextBulletinAllowanceSignerId = 0;
 const bulletinAllowanceSigners = new Map<number, BulletinAllowanceSigner>();
 
 let nextSubId = 0;
-const subscriptionItemListeners = new Map<number, (value: unknown) => void>();
+const subscriptionListeners = new Map<number, SubscriptionListeners>();
 
 let nextConnId = 0;
 type ChainConnectAck = { ok: true } | { ok: false; error: string };
@@ -137,12 +144,16 @@ function startSubscription<T>(
   name: SubscriptionName,
   payload: Uint8Array | null,
   sendItem: (value: T) => void,
+  sendError: (error: GenericError) => void,
 ): () => void {
   const subId = ++nextSubId;
-  subscriptionItemListeners.set(subId, sendItem as (value: unknown) => void);
+  subscriptionListeners.set(subId, {
+    sendItem: sendItem as (value: unknown) => void,
+    sendError: (error) => sendError({ reason: error }),
+  });
   postToMain({ kind: "subscriptionStart", subId, name, payload });
   return () => {
-    subscriptionItemListeners.delete(subId);
+    subscriptionListeners.delete(subId);
     postToMain({ kind: "subscriptionStop", subId });
   };
 }
@@ -353,8 +364,21 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       void handleSignBulletinAllowance(msg.requestId, msg.signerId, msg.input);
       break;
     case "subscriptionItem": {
-      const listener = subscriptionItemListeners.get(msg.subId);
-      if (listener) listener(msg.value);
+      dispatchSubscriptionItem(
+        msg.subId,
+        msg.value,
+        subscriptionListeners,
+        postToMain,
+      );
+      break;
+    }
+    case "subscriptionError": {
+      dispatchSubscriptionError(
+        msg.subId,
+        msg.error,
+        subscriptionListeners,
+        postToMain,
+      );
       break;
     }
     case "chainConnectAck": {
@@ -366,8 +390,12 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       break;
     }
     case "chainResponse": {
-      const listener = chainResponseListeners.get(msg.connId);
-      if (listener) listener(msg.json);
+      dispatchChainResponse(
+        msg.connId,
+        msg.json,
+        chainResponseListeners,
+        postToMain,
+      );
       break;
     }
     case "disposeCore":

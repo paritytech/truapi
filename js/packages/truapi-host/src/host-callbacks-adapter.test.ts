@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { ok } from "neverthrow";
+import { err, ok } from "neverthrow";
 
 import {
   HostDevicePermissionRequest,
@@ -370,6 +370,62 @@ describe("createWasmRawCallbacks", () => {
     await settle();
 
     expect(seen).toEqual(["Dark", "Light"]);
+    dispose?.();
+  });
+
+  it("propagates typed result subscription errors", async () => {
+    async function* themes() {
+      yield ok<ThemeVariant>("Dark");
+      yield err<ThemeVariant, GenericError>({ reason: "theme stream failed" });
+    }
+
+    const raw = createWasmRawCallbacks(
+      makeHostCallbacks({
+        theme: {
+          subscribeTheme: () => themes(),
+        },
+      }),
+    );
+    const seen: ThemeVariant[] = [];
+    const errors: GenericError[] = [];
+    const dispose = raw.subscribeTheme?.(
+      (theme) => seen.push(ThemeVariant.dec(theme!)),
+      (error) => errors.push(error),
+    );
+
+    await settle();
+    await settle();
+
+    expect(seen).toEqual(["Dark"]);
+    expect(errors).toEqual([{ reason: "theme stream failed" }]);
+    dispose?.();
+  });
+
+  it("propagates thrown subscription iterator errors", async () => {
+    async function* themes() {
+      yield ok<ThemeVariant>("Dark");
+      throw new Error("theme iterator failed");
+    }
+
+    const raw = createWasmRawCallbacks(
+      makeHostCallbacks({
+        theme: {
+          subscribeTheme: () => themes(),
+        },
+      }),
+    );
+    const seen: ThemeVariant[] = [];
+    const errors: GenericError[] = [];
+    const dispose = raw.subscribeTheme?.(
+      (theme) => seen.push(ThemeVariant.dec(theme!)),
+      (error) => errors.push(error),
+    );
+
+    await settle();
+    await settle();
+
+    expect(seen).toEqual(["Dark"]);
+    expect(errors).toEqual([{ reason: "theme iterator failed" }]);
     dispose?.();
   });
 

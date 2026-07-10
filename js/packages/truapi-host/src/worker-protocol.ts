@@ -91,6 +91,7 @@ export type MainToWorker =
       input: Uint8Array;
     }
   | { kind: "subscriptionItem"; subId: number; value: unknown }
+  | { kind: "subscriptionError"; subId: number; error: string }
   | { kind: "chainConnectAck"; connId: number; ok: true }
   | { kind: "chainConnectAck"; connId: number; ok: false; error: string }
   | { kind: "chainResponse"; connId: number; json: string }

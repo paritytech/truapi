@@ -159,7 +159,7 @@ describe("createIframeHost", () => {
         expect(contentPostMessage.mock.calls.length).toBe(1);
         const [body, origin] = contentPostMessage.mock.calls[0];
         expect(body).toEqual({ type: "truapi-init" });
-        expect(origin).toBe("*");
+        expect(origin).toBe("http://localhost:5174");
 
         // The handshake is idempotent across repeated ready events too.
         onMessage!({
@@ -170,12 +170,33 @@ describe("createIframeHost", () => {
         expect(contentPostMessage.mock.calls.length).toBe(1);
     });
 
-    it("accepts product-ready from a credentialless opaque origin", () => {
+    it("rejects opaque product-ready for the default same-origin sandbox", () => {
         const { contentPostMessage, windowListeners, contentWindow } = dom;
 
         createIframeHost({
             iframeUrl: "http://localhost:5174/",
             container: { appendChild: () => {} } as unknown as HTMLElement,
+            onPort: () => {},
+        });
+
+        const onMessage = windowListeners.get("message");
+        expect(onMessage).toBeTruthy();
+
+        onMessage!({
+            source: contentWindow,
+            origin: "null",
+            data: { type: "truapi-ready" },
+        });
+        expect(contentPostMessage.mock.calls.length).toBe(0);
+    });
+
+    it("accepts opaque product-ready only for an opaque sandbox", () => {
+        const { contentPostMessage, windowListeners, contentWindow } = dom;
+
+        createIframeHost({
+            iframeUrl: "http://localhost:5174/",
+            container: { appendChild: () => {} } as unknown as HTMLElement,
+            sandbox: "allow-forms allow-scripts",
             onPort: () => {},
         });
 
