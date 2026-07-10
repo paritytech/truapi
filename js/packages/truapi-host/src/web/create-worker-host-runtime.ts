@@ -7,6 +7,7 @@ import type {
   RequiredHostCallbacks,
   TrUApiProductProvider,
 } from "../index.js";
+import type { GenericError } from "@parity/truapi";
 import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec } from "../generated/host-callbacks.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
 import type { RawCallbacks } from "../generated/host-callbacks-adapter.js";
@@ -252,6 +253,14 @@ function handleSubscriptionStart(
       value,
     } satisfies MainToWorker);
   };
+  const sendError = (error: GenericError): void => {
+    if (state.disposed) return;
+    state.worker.postMessage({
+      kind: "subscriptionError",
+      subId: msg.subId,
+      error: error.reason,
+    } satisfies MainToWorker);
+  };
   let dispose: (() => void) | void = undefined;
   try {
     dispose = startRawSubscription(
@@ -259,6 +268,7 @@ function handleSubscriptionStart(
       msg.name,
       msg.payload,
       sendItem,
+      sendError,
     );
   } catch (err) {
     console.error(`[truapi worker] ${msg.name} threw on start:`, err);

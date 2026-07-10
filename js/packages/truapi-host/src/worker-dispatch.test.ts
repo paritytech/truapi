@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   dispatchChainResponse,
+  dispatchSubscriptionError,
   dispatchSubscriptionItem,
 } from "./worker-dispatch.js";
 import type { WorkerToMain } from "./worker-protocol.js";
@@ -9,11 +10,14 @@ import type { WorkerToMain } from "./worker-protocol.js";
 describe("worker dispatch guards", () => {
   it("stops a subscription when its WASM listener throws", () => {
     const messages: WorkerToMain[] = [];
-    const listeners = new Map<number, (value: unknown) => void>([
+    const listeners = new Map([
       [
         7,
-        () => {
-          throw new Error("panic");
+        {
+          sendItem() {
+            throw new Error("panic");
+          },
+          sendError() {},
         },
       ],
     ]);
@@ -29,6 +33,29 @@ describe("worker dispatch guards", () => {
       { kind: "subscriptionStop", subId: 7 },
       { kind: "disposeError", error: "subscription 7 callback failed: panic" },
     ]);
+  });
+
+  it("forwards subscription stream errors to the WASM listener", () => {
+    const messages: WorkerToMain[] = [];
+    const errors: string[] = [];
+    const listeners = new Map([
+      [
+        8,
+        {
+          sendItem() {},
+          sendError(error: string) {
+            errors.push(error);
+          },
+        },
+      ],
+    ]);
+
+    dispatchSubscriptionError(8, "stream failed", listeners, (msg) =>
+      messages.push(msg),
+    );
+
+    expect(errors).toEqual(["stream failed"]);
+    expect(messages).toEqual([]);
   });
 
   it("closes a chain connection when its WASM listener throws", () => {

@@ -17,6 +17,7 @@ import {
   ThemeVariant,
 } from "@parity/truapi";
 import type {
+  GenericError,
   NotificationId,
 } from "@parity/truapi";
 import {
@@ -50,11 +51,11 @@ export interface RawCallbacks {
   devicePermission(request: Uint8Array): Promise<Uint8Array>;
   remotePermission(request: Uint8Array): Promise<Uint8Array>;
   submitPreimage(value: Uint8Array, bulletinAllowanceSigner: BulletinAllowanceSigner): Promise<Uint8Array>;
-  lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
+  lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
   read(key: string): Promise<Uint8Array | null | undefined>;
   write(key: string, value: Uint8Array): Promise<void>;
   clear(key: string): Promise<void>;
-  subscribeTheme(sendItem: (item?: Uint8Array) => void): (() => void) | void;
+  subscribeTheme(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
   confirmUserAction(review: Uint8Array): Promise<boolean>;
 }
 /** Adapt typed host callbacks into the raw SCALE callback surface the
@@ -75,11 +76,11 @@ export function createWasmRawCallbacks(
     devicePermission: async (request) => HostDevicePermissionResponse.enc(await callbacks.permissions.devicePermission(HostDevicePermissionRequest.dec(request))),
     remotePermission: async (request) => RemotePermissionResponse.enc(await callbacks.permissions.remotePermission(RemotePermissionRequest.dec(request))),
     submitPreimage: async (value, bulletinAllowanceSigner) => await callbacks.preimage.submitPreimage(value, bulletinAllowanceSigner),
-    lookupPreimage: (key, sendItem) => driveResultStream(callbacks.preimage.lookupPreimage(key), sendItem),
+    lookupPreimage: (key, sendItem, sendError) => driveResultStream(callbacks.preimage.lookupPreimage(key), sendItem, sendError),
     read: async (key) => await callbacks.productStorage.read(key),
     write: async (key, value) => await callbacks.productStorage.write(key, value),
     clear: async (key) => await callbacks.productStorage.clear(key),
-    subscribeTheme: (sendItem) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(ThemeVariant.enc(item))),
+    subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(ThemeVariant.enc(item)), sendError),
     confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
   };
 }

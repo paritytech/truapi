@@ -9,6 +9,7 @@ import type {
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";
+import type { GenericError } from "@parity/truapi";
 import {
   createWorkerRawCallbacks,
   type CallbackName,
@@ -22,7 +23,9 @@ import {
 import { errorMessage } from "./error.js";
 import {
   dispatchChainResponse,
+  dispatchSubscriptionError,
   dispatchSubscriptionItem,
+  type SubscriptionListeners,
 } from "./worker-dispatch.js";
 
 interface WorkerProductRuntime {
@@ -90,7 +93,7 @@ let nextBulletinAllowanceSignerId = 0;
 const bulletinAllowanceSigners = new Map<number, BulletinAllowanceSigner>();
 
 let nextSubId = 0;
-const subscriptionItemListeners = new Map<number, (value: unknown) => void>();
+const subscriptionListeners = new Map<number, SubscriptionListeners>();
 
 let nextConnId = 0;
 type ChainConnectAck = { ok: true } | { ok: false; error: string };
@@ -141,12 +144,16 @@ function startSubscription<T>(
   name: SubscriptionName,
   payload: Uint8Array | null,
   sendItem: (value: T) => void,
+  sendError: (error: GenericError) => void,
 ): () => void {
   const subId = ++nextSubId;
-  subscriptionItemListeners.set(subId, sendItem as (value: unknown) => void);
+  subscriptionListeners.set(subId, {
+    sendItem: sendItem as (value: unknown) => void,
+    sendError: (error) => sendError({ reason: error }),
+  });
   postToMain({ kind: "subscriptionStart", subId, name, payload });
   return () => {
-    subscriptionItemListeners.delete(subId);
+    subscriptionListeners.delete(subId);
     postToMain({ kind: "subscriptionStop", subId });
   };
 }
@@ -360,7 +367,16 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       dispatchSubscriptionItem(
         msg.subId,
         msg.value,
-        subscriptionItemListeners,
+        subscriptionListeners,
+        postToMain,
+      );
+      break;
+    }
+    case "subscriptionError": {
+      dispatchSubscriptionError(
+        msg.subId,
+        msg.error,
+        subscriptionListeners,
         postToMain,
       );
       break;
