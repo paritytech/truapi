@@ -122,7 +122,15 @@ fn prettier_generated(workspace_root: &Path, files: &[PathBuf]) {
 
     let mut command = Command::new("npm");
     command
-        .args(["exec", "--", "prettier", "--write", "--config"])
+        .args([
+            "exec",
+            "--yes",
+            "--package=prettier@3.8.3",
+            "--",
+            "prettier",
+            "--write",
+            "--config",
+        ])
         .arg(workspace_root.join(".prettierrc"));
     for file in files {
         command.arg(file);
