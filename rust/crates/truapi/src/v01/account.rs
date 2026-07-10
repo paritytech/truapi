@@ -142,6 +142,19 @@ pub enum HostAccountCreateProofError {
     Unknown { reason: String },
 }
 
+/// Error returned when contextual alias derivation fails.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostAccountGetAliasError {
+    /// Ring not available at the specified location.
+    RingNotFound,
+    /// The selected member key is not a member of the requested ring.
+    NotMember,
+    /// User or host rejected.
+    Rejected,
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
 /// Request to retrieve a product-scoped account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetRequest {

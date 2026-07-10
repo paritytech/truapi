@@ -89,7 +89,7 @@ fn host_account_create_proof(context: ProductProofContext, ring: RingLocation, m
     -> Result<RingVrfProof, CreateProofErr>;
 
 fn host_account_get_alias(context: ProductProofContext, ring: RingLocation)
-    -> Result<ContextualAlias, RequestCredentialsErr>;
+    -> Result<ContextualAlias, GetAliasErr>;
 ```
 
 `ring_index` / `ring_revision` let products call downstream precompiles without a separate lookup. `contextual_alias` is an ergonomics optimization — the same value `get_alias` returns for the same `(context, ring)` — saving a round trip when a caller needs both proof and alias (e.g. a voting contract keying votes by alias). The host MUST select the member key identically in both methods so the two aliases match.
@@ -107,8 +107,11 @@ The host may hold multiple member keys; the API exposes neither the keys nor the
 
 ### Errors
 
+`create_proof` and `get_alias` take the same `(context, ring)` and perform the same ring resolution and member-key selection, so they share the same failure modes and carry identical error sets:
+
 ```rust
 enum CreateProofErr { RingNotFound, NotMember, Rejected, Unknown }
+enum GetAliasErr    { RingNotFound, NotMember, Rejected, Unknown }
 ```
 
 `NotMember` is returned when the selected member key is not a member of the requested ring — most importantly when the user has not yet reached full personhood — letting products distinguish it from `RingNotFound` and route to onboarding.
@@ -149,7 +152,7 @@ fn get_account_alias(
     calling_product_id: ProductId,
     context: ProductProofContext,
     ring: RingLocation,
-) -> Result<ContextualAlias, RequestCredentialsErr>;
+) -> Result<ContextualAlias, GetAliasErr>;
 ```
 
 The two boundaries are kept as distinct method sets so they can evolve independently, even though they currently share request/response shapes.
