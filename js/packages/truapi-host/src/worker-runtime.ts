@@ -20,6 +20,10 @@ import {
   type PermissionAuthorizationRuntime,
 } from "./worker-permission-authorization.js";
 import { errorMessage } from "./error.js";
+import {
+  dispatchChainResponse,
+  dispatchSubscriptionItem,
+} from "./worker-dispatch.js";
 
 interface WorkerProductRuntime {
   receiveFrame(frame: Uint8Array): Promise<void>;
@@ -353,8 +357,12 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       void handleSignBulletinAllowance(msg.requestId, msg.signerId, msg.input);
       break;
     case "subscriptionItem": {
-      const listener = subscriptionItemListeners.get(msg.subId);
-      if (listener) listener(msg.value);
+      dispatchSubscriptionItem(
+        msg.subId,
+        msg.value,
+        subscriptionItemListeners,
+        postToMain,
+      );
       break;
     }
     case "chainConnectAck": {
@@ -366,8 +374,12 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       break;
     }
     case "chainResponse": {
-      const listener = chainResponseListeners.get(msg.connId);
-      if (listener) listener(msg.json);
+      dispatchChainResponse(
+        msg.connId,
+        msg.json,
+        chainResponseListeners,
+        postToMain,
+      );
       break;
     }
     case "disposeCore":
