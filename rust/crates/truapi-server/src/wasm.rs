@@ -143,6 +143,7 @@ impl ChainProvider for WasmPlatform {
 struct JsSubscriptionStream<T> {
     rx: mpsc::UnboundedReceiver<T>,
     _send_item: SendWrapper<Closure<dyn FnMut(JsValue)>>,
+    _send_error: SendWrapper<Closure<dyn FnMut(JsValue)>>,
     dispose: Option<SendWrapper<Function>>,
 }
 
@@ -171,17 +172,30 @@ where
     T: Send + 'static,
 {
     let (tx, rx) = mpsc::unbounded::<Result<T, v01::GenericError>>();
+    let item_tx = tx.clone();
     let send_item = Closure::wrap(Box::new(move |value: JsValue| {
         let item = parse_item(value).map_err(generic);
-        let _ = tx.unbounded_send(item);
+        let _ = item_tx.unbounded_send(item);
+    }) as Box<dyn FnMut(JsValue)>);
+    let send_error = Closure::wrap(Box::new(move |value: JsValue| {
+        let _ = tx.unbounded_send(Err(parse_generic_error(value)));
     }) as Box<dyn FnMut(JsValue)>);
 
     let call_result = match payload {
         Some(payload) => {
             let arg = Uint8Array::from(payload.as_slice());
-            fn_.call2(&JsValue::NULL, &arg, send_item.as_ref().unchecked_ref())
+            fn_.call3(
+                &JsValue::NULL,
+                &arg,
+                send_item.as_ref().unchecked_ref(),
+                send_error.as_ref().unchecked_ref(),
+            )
         }
-        None => fn_.call1(&JsValue::NULL, send_item.as_ref().unchecked_ref()),
+        None => fn_.call2(
+            &JsValue::NULL,
+            send_item.as_ref().unchecked_ref(),
+            send_error.as_ref().unchecked_ref(),
+        ),
     };
 
     let dispose = match call_result {
@@ -204,6 +218,7 @@ where
     Box::pin(JsSubscriptionStream {
         rx,
         _send_item: SendWrapper::new(send_item),
+        _send_error: SendWrapper::new(send_error),
         dispose,
     })
 }
@@ -258,6 +273,18 @@ impl Drop for JsCallbackJsonRpcConnection {
 
 fn generic(reason: String) -> v01::GenericError {
     v01::GenericError { reason }
+}
+
+fn parse_generic_error(value: JsValue) -> v01::GenericError {
+    if let Some(reason) = value.as_string() {
+        return generic(reason);
+    }
+    if let Ok(reason) = Reflect::get(&value, &JsValue::from_str("reason")) {
+        if let Some(reason) = reason.as_string() {
+            return generic(reason);
+        }
+    }
+    generic(js_to_string(value))
 }
 
 /// Await the JS callback's return value if it's a Promise; pass other
