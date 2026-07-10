@@ -29,12 +29,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Resolve target packages
         id: version
@@ -50,11 +57,14 @@ jobs:
             path="${entry#* }"
             version="$(jq -r '.version' "${path}/package.json")"
             tag="${name}@${version}"
-            if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
-              echo "Tag ${tag} already exists; skipping ${name}."
-            else
+            if npm_status="$(npm view "${tag}" version --registry=https://registry.npmjs.org 2>&1)"; then
+              echo "Package ${tag} already exists on npm; skipping ${name}."
+            elif grep -Eq 'E404|404 Not Found' <<< "${npm_status}"; then
               echo "Publishing ${tag}."
               echo "${name}|${path}|${version}|${tag}" >> "${pending}"
+            else
+              echo "${npm_status}" >&2
+              exit 1
             fi
           done
           if [ -s "${pending}" ]; then
@@ -82,12 +92,6 @@ jobs:
       - if: steps.version.outputs.proceed == 'true'
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
-      - if: steps.version.outputs.proceed == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-
       - name: Install dependencies
         if: steps.version.outputs.proceed == 'true'
         run: npm ci
@@ -105,19 +109,6 @@ jobs:
             npm run build --prefix js/packages/truapi-host
             npm run build:wasm --prefix js/packages/truapi-host
           fi
-        env:
-          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
-
-      - name: Tag release
-        if: steps.version.outputs.proceed == 'true'
-        run: |
-          set -euo pipefail
-          tags=()
-          while IFS='|' read -r name path version tag; do
-            git tag "${tag}"
-            tags+=("${tag}")
-          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
-          git push origin "${tags[@]}"
         env:
           STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
 
@@ -139,6 +130,12 @@ jobs:
           name: package
           path: artifacts/*.tgz
 
+      - name: Attest package artifacts
+        if: steps.version.outputs.proceed == 'true'
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: artifacts/*.tgz
+
       - name: Publish via npm_publish_automation
         if: steps.version.outputs.proceed == 'true'
         uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae # v3.0.0
@@ -148,6 +145,29 @@ jobs:
           inputs: '${{ format(''{{ "repo": "{0}", "run_id": "{1}" }}'', github.repository, github.run_id) }}'
         env:
           GITHUB_TOKEN: ${{ secrets.NPM_PUBLISH_AUTOMATION_TOKEN }}
+
+      - name: Create release tags
+        if: steps.version.outputs.proceed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
+        run: |
+          set -euo pipefail
+          auth_header="AUTHORIZATION: bearer ${GITHUB_TOKEN}"
+          push_refs=()
+          while IFS='|' read -r name path version tag; do
+            if git -c http.extraheader="${auth_header}" ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+              echo "Tag ${tag} already exists; skipping create."
+              continue
+            fi
+            git tag --force "${tag}" "${RELEASE_SHA}"
+            push_refs+=("refs/tags/${tag}:refs/tags/${tag}")
+          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
+
+          if [ "${#push_refs[@]}" -gt 0 ]; then
+            git -c http.extraheader="${auth_header}" push origin "${push_refs[@]}"
+          fi
 
       - name: Create GitHub Release
         if: steps.version.outputs.proceed == 'true'
@@ -159,8 +179,12 @@ jobs:
           while IFS='|' read -r name path version tag; do
             tarball_name="${name#@}"
             tarball_name="${tarball_name//\//-}-${version}.tgz"
-            gh release create "${tag}" \
-              --title "${name} ${version}" \
-              --generate-notes \
-              "artifacts/${tarball_name}"
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              gh release upload "${tag}" "artifacts/${tarball_name}" --clobber
+            else
+              gh release create "${tag}" \
+                --title "${name} ${version}" \
+                --generate-notes \
+                "artifacts/${tarball_name}"
+            fi
           done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
