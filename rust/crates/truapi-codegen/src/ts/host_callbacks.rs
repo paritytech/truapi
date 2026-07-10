@@ -226,6 +226,7 @@ fn emit_wasm_adapter(
                 }
                 PlatformInner::Stream(item) => {
                     support_imports.insert("driveResultStream".to_string());
+                    extra_types.insert("GenericError".to_string());
                     collect_codec_imports(stream_item(item), codec_types, &mut imports);
                     collect_local_codec_names(
                         stream_item(item),
@@ -358,6 +359,7 @@ fn emit_worker_callbacks(
         // subscription payload shape derived from `truapi-platform`.
 
         import type {{ RawCallbacks }} from "./host-callbacks-adapter.js";
+        import type {{ GenericError }} from "@parity/truapi";
 
         "#
     )
@@ -402,6 +404,7 @@ fn emit_worker_callbacks(
     out.push_str("    name: SubscriptionName,\n");
     out.push_str("    payload: Uint8Array | null,\n");
     out.push_str("    sendItem: (value: T) => void,\n");
+    out.push_str("    sendError: (error: GenericError) => void,\n");
     out.push_str("  ): () => void;\n");
     for (trait_def, method) in &trait_object_callbacks {
         writeln!(
@@ -451,6 +454,7 @@ fn emit_worker_callbacks(
           name: SubscriptionName,
           payload: Uint8Array | null,
           sendItem: (value?: unknown) => void,
+          sendError: (error: GenericError) => void,
         ): (() => void) | void {{
         "#
     )
@@ -566,11 +570,11 @@ fn emit_worker_subscription_factory(methods: &[&PlatformMethod]) -> Result<Strin
         let payload_param = worker_subscription_payload_param(method)?;
         if let Some(param) = payload_param {
             out.push_str(&format!(
-                "    {raw}: ({param}, sendItem) =>\n      bridge.startSubscription(\"{raw}\", {param}, sendItem),\n"
+                "    {raw}: ({param}, sendItem, sendError) =>\n      bridge.startSubscription(\"{raw}\", {param}, sendItem, sendError),\n"
             ));
         } else {
             out.push_str(&format!(
-                "    {raw}: (sendItem) =>\n      bridge.startSubscription(\"{raw}\", null, sendItem),\n"
+                "    {raw}: (sendItem, sendError) =>\n      bridge.startSubscription(\"{raw}\", null, sendItem, sendError),\n"
             ));
         }
     }
@@ -586,11 +590,11 @@ fn emit_start_raw_subscription_switch(methods: &[&PlatformMethod]) -> Result<Str
         let raw = raw_callback_name(method);
         if worker_subscription_payload_param(method)?.is_some() {
             out.push_str(&format!(
-                "    case \"{raw}\":\n      if (payload === null) {{\n        console.warn(`[truapi worker] ${{name}} requires payload`);\n        return undefined;\n      }}\n      return callbacks.{raw}(payload, sendItem);\n"
+                "    case \"{raw}\":\n      if (payload === null) {{\n        console.warn(`[truapi worker] ${{name}} requires payload`);\n        return undefined;\n      }}\n      return callbacks.{raw}(payload, sendItem, sendError);\n"
             ));
         } else {
             out.push_str(&format!(
-                "    case \"{raw}\":\n      return callbacks.{raw}(sendItem);\n"
+                "    case \"{raw}\":\n      return callbacks.{raw}(sendItem, sendError);\n"
             ));
         }
     }
@@ -687,6 +691,7 @@ fn raw_member(
                 })
                 .collect();
             params.push("sendItem: (item?: Uint8Array) => void".to_string());
+            params.push("sendError: (error: GenericError) => void".to_string());
             format!("{name}({}): (() => void) | void;", params.join(", "))
         }
         _ if trait_object_return_name(method, platform_trait_names).is_some() => {
@@ -1068,10 +1073,11 @@ fn adapter_stream_impl(
         .map(|p| to_camel_case(&p.name))
         .collect();
     names.push("sendItem".to_string());
+    names.push("sendError".to_string());
     let params = names.join(", ");
     let call = format!("{host_method}({args})");
     Ok(format!(
-        "({params}) => driveResultStream({call}, {item_expr})"
+        "({params}) => driveResultStream({call}, {item_expr}, sendError)"
     ))
 }
 

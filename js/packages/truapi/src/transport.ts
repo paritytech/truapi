@@ -201,12 +201,11 @@ export interface SubscribeRawParams {
  **/
 export interface TrUApiTransport {
   /**
-   * Highest TrUAPI protocol version supported by this generated client.
-   **/
-  readonly truapiVersion: number;
-
-  /**
-   * SCALE codec version negotiated through the handshake.
+   * SCALE codec version used by generated handshake calls.
+   *
+   * @deprecated TODO(shared-core-wire): remove this public transport field once
+   * generated handshake requests read `TRUAPI_CODEC_VERSION` directly instead
+   * of going through transport state.
    **/
   readonly codecVersion: number;
 
