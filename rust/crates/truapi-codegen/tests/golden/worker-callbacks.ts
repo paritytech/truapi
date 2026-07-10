@@ -6,6 +6,7 @@
 // subscription payload shape derived from `truapi-platform`.
 
 import type { RawCallbacks } from "./host-callbacks-adapter.js";
+import type { GenericError } from "@parity/truapi";
 
 import type { BulletinAllowanceSigner } from "./host-callbacks.js";
 
@@ -50,6 +51,7 @@ export interface WorkerCallbackBridge {
     name: SubscriptionName,
     payload: Uint8Array | null,
     sendItem: (value: T) => void,
+    sendError: (error: GenericError) => void,
   ): () => void;
   chainConnect: ChainConnect;
 }
@@ -91,10 +93,10 @@ function rawCallbacks(bridge: WorkerCallbackBridge): Required<Pick<RawCallbacks,
 
 function subscriptionRawCallbacks(bridge: WorkerCallbackBridge): Required<Pick<RawCallbacks, SubscriptionName>> {
   return {
-    lookupPreimage: (key, sendItem) =>
-      bridge.startSubscription("lookupPreimage", key, sendItem),
-    subscribeTheme: (sendItem) =>
-      bridge.startSubscription("subscribeTheme", null, sendItem),
+    lookupPreimage: (key, sendItem, sendError) =>
+      bridge.startSubscription("lookupPreimage", key, sendItem, sendError),
+    subscribeTheme: (sendItem, sendError) =>
+      bridge.startSubscription("subscribeTheme", null, sendItem, sendError),
   };
 }
 
@@ -114,6 +116,7 @@ export function startRawSubscription(
   name: SubscriptionName,
   payload: Uint8Array | null,
   sendItem: (value?: unknown) => void,
+  sendError: (error: GenericError) => void,
 ): (() => void) | void {
   switch (name) {
     case "lookupPreimage":
@@ -121,8 +124,8 @@ export function startRawSubscription(
         console.warn(`[truapi worker] ${name} requires payload`);
         return undefined;
       }
-      return callbacks.lookupPreimage(payload, sendItem);
+      return callbacks.lookupPreimage(payload, sendItem, sendError);
     case "subscribeTheme":
-      return callbacks.subscribeTheme(sendItem);
+      return callbacks.subscribeTheme(sendItem, sendError);
   }
 }
