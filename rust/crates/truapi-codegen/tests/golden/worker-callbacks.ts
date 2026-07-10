@@ -15,9 +15,7 @@ export interface WorkerBulletinAllowanceSigner {
   signerId: number;
 }
 
-import type {
-  ChainConnect,
-} from "../runtime.js";
+import type { ChainConnect } from "../runtime.js";
 
 export const CALLBACK_NAMES = [
   "authStateChanged",
@@ -36,17 +34,19 @@ export const CALLBACK_NAMES = [
   "clear",
   "confirmUserAction",
 ] as const;
-export type CallbackName = typeof CALLBACK_NAMES[number];
+export type CallbackName = (typeof CALLBACK_NAMES)[number];
 
-export const SUBSCRIPTION_NAMES = [
-  "lookupPreimage",
-  "subscribeTheme",
-] as const;
-export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];
+export const SUBSCRIPTION_NAMES = ["lookupPreimage", "subscribeTheme"] as const;
+export type SubscriptionName = (typeof SUBSCRIPTION_NAMES)[number];
 
 export interface WorkerCallbackBridge {
-  callbackRequest(name: CallbackName, args: readonly unknown[]): Promise<unknown>;
-  registerBulletinAllowanceSigner(signer: BulletinAllowanceSigner): WorkerBulletinAllowanceSigner;
+  callbackRequest(
+    name: CallbackName,
+    args: readonly unknown[],
+  ): Promise<unknown>;
+  registerBulletinAllowanceSigner(
+    signer: BulletinAllowanceSigner,
+  ): WorkerBulletinAllowanceSigner;
   startSubscription<T>(
     name: SubscriptionName,
     payload: Uint8Array | null,
@@ -56,42 +56,73 @@ export interface WorkerCallbackBridge {
   chainConnect: ChainConnect;
 }
 
-function rawCallbacks(bridge: WorkerCallbackBridge): Required<Pick<RawCallbacks, CallbackName>> {
+function rawCallbacks(
+  bridge: WorkerCallbackBridge,
+): Required<Pick<RawCallbacks, CallbackName>> {
   return {
     authStateChanged: (state) =>
       void bridge.callbackRequest("authStateChanged", [state]).catch(() => {}),
     readCoreStorage: (key) =>
-      bridge.callbackRequest("readCoreStorage", [key]) as ReturnType<RawCallbacks["readCoreStorage"]>,
+      bridge.callbackRequest("readCoreStorage", [key]) as ReturnType<
+        RawCallbacks["readCoreStorage"]
+      >,
     writeCoreStorage: (key, value) =>
-      bridge.callbackRequest("writeCoreStorage", [key, value]) as ReturnType<RawCallbacks["writeCoreStorage"]>,
+      bridge.callbackRequest("writeCoreStorage", [key, value]) as ReturnType<
+        RawCallbacks["writeCoreStorage"]
+      >,
     clearCoreStorage: (key) =>
-      bridge.callbackRequest("clearCoreStorage", [key]) as ReturnType<RawCallbacks["clearCoreStorage"]>,
+      bridge.callbackRequest("clearCoreStorage", [key]) as ReturnType<
+        RawCallbacks["clearCoreStorage"]
+      >,
     featureSupported: (request) =>
-      bridge.callbackRequest("featureSupported", [request]) as ReturnType<RawCallbacks["featureSupported"]>,
+      bridge.callbackRequest("featureSupported", [request]) as ReturnType<
+        RawCallbacks["featureSupported"]
+      >,
     navigateTo: (url) =>
-      bridge.callbackRequest("navigateTo", [url]) as ReturnType<RawCallbacks["navigateTo"]>,
+      bridge.callbackRequest("navigateTo", [url]) as ReturnType<
+        RawCallbacks["navigateTo"]
+      >,
     pushNotification: (notification) =>
-      bridge.callbackRequest("pushNotification", [notification]) as ReturnType<RawCallbacks["pushNotification"]>,
+      bridge.callbackRequest("pushNotification", [notification]) as ReturnType<
+        RawCallbacks["pushNotification"]
+      >,
     cancelNotification: (id) =>
-      bridge.callbackRequest("cancelNotification", [id]) as ReturnType<RawCallbacks["cancelNotification"]>,
+      bridge.callbackRequest("cancelNotification", [id]) as ReturnType<
+        RawCallbacks["cancelNotification"]
+      >,
     devicePermission: (request) =>
-      bridge.callbackRequest("devicePermission", [request]) as ReturnType<RawCallbacks["devicePermission"]>,
+      bridge.callbackRequest("devicePermission", [request]) as ReturnType<
+        RawCallbacks["devicePermission"]
+      >,
     remotePermission: (request) =>
-      bridge.callbackRequest("remotePermission", [request]) as ReturnType<RawCallbacks["remotePermission"]>,
+      bridge.callbackRequest("remotePermission", [request]) as ReturnType<
+        RawCallbacks["remotePermission"]
+      >,
     submitPreimage: (value, bulletinAllowanceSigner) =>
-      bridge.callbackRequest("submitPreimage", [value, bridge.registerBulletinAllowanceSigner(bulletinAllowanceSigner)]) as ReturnType<RawCallbacks["submitPreimage"]>,
+      bridge.callbackRequest("submitPreimage", [
+        value,
+        bridge.registerBulletinAllowanceSigner(bulletinAllowanceSigner),
+      ]) as ReturnType<RawCallbacks["submitPreimage"]>,
     read: (key) =>
       bridge.callbackRequest("read", [key]) as ReturnType<RawCallbacks["read"]>,
     write: (key, value) =>
-      bridge.callbackRequest("write", [key, value]) as ReturnType<RawCallbacks["write"]>,
+      bridge.callbackRequest("write", [key, value]) as ReturnType<
+        RawCallbacks["write"]
+      >,
     clear: (key) =>
-      bridge.callbackRequest("clear", [key]) as ReturnType<RawCallbacks["clear"]>,
+      bridge.callbackRequest("clear", [key]) as ReturnType<
+        RawCallbacks["clear"]
+      >,
     confirmUserAction: (review) =>
-      bridge.callbackRequest("confirmUserAction", [review]) as ReturnType<RawCallbacks["confirmUserAction"]>,
+      bridge.callbackRequest("confirmUserAction", [review]) as ReturnType<
+        RawCallbacks["confirmUserAction"]
+      >,
   };
 }
 
-function subscriptionRawCallbacks(bridge: WorkerCallbackBridge): Required<Pick<RawCallbacks, SubscriptionName>> {
+function subscriptionRawCallbacks(
+  bridge: WorkerCallbackBridge,
+): Required<Pick<RawCallbacks, SubscriptionName>> {
   return {
     lookupPreimage: (key, sendItem, sendError) =>
       bridge.startSubscription("lookupPreimage", key, sendItem, sendError),

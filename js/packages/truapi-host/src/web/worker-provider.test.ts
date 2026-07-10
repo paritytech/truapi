@@ -799,17 +799,6 @@ describe("createWebWorkerPairingHostRuntime", () => {
 
   it("propagates host subscription stream errors to the worker", async () => {
     const worker = new FakeWorker();
-    let resolveSubscriptionError!: (message: WorkerMessage) => void;
-    const subscriptionErrorSeen = new Promise<WorkerMessage>((resolve) => {
-      resolveSubscriptionError = resolve;
-    });
-    const postMessage = worker.postMessage.bind(worker);
-    worker.postMessage = (message) => {
-      postMessage(message);
-      if (message.kind === "subscriptionError") {
-        resolveSubscriptionError(message);
-      }
-    };
     const providerPromise = createProviderFromRuntime(
       asWorker(worker),
       makeHostCallbacks({
@@ -836,7 +825,7 @@ describe("createWebWorkerPairingHostRuntime", () => {
 
     await settle();
 
-    expect(await subscriptionErrorSeen).toEqual({
+    expect(worker.messages.at(-1)).toEqual({
       kind: "subscriptionError",
       subId: 7,
       error: "theme stream failed",

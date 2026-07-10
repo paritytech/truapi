@@ -386,22 +386,14 @@ describe("createWasmRawCallbacks", () => {
     );
     const seen: ThemeVariant[] = [];
     const errors: GenericError[] = [];
-    let resolveError!: (error: GenericError) => void;
-    const errorSeen = new Promise<GenericError>((resolve) => {
-      resolveError = resolve;
-    });
     const dispose = raw.subscribeTheme?.(
       (theme) => seen.push(ThemeVariant.dec(theme!)),
-      (error) => {
-        errors.push(error);
-        resolveError(error);
-      },
+      (error) => errors.push(error),
     );
 
     await settle();
 
     expect(seen).toEqual(["Dark"]);
-    expect(await errorSeen).toEqual({ reason: "theme stream failed" });
     expect(errors).toEqual([{ reason: "theme stream failed" }]);
     dispose?.();
   });
@@ -421,22 +413,14 @@ describe("createWasmRawCallbacks", () => {
     );
     const seen: ThemeVariant[] = [];
     const errors: GenericError[] = [];
-    let resolveError!: (error: GenericError) => void;
-    const errorSeen = new Promise<GenericError>((resolve) => {
-      resolveError = resolve;
-    });
     const dispose = raw.subscribeTheme?.(
       (theme) => seen.push(ThemeVariant.dec(theme!)),
-      (error) => {
-        errors.push(error);
-        resolveError(error);
-      },
+      (error) => errors.push(error),
     );
 
     await settle();
 
     expect(seen).toEqual(["Dark"]);
-    expect(await errorSeen).toEqual({ reason: "theme iterator failed" });
     expect(errors).toEqual([{ reason: "theme iterator failed" }]);
     dispose?.();
   });

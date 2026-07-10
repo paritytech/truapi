@@ -6,7 +6,7 @@ name: Release
 # guarded by conclusion == success and a release: commit subject, and checks
 # out the pinned head_sha with persist-credentials: false. No untrusted PR code
 # ever runs in this privileged context.
-on:  # zizmor: ignore[dangerous-triggers]
+on: # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -36,19 +38,45 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
-      - name: Resolve target version
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Resolve target packages
         id: version
         run: |
-          version=$(jq -r '.version' js/packages/truapi/package.json)
-          tag="@parity/truapi@${version}"
-          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
-            echo "Tag ${tag} already exists; nothing to publish."
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Publishing ${tag}."
+          set -euo pipefail
+          packages=(
+            "@parity/truapi js/packages/truapi"
+            "@parity/truapi-host js/packages/truapi-host"
+          )
+          pending="$(mktemp)"
+          for entry in "${packages[@]}"; do
+            name="${entry%% *}"
+            path="${entry#* }"
+            version="$(jq -r '.version' "${path}/package.json")"
+            tag="${name}@${version}"
+            if npm_status="$(npm view "${tag}" version --registry=https://registry.npmjs.org 2>&1)"; then
+              echo "Package ${tag} already exists on npm; skipping ${name}."
+            elif grep -Eq 'E404|404 Not Found' <<< "${npm_status}"; then
+              echo "Publishing ${tag}."
+              echo "${name}|${path}|${version}|${tag}" >> "${pending}"
+            else
+              echo "${npm_status}" >&2
+              exit 1
+            fi
+          done
+          if [ -s "${pending}" ]; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
-            echo "version=${version}" >> "$GITHUB_OUTPUT"
-            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+            {
+              echo "packages<<EOF"
+              cat "${pending}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "No unpublished package tags found."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - if: steps.version.outputs.proceed == 'true'
@@ -64,35 +92,36 @@ jobs:
       - if: steps.version.outputs.proceed == 'true'
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
-      - if: steps.version.outputs.proceed == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-
       - name: Install dependencies
         if: steps.version.outputs.proceed == 'true'
         run: npm ci
 
-      - name: Build @parity/truapi
-        if: steps.version.outputs.proceed == 'true'
-        run: ./scripts/codegen.sh
+      - name: Install wasm-pack
+        if: steps.version.outputs.proceed == 'true' && contains(steps.version.outputs.packages, '@parity/truapi-host|')
+        run: cargo install wasm-pack --version 0.14.0 --locked
 
-      - name: Tag release
+      - name: Build packages
         if: steps.version.outputs.proceed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh api repos/${{ github.repository }}/git/refs \
-            -f ref="refs/tags/${STEPS_VERSION_OUTPUTS_TAG}" \
-            -f sha="${{ github.event.workflow_run.head_sha }}"
+          set -euo pipefail
+          ./scripts/codegen.sh
+          if grep -q '^@parity/truapi-host|' <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"; then
+            npm run build --prefix js/packages/truapi-host
+            npm run build:wasm --prefix js/packages/truapi-host
+          fi
+        env:
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
 
       - name: Pack package
         if: steps.version.outputs.proceed == 'true'
         run: |
+          set -euo pipefail
           mkdir -p artifacts
-          (cd js/packages/truapi && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/")
+          while IFS='|' read -r name path version tag; do
+            (cd "${path}" && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/")
+          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
+        env:
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
 
       - name: Upload package artifacts
         if: steps.version.outputs.proceed == 'true'
@@ -100,6 +129,12 @@ jobs:
         with:
           name: package
           path: artifacts/*.tgz
+
+      - name: Attest package artifacts
+        if: steps.version.outputs.proceed == 'true'
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: artifacts/*.tgz
 
       - name: Publish via npm_publish_automation
         if: steps.version.outputs.proceed == 'true'
@@ -111,14 +146,45 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.NPM_PUBLISH_AUTOMATION_TOKEN }}
 
+      - name: Create release tags
+        if: steps.version.outputs.proceed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
+        run: |
+          set -euo pipefail
+          auth_header="AUTHORIZATION: bearer ${GITHUB_TOKEN}"
+          push_refs=()
+          while IFS='|' read -r name path version tag; do
+            if git -c http.extraheader="${auth_header}" ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+              echo "Tag ${tag} already exists; skipping create."
+              continue
+            fi
+            git tag --force "${tag}" "${RELEASE_SHA}"
+            push_refs+=("refs/tags/${tag}:refs/tags/${tag}")
+          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
+
+          if [ "${#push_refs[@]}" -gt 0 ]; then
+            git -c http.extraheader="${auth_header}" push origin "${push_refs[@]}"
+          fi
+
       - name: Create GitHub Release
         if: steps.version.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
-          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
         run: |
-          gh release create "${STEPS_VERSION_OUTPUTS_TAG}" \
-            --title "@parity/truapi ${STEPS_VERSION_OUTPUTS_VERSION}" \
-            --generate-notes \
-            artifacts/*.tgz
+          set -euo pipefail
+          while IFS='|' read -r name path version tag; do
+            tarball_name="${name#@}"
+            tarball_name="${tarball_name//\//-}-${version}.tgz"
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              gh release upload "${tag}" "artifacts/${tarball_name}" --clobber
+            else
+              gh release create "${tag}" \
+                --title "${name} ${version}" \
+                --generate-notes \
+                "artifacts/${tarball_name}"
+            fi
+          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
