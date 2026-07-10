@@ -88,7 +88,7 @@ pub trait Account: Send + Sync {
     ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     junctions: [{ tag: "PalletInstance", value: 42 }],
     ///   },
-    ///   message: "0x",
+    ///   message: "0x48656c6c6f",
     /// });
     /// assert(result.isOk(), "createAccountProof failed:", result);
     /// console.log("account proof created:", result.value);

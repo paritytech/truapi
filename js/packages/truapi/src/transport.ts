@@ -1,3 +1,4 @@
+import { concatBytes } from "@noble/hashes/utils.js";
 import { err, ok, type Result, type ResultAsync } from "neverthrow";
 
 import { str, u8, type ResultPayload } from "./scale.js";
@@ -221,7 +222,7 @@ export interface TrUApiTransport {
 
   /**
    * Tear down the transport and release the listeners it registered on the
-   * underlying `Provider`. Pending requests reject and live subscriptions
+   * underlying `WireProvider`. Pending requests reject and live subscriptions
    * receive `onClose`. Idempotent.
    *
    * The provider itself is left alone; the caller decides whether to also
@@ -262,9 +263,11 @@ export interface ProtocolMessage {
 }
 
 /**
- * Raw message pipe abstraction used by the transport.
+ * Raw SCALE-wire-frame pipe abstraction used by the transport. A `WireProvider`
+ * is the low-level channel (a `MessagePort` or iframe `postMessage` link) that
+ * carries encoded frames between the product and the host.
  **/
-export interface Provider {
+export interface WireProvider {
   /**
    * Send a complete SCALE-encoded wire frame to the peer.
    **/
@@ -277,6 +280,10 @@ export interface Provider {
 
   /**
    * Register a callback for provider-level close or failure events.
+   *
+   * Providers keep a terminal close reason. The callback fires at most once
+   * for an active subscription, and fires immediately when registered after
+   * the provider has already closed.
    **/
   subscribeClose?(callback: (error: Error) => void): () => void;
 
@@ -284,21 +291,6 @@ export interface Provider {
    * Release provider resources and close the underlying pipe.
    **/
   dispose(): void;
-}
-
-/**
- * Concatenate byte arrays without mutating the source arrays.
- **/
-function concatBytes(parts: Uint8Array[]): Uint8Array {
-  let total = 0;
-  for (const p of parts) total += p.length;
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const p of parts) {
-    out.set(p, off);
-    off += p.length;
-  }
-  return out;
 }
 
 /**
@@ -312,11 +304,7 @@ export function encodeWireMessage(
     return err(new Error(`Invalid wire discriminant: ${id}`));
   }
   return ok(
-    concatBytes([
-      str.enc(message.requestId),
-      u8.enc(id),
-      message.payload.value,
-    ]),
+    concatBytes(str.enc(message.requestId), u8.enc(id), message.payload.value),
   );
 }
 
@@ -392,7 +380,7 @@ function scanStrEnd(bytes: Uint8Array): Result<number, Error> {
 
 /**
  * Internal listener bookkeeping and close-once state machine shared by the
- * built-in `Provider` implementations. Transport-specific code wires its
+ * built-in `WireProvider` implementations. Transport-specific code wires its
  * inbound source to `deliver`, registers cleanup via `onClose`, and exposes
  * `subscribe`/`subscribeClose` to callers.
  **/
@@ -480,7 +468,7 @@ function createBaseProvider() {
 export function createIframeProvider(options: {
   target: Window;
   hostOrigin: string;
-}): Provider {
+}): WireProvider {
   const base = createBaseProvider();
   const { target, hostOrigin } = options;
 
@@ -517,7 +505,7 @@ export function createIframeProvider(options: {
  **/
 export function createMessagePortProvider(
   port: MessagePort | Promise<MessagePort>,
-): Provider {
+): WireProvider {
   const base = createBaseProvider();
   let resolvedPort: MessagePort | null = null;
   const pending: Uint8Array[] = [];

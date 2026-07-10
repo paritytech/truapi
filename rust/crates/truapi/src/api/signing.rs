@@ -20,18 +20,19 @@ pub trait Signing: Send + Sync {
     /// Construct a signed transaction for a product account.
     ///
     /// ```ts
-    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
     ///
-    /// const result = await truapi.signing.createTransaction({
+    /// const payload = await buildCreateTransactionPayload({
     ///   signer: {
     ///     dotNsIdentifier: "truapi-playground.dot",
     ///     derivationIndex: 0,
     ///   },
-    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///   callData: "0x0000",
-    ///   extensions: [],
-    ///   txExtVersion: 0,
+    ///   genesisHash: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
+    ///   callData: "0x000000",
     /// });
+    /// assert(payload.isOk(), "buildCreateTransactionPayload failed:", payload);
+    ///
+    /// const result = await truapi.signing.createTransaction(payload.value);
     /// assert(result.isOk(), "createTransaction failed:", result);
     /// console.log("transaction created:", result.value);
     /// ```
@@ -47,18 +48,27 @@ pub trait Signing: Send + Sync {
     /// Construct a signed transaction for a non-product (legacy) account.
     ///
     /// ```ts
-    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
     ///
-    /// const signerResult = await accountIdForDotNsUsername();
-    /// assert(signerResult.isOk(), "accountIdForDotNsUsername failed:", signerResult);
-    /// console.log("fetched user account:", signerResult.value);
+    /// const accountsResult = await truapi.account.getLegacyAccounts();
+    /// assert(accountsResult.isOk(), "getLegacyAccounts failed:", accountsResult);
+    /// const legacyAccount = accountsResult.value.accounts[0];
+    /// assert(legacyAccount, "no legacy accounts available");
+    /// console.log("selected legacy account:", legacyAccount);
+    ///
+    /// const payload = await buildCreateTransactionPayload({
+    ///   signer: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   genesisHash: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
+    ///   callData: "0x000000",
+    /// });
+    /// assert(payload.isOk(), "buildCreateTransactionPayload failed:", payload);
     ///
     /// const result = await truapi.signing.createTransactionWithLegacyAccount({
-    ///   signer: signerResult.value,
-    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///   callData: "0x0000",
-    ///   extensions: [],
-    ///   txExtVersion: 0,
+    ///   ...payload.value,
+    ///   signer: legacyAccount.publicKey,
     /// });
     /// assert(result.isOk(), "createTransactionWithLegacyAccount failed:", result);
     /// console.log("transaction created:", result.value);
@@ -78,8 +88,13 @@ pub trait Signing: Send + Sync {
     /// Sign raw bytes with a non-product account.
     ///
     /// ```ts
+    /// const accountsResult = await truapi.account.getLegacyAccounts();
+    /// assert(accountsResult.isOk(), "getLegacyAccounts failed:", accountsResult);
+    /// const legacyAccount = accountsResult.value.accounts[0];
+    /// assert(legacyAccount, "no legacy accounts available");
+    ///
     /// const result = await truapi.signing.signRawWithLegacyAccount({
-    ///   signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    ///   signer: legacyAccount.publicKey,
     ///   payload: {
     ///     tag: "Bytes",
     ///     value: { bytes: "0x48656c6c6f" },
@@ -103,8 +118,13 @@ pub trait Signing: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
+    /// const accountsResult = await truapi.account.getLegacyAccounts();
+    /// assert(accountsResult.isOk(), "getLegacyAccounts failed:", accountsResult);
+    /// const legacyAccount = accountsResult.value.accounts[0];
+    /// assert(legacyAccount, "no legacy accounts available");
+    ///
     /// const result = await truapi.signing.signPayloadWithLegacyAccount({
-    ///   signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    ///   signer: legacyAccount.publicKey,
     ///   payload: {
     ///     blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     blockNumber: "0x00000000",

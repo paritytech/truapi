@@ -68,6 +68,38 @@ sub.unsubscribe();
 - **TrUAPI transport** that handles request, response, subscription, and handshake framing.
 - **Generated domain clients and types** produced from the Rust API contract.
 - **SCALE codec helpers** used by the generated code, also re-exported for direct use.
+- **Sandbox bootstrap** (`@parity/truapi/sandbox`) that detects the host environment, builds the
+  matching provider, and exposes a cached client — see below.
+
+## Sandbox bootstrap
+
+`@parity/truapi/sandbox` wires up a client for browser-embedded hosts: it detects whether the app
+runs inside a TrUAPI host (iframe or webview), builds the matching provider, and caches the
+resulting client. Use it instead of assembling `createTransport` / `createClient` by hand.
+
+```ts
+import {
+  getClientSync,
+  isCorrectEnvironment,
+  subscribeConnectionStatus,
+} from "@parity/truapi/sandbox";
+
+const client = getClientSync(); // null outside a host container
+if (client) {
+  // …make host calls
+}
+
+// Or drive UI off connection status:
+const unsubscribe = subscribeConnectionStatus((status) => {
+  // "disconnected" | "connected"
+});
+```
+
+| Export                                      | Purpose                                         |
+| ------------------------------------------- | ----------------------------------------------- |
+| `isCorrectEnvironment(): boolean`           | Synchronous host-environment detection.         |
+| `getClientSync(): TrUApiClient \| null`     | Cached client; `null` outside a host container. |
+| `subscribeConnectionStatus(cb): () => void` | Connected / disconnected status listener.       |
 
 ## Wire format
 
@@ -95,7 +127,7 @@ npm run build
 npm test
 ```
 
-On a clean checkout, the first build or test run will generate the ignored TypeScript outputs from the Rust sources, so Rust stable + nightly must be installed locally. `npm test` runs the package's smoke tests under [bun](https://bun.sh/), so bun must also be installed (`curl -fsSL https://bun.sh/install | bash`). The tests load the source `.ts` files directly without a build step.
+On a clean checkout, the first build or test run will generate the ignored TypeScript outputs from the Rust sources, so Rust stable + nightly must be installed locally. `npm test` runs the package's [`bun test`](https://bun.sh/docs/cli/test) suite (`src/**/*.test.ts`) directly against the source `.ts` files (no build step), so [bun](https://bun.sh/) must also be installed.
 
 ## License
 

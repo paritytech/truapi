@@ -2,8 +2,10 @@ import { transform } from "sucrase";
 import type { Subscription, TrUApiClient } from "@parity/truapi";
 import {
   createAccountIdForDotNsUsername,
+  createBuildCreateTransactionPayload,
   createWithChainHeadFollow,
   type AccountIdForDotNsUsername,
+  type BuildCreateTransactionPayload,
   type WithChainHeadFollow,
 } from "./example-helpers";
 
@@ -39,14 +41,14 @@ function exampleAssert(
 // Drop any `@parity/truapi` import that does not name value specifiers (e.g.
 // bare type-only imports left over after sucrase). Named value imports are
 // rewritten by `TRUAPI_NAMED_IMPORT_RE` below.
-const IMPORT_RE = /^\s*import\s+(?!\{)[^;]*?from\s+["']@parity\/truapi["'];?\s*$/gm;
+const IMPORT_RE =
+  /^\s*import\s+(?!\{)[^;]*?from\s+["']@parity\/truapi["'];?\s*$/gm;
 // `import { PASEO_NEXT_V2_ASSET_HUB, ... } from "@parity/truapi"`
 //   → `const { PASEO_NEXT_V2_ASSET_HUB, ... } = __truapi;`
 const TRUAPI_NAMED_IMPORT_RE =
   /^\s*import\s*(\{[^}]*\})\s*from\s+["']@parity\/truapi["'];?\s*$/gm;
 // `import { from, take, ... } from "rxjs"` → `const { from, take, ... } = __rxjs;`
-const RXJS_IMPORT_RE =
-  /^\s*import\s*(\{[^}]*\})\s*from\s+["']rxjs["'];?\s*$/gm;
+const RXJS_IMPORT_RE = /^\s*import\s*(\{[^}]*\})\s*from\s+["']rxjs["'];?\s*$/gm;
 const EXPORT_RE =
   /^(\s*)export\s+(async\s+function|function|const|let|var|class)\b/gm;
 
@@ -58,14 +60,16 @@ type ConsoleShim = {
   warn: (...args: unknown[]) => void;
 };
 
-const AsyncFunction = Object.getPrototypeOf(
-  async function () {},
-).constructor as new (...args: string[]) => (
+const AsyncFunction = Object.getPrototypeOf(async function () {})
+  .constructor as new (
+  ...args: string[]
+) => (
   truapi: unknown,
   __console: ConsoleShim,
   __rxjs: unknown,
   withChainHeadFollow: WithChainHeadFollow,
   accountIdForDotNsUsername: AccountIdForDotNsUsername,
+  buildCreateTransactionPayload: BuildCreateTransactionPayload,
   __truapi: unknown,
   assert: typeof exampleAssert,
 ) => Promise<unknown>;
@@ -82,11 +86,10 @@ export async function runExample(opts: {
   client: TrUApiClient;
   onLog: (entry: LogEntry) => void;
 }): Promise<RunResult> {
-  const { source, client, onLog } = opts;
-
+  const { client, onLog } = opts;
   let js: string;
   try {
-    js = transform(source, { transforms: ["typescript"] }).code;
+    js = transform(opts.source, { transforms: ["typescript"] }).code;
   } catch (err) {
     throw new ExampleSyntaxError(
       err instanceof Error ? err.message : String(err),
@@ -106,6 +109,7 @@ export async function runExample(opts: {
     rxjs: unknown,
     withChainHeadFollow: WithChainHeadFollow,
     accountIdForDotNsUsername: AccountIdForDotNsUsername,
+    buildCreateTransactionPayload: BuildCreateTransactionPayload,
     truapiPkg: unknown,
     assert: typeof exampleAssert,
   ) => Promise<unknown>;
@@ -116,6 +120,7 @@ export async function runExample(opts: {
       "__rxjs",
       "withChainHeadFollow",
       "accountIdForDotNsUsername",
+      "buildCreateTransactionPayload",
       "__truapi",
       "assert",
       body,
@@ -148,8 +153,13 @@ export async function runExample(opts: {
   };
 
   const [rxjs, truapiPkg] = await Promise.all([getRxjs(), getTruapiPkg()]);
-  const withChainHeadFollow = createWithChainHeadFollow(trackingClient as TrUApiClient);
+  const withChainHeadFollow = createWithChainHeadFollow(
+    trackingClient as TrUApiClient,
+  );
   const accountIdForDotNsUsername = createAccountIdForDotNsUsername(
+    trackingClient as TrUApiClient,
+  );
+  const buildCreateTransactionPayload = createBuildCreateTransactionPayload(
     trackingClient as TrUApiClient,
   );
   const promise = run(
@@ -158,6 +168,7 @@ export async function runExample(opts: {
     rxjs,
     withChainHeadFollow,
     accountIdForDotNsUsername,
+    buildCreateTransactionPayload,
     truapiPkg,
     exampleAssert,
   );
@@ -182,17 +193,17 @@ function createTrackingClient(
   });
 }
 
-function wrapService(
-  svc: object,
-  onSub: (sub: Subscription) => void,
-): unknown {
+function wrapService(svc: object, onSub: (sub: Subscription) => void): unknown {
   return new Proxy(svc as Record<string, unknown>, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
       if (typeof value !== "function") return value;
       return (...args: unknown[]) => {
         const out = (value as (...a: unknown[]) => unknown).apply(target, args);
-        if (out && typeof (out as { subscribe?: unknown }).subscribe === "function") {
+        if (
+          out &&
+          typeof (out as { subscribe?: unknown }).subscribe === "function"
+        ) {
           return wrapObservable(out as ObservableLike, onSub);
         }
         return out;

@@ -12,7 +12,7 @@ export async function openPlaygroundInDotli(page: Page): Promise<FrameLocator> {
   // dotli renders an additional hidden iframe (host.localhost:5173?mode=direct)
   // alongside the proxied playground; scope to the playground src so the
   // FrameLocator is unique under Playwright strict mode.
-  const frame = page.frameLocator('iframe[src="http://localhost:3000"]');
+  const frame = page.frameLocator('iframe[src^="http://localhost:3000"]');
   // The playground renders the masthead once mounted; the status chip is
   // there from the first render in either splash or shell mode.
   await expect(frame.locator(".status")).toBeVisible({ timeout: 30_000 });

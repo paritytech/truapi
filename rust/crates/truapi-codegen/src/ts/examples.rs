@@ -45,6 +45,12 @@ declare global {
   }): Observable<ChainHeadCtx>;
   /** Resolve a DotNS username to the owning raw AccountId32 hex string. Defaults to truapi.account.getUserId(). */
   function accountIdForDotNsUsername(username?: string): Promise<import("neverthrow").Result<`0x${string}`, Error>>;
+  /** Build a metadata-backed product-account transaction payload for `truapi.signing.createTransaction`. */
+  function buildCreateTransactionPayload(opts: {
+    signer: import("@parity/truapi").ProductAccountId;
+    genesisHash: `0x${string}`;
+    callData: `0x${string}`;
+  }): Promise<import("neverthrow").Result<import("@parity/truapi").ProductAccountTxPayload, Error>>;
   /**
    * Assert a condition, throwing when it does not hold. Examples signal
    * failure explicitly with `assert(...)`; the playground's diagnosis marks
