@@ -5,17 +5,17 @@
 //! takes raw preimage bytes plus a [`BulletinAllowanceKey`], never
 //! caller-supplied call data.
 
-use parity_scale_codec::{Compact, Decode, Encode};
+use parity_scale_codec::{Compact, Encode};
+use subxt::client::{ClientAtBlock, OfflineClientAtBlockT};
 use subxt::config::DefaultExtrinsicParamsBuilder;
 use subxt::config::substrate::SubstrateConfig;
-use subxt::ext::frame_decode::storage::encode_storage_key_prefix;
 use subxt::ext::scale_encode::{self, EncodeAsFields, FieldIter, TypeResolver};
 use subxt::ext::scale_type_resolver::{Primitive, visitor};
-use subxt::tx::StaticPayload;
+use subxt::tx::{StaticPayload, SubmittableTransaction};
 use subxt::utils::H256;
 use truapi_platform::BulletinAllowanceKey;
 
-use crate::host_logic::extrinsic::{OfflineChainState, Sr25519Signer};
+use crate::host_logic::extrinsic::Sr25519Signer;
 
 pub(crate) const STORE_PALLET_NAME: &str = "TransactionStorage";
 pub(crate) const STORE_CALL_NAME: &str = "store";
@@ -31,12 +31,7 @@ pub(crate) fn preimage_key(value: &[u8]) -> [u8; 32] {
     sp_crypto_hashing::blake2_256(value)
 }
 
-/// Storage key of the plain `System.Events` value.
-pub(crate) fn system_events_storage_key() -> Vec<u8> {
-    encode_storage_key_prefix("System", "Events").to_vec()
-}
-
-/// Finalized block the transaction's mortality is anchored at.
+/// Block the transaction's mortality is anchored at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MortalityAnchor {
     /// Anchor block number (era birth block).
@@ -45,61 +40,44 @@ pub(crate) struct MortalityAnchor {
     pub(crate) hash: [u8; 32],
 }
 
-/// A signed `TransactionStorage.store` extrinsic ready to broadcast.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SignedStoreExtrinsic {
-    /// Full length-prefixed extrinsic bytes.
-    pub(crate) extrinsic: Vec<u8>,
-    /// blake2b-256 of the extrinsic bytes, used for inclusion matching.
-    pub(crate) extrinsic_hash: [u8; 32],
-    /// Public key of the allowance account that signed.
-    pub(crate) account: [u8; 32],
-}
-
-/// Build and sign a `TransactionStorage.store { data }` extrinsic with the
-/// Bulletin allowance key.
-pub(crate) fn build_signed_store_extrinsic(
-    state: &OfflineChainState,
+/// Build and sign a `TransactionStorage.store { data }` transaction with the
+/// Bulletin allowance signer against the client's block. The anchor must be
+/// the block the client is at, so the mortal era and the dry-run block agree.
+pub(crate) fn build_signed_store_transaction<C: OfflineClientAtBlockT<SubstrateConfig>>(
+    client: &ClientAtBlock<SubstrateConfig, C>,
     anchor: &MortalityAnchor,
-    allowance: &BulletinAllowanceKey,
+    signer: &Sr25519Signer,
     nonce: u64,
     data: &[u8],
-) -> Result<SignedStoreExtrinsic, String> {
-    if !state.metadata.extrinsic().supported_versions().contains(&4) {
+) -> Result<SubmittableTransaction<SubstrateConfig, C>, String> {
+    if !client
+        .metadata_ref()
+        .extrinsic()
+        .supported_versions()
+        .contains(&4)
+    {
         return Err(format!(
             "bulletin runtime no longer supports v4 extrinsics (supported: {:?})",
-            state.metadata.extrinsic().supported_versions()
+            client.metadata_ref().extrinsic().supported_versions()
         ));
     }
-
-    let signer = allowance_signer(allowance)?;
-    let account = signer.public_key();
-    let client = state.client_at(anchor.number)?;
 
     let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(data));
     let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
         .nonce(nonce)
         .mortal_from_unchecked(MORTAL_PERIOD_BLOCKS, anchor.number, H256(anchor.hash))
         .build();
-    let extrinsic = client
+    client
         .tx()
         .create_v4_signable_offline(&payload, params)
         .map_err(|err| format!("store transaction assembly failed: {err}"))?
-        .sign(&signer)
-        .map_err(|err| format!("store transaction signing failed: {err}"))?
-        .into_encoded();
-
-    let extrinsic_hash = sp_crypto_hashing::blake2_256(&extrinsic);
-    Ok(SignedStoreExtrinsic {
-        extrinsic,
-        extrinsic_hash,
-        account,
-    })
+        .sign(signer)
+        .map_err(|err| format!("store transaction signing failed: {err}"))
 }
 
 /// The only [`BulletinAllowanceKey`] -> signer conversion in the crate. The
 /// returned signer is a transient per-call value; callers must not store it.
-fn allowance_signer(allowance: &BulletinAllowanceKey) -> Result<Sr25519Signer, String> {
+pub(crate) fn allowance_signer(allowance: &BulletinAllowanceKey) -> Result<Sr25519Signer, String> {
     Sr25519Signer::from_secret_bytes(allowance.as_secret_bytes())
         .map_err(|reason| format!("invalid bulletin allowance key: {reason}"))
 }
@@ -164,19 +142,10 @@ fn require_u8_sequence<R: TypeResolver>(
     Ok(())
 }
 
-/// Return `true` when raw `store.data` field bytes hash to `key`.
-pub(crate) fn store_data_field_matches_key(field_bytes: &[u8], key: &[u8; 32]) -> bool {
-    let mut input = field_bytes;
-    let Ok(Compact(len)) = Compact::<u32>::decode(&mut input) else {
-        return false;
-    };
-    input.len() == len as usize && preimage_key(input) == *key
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_logic::extrinsic::tests::{bulletin_chain_state, split_v4};
+    use crate::host_logic::extrinsic::tests::{OfflineChainState, bulletin_chain_state, split_v4};
     use crate::host_logic::product_account::SR25519_SIGNING_CONTEXT;
     use parity_scale_codec::Decode;
     use schnorrkel::{PublicKey, Signature};
@@ -190,6 +159,10 @@ mod tests {
         )
         .unwrap();
         BulletinAllowanceKey::from_secret_bytes(secret).unwrap()
+    }
+
+    fn signer_fixture() -> Sr25519Signer {
+        allowance_signer(&allowance_fixture()).unwrap()
     }
 
     fn anchor_fixture() -> MortalityAnchor {
@@ -246,28 +219,16 @@ mod tests {
     }
 
     #[test]
-    fn system_events_storage_key_is_pinned() {
-        assert_eq!(
-            hex::encode(system_events_storage_key()),
-            "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7"
-        );
-    }
-
-    #[test]
     fn builds_and_signs_store_extrinsic_against_fixture() {
         let state = bulletin_chain_state();
         let data = b"hello bulletin".to_vec();
+        let client = state.client_at(anchor_fixture().number).unwrap();
         let signed =
-            build_signed_store_extrinsic(&state, &anchor_fixture(), &allowance_fixture(), 7, &data)
+            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 7, &data)
                 .unwrap();
 
-        assert_eq!(
-            signed.extrinsic_hash,
-            sp_crypto_hashing::blake2_256(&signed.extrinsic)
-        );
-        let (account, signature, tail) = split_v4(&signed.extrinsic);
-        assert_eq!(account, signed.account);
-        let client = state.client_at(anchor_fixture().number).unwrap();
+        let (account, signature, tail) = split_v4(signed.encoded());
+        assert_eq!(account, signer_fixture().public_key());
         let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(&data));
         let call_data = client.tx().call_data(&payload).unwrap();
         assert!(tail.ends_with(&call_data));
@@ -303,15 +264,13 @@ mod tests {
     #[test]
     fn genesis_hash_binds_the_signature() {
         let data = b"pinned to one chain".to_vec();
-        let signed = build_signed_store_extrinsic(
-            &bulletin_chain_state(),
-            &anchor_fixture(),
-            &allowance_fixture(),
-            0,
-            &data,
-        )
-        .unwrap();
-        let (account, signature, _) = split_v4(&signed.extrinsic);
+        let client = bulletin_chain_state()
+            .client_at(anchor_fixture().number)
+            .unwrap();
+        let signed =
+            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &data)
+                .unwrap();
+        let (account, signature, _) = split_v4(signed.encoded());
 
         let mutated_state = OfflineChainState {
             genesis_hash: [0xcc; 32],
@@ -378,10 +337,11 @@ mod tests {
         store.fields[0].ty = u32_type;
 
         let state = state_with_metadata(metadata_from_v14(metadata));
-        let error = build_signed_store_extrinsic(
-            &state,
+        let client = state.client_at(anchor_fixture().number).unwrap();
+        let error = build_signed_store_transaction(
+            &client,
             &anchor_fixture(),
-            &allowance_fixture(),
+            &signer_fixture(),
             0,
             &[1, 2, 3],
         )
@@ -397,8 +357,9 @@ mod tests {
         metadata.extrinsic.signed_extensions.push(fake);
 
         let state = state_with_metadata(metadata_from_v14(metadata));
+        let client = state.client_at(anchor_fixture().number).unwrap();
         let error =
-            build_signed_store_extrinsic(&state, &anchor_fixture(), &allowance_fixture(), 0, &[1])
+            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &[1])
                 .unwrap_err();
         assert!(error.contains("FakeImplicitExt"), "{error}");
     }
@@ -411,8 +372,9 @@ mod tests {
         metadata.extrinsic.signed_extensions.push(fake);
 
         let state = state_with_metadata(metadata_from_v14(metadata));
+        let client = state.client_at(anchor_fixture().number).unwrap();
         let error =
-            build_signed_store_extrinsic(&state, &anchor_fixture(), &allowance_fixture(), 0, &[1])
+            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &[1])
                 .unwrap_err();
         assert!(error.contains("FakeValueExt"), "{error}");
     }
@@ -431,20 +393,24 @@ mod tests {
         metadata.extrinsic.signed_extensions.push(fake);
 
         let state = state_with_metadata(metadata_from_v14(metadata));
-        let baseline = build_signed_store_extrinsic(
-            &bulletin_chain_state(),
+        let baseline_client = bulletin_chain_state()
+            .client_at(anchor_fixture().number)
+            .unwrap();
+        let baseline = build_signed_store_transaction(
+            &baseline_client,
             &anchor_fixture(),
-            &allowance_fixture(),
+            &signer_fixture(),
             0,
             &[1],
         )
         .unwrap();
+        let client = state.client_at(anchor_fixture().number).unwrap();
         let with_fake =
-            build_signed_store_extrinsic(&state, &anchor_fixture(), &allowance_fixture(), 0, &[1])
+            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &[1])
                 .unwrap();
         assert_eq!(
-            with_fake.extrinsic.len(),
-            baseline.extrinsic.len() + 1,
+            with_fake.encoded().len(),
+            baseline.encoded().len() + 1,
             "the Option-typed extra should contribute exactly one None byte"
         );
     }
@@ -456,17 +422,15 @@ mod tests {
         // A generous bound catches an O(n^2)/per-byte-visitor regression
         // without being flaky under CI load.
         let data = vec![0x5au8; 8 * 1024 * 1024];
+        let client = bulletin_chain_state()
+            .client_at(anchor_fixture().number)
+            .unwrap();
         let start = std::time::Instant::now();
-        let signed = build_signed_store_extrinsic(
-            &bulletin_chain_state(),
-            &anchor_fixture(),
-            &allowance_fixture(),
-            0,
-            &data,
-        )
-        .unwrap();
+        let signed =
+            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &data)
+                .unwrap();
         let elapsed = start.elapsed();
-        assert!(signed.extrinsic.len() > data.len());
+        assert!(signed.encoded().len() > data.len());
         assert!(
             elapsed < std::time::Duration::from_secs(5),
             "building an 8 MiB store extrinsic took {elapsed:?}"
@@ -474,30 +438,10 @@ mod tests {
     }
 
     #[test]
-    fn store_field_match_hashes_without_allocating_value() {
-        let value = b"hello bulletin";
-        let key = preimage_key(value);
-        let mut field = Compact(value.len() as u32).encode();
-        field.extend_from_slice(value);
-
-        assert!(store_data_field_matches_key(&field, &key));
-        assert!(!store_data_field_matches_key(&field, &[1; 32]));
-        assert!(!store_data_field_matches_key(
-            &field[..field.len() - 1],
-            &key
-        ));
-    }
-
-    #[test]
     fn rejects_secret_of_wrong_shape() {
-        let error = build_signed_store_extrinsic(
-            &bulletin_chain_state(),
-            &anchor_fixture(),
-            &BulletinAllowanceKey::from_secret_bytes(vec![0xff; 64]).unwrap(),
-            0,
-            &[1],
-        )
-        .unwrap_err();
+        let error =
+            allowance_signer(&BulletinAllowanceKey::from_secret_bytes(vec![0xff; 64]).unwrap())
+                .unwrap_err();
         assert!(error.contains("invalid bulletin allowance key"), "{error}");
     }
 }

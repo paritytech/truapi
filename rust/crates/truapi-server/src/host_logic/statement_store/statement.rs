@@ -1,5 +1,5 @@
 use parity_scale_codec::{Compact, Decode, Encode};
-use schnorrkel::{PublicKey, SecretKey, Signature};
+use schnorrkel::{PublicKey, Signature};
 use truapi::v01;
 
 use super::StatementStoreParseError;
@@ -176,7 +176,8 @@ pub fn sign_statement_fields(
     }
     fields.sort_by_key(statement_field_sort_index);
 
-    let secret = statement_secret_key_from_bytes(ss_secret)?;
+    let secret = sr25519_secret_from_bytes(&ss_secret)
+        .map_err(|reason| format!("invalid ss_secret: {reason}"))?;
     let public = secret.to_public();
     if public.to_bytes() != expected_public_key {
         return Err("ss_secret does not match session statement public key".to_string());
@@ -198,15 +199,9 @@ pub fn sign_statement_fields(
 
 /// Derive the sr25519 public key for a 64-byte statement-store secret.
 pub fn statement_public_key_from_secret(ss_secret: [u8; 64]) -> Result<[u8; 32], String> {
-    let secret = statement_secret_key_from_bytes(ss_secret)?;
+    let secret = sr25519_secret_from_bytes(&ss_secret)
+        .map_err(|reason| format!("invalid ss_secret: {reason}"))?;
     Ok(secret.to_public().to_bytes())
-}
-
-fn statement_secret_key_from_bytes(ss_secret: [u8; 64]) -> Result<SecretKey, String> {
-    // Rust-generated session keys use schnorrkel's canonical scalar bytes.
-    // Legacy JS signers may send scure/ed25519-style scalar bytes instead;
-    // the shared parser keeps the fallback.
-    sr25519_secret_from_bytes(&ss_secret).map_err(|reason| format!("invalid ss_secret: {reason}"))
 }
 
 /// Build the statement proof payload for unsigned fields.

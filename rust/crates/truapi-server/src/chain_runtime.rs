@@ -7,6 +7,11 @@
 //! This module keeps the TrUAPI-facing local follow ids and maps subxt DTOs to
 //! public v01 [`RemoteChainHeadFollowItem`] values.
 //!
+//! Each connection also lazily caches one genesis-pinned Subxt
+//! [`OnlineClient`] + [`ChainHeadBackend`] pair over the same transport;
+//! internal services (Bulletin submission, identity lookups) use it instead
+//! of hand-rolling chainHead orchestration.
+//!
 //! The chain-side traits return [`RuntimeFailure`], a local classification
 //! that the [`crate::runtime`] layer maps to [`truapi::CallError`] variants
 //! (`Unsupported`, `HostFailure`, ...). This avoids leaking json-rpc plumbing
@@ -18,21 +23,20 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Duration;
-#[cfg(target_arch = "wasm32")]
-use web_time::Duration;
 
 use futures::FutureExt;
 use futures::channel::mpsc;
 use futures::future::{AbortHandle, Abortable};
 use futures::future::{BoxFuture, Shared};
 use futures::stream::BoxStream;
-use futures::{Stream, StreamExt, pin_mut};
+use futures::{Stream, StreamExt};
 use parity_scale_codec::{Decode, Error as ScaleError, Input};
 use primitive_types::H256;
 use serde::de::{Deserializer, Error as DeError};
 use serde_json::Value;
+use subxt::OnlineClient;
+use subxt::backend::ChainHeadBackend;
+use subxt::config::substrate::{SubstrateConfig, SubstrateConfigBuilder};
 use subxt_rpcs::client::RpcClient;
 use subxt_rpcs::methods::chain_head as subxt_chain;
 use subxt_rpcs::{ChainHeadRpcMethods, Error as SubxtRpcError, RpcConfig};
@@ -96,6 +100,21 @@ type FollowSetup = Shared<BoxFuture<'static, Result<String, RuntimeFailure>>>;
 /// first connections for the same chain await one in-flight `connect` rather
 /// than each opening a connection and orphaning all but the last insert.
 type ConnectionSetup = Shared<BoxFuture<'static, Result<Arc<ChainConnection>, RuntimeFailure>>>;
+
+/// Shared, single-flight setup of the connection's cached Subxt client.
+/// Concurrent first users await one in-flight build rather than each starting
+/// (and leaking) a separate backend driver and follow subscription.
+type OnlineClientSetup = Shared<BoxFuture<'static, Result<SubxtConnection, RuntimeFailure>>>;
+
+/// Cached Subxt client + backend pair built over one connection's transport.
+#[derive(Clone)]
+pub(crate) struct SubxtConnection {
+    /// Client whose chain config pins the host-configured genesis hash.
+    pub(crate) client: OnlineClient<SubstrateConfig>,
+    /// The chainHead backend under `client`, for raw-key reads that must not
+    /// trigger a metadata fetch.
+    pub(crate) backend: Arc<ChainHeadBackend<SubstrateConfig>>,
+}
 
 /// Classification of framework-level chain failures separate from JSON-RPC
 /// domain errors. Maps cleanly to [`truapi::CallError`] variants at the
@@ -493,6 +512,34 @@ impl ChainRuntime {
             .map_err(|err| rpc_failure(method, err))
     }
 
+    /// Cached, genesis-pinned Subxt client for the chain identified by
+    /// `genesis_hash`.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.online_client"))]
+    pub(crate) async fn online_client(
+        &self,
+        genesis_hash: &[u8],
+    ) -> Result<OnlineClient<SubstrateConfig>, RuntimeFailure> {
+        Ok(self.subxt_connection(genesis_hash).await?.client)
+    }
+
+    /// Cached chainHead backend for the chain identified by `genesis_hash`,
+    /// for raw-key storage reads that must not trigger a metadata fetch.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.chain_head_backend"))]
+    pub(crate) async fn chain_head_backend(
+        &self,
+        genesis_hash: &[u8],
+    ) -> Result<Arc<ChainHeadBackend<SubstrateConfig>>, RuntimeFailure> {
+        Ok(self.subxt_connection(genesis_hash).await?.backend)
+    }
+
+    async fn subxt_connection(
+        &self,
+        genesis_hash: &[u8],
+    ) -> Result<SubxtConnection, RuntimeFailure> {
+        let connection = self.connection_for("online_client", genesis_hash).await?;
+        connection.online_client().await
+    }
+
     #[instrument(skip_all, fields(runtime.method = "chain_runtime.connection_for", method = method))]
     async fn connection_for(
         &self,
@@ -524,8 +571,8 @@ impl ChainRuntime {
                 let setup_key = key.clone();
                 let genesis_hash = genesis_hash.to_owned();
                 let setup: ConnectionSetup = async move {
-                    let result = provider.connect(genesis_hash).await.map(|rpc| {
-                        let connection = ChainConnection::new(rpc, spawner);
+                    let result = provider.connect(genesis_hash.clone()).await.map(|rpc| {
+                        let connection = ChainConnection::new(rpc, spawner, genesis_hash);
                         connections
                             .lock()
                             .unwrap()
@@ -623,25 +670,95 @@ struct ChainConnection {
     rpc_client: HostRpcClient,
     methods: ChainHeadRpcMethods<TruapiRpcConfig>,
     spawner: Spawner,
+    /// Host-configured genesis hash this connection was opened for; pins the
+    /// cached Subxt client's chain config.
+    genesis_hash: Vec<u8>,
     follows: Mutex<HashMap<String, FollowState>>,
     follow_setups: Mutex<HashMap<String, FollowSetup>>,
+    online_client_setup: Mutex<Option<OnlineClientSetup>>,
 }
 
 impl ChainConnection {
-    fn new(rpc: Arc<dyn JsonRpcConnection>, spawner: Spawner) -> Arc<Self> {
+    fn new(rpc: Arc<dyn JsonRpcConnection>, spawner: Spawner, genesis_hash: Vec<u8>) -> Arc<Self> {
         let rpc_client = HostRpcClient::new(rpc, spawner.clone());
         let methods = ChainHeadRpcMethods::new(RpcClient::new(rpc_client.clone()));
         Arc::new(Self {
             rpc_client,
             methods,
             spawner,
+            genesis_hash,
             follows: Mutex::new(HashMap::new()),
             follow_setups: Mutex::new(HashMap::new()),
+            online_client_setup: Mutex::new(None),
         })
     }
 
     fn is_closed(&self) -> bool {
         self.rpc_client.is_closed()
+    }
+
+    /// Lazily build (single-flight) and cache the Subxt client over this
+    /// connection's transport. The chain config pins the host-configured
+    /// genesis hash, so Subxt never reads a provider-echoed one, and the
+    /// backend follow started here is shared by every user of this
+    /// connection instead of leaking one driver per call.
+    async fn online_client(self: &Arc<Self>) -> Result<SubxtConnection, RuntimeFailure> {
+        let setup = {
+            let mut slot = self.online_client_setup.lock().unwrap();
+            if let Some(existing) = slot.clone() {
+                existing
+            } else {
+                let connection = self.clone();
+                let setup: OnlineClientSetup =
+                    async move { connection.build_online_client().await }
+                        .boxed()
+                        .shared();
+                *slot = Some(setup.clone());
+                setup
+            }
+        };
+        let result = setup.await;
+        // On failure, drop the cached setup so a later submission can retry.
+        if result.is_err() {
+            *self.online_client_setup.lock().unwrap() = None;
+        }
+        result
+    }
+
+    /// Body of the single-flight client setup: start the chainHead backend,
+    /// drive it on the connection's spawner, and build the client with the
+    /// config-pinned genesis hash.
+    async fn build_online_client(self: Arc<Self>) -> Result<SubxtConnection, RuntimeFailure> {
+        const METHOD: &str = "online_client";
+        let genesis_hash: [u8; 32] = self.genesis_hash.as_slice().try_into().map_err(|_| {
+            RuntimeFailure::host_failure(
+                METHOD,
+                format!(
+                    "expected 32-byte genesis hash, got {}",
+                    self.genesis_hash.len()
+                ),
+            )
+        })?;
+        let (backend, mut driver) = ChainHeadBackend::<SubstrateConfig>::builder()
+            .build(RpcClient::new(self.rpc_client.clone()));
+        (self.spawner)(
+            async move {
+                while let Some(result) = driver.next().await {
+                    if let Err(error) = result {
+                        tracing::debug!(target: "subxt", "chainHead backend error={error}");
+                    }
+                }
+            }
+            .boxed(),
+        );
+        let backend = Arc::new(backend);
+        let config = SubstrateConfigBuilder::new()
+            .set_genesis_hash(H256(genesis_hash))
+            .build();
+        let client = OnlineClient::from_backend_with_config(config, backend.clone())
+            .await
+            .map_err(|error| RuntimeFailure::host_failure(METHOD, error.to_string()))?;
+        Ok(SubxtConnection { client, backend })
     }
 
     fn follow_with_runtime(&self, local_follow_id: &str) -> bool {
@@ -1149,167 +1266,6 @@ pub(crate) fn encode_hex(value: &[u8]) -> String {
     format!("0x{}", hex::encode(value))
 }
 
-/// Wait for a usable best block hash from a `chainHead_v1_follow` stream.
-pub(crate) async fn wait_for_chain_head_best_hash(
-    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-    label: &'static str,
-    initialization_timeout: Duration,
-    best_hash_timeout: Duration,
-) -> Result<Vec<u8>, String> {
-    let timeout = futures_timer::Delay::new(initialization_timeout).fuse();
-    pin_mut!(timeout);
-    loop {
-        let next = follow.next().fuse();
-        pin_mut!(next);
-        futures::select! {
-            item = next => match item {
-                Some(RemoteChainHeadFollowItem::Initialized { finalized_block_hashes, .. }) => {
-                    let fallback = finalized_block_hashes.last().cloned();
-                    return wait_for_chain_head_best_hash_after_initialization(
-                        follow,
-                        label,
-                        fallback,
-                        best_hash_timeout,
-                    )
-                    .await;
-                }
-                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
-                    return Ok(best_block_hash);
-                }
-                Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return Err(format!("{label} follow stopped before initialization"));
-                }
-                _ => {}
-            },
-            () = timeout => return Err(format!("{label} follow initialization timed out")),
-        }
-    }
-}
-
-async fn wait_for_chain_head_best_hash_after_initialization(
-    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-    label: &'static str,
-    fallback: Option<Vec<u8>>,
-    timeout: Duration,
-) -> Result<Vec<u8>, String> {
-    let timeout = futures_timer::Delay::new(timeout).fuse();
-    pin_mut!(timeout);
-    let mut candidate = fallback;
-    loop {
-        let next = follow.next().fuse();
-        pin_mut!(next);
-        futures::select! {
-            item = next => match item {
-                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
-                    return Ok(best_block_hash);
-                }
-                Some(RemoteChainHeadFollowItem::NewBlock { block_hash, .. }) => {
-                    candidate = Some(block_hash);
-                }
-                Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return Err(format!("{label} follow stopped before best block"));
-                }
-                _ => {}
-            },
-            () = timeout => {
-                return candidate.ok_or_else(|| {
-                    format!("{label} follow best block timed out")
-                });
-            },
-        }
-    }
-}
-
-/// Wait for one storage operation's value from a `chainHead_v1_follow` stream.
-pub(crate) async fn wait_for_chain_head_storage_value(
-    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-    operation_id: &str,
-    key: &[u8],
-    label: &'static str,
-    timeout: Duration,
-) -> Result<Option<Vec<u8>>, String> {
-    let timeout = futures_timer::Delay::new(timeout).fuse();
-    pin_mut!(timeout);
-    let mut value = None;
-    loop {
-        let next = follow.next().fuse();
-        pin_mut!(next);
-        futures::select! {
-            item = next => match item {
-                Some(RemoteChainHeadFollowItem::OperationStorageItems { operation_id: item_operation_id, items })
-                    if item_operation_id == operation_id =>
-                {
-                    for item in items {
-                        if item.key == key {
-                            value = item.value;
-                        }
-                    }
-                }
-                Some(RemoteChainHeadFollowItem::OperationStorageDone { operation_id: item_operation_id })
-                    if item_operation_id == operation_id =>
-                {
-                    return Ok(value);
-                }
-                Some(RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
-                    if item_operation_id == operation_id =>
-                {
-                    return Ok(None);
-                }
-                Some(RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
-                    if item_operation_id == operation_id =>
-                {
-                    return Err(error);
-                }
-                Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return Err(format!("{label} follow stopped during storage lookup"));
-                }
-                _ => {}
-            },
-            () = timeout => return Err(format!("{label} storage lookup timed out")),
-        }
-    }
-}
-
-/// Wait for one runtime-call operation's output from a `chainHead_v1_follow`
-/// stream.
-pub(crate) async fn wait_for_chain_head_call_output(
-    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-    operation_id: &str,
-    label: &'static str,
-    timeout: Duration,
-) -> Result<Vec<u8>, String> {
-    let timeout = futures_timer::Delay::new(timeout).fuse();
-    pin_mut!(timeout);
-    loop {
-        let next = follow.next().fuse();
-        pin_mut!(next);
-        futures::select! {
-            item = next => match item {
-                Some(RemoteChainHeadFollowItem::OperationCallDone { operation_id: item_operation_id, output })
-                    if item_operation_id == operation_id =>
-                {
-                    return Ok(output);
-                }
-                Some(RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
-                    if item_operation_id == operation_id =>
-                {
-                    return Err(format!("{label} runtime call was inaccessible"));
-                }
-                Some(RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
-                    if item_operation_id == operation_id =>
-                {
-                    return Err(error);
-                }
-                Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return Err(format!("{label} follow stopped during runtime call"));
-                }
-                _ => {}
-            },
-            () = timeout => return Err(format!("{label} runtime call timed out")),
-        }
-    }
-}
-
 #[cfg(test)]
 fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
     hex::decode(value.strip_prefix("0x").unwrap_or(value)).map_err(|_| "invalid hex".to_string())
@@ -1320,7 +1276,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use futures::channel::mpsc as fut_mpsc;
-    use futures::stream::{self, BoxStream};
+    use futures::stream::BoxStream;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn spawner_for_tests() -> Spawner {
@@ -1332,57 +1288,6 @@ mod tests {
         {
             Arc::new(futures::executor::block_on)
         }
-    }
-
-    #[test]
-    fn chain_head_best_hash_prefers_best_block_after_initialization() {
-        let mut follow = stream::iter(vec![
-            RemoteChainHeadFollowItem::Initialized {
-                finalized_block_hashes: vec![vec![0x01]],
-                finalized_block_runtime: None,
-            },
-            RemoteChainHeadFollowItem::BestBlockChanged {
-                best_block_hash: vec![0x02],
-            },
-        ])
-        .boxed();
-
-        let hash = futures::executor::block_on(wait_for_chain_head_best_hash(
-            &mut follow,
-            "test chain",
-            Duration::from_secs(10),
-            Duration::from_secs(2),
-        ))
-        .expect("best hash should resolve");
-
-        assert_eq!(hash, vec![0x02]);
-    }
-
-    #[test]
-    fn chain_head_best_hash_errors_on_stop_before_best_block() {
-        let mut follow = stream::iter(vec![
-            RemoteChainHeadFollowItem::Initialized {
-                finalized_block_hashes: vec![vec![0x01]],
-                finalized_block_runtime: None,
-            },
-            RemoteChainHeadFollowItem::NewBlock {
-                block_hash: vec![0x03],
-                parent_block_hash: vec![0x01],
-                new_runtime: None,
-            },
-            RemoteChainHeadFollowItem::Stop,
-        ])
-        .boxed();
-
-        let err = futures::executor::block_on(wait_for_chain_head_best_hash(
-            &mut follow,
-            "test chain",
-            Duration::from_secs(10),
-            Duration::from_secs(2),
-        ))
-        .expect_err("follow stop should be terminal before best block");
-
-        assert_eq!(err, "test chain follow stopped before best block");
     }
 
     #[derive(Default)]
@@ -1651,6 +1556,55 @@ mod tests {
         assert_eq!(first.unwrap().chain_name, "Polkadot");
         assert_eq!(second.unwrap().chain_name, "Polkadot");
         assert_eq!(provider.inner.connect_calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// The cached Subxt client must pin the host-configured genesis hash
+    /// (never fetch it from the provider) and be built once per connection.
+    #[cfg_attr(target_arch = "wasm32", ignore)]
+    #[test]
+    fn online_client_pins_configured_genesis_and_is_cached() {
+        let provider = Arc::new(ScriptedProvider::new(|_| None));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let genesis = vec![0xab; 32];
+
+        let connection =
+            futures::executor::block_on(runtime.connection_for("online_client_test", &genesis))
+                .expect("connection");
+        let first = futures::executor::block_on(connection.online_client()).expect("client");
+        let second = futures::executor::block_on(connection.online_client()).expect("client");
+
+        // With the config pin, construction never asks the provider for the
+        // genesis hash. The scripted provider answers nothing, so a fetch
+        // would have hung instead of returning.
+        assert_eq!(first.client.genesis_hash(), H256([0xab; 32]));
+        assert_eq!(second.client.genesis_hash(), H256([0xab; 32]));
+        let sent = provider.sent.lock().unwrap().clone();
+        assert!(
+            !sent
+                .iter()
+                .any(|request| request.contains("chainSpec_v1_genesisHash")),
+            "genesis hash must come from config, not the provider; sent: {sent:?}",
+        );
+
+        // One backend driver total: its follow subscription shows up once.
+        let sent = wait_for_sent(&provider, |sent| {
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow"))
+        });
+        assert!(
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow")),
+            "backend follow did not start; sent: {sent:?}",
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let follows = provider
+            .sent
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request.contains("chainHead_v1_follow"))
+            .count();
+        assert_eq!(follows, 1, "cached client must reuse one backend follow");
     }
 
     #[test]

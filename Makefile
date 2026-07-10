@@ -19,6 +19,8 @@ DOTLI_UI := $(DOTLI)/packages/ui
 DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host
 SIGNER_BOT_BASE_URL ?= https://signing-bot-dev.novasama-tech.org/
 SIGNER_BOT_NETWORK ?= paseo-next-v2
+SIGNER_BOT_BASE_URL_ORIGIN := $(origin SIGNER_BOT_BASE_URL)
+SIGNER_BOT_NETWORK_ORIGIN := $(origin SIGNER_BOT_NETWORK)
 VITE_NETWORKS ?= paseo-next-v2,previewnet
 export SIGNER_BOT_BASE_URL
 export SIGNER_BOT_NETWORK
@@ -128,12 +130,14 @@ e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_
 	@SIGNER_BOT_SVC_TOKEN_ENV="$$SIGNER_BOT_SVC_TOKEN"; \
 	SIGNER_BOT_BASE_URL_ENV="$$SIGNER_BOT_BASE_URL"; \
 	SIGNER_BOT_NETWORK_ENV="$$SIGNER_BOT_NETWORK"; \
+	SIGNER_BOT_BASE_URL_ORIGIN="$(SIGNER_BOT_BASE_URL_ORIGIN)"; \
+	SIGNER_BOT_NETWORK_ORIGIN="$(SIGNER_BOT_NETWORK_ORIGIN)"; \
 	set -a; \
 	if [ -f .env ]; then . ./.env; fi; \
 	set +a; \
 	if [ -n "$$SIGNER_BOT_SVC_TOKEN_ENV" ]; then SIGNER_BOT_SVC_TOKEN="$$SIGNER_BOT_SVC_TOKEN_ENV"; export SIGNER_BOT_SVC_TOKEN; fi; \
-	if [ -n "$$SIGNER_BOT_BASE_URL_ENV" ]; then SIGNER_BOT_BASE_URL="$$SIGNER_BOT_BASE_URL_ENV"; export SIGNER_BOT_BASE_URL; fi; \
-	if [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
+	if [ "$$SIGNER_BOT_BASE_URL_ORIGIN" != "file" ] && [ -n "$$SIGNER_BOT_BASE_URL_ENV" ]; then SIGNER_BOT_BASE_URL="$$SIGNER_BOT_BASE_URL_ENV"; export SIGNER_BOT_BASE_URL; fi; \
+	if [ "$$SIGNER_BOT_NETWORK_ORIGIN" != "file" ] && [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
 	if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_SVC_TOKEN" || (echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi; \
 	$(MAKE) dev-bootstrap; \
 	cd $(PLAYGROUND) && bun tests/e2e/dotli-diagnosis.ts

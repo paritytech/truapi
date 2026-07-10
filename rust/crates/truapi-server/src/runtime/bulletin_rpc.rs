@@ -1,70 +1,56 @@
-//! In-core Bulletin preimage submission over the shared chainHead runtime.
+//! In-core Bulletin preimage submission over the shared Subxt client.
 //!
 //! One submission at a time: build + sign the `TransactionStorage.store`
-//! extrinsic offline, dry-run it via `TaggedTransactionQueue_validate_transaction`
+//! extrinsic against the current best block (Subxt resolves metadata, nonce,
+//! and the mortality anchor), dry-run it via Subxt's transaction validation
 //! (broadcast is spec-guaranteed silent on invalid transactions, so the
-//! dry-run is the only deterministic error signal), broadcast, then watch
-//! best blocks for inclusion and read the dispatch outcome from
-//! `System.Events`.
+//! dry-run is the only deterministic error signal), then submit through
+//! Subxt's transaction watch and classify the dispatch outcome from the
+//! inclusion block's events.
 
-use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex as StdMutex;
-use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
 #[cfg(target_arch = "wasm32")]
 use web_time::{Duration, Instant};
 
-use futures::stream::BoxStream;
-use futures::{FutureExt, StreamExt, pin_mut};
-use parity_scale_codec::Encode;
-use subxt::metadata::ArcMetadata;
-use subxt::tx::{TransactionInvalid, TransactionUnknown, ValidationResult};
+use futures::{FutureExt, pin_mut};
+use subxt::client::{Block, Blocks, OnlineClientAtBlockImpl};
+use subxt::config::substrate::SubstrateConfig;
+use subxt::error::{DispatchError, TransactionEventsError};
+use subxt::tx::{
+    SubmittableTransaction, TransactionInBlock, TransactionInvalid, TransactionStatus,
+    TransactionUnknown, ValidationResult,
+};
+use subxt::utils::AccountId32;
 use tracing::{instrument, warn};
 use truapi::CallContext;
-use truapi::v01::{
-    OperationStartedResult, RemoteChainHeadBodyRequest, RemoteChainHeadCallRequest,
-    RemoteChainHeadFollowItem, RemoteChainHeadFollowRequest, RemoteChainHeadHeaderRequest,
-    RemoteChainHeadStorageRequest, RemoteChainHeadUnpinRequest,
-    RemoteChainTransactionBroadcastRequest, RemoteChainTransactionStopRequest, RuntimeSpec,
-    RuntimeType, StorageQueryItem, StorageQueryType,
-};
 use truapi_platform::BulletinAllowanceKey;
 
-use crate::chain_runtime::{
-    ChainRuntime, wait_for_chain_head_call_output, wait_for_chain_head_storage_value,
-};
+use crate::chain_runtime::ChainRuntime;
 use crate::host_logic::bulletin::{
-    MortalityAnchor, STORE_CALL_NAME, STORE_PALLET_NAME, build_signed_store_extrinsic,
-    preimage_key, store_data_field_matches_key, system_events_storage_key,
+    MortalityAnchor, STORE_PALLET_NAME, allowance_signer, build_signed_store_transaction,
+    preimage_key,
 };
-use crate::host_logic::extrinsic::{
-    DecodedDispatchError, ExtrinsicOutcome, OfflineChainState, best_supported_metadata_version,
-    decode_account_nonce, decode_header_block_number, decode_runtime_metadata,
-    decode_transaction_validity, extrinsic_outcome_from_events,
-    validate_transaction_call_parameters,
-};
+use crate::host_logic::extrinsic::Sr25519Signer;
 
 /// Retry once when a broadcast is not included after the watch budget. This
 /// covers the post-allocation propagation window where dry-run can succeed
 /// against one node while the authoring path silently drops the broadcast.
 const SUBMIT_ATTEMPTS: usize = 2;
-/// Budget for the follow to deliver `Initialized`.
+/// Number of newer best blocks to try before treating a dry-run allowance
+/// rejection as real. Wallet allocation can return before the freshly granted
+/// Bulletin authorization is visible to the chain state used by dry-run.
+const ALLOWANCE_DRY_RUN_PROPAGATION_BLOCKS: usize = 20;
+/// Budget for the stream to produce the next best block used by a dry-run
+/// retry.
+const ALLOWANCE_DRY_RUN_BLOCK_TIMEOUT: Duration = Duration::from_secs(10);
+/// Budget for the best-block stream to replay the current chain head.
 const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(10);
-/// Budget for a fresh follow to report the current best block after
-/// `Initialized`. Falling back to finalized is safe for cold starts; active
-/// chains normally report best immediately.
+/// Quiet window after which the newest replayed block is taken as the head.
+/// The replay delivers the initialized finalized block first and any known
+/// best block right after; active chains never need the full window.
 const BEST_BLOCK_TIMEOUT: Duration = Duration::from_secs(2);
-/// Budget for one pre-broadcast runtime call or storage read.
-const OPERATION_TIMEOUT: Duration = Duration::from_secs(20);
-/// Delay before retrying an operation start that hit `LimitReached`, and
-/// before retrying an inaccessible `System.Events` read.
-const OPERATION_RETRY_DELAY: Duration = Duration::from_millis(300);
-/// Attempts for reading `System.Events` at the inclusion block.
-const EVENTS_READ_ATTEMPTS: usize = 3;
-
-/// Monotonic salt for per-submit bulletin follow ids.
-static BULLETIN_FOLLOW_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// `TransactionStorage` module errors that mean the allowance account itself
 /// was rejected (missing or exhausted authorization), i.e. the one condition
@@ -75,27 +61,24 @@ const ALLOWANCE_REJECTED_MODULE_ERRORS: &[&str] =
 /// Where a submission failed, for phase-tagged timeout reasons.
 type Phase = &'static str;
 
-struct SubmissionHead {
-    best_hash: Vec<u8>,
-    runtime_spec: RuntimeSpec,
-}
+/// The at-block client every submission step runs against.
+type BulletinAtBlock = OnlineClientAtBlockImpl<SubstrateConfig>;
 
-/// The broadcast transaction the watch loop looks for, plus the chain state
-/// needed to content-match its body against the preimage key.
-struct SubmittedTransaction<'a> {
-    state: &'a OfflineChainState,
-    anchor: &'a MortalityAnchor,
-    extrinsic_hash: [u8; 32],
-    preimage_key: &'a [u8; 32],
-    our_nonce: u64,
-    account: &'a [u8; 32],
+/// A signed store transaction bound to its build block, ready for the
+/// dry-run and submission steps.
+type SignedStore = SubmittableTransaction<SubstrateConfig, BulletinAtBlock>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DryRunStatus {
+    Valid,
+    AllowanceRejected,
 }
 
 /// Typed submission failure driving the retry decision at the runtime call
 /// site. Wire mapping stays `v01::PreimageSubmitError::Unknown { reason }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BulletinSubmitError {
-    /// Connection, follow, metadata, nonce, or anchor plumbing failed.
+    /// Connection, block stream, metadata, or nonce plumbing failed.
     ChainUnavailable { reason: String },
     /// The dry-run rejected the transaction for a non-allowance reason.
     InvalidTransaction { kind: String },
@@ -103,8 +86,6 @@ pub(crate) enum BulletinSubmitError {
     AllowanceRejected { phase: AllowanceRejectionPhase },
     /// The dry-run saw a nonce race (`Future`/`Stale`); no refresh.
     NonceRace,
-    /// The server had no free broadcast slot; retryable, nothing was sent.
-    BroadcastSlotUnavailable,
     /// The submission budget elapsed; `phase` names the step reached.
     Timeout { phase: Phase },
     /// The transaction was broadcast but inclusion could not be verified.
@@ -143,7 +124,6 @@ impl BulletinSubmitError {
                 format!("allowance rejected: {phase}")
             }
             Self::NonceRace => "nonce race: retry".to_string(),
-            Self::BroadcastSlotUnavailable => "broadcast slot unavailable: retry".to_string(),
             Self::Timeout { phase } => format!("timeout: {phase}, inclusion unverified"),
             Self::BroadcastUnverified { reason } => format!("inclusion unverified: {reason}"),
             Self::IncludedButFailed { pallet, error } => {
@@ -158,13 +138,9 @@ impl BulletinSubmitError {
 pub(crate) struct BulletinRpc {
     chain: ChainRuntime,
     genesis_hash: [u8; 32],
-    /// Serializes submissions: one broadcast + one ephemeral follow at a
-    /// time, and no same-account nonce races between concurrent submits.
+    /// Serializes submissions: no same-account nonce races between
+    /// concurrent submits.
     submit_lock: futures::lock::Mutex<()>,
-    /// Decoded metadata for the current spec version.
-    metadata_cache: StdMutex<Option<(u32, ArcMetadata)>>,
-    /// Live broadcast operation id, stopped on every exit path.
-    active_broadcast: StdMutex<Option<String>>,
     /// Last phase entered, for timeout reasons.
     phase: StdMutex<Phase>,
 }
@@ -176,8 +152,6 @@ impl BulletinRpc {
             chain,
             genesis_hash,
             submit_lock: futures::lock::Mutex::new(()),
-            metadata_cache: StdMutex::new(None),
-            active_broadcast: StdMutex::new(None),
             phase: StdMutex::new("connect"),
         }
     }
@@ -205,8 +179,7 @@ impl BulletinRpc {
         // The whole-submission budget is set by the Preimage::submit boundary
         // and passed in explicitly; the context is used only for cancellation.
         // The budget starts once the lock is held; dropping the flow on
-        // timeout/cancel drops its follow (releasing pins), and the explicit
-        // stop below covers any live broadcast on every exit path.
+        // timeout/cancel drops its in-flight chain work.
         let started = Instant::now();
         let mut attempt = 0;
         loop {
@@ -225,7 +198,6 @@ impl BulletinRpc {
                 () = timeout => Err(BulletinSubmitError::Timeout { phase: self.current_phase() }),
                 _ = cancelled => Err(BulletinSubmitError::Cancelled),
             };
-            self.stop_active_broadcast().await;
             match result {
                 Err(err) if attempt < SUBMIT_ATTEMPTS && err.is_retryable_watch_timeout() => {
                     warn!(
@@ -247,237 +219,115 @@ impl BulletinRpc {
         let key = preimage_key(value);
 
         self.enter_phase("connect");
-        let follow_id = format!(
-            "truapi:bulletin:{}",
-            BULLETIN_FOLLOW_COUNTER.fetch_add(1, Ordering::Relaxed)
-        );
-        let mut follow = self.chain.remote_chain_head_follow(
-            follow_id.clone(),
-            RemoteChainHeadFollowRequest {
-                genesis_hash: self.genesis_hash.to_vec(),
-                with_runtime: true,
-            },
-        );
-        let head = wait_for_submission_head(&mut follow).await?;
-
-        self.enter_phase("metadata");
-        let state = self
-            .offline_chain_state(&follow_id, &mut follow, &head.best_hash, head.runtime_spec)
-            .await?;
-
-        self.enter_phase("build");
-        let account =
-            crate::host_logic::extrinsic::public_key_from_secret_bytes(allowance.as_secret_bytes())
-                .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
-        let anchor = self.mortality_anchor(&follow_id, &head.best_hash).await?;
-        let nonce = self
-            .account_nonce(&follow_id, &mut follow, &head.best_hash, &account)
-            .await?;
-        let signed = build_signed_store_extrinsic(&state, &anchor, allowance, nonce, value)
-            .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
-
-        self.enter_phase("dry-run");
-        self.dry_run(&follow_id, &mut follow, &head.best_hash, &signed.extrinsic)
-            .await?;
-
-        self.enter_phase("broadcast");
-        let extrinsic_hash = signed.extrinsic_hash;
-        let broadcast = self
+        let client = self
             .chain
-            .remote_chain_transaction_broadcast(RemoteChainTransactionBroadcastRequest {
-                genesis_hash: self.genesis_hash.to_vec(),
-                transaction: signed.extrinsic,
-            })
+            .online_client(&self.genesis_hash)
             .await
             .map_err(|failure| BulletinSubmitError::ChainUnavailable {
                 reason: failure.reason(),
             })?;
-        let Some(operation_id) = broadcast.operation_id else {
-            return Err(BulletinSubmitError::BroadcastSlotUnavailable);
-        };
-        *self
-            .active_broadcast
-            .lock()
-            .expect("broadcast slot poisoned") = Some(operation_id);
+        let mut best_blocks = client.stream_best_blocks().await.map_err(|error| {
+            BulletinSubmitError::ChainUnavailable {
+                reason: format!("best-block stream unavailable: {error}"),
+            }
+        })?;
+        let head = initial_best_block(&mut best_blocks).await?;
+
+        self.enter_phase("build");
+        let signer = allowance_signer(allowance)
+            .map_err(|reason| BulletinSubmitError::InvalidTransaction { kind: reason })?;
+        let signed = self
+            .build_signed_and_dry_run(&mut best_blocks, head, &signer, value)
+            .await?;
+        drop(best_blocks);
 
         self.enter_phase("watch");
-        let (inclusion_block, extrinsic_index) = self
-            .watch_for_inclusion(
-                &follow_id,
-                &mut follow,
-                SubmittedTransaction {
-                    state: &state,
-                    anchor: &anchor,
-                    extrinsic_hash,
-                    preimage_key: &key,
-                    our_nonce: nonce,
-                    account: &account,
-                },
-            )
-            .await?;
+        let in_block = watch_until_included(&signed).await?;
 
         self.enter_phase("events");
-        self.require_dispatch_success(
-            &follow_id,
-            &mut follow,
-            &state,
-            &anchor,
-            &inclusion_block,
-            extrinsic_index,
-        )
-        .await?;
+        require_dispatch_success(&in_block).await?;
 
         Ok(key.to_vec())
     }
 
-    /// Fetch (or reuse) decoded metadata for the follow's runtime spec and
-    /// assemble the offline chain state. The genesis hash is deliberately the
-    /// configured one, never provider-echoed.
-    async fn offline_chain_state(
+    /// Build, sign, and dry-run the extrinsic against the chosen best block.
+    /// Broadcast never reports invalid transactions, so dry-run is the only
+    /// deterministic signal for stale allowances, nonce races, and encoding
+    /// errors.
+    async fn build_signed_and_dry_run(
         &self,
-        follow_id: &str,
-        follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-        finalized_hash: &[u8],
-        runtime_spec: RuntimeSpec,
-    ) -> Result<OfflineChainState, BulletinSubmitError> {
-        let spec_version = runtime_spec.spec_version;
-        let transaction_version = runtime_spec.transaction_version.ok_or_else(|| {
-            BulletinSubmitError::ChainUnavailable {
-                reason: "runtime spec lacks a transaction version".to_string(),
-            }
-        })?;
-
-        let cached = self
-            .metadata_cache
-            .lock()
-            .expect("metadata cache poisoned")
-            .clone();
-        let metadata = match cached {
-            Some((cached_spec, metadata)) if cached_spec == spec_version => metadata,
-            _ => {
-                let versions = self
-                    .runtime_call(
-                        follow_id,
-                        follow,
-                        finalized_hash,
-                        "Metadata_metadata_versions",
-                        Vec::new(),
-                    )
-                    .await?;
-                let version = best_supported_metadata_version(&versions)
-                    .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })?;
-                let response = self
-                    .runtime_call(
-                        follow_id,
-                        follow,
-                        finalized_hash,
-                        "Metadata_metadata_at_version",
-                        version.encode(),
-                    )
-                    .await?;
-                let metadata = ArcMetadata::from(
-                    decode_runtime_metadata(&response)
-                        .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })?,
-                );
-                *self.metadata_cache.lock().expect("metadata cache poisoned") =
-                    Some((spec_version, metadata.clone()));
-                metadata
-            }
-        };
-
-        Ok(OfflineChainState {
-            genesis_hash: self.genesis_hash,
-            spec_version,
-            transaction_version,
-            metadata,
-        })
-    }
-
-    /// Resolve the finalized anchor block's number for the mortal era.
-    async fn mortality_anchor(
-        &self,
-        follow_id: &str,
-        finalized_hash: &[u8],
-    ) -> Result<MortalityAnchor, BulletinSubmitError> {
-        let response = self
-            .chain
-            .remote_chain_head_header(RemoteChainHeadHeaderRequest {
-                genesis_hash: self.genesis_hash.to_vec(),
-                follow_subscription_id: follow_id.to_string(),
-                hash: finalized_hash.to_vec(),
-            })
-            .await
-            .map_err(|failure| BulletinSubmitError::ChainUnavailable {
-                reason: failure.reason(),
-            })?;
-        let header = response
-            .header
-            .ok_or_else(|| BulletinSubmitError::ChainUnavailable {
-                reason: "anchor block header unavailable".to_string(),
-            })?;
-        let number = decode_header_block_number(&header)
-            .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })?;
-        let hash =
-            finalized_hash
-                .try_into()
-                .map_err(|_| BulletinSubmitError::ChainUnavailable {
-                    reason: "anchor block hash is not 32 bytes".to_string(),
+        best_blocks: &mut Blocks<SubstrateConfig>,
+        head: Block<SubstrateConfig>,
+        signer: &Sr25519Signer,
+        value: &[u8],
+    ) -> Result<SignedStore, BulletinSubmitError> {
+        let account = AccountId32(signer.public_key());
+        let mut block = head;
+        let mut allowance_rejections = 0;
+        loop {
+            self.enter_phase("build");
+            let at_block =
+                block
+                    .at()
+                    .await
+                    .map_err(|error| BulletinSubmitError::ChainUnavailable {
+                        reason: format!("block {} unavailable: {error}", block.number()),
+                    })?;
+            let nonce = at_block
+                .tx()
+                .account_nonce(&account)
+                .await
+                .map_err(|error| BulletinSubmitError::ChainUnavailable {
+                    reason: format!("account nonce unavailable: {error}"),
                 })?;
-        Ok(MortalityAnchor { number, hash })
+            let anchor = MortalityAnchor {
+                number: block.number(),
+                hash: block.hash().0,
+            };
+            let signed = build_signed_store_transaction(&at_block, &anchor, signer, nonce, value)
+                .map_err(|kind| BulletinSubmitError::InvalidTransaction { kind })?;
+
+            self.enter_phase("dry-run");
+            let validity =
+                signed
+                    .validate()
+                    .await
+                    .map_err(|error| BulletinSubmitError::ChainUnavailable {
+                        reason: format!("transaction dry-run unavailable: {error}"),
+                    })?;
+            match Self::classify_dry_run_validity(validity)? {
+                DryRunStatus::Valid => return Ok(signed),
+                DryRunStatus::AllowanceRejected
+                    if allowance_rejections < ALLOWANCE_DRY_RUN_PROPAGATION_BLOCKS =>
+                {
+                    allowance_rejections += 1;
+                    warn!(
+                        attempt = allowance_rejections,
+                        "Bulletin allowance not visible to dry-run yet; rebuilding at next block"
+                    );
+                    block =
+                        next_best_block(best_blocks, ALLOWANCE_DRY_RUN_BLOCK_TIMEOUT, "dry-run")
+                            .await?;
+                }
+                DryRunStatus::AllowanceRejected => {
+                    return Err(BulletinSubmitError::AllowanceRejected {
+                        phase: AllowanceRejectionPhase::DryRun,
+                    });
+                }
+            }
+        }
     }
 
-    /// Read the allowance account's next nonce at the anchor block.
-    async fn account_nonce(
-        &self,
-        follow_id: &str,
-        follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-        finalized_hash: &[u8],
-        account: &[u8; 32],
-    ) -> Result<u64, BulletinSubmitError> {
-        let output = self
-            .runtime_call(
-                follow_id,
-                follow,
-                finalized_hash,
-                "AccountNonceApi_account_nonce",
-                account.to_vec(),
-            )
-            .await?;
-        decode_account_nonce(&output)
-            .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })
-    }
-
-    /// Dry-run the signed extrinsic against the anchor block. Broadcast never
-    /// reports invalid transactions, so this is the only deterministic signal
-    /// for stale allowances, nonce races, and encoding errors.
-    async fn dry_run(
-        &self,
-        follow_id: &str,
-        follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-        finalized_hash: &[u8],
-        extrinsic: &[u8],
-    ) -> Result<(), BulletinSubmitError> {
-        let parameters = validate_transaction_call_parameters(extrinsic, finalized_hash);
-        let output = self
-            .runtime_call(
-                follow_id,
-                follow,
-                finalized_hash,
-                "TaggedTransactionQueue_validate_transaction",
-                parameters,
-            )
-            .await?;
-        let validity = decode_transaction_validity(&output)
-            .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })?;
+    fn classify_dry_run_validity(
+        validity: ValidationResult,
+    ) -> Result<DryRunStatus, BulletinSubmitError> {
         match validity {
-            ValidationResult::Valid(_) => Ok(()),
+            ValidationResult::Valid(_) => Ok(DryRunStatus::Valid),
             ValidationResult::Invalid(
                 TransactionInvalid::Payment
                 | TransactionInvalid::Custom(_)
                 | TransactionInvalid::BadSigner,
-            ) => Err(BulletinSubmitError::AllowanceRejected {
-                phase: AllowanceRejectionPhase::DryRun,
-            }),
+            ) => Ok(DryRunStatus::AllowanceRejected),
             ValidationResult::Invalid(TransactionInvalid::Future | TransactionInvalid::Stale) => {
                 Err(BulletinSubmitError::NonceRace)
             }
@@ -495,386 +345,6 @@ impl BulletinRpc {
         }
     }
 
-    /// Watch best/finalized blocks until the broadcast extrinsic appears in a
-    /// body. Runs as one event loop over the follow stream so no block event
-    /// is lost while a chainHead operation is in flight; block bodies are
-    /// only fetched once the allowance account's nonce is seen to advance.
-    async fn watch_for_inclusion(
-        &self,
-        follow_id: &str,
-        follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-        tx: SubmittedTransaction<'_>,
-    ) -> Result<(Vec<u8>, u32), BulletinSubmitError> {
-        let SubmittedTransaction {
-            state,
-            anchor,
-            extrinsic_hash,
-            preimage_key,
-            our_nonce,
-            account,
-        } = tx;
-        let stopped = || BulletinSubmitError::BroadcastUnverified {
-            reason: "chain follow stopped".to_string(),
-        };
-
-        // Parent links learned from NewBlock events, used to walk from a
-        // nonce-advanced block back to already-checked ancestors without
-        // extra header fetches.
-        let mut parents: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        // Blocks whose bodies were checked (or skipped as inaccessible).
-        let mut checked: HashSet<Vec<u8>> = HashSet::new();
-        // Blocks waiting for a nonce gate check.
-        let mut gate_queue: VecDeque<Vec<u8>> = VecDeque::new();
-        // Blocks that passed the gate and await a body check.
-        let mut body_queue: VecDeque<Vec<u8>> = VecDeque::new();
-        let mut pending_nonce: Option<(String, Vec<u8>)> = None;
-        let mut pending_body: Option<(String, Vec<u8>)> = None;
-
-        loop {
-            // Start at most one operation at a time, bodies first.
-            if pending_nonce.is_none() && pending_body.is_none() {
-                if let Some(block) = body_queue.pop_front() {
-                    match self.start_body(follow_id, &block).await? {
-                        Some(operation_id) => pending_body = Some((operation_id, block)),
-                        None => body_queue.push_front(block),
-                    }
-                } else if let Some(block) = gate_queue.pop_front() {
-                    match self.start_nonce_probe(follow_id, &block, account).await? {
-                        Some(operation_id) => pending_nonce = Some((operation_id, block)),
-                        None => gate_queue.push_front(block),
-                    }
-                }
-            }
-
-            let item = follow.next().await.ok_or_else(stopped)?;
-            match item {
-                RemoteChainHeadFollowItem::Stop => return Err(stopped()),
-                RemoteChainHeadFollowItem::NewBlock {
-                    block_hash,
-                    parent_block_hash,
-                    ..
-                } => {
-                    parents.insert(block_hash, parent_block_hash);
-                }
-                RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash } => {
-                    if !checked.contains(&best_block_hash) {
-                        gate_queue.push_back(best_block_hash);
-                    }
-                }
-                RemoteChainHeadFollowItem::Finalized {
-                    finalized_block_hashes,
-                    pruned_block_hashes,
-                } => {
-                    for hash in finalized_block_hashes {
-                        if !checked.contains(&hash) && !gate_queue.contains(&hash) {
-                            gate_queue.push_back(hash);
-                        }
-                    }
-                    self.unpin(follow_id, pruned_block_hashes).await;
-                }
-                RemoteChainHeadFollowItem::OperationCallDone {
-                    operation_id,
-                    output,
-                } if pending_nonce
-                    .as_ref()
-                    .is_some_and(|(id, _)| *id == operation_id) =>
-                {
-                    let (_, block) = pending_nonce.take().expect("checked above");
-                    let nonce = decode_account_nonce(&output)
-                        .map_err(|reason| BulletinSubmitError::BroadcastUnverified { reason })?;
-                    if nonce > our_nonce {
-                        // The account advanced at or before `block`: check its
-                        // body and those of its unchecked ancestors.
-                        for hash in ancestors_to_check(&parents, &checked, block) {
-                            if !body_queue.contains(&hash) {
-                                body_queue.push_back(hash);
-                            }
-                        }
-                    } else {
-                        // This block does not contain our tx; release its pin.
-                        checked.insert(block.clone());
-                        self.unpin(follow_id, vec![block]).await;
-                    }
-                }
-                RemoteChainHeadFollowItem::OperationBodyDone {
-                    operation_id,
-                    value,
-                } if pending_body
-                    .as_ref()
-                    .is_some_and(|(id, _)| *id == operation_id) =>
-                {
-                    let (_, block) = pending_body.take().expect("checked above");
-                    let matched = value.iter().position(|extrinsic| {
-                        sp_crypto_hashing::blake2_256(extrinsic) == extrinsic_hash
-                    });
-                    if let Some(index) = matched {
-                        // Match the prior PAPI host behavior: resolve on
-                        // best-block inclusion. A future API option can let
-                        // callers prefer finalized inclusion.
-                        return Ok((block, index as u32));
-                    }
-                    match matching_store_extrinsic_index(state, anchor.number, value, preimage_key)
-                        .await
-                    {
-                        Ok(Some(index)) => return Ok((block, index)),
-                        Ok(None) => {}
-                        Err(reason) => {
-                            warn!(
-                                reason = %reason,
-                                "Bulletin store-call body match failed"
-                            );
-                        }
-                    }
-                    checked.insert(block.clone());
-                    self.unpin(follow_id, vec![block]).await;
-                }
-                RemoteChainHeadFollowItem::OperationInaccessible { operation_id }
-                | RemoteChainHeadFollowItem::OperationError { operation_id, .. } => {
-                    if pending_nonce
-                        .as_ref()
-                        .is_some_and(|(id, _)| *id == operation_id)
-                    {
-                        let (_, block) = pending_nonce.take().expect("checked above");
-                        checked.insert(block);
-                    } else if pending_body
-                        .as_ref()
-                        .is_some_and(|(id, _)| *id == operation_id)
-                    {
-                        let (_, block) = pending_body.take().expect("checked above");
-                        checked.insert(block);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    /// Read `System.Events` at the inclusion block and require an
-    /// `ExtrinsicSuccess` for our extrinsic index.
-    async fn require_dispatch_success(
-        &self,
-        follow_id: &str,
-        follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-        state: &OfflineChainState,
-        anchor: &MortalityAnchor,
-        inclusion_block: &[u8],
-        extrinsic_index: u32,
-    ) -> Result<(), BulletinSubmitError> {
-        let unverified = |reason: String| BulletinSubmitError::BroadcastUnverified { reason };
-
-        let key = system_events_storage_key();
-        let mut events_bytes = None;
-        for _attempt in 0..EVENTS_READ_ATTEMPTS {
-            let response = self
-                .chain
-                .remote_chain_head_storage(RemoteChainHeadStorageRequest {
-                    genesis_hash: self.genesis_hash.to_vec(),
-                    follow_subscription_id: follow_id.to_string(),
-                    hash: inclusion_block.to_vec(),
-                    items: vec![StorageQueryItem {
-                        key: key.clone(),
-                        query_type: StorageQueryType::Value,
-                    }],
-                    child_trie: None,
-                })
-                .await
-                .map_err(|failure| unverified(failure.reason()))?;
-            let operation_id = match response.operation {
-                OperationStartedResult::Started { operation_id } => operation_id,
-                OperationStartedResult::LimitReached => {
-                    futures_timer::Delay::new(OPERATION_RETRY_DELAY).await;
-                    continue;
-                }
-            };
-            // The block executed our extrinsic, so System.Events is never
-            // absent there: a missing value means the read was inaccessible.
-            match wait_for_chain_head_storage_value(
-                follow,
-                &operation_id,
-                &key,
-                "Bulletin",
-                OPERATION_TIMEOUT,
-            )
-            .await
-            .map_err(unverified)?
-            {
-                Some(bytes) => {
-                    events_bytes = Some(bytes);
-                    break;
-                }
-                None => futures_timer::Delay::new(OPERATION_RETRY_DELAY).await,
-            }
-        }
-        let Some(events_bytes) = events_bytes else {
-            return Err(unverified(
-                "included, dispatch outcome unavailable".to_string(),
-            ));
-        };
-
-        let client = state
-            .client_at(anchor.number)
-            .map_err(|reason| unverified(format!("events decoding unavailable: {reason}")))?;
-        match extrinsic_outcome_from_events(&client, events_bytes, extrinsic_index)
-            .map_err(unverified)?
-        {
-            ExtrinsicOutcome::Success => Ok(()),
-            ExtrinsicOutcome::Failed(DecodedDispatchError::Module { pallet, error })
-                if pallet == "TransactionStorage"
-                    && ALLOWANCE_REJECTED_MODULE_ERRORS.contains(&error.as_str()) =>
-            {
-                Err(BulletinSubmitError::AllowanceRejected {
-                    phase: AllowanceRejectionPhase::Dispatch,
-                })
-            }
-            ExtrinsicOutcome::Failed(DecodedDispatchError::Module { pallet, error }) => {
-                Err(BulletinSubmitError::IncludedButFailed { pallet, error })
-            }
-            ExtrinsicOutcome::Failed(DecodedDispatchError::Other(reason)) => {
-                Err(BulletinSubmitError::IncludedButFailed {
-                    pallet: "unknown".to_string(),
-                    error: reason,
-                })
-            }
-            ExtrinsicOutcome::NotFound => Err(unverified(
-                "included, but the block reported no dispatch outcome".to_string(),
-            )),
-        }
-    }
-
-    /// Start one runtime-call operation at `hash`, retrying `LimitReached`
-    /// once, and wait for its output.
-    async fn runtime_call(
-        &self,
-        follow_id: &str,
-        follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-        hash: &[u8],
-        function: &str,
-        call_parameters: Vec<u8>,
-    ) -> Result<Vec<u8>, BulletinSubmitError> {
-        let mut attempts = 0;
-        let operation_id = loop {
-            attempts += 1;
-            let response = self
-                .chain
-                .remote_chain_head_call(RemoteChainHeadCallRequest {
-                    genesis_hash: self.genesis_hash.to_vec(),
-                    follow_subscription_id: follow_id.to_string(),
-                    hash: hash.to_vec(),
-                    function: function.to_string(),
-                    call_parameters: call_parameters.clone(),
-                })
-                .await
-                .map_err(|failure| BulletinSubmitError::ChainUnavailable {
-                    reason: failure.reason(),
-                })?;
-            match response.operation {
-                OperationStartedResult::Started { operation_id } => break operation_id,
-                OperationStartedResult::LimitReached if attempts < 2 => {
-                    futures_timer::Delay::new(OPERATION_RETRY_DELAY).await;
-                }
-                OperationStartedResult::LimitReached => {
-                    return Err(BulletinSubmitError::ChainUnavailable {
-                        reason: format!("{function}: chainHead operation limit reached"),
-                    });
-                }
-            }
-        };
-        wait_for_chain_head_call_output(follow, &operation_id, "Bulletin", OPERATION_TIMEOUT)
-            .await
-            .map_err(|reason| BulletinSubmitError::ChainUnavailable { reason })
-    }
-
-    /// Start a nonce probe at `block`; `Ok(None)` means the operation limit
-    /// was reached and the caller should retry on the next event.
-    async fn start_nonce_probe(
-        &self,
-        follow_id: &str,
-        block: &[u8],
-        account: &[u8; 32],
-    ) -> Result<Option<String>, BulletinSubmitError> {
-        let response = self
-            .chain
-            .remote_chain_head_call(RemoteChainHeadCallRequest {
-                genesis_hash: self.genesis_hash.to_vec(),
-                follow_subscription_id: follow_id.to_string(),
-                hash: block.to_vec(),
-                function: "AccountNonceApi_account_nonce".to_string(),
-                call_parameters: account.to_vec(),
-            })
-            .await
-            .map_err(|failure| BulletinSubmitError::BroadcastUnverified {
-                reason: failure.reason(),
-            })?;
-        Ok(match response.operation {
-            OperationStartedResult::Started { operation_id } => Some(operation_id),
-            OperationStartedResult::LimitReached => None,
-        })
-    }
-
-    /// Start a body fetch at `block`; `Ok(None)` means the operation limit
-    /// was reached and the caller should retry on the next event.
-    async fn start_body(
-        &self,
-        follow_id: &str,
-        block: &[u8],
-    ) -> Result<Option<String>, BulletinSubmitError> {
-        let response = self
-            .chain
-            .remote_chain_head_body(RemoteChainHeadBodyRequest {
-                genesis_hash: self.genesis_hash.to_vec(),
-                follow_subscription_id: follow_id.to_string(),
-                hash: block.to_vec(),
-            })
-            .await
-            .map_err(|failure| BulletinSubmitError::BroadcastUnverified {
-                reason: failure.reason(),
-            })?;
-        Ok(match response.operation {
-            OperationStartedResult::Started { operation_id } => Some(operation_id),
-            OperationStartedResult::LimitReached => None,
-        })
-    }
-
-    /// Release pins for blocks the watch no longer needs; failures only warn.
-    async fn unpin(&self, follow_id: &str, hashes: Vec<Vec<u8>>) {
-        if hashes.is_empty() {
-            return;
-        }
-        if let Err(failure) = self
-            .chain
-            .remote_chain_head_unpin(RemoteChainHeadUnpinRequest {
-                genesis_hash: self.genesis_hash.to_vec(),
-                follow_subscription_id: follow_id.to_string(),
-                hashes,
-            })
-            .await
-        {
-            warn!(reason = %failure.reason(), "Bulletin block unpin failed");
-        }
-    }
-
-    /// Stop the live broadcast, if any. Called on every submit exit path.
-    async fn stop_active_broadcast(&self) {
-        let operation_id = self
-            .active_broadcast
-            .lock()
-            .expect("broadcast slot poisoned")
-            .take();
-        let Some(operation_id) = operation_id else {
-            return;
-        };
-        if let Err(failure) = self
-            .chain
-            .remote_chain_transaction_stop(RemoteChainTransactionStopRequest {
-                genesis_hash: self.genesis_hash.to_vec(),
-                operation_id,
-            })
-            .await
-        {
-            warn!(reason = %failure.reason(), "Bulletin broadcast stop failed");
-        }
-    }
-
     fn enter_phase(&self, phase: Phase) {
         *self.phase.lock().expect("phase slot poisoned") = phase;
     }
@@ -884,262 +354,203 @@ impl BulletinRpc {
     }
 }
 
-async fn wait_for_submission_head(
-    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-) -> Result<SubmissionHead, BulletinSubmitError> {
-    let timeout = futures_timer::Delay::new(INITIALIZATION_TIMEOUT).fuse();
-    pin_mut!(timeout);
+/// Take the stream's replayed view of the current chain head: the initialized
+/// finalized block arrives first, followed by the newest known best block.
+/// Returns the newest block seen before a quiet [`BEST_BLOCK_TIMEOUT`] window;
+/// falling back to the finalized block is safe for cold starts.
+async fn initial_best_block(
+    blocks: &mut Blocks<SubstrateConfig>,
+) -> Result<Block<SubstrateConfig>, BulletinSubmitError> {
+    let mut block = next_best_block(blocks, INITIALIZATION_TIMEOUT, "connect").await?;
     loop {
-        let next = follow.next().fuse();
-        pin_mut!(next);
-        futures::select! {
-            item = next => match item {
-                Some(RemoteChainHeadFollowItem::Initialized {
-                    finalized_block_hashes,
-                    finalized_block_runtime,
-                }) => {
-                    let finalized_hash = finalized_block_hashes
-                        .last()
-                        .cloned()
-                        .ok_or_else(|| BulletinSubmitError::ChainUnavailable {
-                            reason: "Bulletin follow initialized without finalized blocks"
-                                .to_string(),
-                        })?;
-                    let runtime_spec = valid_runtime(
-                        finalized_block_runtime,
-                        "Bulletin follow initialized without runtime metadata",
-                    )?;
-                    return wait_for_submission_best_after_initialization(
-                        follow,
-                        finalized_hash,
-                        runtime_spec,
-                    )
-                    .await;
-                }
-                Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return Err(BulletinSubmitError::ChainUnavailable {
-                        reason: "Bulletin follow stopped before initialization".to_string(),
-                    });
-                }
-                _ => {}
-            },
-            () = timeout => {
-                return Err(BulletinSubmitError::ChainUnavailable {
-                    reason: "Bulletin follow initialization timed out".to_string(),
-                });
-            },
+        match next_best_block(blocks, BEST_BLOCK_TIMEOUT, "connect").await {
+            Ok(newer) => block = newer,
+            Err(BulletinSubmitError::Timeout { .. }) => return Ok(block),
+            Err(other) => return Err(other),
         }
     }
 }
 
-async fn wait_for_submission_best_after_initialization(
-    follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-    finalized_hash: Vec<u8>,
-    finalized_runtime: RuntimeSpec,
-) -> Result<SubmissionHead, BulletinSubmitError> {
-    let timeout = futures_timer::Delay::new(BEST_BLOCK_TIMEOUT).fuse();
-    pin_mut!(timeout);
-    let mut known_runtimes = HashMap::from([(finalized_hash.clone(), finalized_runtime.clone())]);
-    let mut candidate_hash = finalized_hash;
-    let mut candidate_runtime = finalized_runtime.clone();
-
-    loop {
-        let next = follow.next().fuse();
-        pin_mut!(next);
-        futures::select! {
-            item = next => match item {
-                Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
-                    let runtime_spec = known_runtimes
-                        .get(&best_block_hash)
-                        .cloned()
-                        .unwrap_or_else(|| candidate_runtime.clone());
-                    return Ok(SubmissionHead {
-                        best_hash: best_block_hash,
-                        runtime_spec,
-                    });
-                }
-                Some(RemoteChainHeadFollowItem::NewBlock {
-                    block_hash,
-                    parent_block_hash,
-                    new_runtime,
-                }) => {
-                    let runtime_spec = if let Some(runtime) = new_runtime {
-                        valid_runtime(
-                            Some(runtime),
-                            "Bulletin follow reported a new block without runtime metadata",
-                        )?
-                    } else {
-                        known_runtimes
-                            .get(&parent_block_hash)
-                            .cloned()
-                            .unwrap_or_else(|| candidate_runtime.clone())
-                    };
-                    known_runtimes.insert(block_hash.clone(), runtime_spec.clone());
-                    candidate_hash = block_hash;
-                    candidate_runtime = runtime_spec;
-                }
-                Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return Err(BulletinSubmitError::ChainUnavailable {
-                        reason: "Bulletin follow stopped before best block".to_string(),
-                    });
-                }
-                _ => {}
-            },
-            () = timeout => {
-                return Ok(SubmissionHead {
-                    best_hash: candidate_hash,
-                    runtime_spec: candidate_runtime,
-                });
-            },
-        }
+async fn next_best_block(
+    blocks: &mut Blocks<SubstrateConfig>,
+    timeout: Duration,
+    phase: Phase,
+) -> Result<Block<SubstrateConfig>, BulletinSubmitError> {
+    let timeout = futures_timer::Delay::new(timeout).fuse();
+    let next = blocks.next().fuse();
+    pin_mut!(timeout, next);
+    futures::select! {
+        block = next => match block {
+            Some(Ok(block)) => Ok(block),
+            Some(Err(error)) => Err(BulletinSubmitError::ChainUnavailable {
+                reason: format!("Bulletin best-block stream failed: {error}"),
+            }),
+            None => Err(BulletinSubmitError::ChainUnavailable {
+                reason: "Bulletin best-block stream ended".to_string(),
+            }),
+        },
+        () = timeout => Err(BulletinSubmitError::Timeout { phase }),
     }
 }
 
-fn valid_runtime(
-    runtime: Option<RuntimeType>,
-    missing_reason: &'static str,
-) -> Result<RuntimeSpec, BulletinSubmitError> {
-    match runtime {
-        Some(RuntimeType::Valid(spec)) => Ok(spec),
-        Some(RuntimeType::Invalid { error }) => Err(BulletinSubmitError::ChainUnavailable {
-            reason: format!("Bulletin follow reported an invalid runtime: {error}"),
-        }),
-        None => Err(BulletinSubmitError::ChainUnavailable {
-            reason: missing_reason.to_string(),
-        }),
+/// Submit the signed transaction and watch its progress until it lands in a
+/// best or finalized block.
+async fn watch_until_included(
+    signed: &SignedStore,
+) -> Result<TransactionInBlock<SubstrateConfig, BulletinAtBlock>, BulletinSubmitError> {
+    let unverified = |reason: String| BulletinSubmitError::BroadcastUnverified { reason };
+    let mut progress = signed
+        .submit_and_watch()
+        .await
+        .map_err(|error| unverified(format!("transaction submit failed: {error}")))?;
+    while let Some(status) = progress.next().await {
+        let status =
+            status.map_err(|error| unverified(format!("transaction watch failed: {error}")))?;
+        match status {
+            TransactionStatus::InBestBlock(block) | TransactionStatus::InFinalizedBlock(block) => {
+                return Ok(block);
+            }
+            TransactionStatus::Invalid { message } => {
+                return Err(BulletinSubmitError::InvalidTransaction { kind: message });
+            }
+            TransactionStatus::Dropped { message } => {
+                return Err(unverified(format!("transaction dropped: {message}")));
+            }
+            TransactionStatus::Error { message } => {
+                return Err(unverified(format!("transaction error: {message}")));
+            }
+            TransactionStatus::Validated
+            | TransactionStatus::Broadcasted
+            | TransactionStatus::NoLongerInBestBlock => {}
+        }
+    }
+    Err(unverified(
+        "transaction watch stream ended before inclusion".to_string(),
+    ))
+}
+
+/// Require a successful dispatch outcome from the inclusion block's events.
+/// Fail-closed: inclusion without an explicit `System.ExtrinsicSuccess` event
+/// is reported as unverified, never as success.
+async fn require_dispatch_success(
+    in_block: &TransactionInBlock<SubstrateConfig, BulletinAtBlock>,
+) -> Result<(), BulletinSubmitError> {
+    let unverified = |reason: String| BulletinSubmitError::BroadcastUnverified { reason };
+    match in_block.wait_for_success().await {
+        Ok(events) => {
+            for event in events.iter() {
+                let event =
+                    event.map_err(|err| unverified(format!("invalid transaction event: {err}")))?;
+                if event.pallet_name() == "System" && event.event_name() == "ExtrinsicSuccess" {
+                    return Ok(());
+                }
+            }
+            Err(unverified(
+                "included, but the block reported no dispatch outcome".to_string(),
+            ))
+        }
+        Err(TransactionEventsError::ExtrinsicFailed(error)) => Err(classify_dispatch_error(error)),
+        Err(other) => Err(unverified(format!(
+            "transaction events unavailable: {other}"
+        ))),
     }
 }
 
-async fn matching_store_extrinsic_index(
-    state: &OfflineChainState,
-    block_number: u64,
-    extrinsics: Vec<Vec<u8>>,
-    preimage_key: &[u8; 32],
-) -> Result<Option<u32>, String> {
-    let client = state.client_at(block_number)?;
-    let extrinsics = client.extrinsics().from_bytes(extrinsics).await;
-    for extrinsic in extrinsics.iter() {
-        let extrinsic = extrinsic.map_err(|err| format!("cannot decode block extrinsic: {err}"))?;
-        if extrinsic.pallet_name() != STORE_PALLET_NAME || extrinsic.call_name() != STORE_CALL_NAME
-        {
-            continue;
-        }
-
-        let mut fields = extrinsic.iter_call_data_fields();
-        let Some(field) = fields.next() else {
-            continue;
+/// Map a dispatch failure to the submission error, singling out the
+/// allowance-rejection module errors that a key refresh can fix.
+fn classify_dispatch_error(error: DispatchError) -> BulletinSubmitError {
+    let DispatchError::Module(module_error) = &error else {
+        return BulletinSubmitError::IncludedButFailed {
+            pallet: "unknown".to_string(),
+            error: error.to_string(),
         };
-        if fields.next().is_none() && store_data_field_matches_key(field.bytes(), preimage_key) {
-            return Ok(Some(extrinsic.index() as u32));
+    };
+    match module_error.details() {
+        Ok(details) => {
+            let pallet = details.pallet.name().to_string();
+            let error = details.variant.name.clone();
+            if pallet == STORE_PALLET_NAME
+                && ALLOWANCE_REJECTED_MODULE_ERRORS.contains(&error.as_str())
+            {
+                BulletinSubmitError::AllowanceRejected {
+                    phase: AllowanceRejectionPhase::Dispatch,
+                }
+            } else {
+                BulletinSubmitError::IncludedButFailed { pallet, error }
+            }
         }
+        Err(_) => BulletinSubmitError::IncludedButFailed {
+            pallet: "unknown".to_string(),
+            error: module_error.details_string(),
+        },
     }
-    Ok(None)
-}
-
-/// Collect `start` and its not-yet-checked ancestors from a provider-supplied
-/// `parents` map, oldest lookups first.
-///
-/// `parents` comes from untrusted `NewBlock` follow events, so the walk guards
-/// against self-parent and cyclic links with a visited set: without it a
-/// crafted `parent == block` link would spin forever, and since the enclosing
-/// watch loop never `.await`s inside the walk, the whole worker would freeze
-/// and hold the submit lock permanently.
-fn ancestors_to_check(
-    parents: &HashMap<Vec<u8>, Vec<u8>>,
-    checked: &HashSet<Vec<u8>>,
-    start: Vec<u8>,
-) -> Vec<Vec<u8>> {
-    let mut cursor = start.clone();
-    let mut visited: HashSet<Vec<u8>> = HashSet::from([start.clone()]);
-    let mut walk = vec![start];
-    while let Some(parent) = parents.get(&cursor) {
-        if checked.contains(parent) || !visited.insert(parent.clone()) {
-            break;
-        }
-        walk.push(parent.clone());
-        cursor = parent.clone();
-    }
-    walk
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host_logic::extrinsic::tests::bulletin_metadata;
+    use subxt::metadata::ArcMetadata;
 
-    fn h(byte: u8) -> Vec<u8> {
-        vec![byte]
-    }
-
-    fn runtime_spec(spec_version: u32) -> RuntimeSpec {
-        RuntimeSpec {
-            spec_name: "test".to_string(),
-            impl_name: "test".to_string(),
-            spec_version,
-            impl_version: 1,
-            transaction_version: Some(1),
-            apis: Vec::new(),
+    #[test]
+    fn dry_run_classifies_allowance_rejections_for_retry() {
+        for validity in [
+            ValidationResult::Invalid(TransactionInvalid::Payment),
+            ValidationResult::Invalid(TransactionInvalid::Custom(7)),
+            ValidationResult::Invalid(TransactionInvalid::BadSigner),
+        ] {
+            assert_eq!(
+                BulletinRpc::classify_dry_run_validity(validity).unwrap(),
+                DryRunStatus::AllowanceRejected
+            );
         }
     }
 
-    #[test]
-    fn submission_head_uses_best_block_runtime_update() {
-        let mut follow = futures::stream::iter(vec![
-            RemoteChainHeadFollowItem::Initialized {
-                finalized_block_hashes: vec![h(1)],
-                finalized_block_runtime: Some(RuntimeType::Valid(runtime_spec(1))),
-            },
-            RemoteChainHeadFollowItem::NewBlock {
-                block_hash: h(2),
-                parent_block_hash: h(1),
-                new_runtime: Some(RuntimeType::Valid(runtime_spec(2))),
-            },
-            RemoteChainHeadFollowItem::BestBlockChanged {
-                best_block_hash: h(2),
-            },
-        ])
-        .boxed();
+    /// Decode a `DispatchError::Module` for the named error variant out of
+    /// the bulletin fixture metadata.
+    fn module_error(error_name: &str) -> DispatchError {
+        let metadata = ArcMetadata::from(bulletin_metadata());
+        let pallet = metadata.pallet_by_name(STORE_PALLET_NAME).unwrap();
+        let variant_index = (0..=u8::MAX)
+            .find(|index| {
+                pallet
+                    .error_variant_by_index(*index)
+                    .is_some_and(|variant| variant.name == error_name)
+            })
+            .unwrap_or_else(|| panic!("fixture metadata lacks the {error_name} error"));
+        // `DispatchError::Module` is variant 3: (pallet index, 4 error bytes).
+        let bytes = [3, pallet.error_index(), variant_index, 0, 0, 0];
+        DispatchError::decode_from(&bytes, metadata).unwrap()
+    }
 
-        let head =
-            futures::executor::block_on(wait_for_submission_head(&mut follow)).expect("head");
-
-        assert_eq!(head.best_hash, h(2));
-        assert_eq!(head.runtime_spec.spec_version, 2);
+    /// Any error variant that is not an allowance rejection.
+    fn non_allowance_error_name() -> String {
+        let metadata = ArcMetadata::from(bulletin_metadata());
+        let pallet = metadata.pallet_by_name(STORE_PALLET_NAME).unwrap();
+        (0..=u8::MAX)
+            .find_map(|index| {
+                let name = &pallet.error_variant_by_index(index)?.name;
+                (!ALLOWANCE_REJECTED_MODULE_ERRORS.contains(&name.as_str())).then(|| name.clone())
+            })
+            .expect("fixture metadata has a non-allowance error variant")
     }
 
     #[test]
-    fn ancestors_walk_collects_unchecked_chain() {
-        // c -> b -> a, none checked: walk collects all three newest-first.
-        let parents = HashMap::from([(h(3), h(2)), (h(2), h(1))]);
-        let checked = HashSet::new();
+    fn dispatch_errors_classify_allowance_rejections() {
         assert_eq!(
-            ancestors_to_check(&parents, &checked, h(3)),
-            vec![h(3), h(2), h(1)]
+            classify_dispatch_error(module_error("AuthorizationNotFound")),
+            BulletinSubmitError::AllowanceRejected {
+                phase: AllowanceRejectionPhase::Dispatch
+            }
         );
-    }
 
-    #[test]
-    fn ancestors_walk_stops_at_checked_parent() {
-        let parents = HashMap::from([(h(3), h(2)), (h(2), h(1))]);
-        let checked = HashSet::from([h(2)]);
-        assert_eq!(ancestors_to_check(&parents, &checked, h(3)), vec![h(3)]);
-    }
-
-    #[test]
-    fn ancestors_walk_terminates_on_self_parent() {
-        // A crafted self-referential parent must not loop forever.
-        let parents = HashMap::from([(h(5), h(5))]);
-        let checked = HashSet::new();
-        assert_eq!(ancestors_to_check(&parents, &checked, h(5)), vec![h(5)]);
-    }
-
-    #[test]
-    fn ancestors_walk_terminates_on_cycle() {
-        // A -> B -> A cycle must terminate once it wraps around.
-        let parents = HashMap::from([(h(1), h(2)), (h(2), h(1))]);
-        let checked = HashSet::new();
+        let other = non_allowance_error_name();
         assert_eq!(
-            ancestors_to_check(&parents, &checked, h(1)),
-            vec![h(1), h(2)]
+            classify_dispatch_error(module_error(&other)),
+            BulletinSubmitError::IncludedButFailed {
+                pallet: STORE_PALLET_NAME.to_string(),
+                error: other
+            }
         );
     }
 

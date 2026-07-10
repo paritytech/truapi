@@ -621,8 +621,9 @@ pub trait ThemeHost: Send + Sync {
 ///
 /// The core is the sole holder: the secret never crosses the host boundary.
 /// Zeroized on drop, and its `Debug` redacts the material.
-#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
+#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop, derive_more::Debug)]
 pub struct BulletinAllowanceKey {
+    #[debug("\"<redacted>\"")]
     secret: [u8; 64],
 }
 
@@ -640,14 +641,6 @@ impl BulletinAllowanceKey {
     /// Borrow the raw secret bytes for in-core signing.
     pub fn as_secret_bytes(&self) -> &[u8; 64] {
         &self.secret
-    }
-}
-
-impl core::fmt::Debug for BulletinAllowanceKey {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("BulletinAllowanceKey")
-            .field("secret", &"<redacted>")
-            .finish()
     }
 }
 

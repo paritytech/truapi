@@ -53,6 +53,11 @@ type RunOneOpts = {
   onUpdate: (id: string, entry: TestEntry) => void;
 };
 
+type DiagnosisItem = {
+  serviceName: string;
+  method: MethodInfo;
+};
+
 async function runOne({
   serviceName,
   method,
@@ -142,19 +147,48 @@ export async function runSingleTest(
   await runOne({ serviceName, method, onUpdate });
 }
 
-// Full diagnosis: run every method one at a time, in service order. Methods
-// that prompt the user (signing, permission/resource requests) block on their
-// host dialog before the run continues. Produces a complete worked / failed /
-// not-wired matrix suitable for the copy-pasteable report.
+// Full diagnosis: run every method one at a time. Methods that prompt the user
+// (signing, permission/resource requests) block on their host dialog before
+// the run continues. Produces a complete worked / failed / not-wired matrix
+// suitable for the copy-pasteable report.
 export async function runDiagnosis(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  for (const svc of services) {
-    for (const method of svc.methods) {
-      if (signal?.aborted) return;
-      await runOne({ serviceName: svc.name, method, onUpdate });
-    }
+  const items = diagnosisRunItems(services);
+  for (const item of items) {
+    if (signal?.aborted) return;
+    await runOne({ ...item, onUpdate });
   }
+}
+
+function diagnosisRunItems(services: ServiceInfo[]): DiagnosisItem[] {
+  const items = services.flatMap((svc) =>
+    svc.methods.map((method) => ({ serviceName: svc.name, method })),
+  );
+  moveBefore(items, "Resource Allocation/request", "Preimage/lookup_subscribe");
+  return items;
+}
+
+function moveBefore(
+  items: DiagnosisItem[],
+  itemId: string,
+  beforeId: string,
+): void {
+  const currentIndex = items.findIndex(
+    (item) => diagnosisItemId(item) === itemId,
+  );
+  const beforeIndex = items.findIndex(
+    (item) => diagnosisItemId(item) === beforeId,
+  );
+  if (currentIndex < 0 || beforeIndex < 0 || currentIndex < beforeIndex) {
+    return;
+  }
+  const [item] = items.splice(currentIndex, 1);
+  items.splice(beforeIndex, 0, item);
+}
+
+function diagnosisItemId(item: DiagnosisItem): string {
+  return `${item.serviceName}/${item.method.name}`;
 }

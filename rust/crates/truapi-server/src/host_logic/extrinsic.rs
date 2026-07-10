@@ -1,26 +1,16 @@
-//! Offline extrinsic construction shared by chain-facing runtime services.
+//! sr25519 transaction signing shared by chain-facing runtime services.
 //!
-//! Two assembly modes, both offline (no I/O): one metadata-driven, one from
-//! pre-encoded parts.
-//!
-//! - Bulletin preimage submission builds a call from fetched runtime metadata
-//!   via subxt's offline client (typed nonce/mortality params).
-//! - Local `create_transaction` ([`build_signed_extrinsic_v4`]) assembles a
-//!   signed V4 extrinsic from caller-supplied, already-SCALE-encoded parts, so
-//!   it needs no metadata at all.
+//! [`Sr25519Signer`] is the one subxt [`Signer`] in the crate; Bulletin
+//! preimage submission and the signing-host product key both go through it.
+//! [`build_signed_extrinsic_v4`] assembles a signed V4 extrinsic from
+//! caller-supplied, already-SCALE-encoded parts (local `create_transaction`),
+//! so it needs no metadata at all.
 
-use parity_scale_codec::{Compact, Decode, Encode};
+use parity_scale_codec::Encode;
 use schnorrkel::{PublicKey, SecretKey};
-use subxt::client::{OfflineClient, OfflineClientAtBlock};
-use subxt::config::substrate::{
-    SpecVersionForRange, SubstrateConfig, SubstrateConfigBuilder, SubstrateHeader,
-};
-use subxt::error::DispatchError;
-use subxt::ext::frame_metadata::RuntimeMetadataPrefixed;
-use subxt::metadata::{ArcMetadata, Metadata};
+use subxt::config::substrate::SubstrateConfig;
 use subxt::tx::Signer;
-use subxt::tx::{TransactionInvalid, TransactionUnknown, TransactionValid, ValidationResult};
-use subxt::utils::{AccountId32, H256, MultiAddress, MultiSignature};
+use subxt::utils::{AccountId32, MultiAddress, MultiSignature};
 use truapi::v01;
 
 use crate::host_logic::product_account::SR25519_SIGNING_CONTEXT;
@@ -40,18 +30,15 @@ pub(crate) fn sr25519_secret_from_bytes(secret: &[u8; 64]) -> Result<SecretKey, 
     }
 }
 
-/// Derive the sr25519 public key for a 64-byte allowance secret.
-pub(crate) fn public_key_from_secret_bytes(secret: &[u8; 64]) -> Result<[u8; 32], String> {
-    Ok(sr25519_secret_from_bytes(secret)?.to_public().to_bytes())
-}
-
 /// sr25519 [`Signer`] over a parsed schnorrkel key.
 ///
 /// Holds only the parsed key (schnorrkel zeroizes it on drop), never the raw
-/// secret bytes. Deliberately no `Debug` derive: schnorrkel's `Debug` prints
-/// raw scalar material.
+/// secret bytes.
+#[derive(derive_more::Debug)]
 pub(crate) struct Sr25519Signer {
+    #[debug("\"<redacted>\"")]
     secret: SecretKey,
+    #[debug("{}", hex::encode(public.to_bytes()))]
     public: PublicKey,
 }
 
@@ -75,15 +62,6 @@ impl Sr25519Signer {
     /// Public key of the signing account.
     pub(crate) fn public_key(&self) -> [u8; 32] {
         self.public.to_bytes()
-    }
-}
-
-impl core::fmt::Debug for Sr25519Signer {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Sr25519Signer")
-            .field("public", &hex::encode(self.public_key()))
-            .field("secret", &"<redacted>")
-            .finish()
     }
 }
 
@@ -164,196 +142,46 @@ pub(crate) fn build_signed_extrinsic_v4(
     inner.encode()
 }
 
-/// Everything needed to build transactions offline for one chain at one
-/// runtime version.
-///
-/// `genesis_hash` MUST come from host configuration, never from the chain
-/// provider: it binds signatures to the configured chain, which is what makes
-/// every other provider-supplied input here fail-closed (a lie yields a
-/// signature the real chain rejects, never one valid elsewhere).
-pub(crate) struct OfflineChainState {
-    pub(crate) genesis_hash: [u8; 32],
-    pub(crate) spec_version: u32,
-    pub(crate) transaction_version: u32,
-    pub(crate) metadata: ArcMetadata,
-}
-
-impl OfflineChainState {
-    /// Build an offline subxt client pinned at `block_number`.
-    pub(crate) fn client_at(
-        &self,
-        block_number: u64,
-    ) -> Result<OfflineClientAtBlock<SubstrateConfig>, String> {
-        let config = SubstrateConfigBuilder::new()
-            .set_genesis_hash(H256(self.genesis_hash))
-            .set_spec_version_for_block_ranges([SpecVersionForRange {
-                block_range: 0..u64::MAX,
-                spec_version: self.spec_version,
-                transaction_version: self.transaction_version,
-            }])
-            .set_metadata_for_spec_versions([(self.spec_version, self.metadata.clone())])
-            .build();
-        OfflineClient::new_with_config(config)
-            .at_block(block_number)
-            .map_err(|err| format!("offline client unavailable: {err}"))
-    }
-}
-
-/// Decode the output of the `Metadata_metadata_at_version` runtime call:
-/// `Option<OpaqueMetadata>` where the opaque wrapper is a compact-length
-/// prefixed `RuntimeMetadataPrefixed`.
-pub(crate) fn decode_runtime_metadata(bytes: &[u8]) -> Result<Metadata, String> {
-    let (_, prefixed) = <Option<(Compact<u32>, RuntimeMetadataPrefixed)>>::decode(&mut &bytes[..])
-        .map_err(|err| format!("invalid Metadata_metadata_at_version response: {err}"))?
-        .ok_or_else(|| "runtime returned no metadata for the requested version".to_string())?;
-    Metadata::try_from(prefixed).map_err(|err| format!("unsupported runtime metadata: {err}"))
-}
-
-/// Decode the supported metadata versions from `Metadata_metadata_versions`,
-/// returning the highest version this crate can consume (v14-v16), skipping
-/// the unstable `u32::MAX` marker.
-pub(crate) fn best_supported_metadata_version(bytes: &[u8]) -> Result<u32, String> {
-    let versions = <Vec<u32>>::decode(&mut &bytes[..])
-        .map_err(|err| format!("invalid Metadata_metadata_versions response: {err}"))?;
-    versions
-        .into_iter()
-        .filter(|version| (14..=16).contains(version))
-        .max()
-        .ok_or_else(|| "runtime advertises no supported metadata version (14-16)".to_string())
-}
-
-/// Decode a SCALE block header and return its block number.
-pub(crate) fn decode_header_block_number(header: &[u8]) -> Result<u64, String> {
-    let header = SubstrateHeader::<H256>::decode(&mut &header[..])
-        .map_err(|err| format!("invalid block header: {err}"))?;
-    Ok(header.number)
-}
-
-/// Decode an `AccountNonceApi_account_nonce` runtime-call result.
-pub(crate) fn decode_account_nonce(bytes: &[u8]) -> Result<u64, String> {
-    u32::decode(&mut &bytes[..])
-        .map(u64::from)
-        .map_err(|err| format!("invalid account nonce response: {err}"))
-}
-
-/// SCALE-encode the `TaggedTransactionQueue_validate_transaction` parameters:
-/// `TransactionSource::External` ++ opaque extrinsic ++ 32-byte block hash.
-pub(crate) fn validate_transaction_call_parameters(extrinsic: &[u8], block_hash: &[u8]) -> Vec<u8> {
-    /// `sp_runtime::transaction_validity::TransactionSource::External`, the
-    /// source the pool assigns to transactions arriving over the network,
-    /// matching how a broadcast transaction is later validated.
-    const TRANSACTION_SOURCE_EXTERNAL: u8 = 2;
-    let mut parameters = Vec::with_capacity(1 + extrinsic.len() + block_hash.len());
-    parameters.push(TRANSACTION_SOURCE_EXTERNAL);
-    parameters.extend_from_slice(extrinsic);
-    parameters.extend_from_slice(block_hash);
-    parameters
-}
-
-/// Decode the runtime's `TransactionValidity = Result<ValidTransaction,
-/// TransactionValidityError>` into subxt's [`ValidationResult`].
-///
-/// subxt's own `ValidationResult::try_from_bytes` is `pub(crate)` and only
-/// reachable through an online backend, so the outer discriminants are
-/// hand-decoded here; the payloads reuse subxt's public transaction-validity
-/// types so variant indices stay canonical.
-pub(crate) fn decode_transaction_validity(bytes: &[u8]) -> Result<ValidationResult, String> {
-    let map_err = |err: parity_scale_codec::Error| format!("invalid TransactionValidity: {err}");
-    match (bytes.first(), bytes.get(1)) {
-        (Some(0), _) => TransactionValid::decode(&mut &bytes[1..])
-            .map(ValidationResult::Valid)
-            .map_err(map_err),
-        (Some(1), Some(0)) => TransactionInvalid::decode(&mut &bytes[2..])
-            .map(ValidationResult::Invalid)
-            .map_err(map_err),
-        (Some(1), Some(1)) => TransactionUnknown::decode(&mut &bytes[2..])
-            .map(ValidationResult::Unknown)
-            .map_err(map_err),
-        _ => Err(format!(
-            "invalid TransactionValidity discriminant: 0x{}",
-            hex::encode(bytes.iter().take(2).copied().collect::<Vec<u8>>())
-        )),
-    }
-}
-
-/// Dispatch error decoded from a `System.ExtrinsicFailed` event.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DecodedDispatchError {
-    /// A pallet module error, resolved to pallet + error variant names.
-    Module { pallet: String, error: String },
-    /// Any other dispatch error, rendered as text.
-    Other(String),
-}
-
-impl core::fmt::Display for DecodedDispatchError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Module { pallet, error } => write!(f, "{pallet}.{error}"),
-            Self::Other(reason) => write!(f, "{reason}"),
-        }
-    }
-}
-
-/// Outcome of one extrinsic according to a block's `System.Events`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ExtrinsicOutcome {
-    /// `System.ExtrinsicSuccess` was emitted for the extrinsic index.
-    Success,
-    /// `System.ExtrinsicFailed` was emitted for the extrinsic index.
-    Failed(DecodedDispatchError),
-    /// The events decoded but carried no outcome for the extrinsic index.
-    NotFound,
-}
-
-/// Read the dispatch outcome for `extrinsic_index` out of raw `System.Events`
-/// storage bytes.
-pub(crate) fn extrinsic_outcome_from_events(
-    client: &OfflineClientAtBlock<SubstrateConfig>,
-    events_bytes: Vec<u8>,
-    extrinsic_index: u32,
-) -> Result<ExtrinsicOutcome, String> {
-    use subxt::events::Phase;
-
-    let events = client.events().from_bytes(events_bytes);
-    for event in events.iter() {
-        let event = event.map_err(|err| format!("invalid System.Events entry: {err}"))?;
-        if event.phase() != Phase::ApplyExtrinsic(extrinsic_index)
-            || event.pallet_name() != "System"
-        {
-            continue;
-        }
-        match event.event_name() {
-            "ExtrinsicSuccess" => return Ok(ExtrinsicOutcome::Success),
-            "ExtrinsicFailed" => {
-                let error = decode_dispatch_error(event.field_bytes(), client.metadata());
-                return Ok(ExtrinsicOutcome::Failed(error));
-            }
-            _ => {}
-        }
-    }
-    Ok(ExtrinsicOutcome::NotFound)
-}
-
-/// Decode the leading `DispatchError` out of an `ExtrinsicFailed` event's
-/// field bytes (the trailing `DispatchInfo` is ignored by the decoder).
-fn decode_dispatch_error(field_bytes: &[u8], metadata: ArcMetadata) -> DecodedDispatchError {
-    match DispatchError::decode_from(field_bytes, metadata) {
-        Ok(DispatchError::Module(module_error)) => match module_error.details() {
-            Ok(details) => DecodedDispatchError::Module {
-                pallet: details.pallet.name().to_string(),
-                error: details.variant.name.clone(),
-            },
-            Err(_) => DecodedDispatchError::Other(module_error.details_string()),
-        },
-        Ok(other) => DecodedDispatchError::Other(other.to_string()),
-        Err(err) => DecodedDispatchError::Other(format!("undecodable dispatch error: {err}")),
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use parity_scale_codec::Encode;
+    use parity_scale_codec::{Compact, Decode};
+    use subxt::client::{OfflineClient, OfflineClientAtBlock};
+    use subxt::config::substrate::{SpecVersionForRange, SubstrateConfigBuilder};
+    use subxt::ext::frame_metadata::RuntimeMetadataPrefixed;
+    use subxt::metadata::{ArcMetadata, Metadata};
+    use subxt::utils::H256;
+
+    /// Everything needed to build transactions offline for one chain at one
+    /// runtime version, mirroring what the production path gets from the
+    /// genesis-pinned online client.
+    pub(crate) struct OfflineChainState {
+        pub(crate) genesis_hash: [u8; 32],
+        pub(crate) spec_version: u32,
+        pub(crate) transaction_version: u32,
+        pub(crate) metadata: ArcMetadata,
+    }
+
+    impl OfflineChainState {
+        /// Build an offline subxt client pinned at `block_number`.
+        pub(crate) fn client_at(
+            &self,
+            block_number: u64,
+        ) -> Result<OfflineClientAtBlock<SubstrateConfig>, String> {
+            let config = SubstrateConfigBuilder::new()
+                .set_genesis_hash(H256(self.genesis_hash))
+                .set_spec_version_for_block_ranges([SpecVersionForRange {
+                    block_range: 0..u64::MAX,
+                    spec_version: self.spec_version,
+                    transaction_version: self.transaction_version,
+                }])
+                .set_metadata_for_spec_versions([(self.spec_version, self.metadata.clone())])
+                .build();
+            OfflineClient::new_with_config(config)
+                .at_block(block_number)
+                .map_err(|err| format!("offline client unavailable: {err}"))
+        }
+    }
 
     /// Raw `RuntimeMetadataPrefixed` bytes captured from the live
     /// bulletin-paseo chain (`state_getMetadata`, spec 1000020, metadata v14).
@@ -429,91 +257,6 @@ pub(crate) mod tests {
                 )
                 .is_ok()
         );
-    }
-
-    #[test]
-    fn decodes_fixture_metadata_via_runtime_call_wrapper() {
-        // Re-wrap the raw fixture the way `Metadata_metadata_at_version`
-        // returns it: Option<(compact wrapper length, prefixed metadata)>.
-        let wrapped = Some(BULLETIN_METADATA_BYTES.to_vec()).encode();
-        let metadata = decode_runtime_metadata(&wrapped).unwrap();
-        assert_eq!(
-            metadata
-                .pallet_by_name("TransactionStorage")
-                .unwrap()
-                .call_index(),
-            40
-        );
-    }
-
-    #[test]
-    fn rejects_missing_metadata_version() {
-        let wrapped = Option::<Vec<u8>>::None.encode();
-        assert!(decode_runtime_metadata(&wrapped).is_err());
-    }
-
-    #[test]
-    fn picks_best_supported_metadata_version() {
-        let versions = vec![13u32, 14, 15, u32::MAX].encode();
-        assert_eq!(best_supported_metadata_version(&versions).unwrap(), 15);
-        let unsupported = vec![13u32, u32::MAX].encode();
-        assert!(best_supported_metadata_version(&unsupported).is_err());
-    }
-
-    #[test]
-    fn decodes_header_block_number() {
-        let header = SubstrateHeader::<H256> {
-            parent_hash: H256([1; 32]),
-            number: 1_234_567,
-            state_root: H256([2; 32]),
-            extrinsics_root: H256([3; 32]),
-            digest: Default::default(),
-        };
-        assert_eq!(
-            decode_header_block_number(&header.encode()).unwrap(),
-            1_234_567
-        );
-        assert!(decode_header_block_number(&[0x00, 0x01]).is_err());
-    }
-
-    #[test]
-    fn decodes_transaction_validity_variants() {
-        // The subxt validity types are Decode-only; build the SCALE bytes by
-        // hand from the sp-runtime layout.
-        let mut bytes = vec![0u8];
-        bytes.extend((5u64, Vec::<Vec<u8>>::new(), vec![vec![1u8, 2]], 32u64, true).encode());
-        assert_eq!(
-            decode_transaction_validity(&bytes).unwrap(),
-            ValidationResult::Valid(TransactionValid {
-                priority: 5,
-                requires: vec![],
-                provides: vec![vec![1, 2]],
-                longevity: 32,
-                propagate: true,
-            })
-        );
-
-        // Invalid::Payment is variant index 1.
-        assert_eq!(
-            decode_transaction_validity(&[1, 0, 1]).unwrap(),
-            ValidationResult::Invalid(TransactionInvalid::Payment)
-        );
-
-        // Unknown::CannotLookup is variant index 0.
-        assert_eq!(
-            decode_transaction_validity(&[1, 1, 0]).unwrap(),
-            ValidationResult::Unknown(TransactionUnknown::CannotLookup)
-        );
-
-        assert!(decode_transaction_validity(&[9]).is_err());
-    }
-
-    #[test]
-    fn validate_transaction_parameters_use_external_source() {
-        let parameters = validate_transaction_call_parameters(&[0xaa, 0xbb], &[0xcc; 32]);
-        assert_eq!(parameters[0], 2);
-        assert_eq!(&parameters[1..3], &[0xaa, 0xbb]);
-        assert_eq!(&parameters[3..], &[0xcc; 32]);
     }
 
     fn test_signer() -> Sr25519Signer {
