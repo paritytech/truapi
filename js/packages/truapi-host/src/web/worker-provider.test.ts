@@ -575,7 +575,6 @@ describe("createWebWorkerPairingHostRuntime", () => {
       signature,
     });
     await settle();
-    await settle();
 
     expect(seen).toEqual({
       value,
@@ -696,13 +695,11 @@ describe("createWebWorkerPairingHostRuntime", () => {
       genesisHash: "0xab",
     });
     await settle();
-    await settle();
 
     const closes: Error[] = [];
     provider.subscribeClose!((error) => closes.push(error));
 
     worker.emitError("boom");
-    await settle();
     await settle();
 
     expect(worker.terminated).toBe(true);
@@ -790,7 +787,6 @@ describe("createWebWorkerPairingHostRuntime", () => {
     });
 
     await settle();
-    await settle();
     expect(keys).toEqual([new Uint8Array([9, 9])]);
     expect(worker.messages.at(-1)).toEqual({
       kind: "subscriptionItem",
@@ -827,7 +823,6 @@ describe("createWebWorkerPairingHostRuntime", () => {
       payload: null,
     });
 
-    await settle();
     await settle();
 
     expect(worker.messages.at(-1)).toEqual({
