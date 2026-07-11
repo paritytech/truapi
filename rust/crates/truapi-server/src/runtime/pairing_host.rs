@@ -32,7 +32,7 @@ use crate::host_logic::session_store::SessionStoreChangeNotifier;
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
-use tracing::instrument;
+use tracing::{instrument, warn};
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, v01};
 use truapi_platform::{CoreStorageKey, PairingHostConfig, Platform, ProductContext};
@@ -461,6 +461,70 @@ impl PairingHost {
         require_current_session(&self.session_state, session)
     }
 
+    async fn refresh_current_session_identity(&self) -> Option<AuthoritySession> {
+        let current = self.session_state.current()?;
+        if current.has_username() || self.host_config.people_chain_genesis_hash == [0; 32] {
+            return Some(authority_session(&current));
+        }
+
+        let resolved = resolve_session_identity_with_chain(
+            &self.chain,
+            self.host_config.people_chain_genesis_hash,
+            current.clone(),
+        )
+        .await;
+        if !resolved.has_username() || resolved == current {
+            return self.current_session();
+        }
+
+        if !self
+            .session_state
+            .replace_session_if_current(&current, resolved.clone())
+        {
+            return self.current_session();
+        }
+        self.auth_state
+            .connected(&connected_session_ui_info(&resolved));
+
+        if let Err(err) = self
+            .platform
+            .write_core_storage(
+                CoreStorageKey::AuthSession,
+                encode_persisted_session(&resolved),
+            )
+            .await
+        {
+            warn!(reason = %err.reason, "refreshed session identity persist failed");
+        }
+
+        match self.session_state.current() {
+            Some(live) if live != resolved => {
+                if let Err(err) = self
+                    .platform
+                    .write_core_storage(
+                        CoreStorageKey::AuthSession,
+                        encode_persisted_session(&live),
+                    )
+                    .await
+                {
+                    warn!(reason = %err.reason, "live session identity persist repair failed");
+                }
+                Some(authority_session(&live))
+            }
+            None => {
+                if let Err(err) = self
+                    .platform
+                    .clear_core_storage(CoreStorageKey::AuthSession)
+                    .await
+                {
+                    warn!(reason = %err.reason, "cleared session identity persist repair failed");
+                }
+                None
+            }
+            _ => Some(authority_session(&resolved)),
+        }
+    }
+
     pub(super) async fn cache_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
@@ -798,6 +862,10 @@ impl ProductAuthority for PairingHost {
 
     async fn disconnect(&self) {
         PairingHost::disconnect(self).await;
+    }
+
+    async fn refresh_session_identity(&self) -> Option<AuthoritySession> {
+        self.refresh_current_session_identity().await
     }
 
     async fn sign_payload(

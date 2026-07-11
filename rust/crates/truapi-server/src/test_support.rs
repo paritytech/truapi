@@ -96,9 +96,6 @@ pub(crate) struct StubPlatform {
     /// Invoked after each recorded auth state, outside any stub lock, so a
     /// test can react to a transition (e.g. cancel the login it observes).
     pub(crate) on_auth_state: Arc<Mutex<Option<AuthStateHook>>>,
-    /// Set when a `chain_connect_pending` connect future is dropped, which is
-    /// how a dropped login flow manifests on the stub.
-    pub(crate) pending_connect_dropped: Arc<AtomicBool>,
     /// When true, `subscribe_theme` returns a never-ending stream.
     pub(crate) theme_stream_pending: bool,
     /// Set when the pending theme stream is dropped.
@@ -115,8 +112,12 @@ pub(crate) struct StubPlatform {
     pub(crate) sent_rpc: Arc<Mutex<Vec<String>>>,
     pub(crate) rpc_responses: Vec<String>,
     pub(crate) sso_response_script: Option<SsoResponseScript>,
+    /// When set, `connect` fails with this reason.
     pub(crate) chain_connect_error: Option<&'static str>,
+    /// When true, `connect` stays pending forever.
     pub(crate) chain_connect_pending: bool,
+    /// Set when a `chain_connect_pending` connect future is dropped.
+    pub(crate) pending_connect_dropped: Arc<AtomicBool>,
     /// Value returned by `lookup_preimage`, if any. Tests set this to a
     /// forged value to exercise the in-core integrity check.
     pub(crate) preimage_lookup_value: Option<Vec<u8>>,
@@ -134,14 +135,6 @@ pub(crate) enum SsoResponseScript {
     PeerDisconnect {
         session: SessionInfo,
     },
-}
-
-struct DropFlagGuard(Arc<AtomicBool>);
-
-impl Drop for DropFlagGuard {
-    fn drop(&mut self) {
-        self.0.store(true, Ordering::SeqCst);
-    }
 }
 
 struct PendingThemeStream {
@@ -1185,6 +1178,15 @@ fn json_rpc_id(frame: &str) -> Option<String> {
         serde_json::Value::String(value) => Some(value.clone()),
         serde_json::Value::Number(value) => Some(value.to_string()),
         _ => None,
+    }
+}
+
+/// Sets its flag when dropped, marking a cancelled pending operation.
+struct DropFlagGuard(Arc<AtomicBool>);
+
+impl Drop for DropFlagGuard {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 

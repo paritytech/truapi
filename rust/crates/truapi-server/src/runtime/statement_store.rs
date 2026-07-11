@@ -850,9 +850,7 @@ mod tests {
             panic!("expected statement-store subscribe domain error");
         };
         assert!(
-            reason
-                .reason
-                .contains("statement-store connect failed: GenericError"),
+            reason.reason.contains("statement-store connect failed:"),
             "unexpected reason: {}",
             reason.reason
         );

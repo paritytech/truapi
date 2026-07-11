@@ -53,6 +53,17 @@ impl AuthoritySession {
             validation_id,
         }
     }
+
+    pub(crate) fn primary_username(&self) -> Option<&str> {
+        self.full_username
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                self.lite_username
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+            })
+    }
 }
 
 /// Typed account-authority failure before it is mapped to an API-specific error.
@@ -227,6 +238,12 @@ pub(crate) trait ProductAuthority: Send + Sync {
 
     /// Disconnect the current account-authority session.
     async fn disconnect(&self);
+
+    /// Refresh identity fields for the current session if the authority can do
+    /// so without user interaction.
+    async fn refresh_session_identity(&self) -> Option<AuthoritySession> {
+        self.current_session()
+    }
 
     /// Sign a SCALE transaction payload for a product account.
     async fn sign_payload(

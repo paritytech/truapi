@@ -917,24 +917,22 @@ impl Account for ProductRuntimeHost {
             Err(reason) => return Err(CallError::HostFailure { reason }),
         }
 
-        let primary_username = session
-            .full_username
-            .clone()
-            .filter(|value| !value.is_empty())
-            .or_else(|| {
-                session
-                    .lite_username
-                    .clone()
-                    .filter(|value| !value.is_empty())
-            })
-            .ok_or_else(|| {
-                CallError::Domain(HostGetUserIdError::V1(v01::HostGetUserIdError::Unknown {
-                    reason: "No primary username for this session".to_string(),
-                }))
-            })?;
+        let session = if session.primary_username().is_some() {
+            session
+        } else {
+            self.authority
+                .refresh_session_identity()
+                .await
+                .unwrap_or(session)
+        };
+        let primary_username = session.primary_username().ok_or_else(|| {
+            CallError::Domain(HostGetUserIdError::V1(v01::HostGetUserIdError::Unknown {
+                reason: "No primary username for this session".to_string(),
+            }))
+        })?;
 
         Ok(HostGetUserIdResponse::V1(v01::HostGetUserIdResponse {
-            primary_username,
+            primary_username: primary_username.to_string(),
         }))
     }
 

@@ -6,13 +6,13 @@
 //! caller-supplied call data.
 
 use parity_scale_codec::{Compact, Encode};
-use subxt::client::{ClientAtBlock, OfflineClientAtBlockT};
+use subxt::client::{ClientAtBlock, OnlineClientAtBlockT};
 use subxt::config::DefaultExtrinsicParamsBuilder;
 use subxt::config::substrate::SubstrateConfig;
+use subxt::error::ExtrinsicError;
 use subxt::ext::scale_encode::{self, EncodeAsFields, FieldIter, TypeResolver};
 use subxt::ext::scale_type_resolver::{Primitive, visitor};
 use subxt::tx::{StaticPayload, SubmittableTransaction};
-use subxt::utils::H256;
 use truapi_platform::BulletinAllowanceKey;
 
 use crate::host_logic::extrinsic::Sr25519Signer;
@@ -20,10 +20,7 @@ use crate::host_logic::extrinsic::Sr25519Signer;
 pub(crate) const STORE_PALLET_NAME: &str = "TransactionStorage";
 pub(crate) const STORE_CALL_NAME: &str = "store";
 
-/// Mortality window for store transactions. Must stay <= 4096 so the era
-/// phase quantization is a no-op and the anchor block is the era birth block
-/// (larger periods make the encoded anchor hash wrong and the signature
-/// fails as BadProof).
+/// Mortality window for store transactions.
 const MORTAL_PERIOD_BLOCKS: u64 = 64;
 
 /// Preimage key: blake2b-256 of the raw preimage bytes.
@@ -31,48 +28,21 @@ pub(crate) fn preimage_key(value: &[u8]) -> [u8; 32] {
     sp_crypto_hashing::blake2_256(value)
 }
 
-/// Block the transaction's mortality is anchored at.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MortalityAnchor {
-    /// Anchor block number (era birth block).
-    pub(crate) number: u64,
-    /// Anchor block hash (the `CheckMortality` implicit).
-    pub(crate) hash: [u8; 32],
-}
-
 /// Build and sign a `TransactionStorage.store { data }` transaction with the
-/// Bulletin allowance signer against the client's block. The anchor must be
-/// the block the client is at, so the mortal era and the dry-run block agree.
-pub(crate) fn build_signed_store_transaction<C: OfflineClientAtBlockT<SubstrateConfig>>(
+/// Bulletin allowance signer against the client's block. Subxt chooses the
+/// supported transaction version and injects the nonce and mortality anchor
+/// from that same at-block client, so signing and dry-run stay aligned.
+pub(crate) async fn build_signed_store_transaction<C: OnlineClientAtBlockT<SubstrateConfig>>(
     client: &ClientAtBlock<SubstrateConfig, C>,
-    anchor: &MortalityAnchor,
     signer: &Sr25519Signer,
-    nonce: u64,
     data: &[u8],
-) -> Result<SubmittableTransaction<SubstrateConfig, C>, String> {
-    if !client
-        .metadata_ref()
-        .extrinsic()
-        .supported_versions()
-        .contains(&4)
-    {
-        return Err(format!(
-            "bulletin runtime no longer supports v4 extrinsics (supported: {:?})",
-            client.metadata_ref().extrinsic().supported_versions()
-        ));
-    }
-
+) -> Result<SubmittableTransaction<SubstrateConfig, C>, ExtrinsicError> {
     let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(data));
     let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
-        .nonce(nonce)
-        .mortal_from_unchecked(MORTAL_PERIOD_BLOCKS, anchor.number, H256(anchor.hash))
+        .mortal(MORTAL_PERIOD_BLOCKS)
         .build();
-    client
-        .tx()
-        .create_v4_signable_offline(&payload, params)
-        .map_err(|err| format!("store transaction assembly failed: {err}"))?
-        .sign(signer)
-        .map_err(|err| format!("store transaction signing failed: {err}"))
+    let mut tx = client.tx();
+    tx.create_signed(&payload, signer, params).await
 }
 
 /// The only [`BulletinAllowanceKey`] -> signer conversion in the crate. The
@@ -149,8 +119,17 @@ mod tests {
     use crate::host_logic::product_account::SR25519_SIGNING_CONTEXT;
     use parity_scale_codec::Decode;
     use schnorrkel::{PublicKey, Signature};
+    use subxt::client::{ClientAtBlock, OfflineClientAtBlockT};
     use subxt::ext::frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed, v14};
     use subxt::metadata::{ArcMetadata, Metadata};
+    use subxt::tx::Signer;
+    use subxt::utils::H256;
+
+    #[derive(Debug, Clone, Copy)]
+    struct TestMortalityAnchor {
+        number: u64,
+        hash: [u8; 32],
+    }
 
     fn allowance_fixture() -> BulletinAllowanceKey {
         let secret = hex::decode(
@@ -165,11 +144,31 @@ mod tests {
         allowance_signer(&allowance_fixture()).unwrap()
     }
 
-    fn anchor_fixture() -> MortalityAnchor {
-        MortalityAnchor {
+    fn anchor_fixture() -> TestMortalityAnchor {
+        TestMortalityAnchor {
             number: 4200,
             hash: [0xaa; 32],
         }
+    }
+
+    fn build_signed_store_transaction_offline<C: OfflineClientAtBlockT<SubstrateConfig>>(
+        client: &ClientAtBlock<SubstrateConfig, C>,
+        anchor: &TestMortalityAnchor,
+        signer: &Sr25519Signer,
+        nonce: u64,
+        data: &[u8],
+    ) -> Result<SubmittableTransaction<SubstrateConfig, C>, String> {
+        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(data));
+        let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
+            .nonce(nonce)
+            .mortal_from_unchecked(MORTAL_PERIOD_BLOCKS, anchor.number, H256(anchor.hash))
+            .build();
+        client
+            .tx()
+            .create_v4_signable_offline(&payload, params)
+            .map_err(|err| format!("store transaction assembly failed: {err}"))?
+            .sign(signer)
+            .map_err(|err| format!("store transaction signing failed: {err}"))
     }
 
     /// Decode the fixture metadata down to its mutable v14 representation.
@@ -223,12 +222,17 @@ mod tests {
         let state = bulletin_chain_state();
         let data = b"hello bulletin".to_vec();
         let client = state.client_at(anchor_fixture().number).unwrap();
-        let signed =
-            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 7, &data)
-                .unwrap();
+        let signed = build_signed_store_transaction_offline(
+            &client,
+            &anchor_fixture(),
+            &signer_fixture(),
+            7,
+            &data,
+        )
+        .unwrap();
 
         let (account, signature, tail) = split_v4(signed.encoded());
-        assert_eq!(account, signer_fixture().public_key());
+        assert_eq!(account, signer_fixture().account_id().0);
         let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(&data));
         let call_data = client.tx().call_data(&payload).unwrap();
         assert!(tail.ends_with(&call_data));
@@ -267,9 +271,14 @@ mod tests {
         let client = bulletin_chain_state()
             .client_at(anchor_fixture().number)
             .unwrap();
-        let signed =
-            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &data)
-                .unwrap();
+        let signed = build_signed_store_transaction_offline(
+            &client,
+            &anchor_fixture(),
+            &signer_fixture(),
+            0,
+            &data,
+        )
+        .unwrap();
         let (account, signature, _) = split_v4(signed.encoded());
 
         let mutated_state = OfflineChainState {
@@ -338,7 +347,7 @@ mod tests {
 
         let state = state_with_metadata(metadata_from_v14(metadata));
         let client = state.client_at(anchor_fixture().number).unwrap();
-        let error = build_signed_store_transaction(
+        let error = build_signed_store_transaction_offline(
             &client,
             &anchor_fixture(),
             &signer_fixture(),
@@ -358,9 +367,14 @@ mod tests {
 
         let state = state_with_metadata(metadata_from_v14(metadata));
         let client = state.client_at(anchor_fixture().number).unwrap();
-        let error =
-            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &[1])
-                .unwrap_err();
+        let error = build_signed_store_transaction_offline(
+            &client,
+            &anchor_fixture(),
+            &signer_fixture(),
+            0,
+            &[1],
+        )
+        .unwrap_err();
         assert!(error.contains("FakeImplicitExt"), "{error}");
     }
 
@@ -373,9 +387,14 @@ mod tests {
 
         let state = state_with_metadata(metadata_from_v14(metadata));
         let client = state.client_at(anchor_fixture().number).unwrap();
-        let error =
-            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &[1])
-                .unwrap_err();
+        let error = build_signed_store_transaction_offline(
+            &client,
+            &anchor_fixture(),
+            &signer_fixture(),
+            0,
+            &[1],
+        )
+        .unwrap_err();
         assert!(error.contains("FakeValueExt"), "{error}");
     }
 
@@ -396,7 +415,7 @@ mod tests {
         let baseline_client = bulletin_chain_state()
             .client_at(anchor_fixture().number)
             .unwrap();
-        let baseline = build_signed_store_transaction(
+        let baseline = build_signed_store_transaction_offline(
             &baseline_client,
             &anchor_fixture(),
             &signer_fixture(),
@@ -405,9 +424,14 @@ mod tests {
         )
         .unwrap();
         let client = state.client_at(anchor_fixture().number).unwrap();
-        let with_fake =
-            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &[1])
-                .unwrap();
+        let with_fake = build_signed_store_transaction_offline(
+            &client,
+            &anchor_fixture(),
+            &signer_fixture(),
+            0,
+            &[1],
+        )
+        .unwrap();
         assert_eq!(
             with_fake.encoded().len(),
             baseline.encoded().len() + 1,
@@ -426,9 +450,14 @@ mod tests {
             .client_at(anchor_fixture().number)
             .unwrap();
         let start = std::time::Instant::now();
-        let signed =
-            build_signed_store_transaction(&client, &anchor_fixture(), &signer_fixture(), 0, &data)
-                .unwrap();
+        let signed = build_signed_store_transaction_offline(
+            &client,
+            &anchor_fixture(),
+            &signer_fixture(),
+            0,
+            &data,
+        )
+        .unwrap();
         let elapsed = start.elapsed();
         assert!(signed.encoded().len() > data.len());
         assert!(

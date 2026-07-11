@@ -142,6 +142,8 @@ impl RuntimeChainProvider for HostChainProvider {
             .connect(genesis_hash)
             .await
             .map(Arc::from)
-            .map_err(|_| RuntimeFailure::unavailable("remote_chain_connect"))
+            .map_err(|err| {
+                RuntimeFailure::unavailable_with_reason("remote_chain_connect", format!("{err:?}"))
+            })
     }
 }

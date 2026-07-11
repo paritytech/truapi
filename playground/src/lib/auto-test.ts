@@ -37,6 +37,7 @@ const LONG_TIMEOUT_METHODS = new Set([
 ]);
 
 const METHOD_TIMEOUT_MS = new Map<string, number>([
+  ["Account/get_user_id", SSO_TIMEOUT_MS],
   ["Account/get_account_alias", SSO_TIMEOUT_MS],
   ["Resource Allocation/request", LIVE_ALLOCATION_TIMEOUT_MS],
   ["Preimage/lookup_subscribe", LIVE_ALLOCATION_TIMEOUT_MS],

@@ -1,4 +1,10 @@
 //! Runtime helper for People-chain statement-store JSON-RPC.
+//!
+//! Statement traffic opens short-lived host RPC connections for its own
+//! subscription lifetimes instead of riding the shared
+//! [`crate::chain_runtime::ChainRuntime`] chainHead runtime. If a host shares
+//! same-topic statement subscriptions on one upstream connection, the host
+//! broker must fan out and ref-count same-upstream-token notifications.
 
 use std::sync::Arc;
 

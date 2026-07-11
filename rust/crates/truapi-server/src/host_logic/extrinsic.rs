@@ -58,11 +58,6 @@ impl Sr25519Signer {
             public: keypair.public,
         }
     }
-
-    /// Public key of the signing account.
-    pub(crate) fn public_key(&self) -> [u8; 32] {
-        self.public.to_bytes()
-    }
 }
 
 impl Signer<SubstrateConfig> for Sr25519Signer {
@@ -247,7 +242,7 @@ pub(crate) mod tests {
         let MultiSignature::Sr25519(signature) = signer.sign(payload) else {
             panic!("expected sr25519 signature");
         };
-        let public = PublicKey::from_bytes(&signer.public_key()).unwrap();
+        let public = PublicKey::from_bytes(&signer.account_id().0).unwrap();
         assert!(
             public
                 .verify_simple(
@@ -305,7 +300,7 @@ pub(crate) mod tests {
         expected_tail.extend_from_slice(&extensions[0].extra);
         expected_tail.extend_from_slice(&extensions[1].extra);
         expected_tail.extend_from_slice(&call_data);
-        assert_eq!(account, signer.public_key());
+        assert_eq!(account, signer.account_id().0);
         assert_eq!(tail, expected_tail);
 
         // Signature verifies over call ++ Σextra ++ Σadditional (call first).

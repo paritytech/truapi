@@ -17,26 +17,25 @@ use web_time::{Duration, Instant};
 use futures::{FutureExt, pin_mut};
 use subxt::client::{Block, Blocks, OnlineClientAtBlockImpl};
 use subxt::config::substrate::SubstrateConfig;
-use subxt::error::{DispatchError, TransactionEventsError};
+use subxt::error::{DispatchError, ExtrinsicError, TransactionEventsError};
 use subxt::tx::{
     SubmittableTransaction, TransactionInBlock, TransactionInvalid, TransactionStatus,
     TransactionUnknown, ValidationResult,
 };
-use subxt::utils::AccountId32;
 use tracing::{instrument, warn};
 use truapi::CallContext;
 use truapi_platform::BulletinAllowanceKey;
 
 use crate::chain_runtime::ChainRuntime;
 use crate::host_logic::bulletin::{
-    MortalityAnchor, STORE_PALLET_NAME, allowance_signer, build_signed_store_transaction,
-    preimage_key,
+    STORE_PALLET_NAME, allowance_signer, build_signed_store_transaction, preimage_key,
 };
 use crate::host_logic::extrinsic::Sr25519Signer;
 
-/// Retry once when a broadcast is not included after the watch budget. This
-/// covers the post-allocation propagation window where dry-run can succeed
-/// against one node while the authoring path silently drops the broadcast.
+/// Retry once when a broadcast cannot be verified after a successful dry-run.
+/// This covers the post-allocation propagation window where dry-run can
+/// succeed against one node while the authoring path rejects or drops the
+/// broadcast.
 const SUBMIT_ATTEMPTS: usize = 2;
 /// Number of newer best blocks to try before treating a dry-run allowance
 /// rejection as real. Wallet allocation can return before the freshly granted
@@ -105,8 +104,9 @@ pub(crate) enum AllowanceRejectionPhase {
 }
 
 impl BulletinSubmitError {
-    fn is_retryable_watch_timeout(&self) -> bool {
+    fn is_retryable_submission_uncertain(&self, phase: Phase) -> bool {
         matches!(self, Self::Timeout { phase } if *phase == "watch")
+            || (phase == "watch" && matches!(self, Self::BroadcastUnverified { .. }))
     }
 
     /// Structured reason string carried in the wire error.
@@ -199,7 +199,10 @@ impl BulletinRpc {
                 _ = cancelled => Err(BulletinSubmitError::Cancelled),
             };
             match result {
-                Err(err) if attempt < SUBMIT_ATTEMPTS && err.is_retryable_watch_timeout() => {
+                Err(err)
+                    if attempt < SUBMIT_ATTEMPTS
+                        && err.is_retryable_submission_uncertain(self.current_phase()) =>
+                {
                     warn!(
                         attempt,
                         reason = %err.reason(),
@@ -261,7 +264,6 @@ impl BulletinRpc {
         signer: &Sr25519Signer,
         value: &[u8],
     ) -> Result<SignedStore, BulletinSubmitError> {
-        let account = AccountId32(signer.public_key());
         let mut block = head;
         let mut allowance_rejections = 0;
         loop {
@@ -273,19 +275,9 @@ impl BulletinRpc {
                     .map_err(|error| BulletinSubmitError::ChainUnavailable {
                         reason: format!("block {} unavailable: {error}", block.number()),
                     })?;
-            let nonce = at_block
-                .tx()
-                .account_nonce(&account)
+            let signed = build_signed_store_transaction(&at_block, signer, value)
                 .await
-                .map_err(|error| BulletinSubmitError::ChainUnavailable {
-                    reason: format!("account nonce unavailable: {error}"),
-                })?;
-            let anchor = MortalityAnchor {
-                number: block.number(),
-                hash: block.hash().0,
-            };
-            let signed = build_signed_store_transaction(&at_block, &anchor, signer, nonce, value)
-                .map_err(|kind| BulletinSubmitError::InvalidTransaction { kind })?;
+                .map_err(map_store_transaction_build_error)?;
 
             self.enter_phase("dry-run");
             let validity =
@@ -393,6 +385,17 @@ async fn next_best_block(
     }
 }
 
+fn map_store_transaction_build_error(error: ExtrinsicError) -> BulletinSubmitError {
+    match error {
+        ExtrinsicError::AccountNonceError { reason, .. } => BulletinSubmitError::ChainUnavailable {
+            reason: format!("account nonce unavailable: {reason}"),
+        },
+        other => BulletinSubmitError::InvalidTransaction {
+            kind: format!("store transaction assembly failed: {other}"),
+        },
+    }
+}
+
 /// Submit the signed transaction and watch its progress until it lands in a
 /// best or finalized block.
 async fn watch_until_included(
@@ -411,7 +414,9 @@ async fn watch_until_included(
                 return Ok(block);
             }
             TransactionStatus::Invalid { message } => {
-                return Err(BulletinSubmitError::InvalidTransaction { kind: message });
+                return Err(unverified(format!(
+                    "transaction invalid after successful dry-run: {message}"
+                )));
             }
             TransactionStatus::Dropped { message } => {
                 return Err(unverified(format!("transaction dropped: {message}")));
@@ -504,6 +509,24 @@ mod tests {
                 DryRunStatus::AllowanceRejected
             );
         }
+    }
+
+    #[test]
+    fn retries_only_uncertain_watch_phase_submissions() {
+        let unverified = BulletinSubmitError::BroadcastUnverified {
+            reason: "transaction invalid after successful dry-run".to_string(),
+        };
+        assert!(unverified.is_retryable_submission_uncertain("watch"));
+        assert!(!unverified.is_retryable_submission_uncertain("events"));
+
+        assert!(
+            BulletinSubmitError::Timeout { phase: "watch" }
+                .is_retryable_submission_uncertain("connect")
+        );
+        assert!(
+            !BulletinSubmitError::Timeout { phase: "dry-run" }
+                .is_retryable_submission_uncertain("dry-run")
+        );
     }
 
     /// Decode a `DispatchError::Module` for the named error variant out of
