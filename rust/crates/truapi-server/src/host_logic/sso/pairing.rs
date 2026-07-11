@@ -447,7 +447,10 @@ fn create_session_id(
 }
 
 fn keyed_hash(key: [u8; 32], message: &[u8]) -> [u8; 32] {
-    let digest = blake2b(32, &key, message);
+    let digest = blake2b_simd::Params::new()
+        .hash_length(32)
+        .key(&key)
+        .hash(message);
     let mut output = [0u8; 32];
     output.copy_from_slice(digest.as_bytes());
     output
@@ -623,6 +626,7 @@ mod tests {
                 version: Some("192.32".to_string()),
             },
             [0; 32],
+            [0xbb; 32],
             "polkadotapp".to_string(),
         )
         .expect("test runtime config is valid")

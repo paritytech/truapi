@@ -3,22 +3,24 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm wasm-crypto-test dev dev-bootstrap dev-link-check e2e-dotli headless matrix explorer
+.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test dev dev-bootstrap dev-link-check e2e-dotli headless matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
 JS_PACKAGES := js/packages
 EXPLORER := explorer
 DOTLI := hosts/dotli
-HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host-wasm
+HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host
 HOST_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
 HOST_WASM_ADAPTER_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks-adapter.ts
 HOST_WASM_WORKER_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/worker-callbacks.ts
 HOST_WASM_WEB := $(HOST_WASM_PKG)/dist/wasm/web/truapi_server.js
 DOTLI_UI := $(DOTLI)/packages/ui
-DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host-wasm
+DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host
 SIGNER_BOT_BASE_URL ?= https://signing-bot-dev.novasama-tech.org/
 SIGNER_BOT_NETWORK ?= paseo-next-v2
+SIGNER_BOT_BASE_URL_ORIGIN := $(origin SIGNER_BOT_BASE_URL)
+SIGNER_BOT_NETWORK_ORIGIN := $(origin SIGNER_BOT_NETWORK)
 VITE_NETWORKS ?= paseo-next-v2,previewnet
 export SIGNER_BOT_BASE_URL
 export SIGNER_BOT_NETWORK
@@ -56,7 +58,7 @@ codegen: ## Regenerate generated TS/Rust artifacts from the Rust crates.
 	./scripts/codegen.sh
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 
-wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-wasm/dist/wasm/.
+wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host/dist/wasm/.
 	cd $(HOST_WASM_PKG) && npm run build:wasm
 
 wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
@@ -65,16 +67,34 @@ wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace
 	cd $(TRUAPI_PKG) && npm test
-	cd $(JS_PACKAGES)/truapi-host-wasm && npm test
+	cd $(JS_PACKAGES)/truapi-host && npm test
 
 check: ## Full verification suite (build, fmt, clippy, test, TS tests, playground build + lint).
 	cargo build --workspace
 	cargo +nightly fmt --check
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
-	cargo test --workspace
+	cargo test --workspace --all-features --all-targets
 	cd $(TRUAPI_PKG) && npm run build && npm test
-	cd $(JS_PACKAGES)/truapi-host-wasm && npm install --no-fund --no-audit && npm test
+	cd $(JS_PACKAGES)/truapi-host && npm install --no-fund --no-audit && npm test
 	cd $(PLAYGROUND) && yarn build && yarn lint
+
+clean: ## Remove local build/test artifacts without deleting dependencies.
+	cargo clean
+	rm -rf \
+		$(TRUAPI_PKG)/dist \
+		$(TRUAPI_PKG)/tsconfig.tsbuildinfo \
+		$(HOST_WASM_PKG)/dist \
+		$(HOST_WASM_PKG)/tsconfig.tsbuildinfo \
+		$(PLAYGROUND)/.next \
+		$(PLAYGROUND)/out \
+		$(PLAYGROUND)/test-results \
+		$(PLAYGROUND)/tsconfig.tsbuildinfo \
+		$(PLAYGROUND)/tests/tsconfig.tsbuildinfo \
+		$(DOTLI)/.turbo \
+		$(DOTLI)/apps/host/dist \
+		$(DOTLI)/apps/protocol/dist \
+		$(DOTLI)/apps/sandbox/dist \
+		$(DOTLI)/test-results
 
 playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.
 	cd $(TRUAPI_PKG) && npm run build
@@ -87,20 +107,21 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 	# that only exist after codegen.sh, which also builds the packages.
 	if [ ! -d node_modules ]; then npm ci --ignore-scripts; fi
 	if [ ! -f "$(HOST_CALLBACKS_GENERATED)" ] || [ ! -f "$(HOST_WASM_ADAPTER_GENERATED)" ] || [ ! -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" ]; then ./scripts/codegen.sh; fi
+	cd $(TRUAPI_PKG) && npm run build
 	cd $(HOST_WASM_PKG) && npm run build
 	TRUAPI_WASM_PROFILE=dev $(MAKE) wasm
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
 	cd $(DOTLI) && bun install --frozen-lockfile
 	$(MAKE) dev-link-check
 
-dev-link-check: ## Verify dotli can resolve the local @parity/truapi-host-wasm package.
+dev-link-check: ## Verify dotli can resolve the local @parity/truapi-host package.
 	@test -f "$(HOST_CALLBACKS_GENERATED)" || (echo "Missing generated host callbacks. Run: make codegen"; exit 1)
 	@test -f "$(HOST_WASM_ADAPTER_GENERATED)" || (echo "Missing generated host callbacks WASM adapter. Run: make codegen"; exit 1)
 	@test -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" || (echo "Missing generated host callbacks worker bridge. Run: make codegen"; exit 1)
-	@test -f "$(HOST_WASM_PKG)/dist/index.js" || (echo "Missing @parity/truapi-host-wasm dist. Run: npm run build --prefix $(HOST_WASM_PKG)"; exit 1)
-	@test -f "$(HOST_WASM_WEB)" || (echo "Missing @parity/truapi-host-wasm web WASM glue. Run: make wasm"; exit 1)
-	@test -e "$(DOTLI_HOST_WASM_LINK)/package.json" || (echo "dotli cannot resolve @parity/truapi-host-wasm. Run top-level: make dev"; exit 1)
-	cd $(DOTLI_UI) && bun -e 'await import("@parity/truapi-host-wasm"); await import("@parity/truapi-host-wasm/web");'
+	@test -f "$(HOST_WASM_PKG)/dist/index.js" || (echo "Missing @parity/truapi-host dist. Run: npm run build --prefix $(HOST_WASM_PKG)"; exit 1)
+	@test -f "$(HOST_WASM_WEB)" || (echo "Missing @parity/truapi-host web WASM glue. Run: make wasm"; exit 1)
+	@test -e "$(DOTLI_HOST_WASM_LINK)/package.json" || (echo "dotli cannot resolve @parity/truapi-host. Run top-level: make dev"; exit 1)
+	cd $(DOTLI_UI) && bun -e 'await import("@parity/truapi-host"); await import("@parity/truapi-host/web");'
 
 dev: dev-bootstrap ## Start dotli host (:5173) + playground (:3000) together; open http://localhost:5173/localhost:3000. DEBUG=1 logs wire frames.
 	@trap 'kill 0' EXIT; \
@@ -113,15 +134,17 @@ e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_
 	@SIGNER_BOT_SVC_TOKEN_ENV="$$SIGNER_BOT_SVC_TOKEN"; \
 	SIGNER_BOT_BASE_URL_ENV="$$SIGNER_BOT_BASE_URL"; \
 	SIGNER_BOT_NETWORK_ENV="$$SIGNER_BOT_NETWORK"; \
+	SIGNER_BOT_BASE_URL_ORIGIN="$(SIGNER_BOT_BASE_URL_ORIGIN)"; \
+	SIGNER_BOT_NETWORK_ORIGIN="$(SIGNER_BOT_NETWORK_ORIGIN)"; \
 	set -a; \
 	if [ -f .env ]; then . ./.env; fi; \
 	set +a; \
 	if [ -n "$$SIGNER_BOT_SVC_TOKEN_ENV" ]; then SIGNER_BOT_SVC_TOKEN="$$SIGNER_BOT_SVC_TOKEN_ENV"; export SIGNER_BOT_SVC_TOKEN; fi; \
-	if [ -n "$$SIGNER_BOT_BASE_URL_ENV" ]; then SIGNER_BOT_BASE_URL="$$SIGNER_BOT_BASE_URL_ENV"; export SIGNER_BOT_BASE_URL; fi; \
-	if [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
+	if [ "$$SIGNER_BOT_BASE_URL_ORIGIN" != "file" ] && [ -n "$$SIGNER_BOT_BASE_URL_ENV" ]; then SIGNER_BOT_BASE_URL="$$SIGNER_BOT_BASE_URL_ENV"; export SIGNER_BOT_BASE_URL; fi; \
+	if [ "$$SIGNER_BOT_NETWORK_ORIGIN" != "file" ] && [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
 	if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_SVC_TOKEN" || (echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi; \
 	$(MAKE) dev-bootstrap; \
-	cd $(DOTLI)/apps/host && bun tests/e2e/playground-diagnosis.ts
+	cd $(PLAYGROUND) && bun tests/e2e/dotli-diagnosis.ts
 
 matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
 	cd $(EXPLORER) && npm run generate-matrix

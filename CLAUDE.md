@@ -16,10 +16,10 @@ rust/crates/
   truapi-host-cli/       Headless pairing-host + signing-host CLIs that pair over the real People-chain statement store; local e2e signing-bot replacement
 js/packages/
   truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
-  truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime. Subpath entries:
-	                           `.` (shared host types), `/web` (iframe + Web
-	                           Worker), `/worker-runtime` (Worker entry).
-	                           WASM bundle (gitignored) under dist/wasm/web/, built via `make wasm`
+  truapi-host/            @parity/truapi-host: WASM-backed host runtime. Subpath entries:
+                          `.` (shared host types), `/web` (iframe + Web
+                          Worker), `/worker-runtime` (Worker entry).
+                          WASM bundle (gitignored) under dist/wasm/web/, built via `make wasm`
 playground/                Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/               dotli submodule
 docs/                      design docs, RFCs, feature proposals
@@ -32,14 +32,17 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
   syscall traits and host-side runtime types live in `truapi-platform` and
   `truapi-server`, not in `truapi`. Any additions to `truapi` itself are limited
   to additive `Display` impls.
-- All types exposed by `truapi-platform` and `truapi-server` come from
-  `truapi::versioned::*` and `truapi::v01::*`. The runtime crates re-export
-  rather than redefine.
+- Outside the canonical `truapi` crate and its version-conversion impls, use
+  structs from `truapi::latest` for concrete protocol payload/error types.
+  Runtime crates should take envelopes from `truapi::versioned::*` and unwrap
+  them into latest payloads instead of spelling `truapi::v01::*` directly.
 - `truapi-server` WASM artifacts live under
-  `js/packages/truapi-host-wasm/dist/wasm/web/` and are gitignored.
+  `js/packages/truapi-host/dist/wasm/web/` and are gitignored.
   Build them locally with `make wasm` (rerun whenever
-  `rust/crates/truapi-server/` changes); CI builds the bundle fresh from the
-  Rust source on every run.
+  `rust/crates/truapi-server/` changes). CI compiles the crate for
+  `wasm32-unknown-unknown` to guard the wasm bridge and its offline subxt
+  surface, but does not build or publish the packaged bundle; run `make wasm`
+  locally before relying on the browser host.
 
 ## Code style
 
@@ -158,7 +161,7 @@ Alternatively, with a deployed Polkadot Desktop Host installed, navigate to
 
 Use `make dev DEBUG=1` from the repo root for the local host stack. It prepares
 the ignored WASM/build artifacts, verifies dotli can resolve
-`@parity/truapi-host-wasm`, then starts dotli on `:5173` and the playground on
+`@parity/truapi-host`, then starts dotli on `:5173` and the playground on
 `:3000`. Open `http://localhost:5173/localhost:3000`.
 
 When automating with Playwright, block service workers for smoke tests unless
@@ -235,7 +238,7 @@ sessionStorage.setItem("dotli:truapi-debug", "1");
 ```
 
 Reload after setting the debug-panel flag. Watch for `Unknown wire discriminant`, missing
-`@parity/truapi-host-wasm` imports, worker WASM instantiation failures, and
+`@parity/truapi-host` imports, worker WASM instantiation failures, and
 debug-panel traffic disappearing when the login popup opens.
 
 ## Deployment

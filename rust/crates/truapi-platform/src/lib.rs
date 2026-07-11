@@ -22,8 +22,7 @@ use truapi::latest::{
     HostRequestResourceAllocationRequest, HostSignPayloadRequest,
     HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
     HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
-    PreimageSubmitError, ProductAccountTxPayload, RemotePermissionRequest,
-    RemotePermissionResponse, ThemeVariant,
+    ProductAccountTxPayload, RemotePermissionRequest, RemotePermissionResponse, ThemeVariant,
 };
 use url::Url;
 
@@ -55,6 +54,8 @@ pub struct PairingHostConfig {
     /// over one transport (e.g. a local relay) while resolving usernames from
     /// the real People chain. `None` falls back to `people_chain_genesis_hash`.
     pub identity_chain_genesis_hash: Option<[u8; 32]>,
+    /// Bulletin-chain genesis hash used for in-core preimage submission.
+    pub bulletin_chain_genesis_hash: [u8; 32],
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
     ///
     /// Host-spec L.2-L.3 define the `polkadotapp://pair` route and construction
@@ -73,6 +74,8 @@ pub struct SigningHostConfig {
     pub host: HostRuntimeConfig,
     /// People-chain genesis hash used for statement-store product calls.
     pub people_chain_genesis_hash: [u8; 32],
+    /// Bulletin-chain genesis hash used for in-core preimage submission.
+    pub bulletin_chain_genesis_hash: [u8; 32],
 }
 
 /// Product identity attached to one product-facing TrUAPI connection.
@@ -143,6 +146,7 @@ impl PairingHostConfig {
         host_info: HostInfo,
         platform_info: PlatformInfo,
         people_chain_genesis_hash: [u8; 32],
+        bulletin_chain_genesis_hash: [u8; 32],
         pairing_deeplink_scheme: String,
     ) -> Result<Self, RuntimeConfigValidationError> {
         require_non_empty("pairing_deeplink_scheme", &pairing_deeplink_scheme)?;
@@ -155,6 +159,7 @@ impl PairingHostConfig {
             host: HostRuntimeConfig::new(host_info, platform_info)?,
             people_chain_genesis_hash,
             identity_chain_genesis_hash: None,
+            bulletin_chain_genesis_hash,
             pairing_deeplink_scheme,
         };
         Ok(config)
@@ -181,10 +186,12 @@ impl SigningHostConfig {
         host_info: HostInfo,
         platform_info: PlatformInfo,
         people_chain_genesis_hash: [u8; 32],
+        bulletin_chain_genesis_hash: [u8; 32],
     ) -> Result<Self, RuntimeConfigValidationError> {
         Ok(Self {
             host: HostRuntimeConfig::new(host_info, platform_info)?,
             people_chain_genesis_hash,
+            bulletin_chain_genesis_hash,
         })
     }
 }
@@ -231,7 +238,7 @@ fn require_non_empty(field: &'static str, value: &str) -> Result<(), RuntimeConf
 }
 
 /// Runtime config validation error.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
 pub enum RuntimeConfigValidationError {
     /// Required string field was empty or whitespace-only.
     #[display("{field} must not be empty")]
@@ -264,8 +271,6 @@ pub enum RuntimeConfigValidationError {
         product_id: String,
     },
 }
-
-impl core::error::Error for RuntimeConfigValidationError {}
 
 /// Product-scoped key-value storage.
 ///
@@ -461,6 +466,13 @@ pub enum CoreStorageKey {
         /// Permission request whose authorization is being stored.
         request: PermissionAuthorizationRequest,
     },
+    /// Persisted allowance-slot keys for one paired SSO session.
+    AllowanceKeys {
+        /// Stable host-derived SSO session id.
+        session_id: String,
+    },
+    /// Last processed SSO pairing response statement for the pairing device.
+    LastProcessedPairingStatement,
 }
 
 /// Host-private persistence for core-owned state.
@@ -565,6 +577,15 @@ pub struct AccountAliasReview {
     pub target_product_id: String,
 }
 
+/// Review shown before a product asks to access another product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct AccountAccessReview {
+    /// Product currently handling the request.
+    pub requesting_product_id: String,
+    /// Product whose account is being requested.
+    pub target_product_id: String,
+}
+
 /// Review shown before a product learns the user's primary identity.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct IdentityDisclosureReview {
@@ -597,6 +618,8 @@ pub enum UserConfirmationReview {
     ResourceAllocation(HostRequestResourceAllocationRequest),
     /// Submit a preimage to the host-selected backend.
     PreimageSubmit(PreimageSubmitReview),
+    /// Allow a product to access another product account.
+    AccountAccess(AccountAccessReview),
 }
 
 /// Local user confirmation UI for sensitive core-owned operations.
@@ -615,18 +638,49 @@ pub trait ThemeHost: Send + Sync {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<ThemeVariant, GenericError>>;
 }
 
-/// Host preimage backend. The core owns wire mapping and subscription
-/// lifecycle; the host owns the selected backend.
-#[async_trait]
-pub trait PreimageHost: Send + Sync {
-    /// Submit the preimage and return its key.
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, PreimageSubmitError> {
-        let _ = value;
-        Err(PreimageSubmitError::Unknown {
-            reason: "submitPreimage callback not provided by host".to_string(),
-        })
+/// Secret key allocated for Bulletin preimage submission.
+///
+/// The core is the sole holder: the secret never crosses the host boundary.
+/// Zeroized on drop, and its `Debug` redacts the material.
+#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop, derive_more::Debug)]
+pub struct BulletinAllowanceKey {
+    #[debug("\"<redacted>\"")]
+    secret: [u8; 64],
+}
+
+impl BulletinAllowanceKey {
+    /// Build a Bulletin allowance key from raw secret bytes.
+    pub fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, BulletinAllowanceKeyError> {
+        let secret: [u8; 64] = secret.try_into().map_err(|secret: Vec<u8>| {
+            BulletinAllowanceKeyError::InvalidLength {
+                actual: secret.len(),
+            }
+        })?;
+        Ok(Self { secret })
     }
 
+    /// Borrow the raw secret bytes for in-core signing.
+    pub fn as_secret_bytes(&self) -> &[u8; 64] {
+        &self.secret
+    }
+}
+
+/// Invalid Bulletin allowance key material.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
+pub enum BulletinAllowanceKeyError {
+    /// Secret material was not a 64-byte sr25519 secret key.
+    #[display("bulletin allowance key must be 64 bytes, got {actual}")]
+    InvalidLength {
+        /// Actual secret byte length.
+        actual: usize,
+    },
+}
+
+/// Host preimage backend. The core builds, signs, and submits the Bulletin
+/// `TransactionStorage.store` transaction itself; the host only owns preimage
+/// content retrieval (P2P/IPFS lookup).
+#[async_trait]
+pub trait PreimageHost: Send + Sync {
     /// Emits current value/miss immediately, then future updates.
     fn lookup_preimage(
         &self,

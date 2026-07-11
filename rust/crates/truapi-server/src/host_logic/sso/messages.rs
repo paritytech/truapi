@@ -113,8 +113,8 @@ pub struct SigningPayloadRequest {
     pub with_signed_transaction: OptionBool,
 }
 
-impl From<truapi::v01::HostSignPayloadRequest> for SigningPayloadRequest {
-    fn from(value: truapi::v01::HostSignPayloadRequest) -> Self {
+impl SigningPayloadRequest {
+    fn from_host_request(value: HostSignPayloadRequest) -> Self {
         let payload = value.payload;
         Self {
             product_account_id: value.account,
@@ -174,8 +174,8 @@ pub struct SigningRawRequest {
     pub data: SigningRawPayload,
 }
 
-impl From<truapi::v01::HostSignRawRequest> for SigningRawRequest {
-    fn from(value: truapi::v01::HostSignRawRequest) -> Self {
+impl SigningRawRequest {
+    fn from_host_request(value: HostSignRawRequest) -> Self {
         Self {
             product_account_id: value.account,
             data: value.payload.into(),
@@ -259,6 +259,26 @@ pub struct SignRawLegacyResponse {
     pub signature: Result<Vec<u8>, String>,
 }
 
+/// Request sent when a product asks the paired signing host to sign exact
+/// statement-store proof bytes with a product-derived account.
+///
+/// This cannot reuse raw signing: raw-signing requests apply the public
+/// `<Bytes>...</Bytes>` payload convention, while statement proofs sign the
+/// unsigned statement payload bytes directly.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct StatementStoreProductSignRequest {
+    pub product_account_id: ProductAccountId,
+    pub payload: Vec<u8>,
+}
+
+/// Response returned by the signing host for exact statement-store proof
+/// signing.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct StatementStoreProductSignResponse {
+    pub responding_to: String,
+    pub signature: Result<Vec<u8>, String>,
+}
+
 /// Request sent when a product asks the signing host for a ring-VRF alias.
 ///
 /// Used by `Account::get_account_alias`; the product account identifies the
@@ -280,8 +300,9 @@ pub struct RingVrfAliasResponse {
 /// Request sent when a product asks the signing host to allocate SSO-backed
 /// resources.
 ///
-/// Used by `ResourceAllocation::request` for capabilities such as statement
-/// store allowance and auto-signing material.
+/// Used by `ResourceAllocation::request` for capabilities from
+/// `docs/rfcs/0010-allowance.md`, such as statement-store allowance and
+/// auto-signing material.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ResourceAllocationRequest {
     pub calling_product_id: String,
@@ -293,7 +314,7 @@ pub struct ResourceAllocationRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatableResource {
     StatementStoreAllowance,
-    BulletInAllowance,
+    BulletinAllowance,
     SmartContractAllowance(u32),
     AutoSigning,
 }
@@ -302,7 +323,7 @@ impl From<AllocatableResource> for SsoAllocatableResource {
     fn from(value: AllocatableResource) -> Self {
         match value {
             AllocatableResource::StatementStoreAllowance => Self::StatementStoreAllowance,
-            AllocatableResource::BulletinAllowance => Self::BulletInAllowance,
+            AllocatableResource::BulletinAllowance => Self::BulletinAllowance,
             AllocatableResource::SmartContractAllowance(index) => {
                 Self::SmartContractAllowance(index)
             }
@@ -339,7 +360,7 @@ pub enum SsoAllocatedResource {
     StatementStoreAllowance {
         slot_account_key: Vec<u8>,
     },
-    BulletInAllowance {
+    BulletinAllowance {
         slot_account_key: Vec<u8>,
     },
     SmartContractAllowance,
@@ -396,6 +417,7 @@ pub enum SsoSessionStatement {
 pub enum SsoRemoteResponse {
     Sign(SigningResponse),
     SignRawLegacy(SignRawLegacyResponse),
+    StatementStoreProductSign(StatementStoreProductSignResponse),
     RingVrfAlias(RingVrfAliasResponse),
     ResourceAllocation(ResourceAllocationResponse),
     CreateTransaction(CreateTransactionResponse),
@@ -495,6 +517,11 @@ fn remote_response_for_message(
         {
             Some(SsoRemoteResponse::SignRawLegacy(response))
         }
+        v1::RemoteMessage::StatementStoreProductSignResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::StatementStoreProductSign(response))
+        }
         v1::RemoteMessage::ResourceAllocationResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
@@ -509,12 +536,29 @@ fn remote_response_for_message(
     }
 }
 
+/// Build a signing-host exact statement-store proof signing request message.
+pub fn statement_store_product_sign_message(
+    message_id: String,
+    product_account_id: ProductAccountId,
+    payload: Vec<u8>,
+) -> RemoteMessage {
+    RemoteMessage {
+        message_id,
+        data: RemoteMessageData::V1(v1::RemoteMessage::StatementStoreProductSignRequest(
+            StatementStoreProductSignRequest {
+                product_account_id,
+                payload,
+            },
+        )),
+    }
+}
+
 /// Build a signing-host payload-signing request message.
 pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::SignRequest(Box::new(
-            SigningRequest::Payload(Box::new(request.into())),
+            SigningRequest::Payload(Box::new(SigningPayloadRequest::from_host_request(request))),
         ))),
     }
 }
@@ -524,7 +568,7 @@ pub fn sign_raw_message(message_id: String, request: HostSignRawRequest) -> Remo
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::SignRequest(Box::new(
-            SigningRequest::Raw(request.into()),
+            SigningRequest::Raw(SigningRawRequest::from_host_request(request)),
         ))),
     }
 }
@@ -758,8 +802,7 @@ mod tests {
     use p256::SecretKey as P256SecretKey;
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
-    use truapi::latest::HostSignPayloadData;
-    use truapi::v01;
+    use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
 
     fn account() -> ProductAccountId {
         ProductAccountId {
@@ -833,7 +876,7 @@ mod tests {
     fn late_remote_message_variants_match_host_papp_order() {
         let legacy_tx = create_transaction_legacy_message(
             String::new(),
-            v01::LegacyAccountTxPayload {
+            LegacyAccountTxPayload {
                 signer: [1; 32],
                 genesis_hash: [2; 32],
                 call_data: Vec::new(),
@@ -885,14 +928,14 @@ mod tests {
     fn create_transaction_message_matches_host_papp_0_8_8_fixture() {
         let message = create_transaction_message(
             "m-product-tx".to_string(),
-            v01::ProductAccountTxPayload {
-                signer: v01::ProductAccountId {
+            ProductAccountTxPayload {
+                signer: ProductAccountId {
                     dot_ns_identifier: "truapi-playground.dot".to_string(),
                     derivation_index: 0,
                 },
                 genesis_hash: sequential_bytes(32),
                 call_data: vec![0, 0],
-                extensions: vec![v01::TxPayloadExtension {
+                extensions: vec![TxPayloadExtension {
                     id: "CheckNonce".to_string(),
                     extra: vec![1],
                     additional_signed: vec![2, 3],
@@ -911,8 +954,8 @@ mod tests {
     fn playground_create_transaction_message_matches_host_papp_0_8_8_fixture() {
         let message = create_transaction_message(
             "create-transaction-1".to_string(),
-            v01::ProductAccountTxPayload {
-                signer: v01::ProductAccountId {
+            ProductAccountTxPayload {
+                signer: ProductAccountId {
                     dot_ns_identifier: "truapi-playground.dot".to_string(),
                     derivation_index: 0,
                 },
@@ -937,11 +980,11 @@ mod tests {
     fn create_transaction_legacy_message_matches_host_papp_0_8_8_fixture() {
         let message = create_transaction_legacy_message(
             "m-legacy-tx".to_string(),
-            v01::LegacyAccountTxPayload {
+            LegacyAccountTxPayload {
                 signer: sequential_bytes(0),
                 genesis_hash: sequential_bytes(32),
                 call_data: vec![0, 0],
-                extensions: vec![v01::TxPayloadExtension {
+                extensions: vec![TxPayloadExtension {
                     id: "CheckNonce".to_string(),
                     extra: vec![1],
                     additional_signed: vec![2, 3],
@@ -1002,11 +1045,11 @@ mod tests {
                 with_signed_transaction: Some(true),
             },
         };
-        let true_encoded = SigningPayloadRequest::from(request.clone()).encode();
+        let true_encoded = SigningPayloadRequest::from_host_request(request.clone()).encode();
         request.payload.with_signed_transaction = Some(false);
-        let false_encoded = SigningPayloadRequest::from(request.clone()).encode();
+        let false_encoded = SigningPayloadRequest::from_host_request(request.clone()).encode();
         request.payload.with_signed_transaction = None;
-        let none_encoded = SigningPayloadRequest::from(request).encode();
+        let none_encoded = SigningPayloadRequest::from_host_request(request).encode();
 
         assert_eq!(true_encoded.last(), Some(&1));
         assert_eq!(false_encoded.last(), Some(&2));
@@ -1036,7 +1079,7 @@ mod tests {
             request.resources,
             vec![
                 SsoAllocatableResource::StatementStoreAllowance,
-                SsoAllocatableResource::BulletInAllowance,
+                SsoAllocatableResource::BulletinAllowance,
                 SsoAllocatableResource::SmartContractAllowance(9),
                 SsoAllocatableResource::AutoSigning,
             ]
@@ -1126,6 +1169,7 @@ mod tests {
             },
             PlatformInfo::default(),
             [0; 32],
+            [0xbb; 32],
             "polkadotapp".to_string(),
         )
         .expect("test pairing config is valid");

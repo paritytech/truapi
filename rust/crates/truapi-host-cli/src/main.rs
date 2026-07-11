@@ -45,6 +45,9 @@ const PEOPLE_CHAIN_WS: &str = "wss://paseo-people-next-system-rpc.polkadot.io";
 /// paseo-next-v2 People/Individuality chain genesis (username lookups).
 const PEOPLE_CHAIN_GENESIS: [u8; 32] =
     hex_literal_genesis("c5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5");
+/// Headless CLI sentinel for Bulletin submissions. The current CLI scenarios
+/// do not allocate live Bulletin allowance keys.
+const BULLETIN_CHAIN_GENESIS: [u8; 32] = [0u8; 32];
 
 /// Decode a 64-char hex genesis at compile time.
 const fn hex_literal_genesis(hex: &str) -> [u8; 32] {
@@ -276,7 +279,9 @@ async fn run_alloc_check(
     let period = alloc::slot::current_period(now);
     println!("period={period} target=0x{}", hex::encode(target));
 
-    match alloc::slot::scan_slot(&rpc, &metadata, bandersnatch, period, &target).await {
+    match alloc::slot::scan_slot_excluding(&rpc, &metadata, bandersnatch, period, &target, &[])
+        .await
+    {
         Ok(alloc::slot::SlotSelection::Free(seq)) => println!("slot scan: free seq={seq}"),
         Ok(alloc::slot::SlotSelection::AlreadyAllocated(seq)) => {
             println!("slot scan: target already allocated at seq={seq}")
@@ -359,6 +364,7 @@ async fn run_pairing_host(
         host_info("Headless Pairing Host"),
         platform_info(),
         [0u8; 32],
+        BULLETIN_CHAIN_GENESIS,
         DEEPLINK_SCHEME.to_string(),
     )
     .context("invalid pairing host config")?
@@ -428,6 +434,7 @@ async fn run_signing_host(
         host_info("Headless Signing Host"),
         platform_info(),
         [0u8; 32],
+        BULLETIN_CHAIN_GENESIS,
     )
     .context("invalid signing host config")?;
     let runtime = SigningHostRuntime::new(platform, config, tokio_spawner());

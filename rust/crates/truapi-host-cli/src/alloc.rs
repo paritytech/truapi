@@ -149,29 +149,56 @@ pub async fn register_statement_account(
     period: u32,
     ring: &RingParams,
 ) -> Result<RegistrationOutcome, String> {
-    let seq = match slot::scan_slot(rpc, metadata, entropy, period, target).await? {
-        SlotSelection::AlreadyAllocated(seq) => {
-            return Ok(RegistrationOutcome::AlreadyAllocated { seq });
+    let mut skipped_duplicate_slots = Vec::new();
+    loop {
+        let seq = match slot::scan_slot_excluding(
+            rpc,
+            metadata,
+            entropy,
+            period,
+            target,
+            &skipped_duplicate_slots,
+        )
+        .await?
+        {
+            SlotSelection::AlreadyAllocated(seq) => {
+                return Ok(RegistrationOutcome::AlreadyAllocated { seq });
+            }
+            SlotSelection::Free(seq) => seq,
+        };
+
+        let context = slot::derive_slot_context(period, seq);
+        let call = extrinsic::build_set_statement_store_account_call(period, seq, target);
+        let message = extension::build_proof_message(metadata, &call, chain_state)?;
+        let domain = proof::domain_for_ring_exponent(ring.exponent)?;
+        let ring_proof = proof::ring_vrf_proof(domain, entropy, &ring.members, &context, &message)?;
+        let as_resources_extra = extrinsic::build_as_resources_extra(&ring_proof, ring.ring_index);
+        let extrinsic =
+            extrinsic::build_unsigned_extrinsic(metadata, chain_state, &call, &as_resources_extra)?;
+
+        match rpc.submit_and_watch(&extrinsic).await {
+            Ok(block_hash) => {
+                return Ok(RegistrationOutcome::Registered {
+                    block_hash,
+                    seq,
+                    ring_index: ring.ring_index,
+                });
+            }
+            Err(err) => {
+                let err = err.to_string();
+                if duplicate_submit_error(&err) {
+                    skipped_duplicate_slots.push(seq);
+                    continue;
+                }
+                return Err(err);
+            }
         }
-        SlotSelection::Free(seq) => seq,
-    };
+    }
+}
 
-    let context = slot::derive_slot_context(period, seq);
-    let call = extrinsic::build_set_statement_store_account_call(period, seq, target);
-    let message = extension::build_proof_message(metadata, &call, chain_state)?;
-    let domain = proof::domain_for_ring_exponent(ring.exponent)?;
-    let ring_proof = proof::ring_vrf_proof(domain, entropy, &ring.members, &context, &message)?;
-    let as_resources_extra = extrinsic::build_as_resources_extra(&ring_proof, ring.ring_index);
-    let extrinsic =
-        extrinsic::build_unsigned_extrinsic(metadata, chain_state, &call, &as_resources_extra)?;
-
-    let block_hash = rpc
-        .submit_and_watch(&extrinsic)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(RegistrationOutcome::Registered {
-        block_hash,
-        seq,
-        ring_index: ring.ring_index,
-    })
+fn duplicate_submit_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("priority is too low")
+        || message.contains("already imported")
+        || message.contains("temporarily banned")
 }

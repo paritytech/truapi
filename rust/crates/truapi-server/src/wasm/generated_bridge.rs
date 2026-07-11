@@ -32,7 +32,6 @@ pub(super) struct JsBridge {
     pub(super) cancel_notification: Function,
     pub(super) device_permission: Function,
     pub(super) remote_permission: Function,
-    pub(super) submit_preimage: Function,
     pub(super) lookup_preimage: Function,
     pub(super) read: Function,
     pub(super) write: Function,
@@ -55,7 +54,6 @@ impl JsBridge {
             cancel_notification: get_function(callbacks, "cancelNotification")?,
             device_permission: get_function(callbacks, "devicePermission")?,
             remote_permission: get_function(callbacks, "remotePermission")?,
-            submit_preimage: get_function(callbacks, "submitPreimage")?,
             lookup_preimage: get_function(callbacks, "lookupPreimage")?,
             read: get_function(callbacks, "read")?,
             write: get_function(callbacks, "write")?,
@@ -216,17 +214,7 @@ impl truapi_platform::Permissions for WasmPlatform {
     }
 }
 
-#[truapi_platform::async_trait]
 impl truapi_platform::PreimageHost for WasmPlatform {
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        invoke_bytes_return(
-            &self.bridge.submit_preimage,
-            vec![Uint8Array::from(value.as_slice()).into()],
-        )
-        .await
-        .map_err(|reason| v01::PreimageSubmitError::Unknown { reason })
-    }
-
     fn lookup_preimage(
         &self,
         key: Vec<u8>,

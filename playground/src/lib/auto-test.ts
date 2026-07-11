@@ -15,15 +15,16 @@ export interface TestEntry {
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
 const SSO_TIMEOUT_MS = 60_000;
+const LIVE_ALLOCATION_TIMEOUT_MS = 240_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);
 // Individual methods skipped while the host surface is intentionally deferred.
 const SKIPPED_METHODS = new Set(["Account/create_account_proof"]);
-// Methods whose first call implicitly triggers a host permission/signing
-// prompt, so they need the longer signing-class timeout to allow for the user
-// to respond. `get_account_alias` and `Preimage/submit` prompt on first use.
+// Methods that trigger a host permission/signing prompt, so they need the
+// longer signing-class timeout to allow for the user to respond.
 const LONG_TIMEOUT_METHODS = new Set([
+  "Account/get_account",
   "Account/get_account_alias",
   "Resource Allocation/request",
   "Signing/sign_payload",
@@ -36,17 +37,26 @@ const LONG_TIMEOUT_METHODS = new Set([
 ]);
 
 const METHOD_TIMEOUT_MS = new Map<string, number>([
+  ["Account/get_user_id", SSO_TIMEOUT_MS],
   ["Account/get_account_alias", SSO_TIMEOUT_MS],
-  ["Resource Allocation/request", SSO_TIMEOUT_MS],
-  ["Preimage/lookup_subscribe", SSO_TIMEOUT_MS],
-  ["Preimage/submit", SSO_TIMEOUT_MS],
+  ["Resource Allocation/request", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Preimage/lookup_subscribe", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Preimage/submit", LIVE_ALLOCATION_TIMEOUT_MS],
   ["Signing/create_transaction", SSO_TIMEOUT_MS],
+  ["Statement Store/create_proof_authorized", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Statement Store/submit", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Statement Store/subscribe", LIVE_ALLOCATION_TIMEOUT_MS],
 ]);
 
 type RunOneOpts = {
   serviceName: string;
   method: MethodInfo;
   onUpdate: (id: string, entry: TestEntry) => void;
+};
+
+type DiagnosisItem = {
+  serviceName: string;
+  method: MethodInfo;
 };
 
 async function runOne({
@@ -138,19 +148,48 @@ export async function runSingleTest(
   await runOne({ serviceName, method, onUpdate });
 }
 
-// Full diagnosis: run every method one at a time, in service order. Methods
-// that prompt the user (signing, permission/resource requests) block on their
-// host dialog before the run continues. Produces a complete worked / failed /
-// not-wired matrix suitable for the copy-pasteable report.
+// Full diagnosis: run every method one at a time. Methods that prompt the user
+// (signing, permission/resource requests) block on their host dialog before
+// the run continues. Produces a complete worked / failed / not-wired matrix
+// suitable for the copy-pasteable report.
 export async function runDiagnosis(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  for (const svc of services) {
-    for (const method of svc.methods) {
-      if (signal?.aborted) return;
-      await runOne({ serviceName: svc.name, method, onUpdate });
-    }
+  const items = diagnosisRunItems(services);
+  for (const item of items) {
+    if (signal?.aborted) return;
+    await runOne({ ...item, onUpdate });
   }
+}
+
+function diagnosisRunItems(services: ServiceInfo[]): DiagnosisItem[] {
+  const items = services.flatMap((svc) =>
+    svc.methods.map((method) => ({ serviceName: svc.name, method })),
+  );
+  moveBefore(items, "Resource Allocation/request", "Preimage/lookup_subscribe");
+  return items;
+}
+
+function moveBefore(
+  items: DiagnosisItem[],
+  itemId: string,
+  beforeId: string,
+): void {
+  const currentIndex = items.findIndex(
+    (item) => diagnosisItemId(item) === itemId,
+  );
+  const beforeIndex = items.findIndex(
+    (item) => diagnosisItemId(item) === beforeId,
+  );
+  if (currentIndex < 0 || beforeIndex < 0 || currentIndex < beforeIndex) {
+    return;
+  }
+  const [item] = items.splice(currentIndex, 1);
+  items.splice(beforeIndex, 0, item);
+}
+
+function diagnosisItemId(item: DiagnosisItem): string {
+  return `${item.serviceName}/${item.method.name}`;
 }

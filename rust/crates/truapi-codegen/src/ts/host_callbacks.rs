@@ -116,7 +116,7 @@ fn emit_host_callbacks(
         out.push('\n');
     }
 
-    let imports = collect_named_types(definition)
+    let imports = collect_named_types(definition, local_codec_types)
         .into_iter()
         .filter(|name| !codec_imports.contains(name))
         .collect::<BTreeSet<_>>();
@@ -125,7 +125,11 @@ fn emit_host_callbacks(
         out.push('\n');
     }
 
-    for type_def in &definition.types {
+    for type_def in definition
+        .types
+        .iter()
+        .filter(|ty| local_codec_types.contains(&ty.name))
+    {
         let rendered = match &type_def.kind {
             TypeDefKind::Enum(_) => emit_enum_type(type_def)?,
             _ => emit_struct_interface(type_def)?,
@@ -256,7 +260,6 @@ fn emit_wasm_adapter(
         out,
         r#"
         import type {{
-          FlatHostCallbacks,
           RequiredHostCallbacks,
         }} from "./host-callbacks.js";
 
@@ -280,9 +283,8 @@ fn emit_wasm_adapter(
         /** Adapt typed host callbacks into the raw SCALE callback surface the
          *  WASM core invokes. */
         export function createWasmRawCallbacks(
-          host: RequiredHostCallbacks | Required<FlatHostCallbacks>,
+          callbacks: RequiredHostCallbacks,
         ): RawCallbacks {{
-          const callbacks = normalizeHostCallbacks(host);
           return {{
         "#,
     )
@@ -300,8 +302,6 @@ fn emit_wasm_adapter(
         }
     }
     out.push_str("  };\n}\n");
-    out.push('\n');
-    out.push_str(&emit_normalize_host_callbacks(&traits));
     Ok(out)
 }
 
@@ -366,19 +366,15 @@ fn emit_worker_callbacks(
     out.push_str(&const_name_array("SUBSCRIPTION_NAMES", &subscriptions));
     out.push_str("export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];\n\n");
 
-    writedoc!(
-        out,
-        r#"
-        export interface WorkerCallbackBridge {{
-          callbackRequest(name: CallbackName, args: readonly unknown[]): Promise<unknown>;
-          startSubscription<T>(
-            name: SubscriptionName,
-            payload: Uint8Array | null,
-            sendItem: (value: T) => void,
-          ): () => void;
-        "#
-    )
-    .unwrap();
+    out.push_str("export interface WorkerCallbackBridge {\n");
+    out.push_str(
+        "  callbackRequest(name: CallbackName, args: readonly unknown[]): Promise<unknown>;\n",
+    );
+    out.push_str("  startSubscription<T>(\n");
+    out.push_str("    name: SubscriptionName,\n");
+    out.push_str("    payload: Uint8Array | null,\n");
+    out.push_str("    sendItem: (value: T) => void,\n");
+    out.push_str("  ): () => void;\n");
     for (trait_def, method) in &trait_object_callbacks {
         writeln!(
             out,
@@ -388,14 +384,7 @@ fn emit_worker_callbacks(
         )
         .unwrap();
     }
-    writedoc!(
-        out,
-        r#"
-        }}
-
-        "#
-    )
-    .unwrap();
+    out.push_str("}\n\n");
 
     out.push_str(&emit_worker_callback_factory(
         "rawCallbacks",
@@ -498,10 +487,16 @@ fn emit_worker_callback_entry(method: &PlatformMethod) -> Result<String> {
         .map(|p| to_camel_case(&p.name))
         .collect::<Vec<_>>()
         .join(", ");
-    let arg_array = if args.is_empty() {
+    let arg_exprs = method
+        .params
+        .iter()
+        .map(|p| to_camel_case(&p.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let arg_array = if arg_exprs.is_empty() {
         "[]".to_string()
     } else {
-        format!("[{args}]")
+        format!("[{arg_exprs}]")
     };
     if method.return_shape.is_async {
         Ok(format!(
@@ -1404,11 +1399,6 @@ fn emit_host_callback_composites(composes: &[String], docs: Option<&str>) -> Str
             "{jsdoc}export interface HostCallbacks {{}}\n\nexport interface RequiredHostCallbacks {{}}\n"
         );
     }
-    let extends = composes
-        .iter()
-        .map(|name| name.to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
     let host_members = composes
         .iter()
         .map(|trait_name| format!("  {}: {};", callback_namespace(trait_name), trait_name))
@@ -1427,9 +1417,6 @@ fn emit_host_callback_composites(composes: &[String], docs: Option<&str>) -> Str
         .join("\n");
     formatdoc! {
         r#"
-        /** @deprecated Use the namespaced `HostCallbacks` shape instead. */
-        export interface FlatHostCallbacks extends {extends} {{}}
-
         {jsdoc}export interface HostCallbacks {{
         {host_members}
         }}
@@ -1441,36 +1428,10 @@ fn emit_host_callback_composites(composes: &[String], docs: Option<&str>) -> Str
     }
 }
 
-fn emit_normalize_host_callbacks(traits: &[&PlatformTrait]) -> String {
-    let namespace_guard = traits
-        .first()
-        .map(|trait_def| callback_namespace(&trait_def.name))
-        .unwrap_or_default();
-    let members = traits
-        .iter()
-        .map(|trait_def| {
-            let namespace = callback_namespace(&trait_def.name);
-            format!("    {namespace}: host,")
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    formatdoc! {
-        r#"
-        function normalizeHostCallbacks(
-          host: RequiredHostCallbacks | Required<FlatHostCallbacks>,
-        ): RequiredHostCallbacks {{
-          if ("{namespace_guard}" in host) {{
-            return host;
-          }}
-          return {{
-        {members}
-          }};
-        }}
-        "#,
-    }
-}
-
-fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
+fn collect_named_types(
+    definition: &PlatformDefinition,
+    local_codec_types: &BTreeSet<String>,
+) -> BTreeSet<String> {
     let mut out: BTreeSet<String> = BTreeSet::new();
     for trait_def in &definition.traits {
         for method in &trait_def.methods {
@@ -1494,7 +1455,11 @@ fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
             }
         }
     }
-    for type_def in &definition.types {
+    for type_def in definition
+        .types
+        .iter()
+        .filter(|ty| local_codec_types.contains(&ty.name))
+    {
         collect_from_type_def(type_def, &mut out);
     }
     // Filter out names defined locally (the capability trait interfaces and

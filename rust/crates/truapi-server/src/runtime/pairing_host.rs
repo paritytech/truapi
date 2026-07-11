@@ -6,16 +6,18 @@
 
 mod sso_channel;
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
 use futures::channel::oneshot;
 use sso_channel::SsoDisconnectMonitor;
 
+use super::allowances::{self, AllowanceCacheKey, AllowanceResource};
 use super::auth_state::AuthStateMachine;
 use super::authority::{
-    AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest, ProductAuthority,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest, authority_session,
-    require_current_session,
+    AuthorityError, AuthoritySession, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
+    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
+    StatementStoreAllowanceKey, authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use super::identity::resolve_session_identity_with_chain;
@@ -30,7 +32,7 @@ use crate::host_logic::session_store::SessionStoreChangeNotifier;
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
-use tracing::instrument;
+use tracing::{instrument, warn};
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, v01};
 use truapi_platform::{CoreStorageKey, PairingHostConfig, Platform, ProductContext};
@@ -125,6 +127,9 @@ pub(crate) struct PairingHost {
     session_disconnects: Arc<SessionDisconnects>,
     disconnect_monitor: Mutex<Option<SsoDisconnectMonitor>>,
     login_in_flight: Mutex<Option<LoginInFlight>>,
+    login_generation: Mutex<u64>,
+    statement_store_allowances: Mutex<HashMap<AllowanceCacheKey, StatementStoreAllowanceKey>>,
+    bulletin_allowances: Mutex<HashMap<AllowanceCacheKey, BulletinAllowanceKey>>,
     /// Self-reference captured by the spawned disconnect-monitor task.
     weak_self: Weak<PairingHost>,
     pub(super) spawner: Spawner,
@@ -145,6 +150,9 @@ impl PairingHost {
             session_disconnects: Arc::new(SessionDisconnects::default()),
             disconnect_monitor: Mutex::new(None),
             login_in_flight: Mutex::new(None),
+            login_generation: Mutex::new(0),
+            statement_store_allowances: Mutex::new(HashMap::new()),
+            bulletin_allowances: Mutex::new(HashMap::new()),
             weak_self: weak_self.clone(),
             spawner: services.spawner.clone(),
         })
@@ -207,7 +215,7 @@ impl PairingHost {
                             Ok(session) => {
                                 let resolved = resolve_session_identity_with_chain(
                                     &pairing_host.chain,
-                                    pairing_host.host_config.people_chain_genesis_hash,
+                                    pairing_host.host_config.identity_lookup_genesis_hash(),
                                     session,
                                 )
                                 .await;
@@ -223,16 +231,16 @@ impl PairingHost {
                                 pairing_host.set_connected_session(resolved);
                             }
                             Err(_) => {
-                                pairing_host.clear_disconnected_session(true, false).await;
+                                pairing_host.clear_disconnected_session(true).await;
                             }
                         }
                     }
                     Ok(None) => {
                         cleared_after_read_error = false;
-                        pairing_host.clear_disconnected_session(false, false).await;
+                        pairing_host.clear_disconnected_session(false).await;
                     }
                     Err(_) => {
-                        pairing_host.clear_disconnected_session(false, false).await;
+                        pairing_host.clear_disconnected_session(false).await;
                         if !cleared_after_read_error {
                             cleared_after_read_error = true;
                             let _ = pairing_host
@@ -287,6 +295,7 @@ impl PairingHost {
         }
 
         let mut login_owner = LoginInFlightOwner::new(self);
+        let login_generation = self.begin_login_attempt();
         let outcome = match SsoPairingFlow::new(self).request_session().await {
             Ok(outcome) => outcome,
             Err(err) => {
@@ -308,6 +317,16 @@ impl PairingHost {
                 }
             }
             SsoPairingOutcome::Success(session) => {
+                if !self.is_current_login_attempt(login_generation) {
+                    let _ = self
+                        .platform
+                        .clear_core_storage(CoreStorageKey::AuthSession)
+                        .await;
+                    login_owner.finish(Ok(()));
+                    return Ok(HostRequestLoginResponse::V1(
+                        v01::HostRequestLoginResponse::Rejected,
+                    ));
+                }
                 self.set_connected_session(*session);
                 login_owner.finish(Ok(()));
                 Ok(HostRequestLoginResponse::V1(
@@ -321,7 +340,7 @@ impl PairingHost {
     async fn disconnect(&self) {
         self.cancel_login();
         let session = self.session_state.current();
-        self.clear_disconnected_session(true, true).await;
+        self.clear_disconnected_session(true).await;
         if let Some(session) = session.as_ref() {
             let _ = self.submit_disconnected_message(session).await;
         }
@@ -329,7 +348,33 @@ impl PairingHost {
 
     #[instrument(skip_all, fields(runtime.method = "account.cancel_login"))]
     pub(crate) fn cancel_login(&self) {
+        self.invalidate_login_attempts();
         self.auth_state.login_cancelled();
+    }
+
+    fn begin_login_attempt(&self) -> u64 {
+        let mut generation = self
+            .login_generation
+            .lock()
+            .expect("login generation mutex poisoned");
+        *generation = generation.wrapping_add(1);
+        *generation
+    }
+
+    fn invalidate_login_attempts(&self) {
+        let mut generation = self
+            .login_generation
+            .lock()
+            .expect("login generation mutex poisoned");
+        *generation = generation.wrapping_add(1);
+    }
+
+    fn is_current_login_attempt(&self, generation: u64) -> bool {
+        *self
+            .login_generation
+            .lock()
+            .expect("login generation mutex poisoned")
+            == generation
     }
 
     fn login_waiter(&self) -> Option<oneshot::Receiver<Result<(), String>>> {
@@ -363,11 +408,7 @@ impl PairingHost {
     }
 
     #[instrument(skip_all, fields(runtime.method = "session_store.clear_disconnected"))]
-    async fn clear_disconnected_session(
-        &self,
-        clear_auth_session: bool,
-        clear_pairing_identity: bool,
-    ) {
+    async fn clear_disconnected_session(&self, clear_auth_session: bool) {
         let previous = self.session_state.current();
         self.session_state.clear_session();
         self.stop_session_channel(previous.as_ref());
@@ -377,13 +418,10 @@ impl PairingHost {
                 .clear_core_storage(CoreStorageKey::AuthSession)
                 .await;
         }
-        self.auth_state.store_disconnected();
-        if clear_pairing_identity {
-            let _ = self
-                .platform
-                .clear_core_storage(CoreStorageKey::PairingDeviceIdentity)
-                .await;
+        if let Some(session) = previous.as_ref() {
+            let _ = allowances::clear_session_allowance_keys(&*self.platform, session).await;
         }
+        self.auth_state.store_disconnected();
     }
 
     fn set_connected_session(&self, session: SessionInfo) {
@@ -409,7 +447,7 @@ impl PairingHost {
             return;
         }
 
-        self.clear_disconnected_session(true, true).await;
+        self.clear_disconnected_session(true).await;
     }
 
     fn current_sso_session_matches(&self, key: SsoSessionKey) -> bool {
@@ -421,6 +459,251 @@ impl PairingHost {
         session: &AuthoritySession,
     ) -> Result<SessionInfo, AuthorityError> {
         require_current_session(&self.session_state, session)
+    }
+
+    async fn refresh_current_session_identity(&self) -> Option<AuthoritySession> {
+        let current = self.session_state.current()?;
+        let identity_genesis_hash = self.host_config.identity_lookup_genesis_hash();
+        if current.has_username() || identity_genesis_hash == [0; 32] {
+            return Some(authority_session(&current));
+        }
+
+        let resolved = resolve_session_identity_with_chain(
+            &self.chain,
+            identity_genesis_hash,
+            current.clone(),
+        )
+        .await;
+        if !resolved.has_username() || resolved == current {
+            return self.current_session();
+        }
+
+        if !self
+            .session_state
+            .replace_session_if_current(&current, resolved.clone())
+        {
+            return self.current_session();
+        }
+        self.auth_state
+            .connected(&connected_session_ui_info(&resolved));
+
+        if let Err(err) = self
+            .platform
+            .write_core_storage(
+                CoreStorageKey::AuthSession,
+                encode_persisted_session(&resolved),
+            )
+            .await
+        {
+            warn!(reason = %err.reason, "refreshed session identity persist failed");
+        }
+
+        match self.session_state.current() {
+            Some(live) if live != resolved => {
+                if let Err(err) = self
+                    .platform
+                    .write_core_storage(
+                        CoreStorageKey::AuthSession,
+                        encode_persisted_session(&live),
+                    )
+                    .await
+                {
+                    warn!(reason = %err.reason, "live session identity persist repair failed");
+                }
+                Some(authority_session(&live))
+            }
+            None => {
+                if let Err(err) = self
+                    .platform
+                    .clear_core_storage(CoreStorageKey::AuthSession)
+                    .await
+                {
+                    warn!(reason = %err.reason, "cleared session identity persist repair failed");
+                }
+                None
+            }
+            _ => Some(authority_session(&resolved)),
+        }
+    }
+
+    pub(super) async fn cache_statement_store_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        slot_account_key: Vec<u8>,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        let allowance = StatementStoreAllowanceKey::from_secret_bytes(slot_account_key)?;
+        allowances::write_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::StatementStore,
+            allowance.secret.to_vec(),
+        )
+        .await?;
+        self.remember_statement_store_allowance_key(session, product_id, allowance.clone())?;
+        Ok(allowance)
+    }
+
+    fn remember_statement_store_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        allowance: StatementStoreAllowanceKey,
+    ) -> Result<(), AuthorityError> {
+        let cache_key =
+            AllowanceCacheKey::new(session, product_id, AllowanceResource::StatementStore)?;
+        self.statement_store_allowances
+            .lock()
+            .expect("statement-store allowance cache mutex poisoned")
+            .insert(cache_key, allowance);
+        Ok(())
+    }
+
+    pub(super) async fn cached_statement_store_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<Option<StatementStoreAllowanceKey>, AuthorityError> {
+        let cache_key =
+            AllowanceCacheKey::new(session, product_id, AllowanceResource::StatementStore)?;
+        if let Some(allowance) = self
+            .statement_store_allowances
+            .lock()
+            .expect("statement-store allowance cache mutex poisoned")
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(Some(allowance));
+        }
+        let Some(secret) = allowances::read_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::StatementStore,
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+        let allowance = StatementStoreAllowanceKey::from_secret_bytes(secret)?;
+        self.remember_statement_store_allowance_key(session, product_id, allowance.clone())?;
+        Ok(Some(allowance))
+    }
+
+    pub(super) async fn cache_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        slot_account_key: Vec<u8>,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let allowance = BulletinAllowanceKey::from_secret_bytes(slot_account_key)?;
+        allowances::write_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::Bulletin,
+            allowance.as_secret_bytes().to_vec(),
+        )
+        .await?;
+        self.remember_bulletin_allowance_key(session, product_id, allowance.clone())?;
+        Ok(allowance)
+    }
+
+    fn remember_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        allowance: BulletinAllowanceKey,
+    ) -> Result<(), AuthorityError> {
+        let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        self.bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned")
+            .insert(cache_key, allowance);
+        Ok(())
+    }
+
+    pub(super) async fn cached_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<Option<BulletinAllowanceKey>, AuthorityError> {
+        let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        if let Some(allowance) = self
+            .bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned")
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(Some(allowance));
+        }
+        let Some(secret) = allowances::read_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::Bulletin,
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+        let allowance = BulletinAllowanceKey::from_secret_bytes(secret)?;
+        self.remember_bulletin_allowance_key(session, product_id, allowance.clone())?;
+        Ok(Some(allowance))
+    }
+
+    /// Drop the cached and persisted Bulletin allowance key for one product.
+    pub(super) async fn evict_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<(), AuthorityError> {
+        let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        self.bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned")
+            .remove(&cache_key);
+        allowances::remove_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::Bulletin,
+        )
+        .await
+    }
+
+    pub(super) fn clear_statement_store_allowance_keys(&self, session: Option<&SessionInfo>) {
+        let mut allowances = self
+            .statement_store_allowances
+            .lock()
+            .expect("statement-store allowance cache mutex poisoned");
+        let Some(session) = session else {
+            allowances.clear();
+            return;
+        };
+        let Some(sso) = session.sso.as_ref() else {
+            return;
+        };
+        let session_key = SsoSessionKey::from_session(sso);
+        allowances.retain(|key, _| !key.is_for_session(session_key));
+    }
+
+    pub(super) fn clear_bulletin_allowance_keys(&self, session: Option<&SessionInfo>) {
+        let mut allowances = self
+            .bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned");
+        let Some(session) = session else {
+            allowances.clear();
+            return;
+        };
+        let Some(sso) = session.sso.as_ref() else {
+            return;
+        };
+        let session_key = SsoSessionKey::from_session(sso);
+        allowances.retain(|key, _| !key.is_for_session(session_key));
     }
 
     async fn sign_payload(
@@ -474,6 +757,51 @@ impl PairingHost {
     ) -> Result<v01::HostRequestResourceAllocationResponse, AuthorityError> {
         let session = self.current_private_session(session)?;
         self.remote_allocate_resources(cx, &session, product_id, request)
+            .await
+    }
+
+    async fn statement_store_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_statement_store_allowance_key(cx, &session, product_id)
+            .await
+    }
+
+    async fn bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_bulletin_allowance_key(cx, &session, product_id)
+            .await
+    }
+
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_refresh_bulletin_allowance_key(cx, &session, product_id)
+            .await
+    }
+
+    async fn sign_statement_store_product_payload(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        account: v01::ProductAccountId,
+        payload: Vec<u8>,
+    ) -> Result<[u8; 64], AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_sign_statement_store_product_payload(cx, &session, account, payload)
             .await
     }
 
@@ -534,6 +862,10 @@ impl ProductAuthority for PairingHost {
         PairingHost::disconnect(self).await;
     }
 
+    async fn refresh_session_identity(&self) -> Option<AuthoritySession> {
+        self.refresh_current_session_identity().await
+    }
+
     async fn sign_payload(
         &self,
         cx: &CallContext,
@@ -580,6 +912,43 @@ impl ProductAuthority for PairingHost {
         request: v01::HostRequestResourceAllocationRequest,
     ) -> Result<v01::HostRequestResourceAllocationResponse, AuthorityError> {
         PairingHost::allocate_resources(self, cx, session, product_id, request).await
+    }
+
+    async fn statement_store_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        PairingHost::statement_store_allowance_key(self, cx, session, product_id).await
+    }
+
+    async fn bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        PairingHost::bulletin_allowance_key(self, cx, session, product_id).await
+    }
+
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        PairingHost::refresh_bulletin_allowance_key(self, cx, session, product_id).await
+    }
+
+    async fn sign_statement_store_product_payload(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        account: v01::ProductAccountId,
+        payload: Vec<u8>,
+    ) -> Result<[u8; 64], AuthorityError> {
+        PairingHost::sign_statement_store_product_payload(self, cx, session, account, payload).await
     }
 
     fn derive_entropy(

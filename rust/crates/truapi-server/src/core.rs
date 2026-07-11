@@ -58,6 +58,7 @@ impl TrUApiCore {
         let services = RuntimeServices::new(
             platform,
             host_config.people_chain_genesis_hash,
+            host_config.bulletin_chain_genesis_hash,
             spawner.clone(),
         );
         let pairing_host = PairingHostRole::new(services.clone(), host_config);
@@ -104,6 +105,9 @@ impl TrUApiCore {
 
     /// Decode an incoming product frame, run it through the dispatcher, and
     /// return the SCALE-encoded response frame when the method has one.
+    /// Subscription starts should use [`Self::dispatch`] with a long-lived
+    /// transport; changing this byte-frame helper to reject them or return a
+    /// richer response shape is a separate API decision.
     #[instrument(skip_all, fields(runtime.method = "core.receive_from_product"))]
     pub async fn receive_from_product(&self, frame: &[u8]) -> Option<Vec<u8>> {
         let message = ProtocolMessage::decode(&mut &*frame).ok()?;

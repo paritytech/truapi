@@ -1,4 +1,12 @@
+//! Role-neutral account authority contracts used by product runtimes.
+//!
+//! Pairing and signing hosts implement these traits differently, but
+//! `ProductRuntimeHost` can use this module's shared request/session types
+//! without knowing where the key material lives.
+
 use async_trait::async_trait;
+use core::fmt;
+use core::time::Duration;
 use std::sync::Arc;
 use truapi::latest::{
     HostAccountGetAliasResponse, HostCreateTransactionResponse,
@@ -8,10 +16,13 @@ use truapi::latest::{
     ProductAccountId, ProductAccountTxPayload,
 };
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
-use truapi::{CallContext, CallError};
-use truapi_platform::ProductContext;
+use truapi::{CallContext, CallError, CancellationReason};
+use truapi_platform::{BulletinAllowanceKeyError, ProductContext};
+
+pub(crate) use truapi_platform::BulletinAllowanceKey;
 
 use crate::host_logic::session::{SessionInfo, SessionState};
+use crate::host_logic::statement_store::statement_public_key_from_secret;
 
 /// Snapshot of an account-authority session selected by the authority.
 ///
@@ -42,6 +53,17 @@ impl AuthoritySession {
             validation_id,
         }
     }
+
+    pub(crate) fn primary_username(&self) -> Option<&str> {
+        self.full_username
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                self.lite_username
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+            })
+    }
 }
 
 /// Typed account-authority failure before it is mapped to an API-specific error.
@@ -53,9 +75,16 @@ pub(crate) enum AuthorityError {
     /// The selected authority session is no longer active.
     #[display("Disconnected")]
     Disconnected,
+    /// The authority call was cancelled before completion.
+    #[display("{_0}")]
+    Cancelled(AuthorityCancelError),
     /// The authority cannot service the request.
     #[display("{reason}")]
     Unavailable { reason: String },
+    /// The authority cannot service this request shape (e.g. an unsupported
+    /// transaction-extension version).
+    #[display("{reason}")]
+    NotSupported { reason: String },
     /// Catch-all authority failure.
     #[display("{reason}")]
     Unknown { reason: String },
@@ -64,6 +93,58 @@ pub(crate) enum AuthorityError {
 impl AuthorityError {
     pub(crate) fn reason(self) -> String {
         self.to_string()
+    }
+}
+
+impl From<BulletinAllowanceKeyError> for AuthorityError {
+    fn from(err: BulletinAllowanceKeyError) -> Self {
+        AuthorityError::Unavailable {
+            reason: err.to_string(),
+        }
+    }
+}
+
+/// Cancellation cause for an account-authority call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AuthorityCancelError {
+    request_id: String,
+    reason: CancellationReason,
+}
+
+impl AuthorityCancelError {
+    pub(crate) fn new(request_id: &str, reason: CancellationReason) -> Self {
+        Self {
+            request_id: request_id.to_string(),
+            reason,
+        }
+    }
+}
+
+impl fmt::Display for AuthorityCancelError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let request = if self.request_id.is_empty() {
+            String::new()
+        } else {
+            format!(" for {}", self.request_id)
+        };
+        match &self.reason {
+            CancellationReason::Cancelled => {
+                write!(f, "Account authority request cancelled{request}")
+            }
+            CancellationReason::TimedOut { timeout } => write!(
+                f,
+                "Account authority request timed out after {}{request}",
+                format_timeout_duration(*timeout)
+            ),
+        }
+    }
+}
+
+fn format_timeout_duration(duration: Duration) -> String {
+    if duration.subsec_millis() == 0 {
+        format!("{}s", duration.as_secs())
+    } else {
+        format!("{}ms", duration.as_millis())
     }
 }
 
@@ -109,6 +190,30 @@ pub(crate) enum CreateTransactionAuthorityRequest {
     },
 }
 
+/// Statement-store allowance signing material held by the authority layer.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct StatementStoreAllowanceKey {
+    pub(crate) secret: [u8; 64],
+    pub(crate) public_key: [u8; 32],
+}
+
+impl StatementStoreAllowanceKey {
+    pub(crate) fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, AuthorityError> {
+        let secret: [u8; 64] =
+            secret
+                .try_into()
+                .map_err(|secret: Vec<u8>| AuthorityError::Unavailable {
+                    reason: format!(
+                        "statement-store allowance key must be 64 bytes, got {}",
+                        secret.len()
+                    ),
+                })?;
+        let public_key = statement_public_key_from_secret(secret)
+            .map_err(|reason| AuthorityError::Unavailable { reason })?;
+        Ok(Self { secret, public_key })
+    }
+}
+
 /// Host-level account authority used by product runtimes.
 ///
 /// Pairing hosts implement this by forwarding authority requests to a paired
@@ -133,6 +238,12 @@ pub(crate) trait ProductAuthority: Send + Sync {
 
     /// Disconnect the current account-authority session.
     async fn disconnect(&self);
+
+    /// Refresh identity fields for the current session if the authority can do
+    /// so without user interaction.
+    async fn refresh_session_identity(&self) -> Option<AuthoritySession> {
+        self.current_session()
+    }
 
     /// Sign a SCALE transaction payload for a product account.
     async fn sign_payload(
@@ -175,6 +286,43 @@ pub(crate) trait ProductAuthority: Send + Sync {
         product_id: String,
         request: HostRequestResourceAllocationRequest,
     ) -> Result<HostRequestResourceAllocationResponse, AuthorityError>;
+
+    /// Return statement-store allowance key material for the calling product.
+    async fn statement_store_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError>;
+
+    /// Return Bulletin allowance key material for the calling product.
+    async fn bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError>;
+
+    /// Evict any cached Bulletin allowance key for the product and allocate a
+    /// fresh one, increasing the existing allowance.
+    ///
+    /// Called after a submission is rejected for an exhausted/missing
+    /// allowance, where reusing the cached key would loop forever.
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError>;
+
+    /// Sign exact statement-store proof bytes with a product-derived account.
+    async fn sign_statement_store_product_payload(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        account: ProductAccountId,
+        payload: Vec<u8>,
+    ) -> Result<[u8; 64], AuthorityError>;
 
     /// Derive product-scoped entropy for a connected session.
     fn derive_entropy(

@@ -24,12 +24,13 @@ use truapi_platform::{
 
 use super::SigningHost;
 use crate::host_logic::entropy::root_entropy_source;
-use crate::host_logic::product_account::derive_sr25519_hard_path;
+use crate::host_logic::product_account::{ProductAccountError, derive_sr25519_hard_path};
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
     self, CreateTransactionPayload, IncomingSsoRequest, RemoteMessage, RemoteMessageData,
     ResourceAllocationResponse, RingVrfAliasResponse, SignRawLegacyResponse,
-    SigningPayloadResponseData, SigningRequest, SigningResponse, SsoAllocationOutcome,
+    SigningPayloadResponseData, SigningRequest, SigningResponse, SsoAllocatableResource,
+    SsoAllocatedResource, SsoAllocationOutcome, StatementStoreProductSignResponse,
     build_outgoing_request_statement, build_signed_session_response_statement,
     decode_incoming_sso_request, v1,
 };
@@ -233,16 +234,10 @@ async fn answer_remote_message(
             })
         }
         v1::RemoteMessage::ResourceAllocationRequest(request) => {
-            // No on-chain allowance support yet: every requested resource is
-            // reported `NotAvailable` so the pairing host resolves instead of
-            // timing out.
+            let payload = resource_allocation_response(services, signing_host, request).await;
             v1::RemoteMessage::ResourceAllocationResponse(ResourceAllocationResponse {
                 responding_to: message_id,
-                payload: Ok(request
-                    .resources
-                    .iter()
-                    .map(|_| SsoAllocationOutcome::NotAvailable)
-                    .collect()),
+                payload,
             })
         }
         v1::RemoteMessage::CreateTransactionRequest(request) => {
@@ -275,17 +270,143 @@ async fn answer_remote_message(
                 ),
             })
         }
+        v1::RemoteMessage::StatementStoreProductSignRequest(request) => {
+            let signature = statement_store_product_sign_response(signing_host, request).await;
+            v1::RemoteMessage::StatementStoreProductSignResponse(
+                StatementStoreProductSignResponse {
+                    responding_to: message_id,
+                    signature,
+                },
+            )
+        }
         v1::RemoteMessage::Disconnected
         | v1::RemoteMessage::SignResponse(_)
         | v1::RemoteMessage::RingVrfAliasResponse(_)
         | v1::RemoteMessage::ResourceAllocationResponse(_)
         | v1::RemoteMessage::CreateTransactionResponse(_)
-        | v1::RemoteMessage::SignRawLegacyResponse(_) => return None,
+        | v1::RemoteMessage::SignRawLegacyResponse(_)
+        | v1::RemoteMessage::StatementStoreProductSignResponse(_) => return None,
     };
     Some(RemoteMessage {
         message_id: response_id,
         data: RemoteMessageData::V1(data),
     })
+}
+
+async fn resource_allocation_response(
+    services: &Arc<RuntimeServices>,
+    signing_host: &Arc<SigningHost>,
+    request: messages::ResourceAllocationRequest,
+) -> Result<Vec<SsoAllocationOutcome>, String> {
+    let mut outcomes = Vec::with_capacity(request.resources.len());
+    for resource in request.resources {
+        let outcome = match resource {
+            SsoAllocatableResource::StatementStoreAllowance => {
+                let slot_account_key = allocate_statement_store_allowance(
+                    services,
+                    signing_host,
+                    &request.calling_product_id,
+                )
+                .await?;
+                SsoAllocationOutcome::Allocated(SsoAllocatedResource::StatementStoreAllowance {
+                    slot_account_key,
+                })
+            }
+            SsoAllocatableResource::BulletinAllowance
+            | SsoAllocatableResource::SmartContractAllowance(_)
+            | SsoAllocatableResource::AutoSigning => SsoAllocationOutcome::NotAvailable,
+        };
+        outcomes.push(outcome);
+    }
+    Ok(outcomes)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn allocate_statement_store_allowance(
+    services: &Arc<RuntimeServices>,
+    signing_host: &Arc<SigningHost>,
+    product_id: &str,
+) -> Result<Vec<u8>, String> {
+    use crate::runtime::statement_allowance::{
+        self, fetch_chain_state, fetch_metadata, find_including_ring, register_statement_account,
+    };
+
+    let entropy = signing_host.root_entropy().map_err(|err| err.reason())?;
+    let allowance =
+        derive_sr25519_hard_path(&entropy, &["allowance", "statement-store", product_id])
+            .map_err(product_account_error)?;
+    let target = allowance.public.to_bytes();
+    let bandersnatch = statement_allowance::bandersnatch_entropy(&entropy);
+    let rpc = statement_allowance::rpc::RpcClient::new(
+        services
+            .statement_store
+            .client("statement-store allowance")
+            .await?,
+    );
+    let metadata = fetch_metadata(&rpc).await?;
+    let chain_state = fetch_chain_state(&rpc).await?;
+    let current = statement_allowance::ring::read_current_ring_index(&rpc).await?;
+    let ring = find_including_ring(&rpc, &metadata, bandersnatch, current)
+        .await?
+        .ok_or_else(|| {
+            "signing account is not a LitePeople ring member; cannot grant statement-store allowance"
+                .to_string()
+        })?;
+    let period = statement_allowance::slot::current_period(current_unix_secs()?);
+    let outcome = register_statement_account(
+        &rpc,
+        &metadata,
+        &chain_state,
+        bandersnatch,
+        &target,
+        period,
+        &ring,
+    )
+    .await?;
+    match outcome {
+        statement_allowance::RegistrationOutcome::Registered {
+            block_hash,
+            seq,
+            ring_index,
+        } => {
+            info!(
+                %product_id,
+                %block_hash,
+                seq,
+                ring_index,
+                "registered statement-store allowance"
+            );
+        }
+        statement_allowance::RegistrationOutcome::AlreadyAllocated { seq } => {
+            info!(
+                %product_id,
+                seq,
+                "statement-store allowance already allocated"
+            );
+        }
+    }
+    Ok(allowance.secret.to_bytes().to_vec())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn allocate_statement_store_allowance(
+    _services: &Arc<RuntimeServices>,
+    _signing_host: &Arc<SigningHost>,
+    _product_id: &str,
+) -> Result<Vec<u8>, String> {
+    Err("signing host: statement-store allowance allocation is native-only".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn current_unix_secs() -> Result<u64, String> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|_| "system clock before UNIX epoch".to_string())
+}
+
+fn product_account_error(err: ProductAccountError) -> String {
+    err.to_string()
 }
 
 /// Confirm and serve a payload or raw signing request.
@@ -343,6 +464,26 @@ async fn serve_sign_request(
         signature: response.signature,
         signed_transaction: response.signed_transaction,
     })
+}
+
+async fn statement_store_product_sign_response(
+    signing_host: &Arc<SigningHost>,
+    request: messages::StatementStoreProductSignRequest,
+) -> Result<Vec<u8>, String> {
+    let session = signing_host
+        .current_session()
+        .ok_or_else(|| "signing host session is not active".to_string())?;
+    let cx = CallContext::new();
+    signing_host
+        .sign_statement_store_product_payload(
+            &cx,
+            &session,
+            request.product_account_id,
+            request.payload,
+        )
+        .await
+        .map(|signature| signature.to_vec())
+        .map_err(|err| err.reason())
 }
 
 /// Confirm and serve a transaction-creation request.

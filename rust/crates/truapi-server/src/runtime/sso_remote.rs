@@ -3,7 +3,7 @@
 //! matching response, honoring timeouts and local/peer disconnect signals.
 
 use core::mem;
-use std::fmt::Display;
+use std::fmt::{self, Display};
 use std::sync::Mutex;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -26,7 +26,7 @@ use serde_json::Value;
 use subxt_rpcs::RpcClient;
 use subxt_rpcs::client::RpcSubscription;
 use tracing::instrument;
-use truapi::CallContext;
+use truapi::{CancellationReason, CancellationToken};
 
 /// Host-spec B.3.3 recommends seven-day statement expiry for session traffic:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L143-L145>
@@ -35,6 +35,8 @@ const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
 pub(super) const SSO_LOCAL_DISCONNECT_REASON: &str = "SSO session disconnected";
 /// Disconnect reason reported when the paired signing host announces a disconnect.
 pub(super) const SSO_PEER_DISCONNECT_REASON: &str = "SSO peer disconnected";
+/// Reason reported when the product caller cancels a pending SSO request.
+const SSO_CALL_CANCELLED_REASON: &str = "SSO response wait cancelled by caller";
 
 /// Registry of oneshot waiters resolved when the SSO session disconnects.
 #[derive(Default)]
@@ -48,7 +50,7 @@ struct SessionDisconnectsInner {
     waiters: Vec<(u64, SsoSessionKey, oneshot::Sender<String>)>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct SsoSessionKey {
     own: [u8; 32],
     peer: [u8; 32],
@@ -136,64 +138,147 @@ impl SessionDisconnects {
     }
 }
 
-pub(super) struct SsoRemoteResponseWait<'a> {
+pub(super) type StatementPageStream = BoxStream<'static, Result<Value, String>>;
+pub(super) type StatementSubmitFuture = BoxFuture<'static, Result<(), SsoRemoteResponseError>>;
+
+pub(super) struct RemoteResponseWait<'a> {
+    pub(super) own_statements: StatementPageStream,
+    pub(super) peer_statements: StatementPageStream,
+    pub(super) submit: StatementSubmitFuture,
     pub(super) session: &'a SsoSessionInfo,
     pub(super) statement_request_id: &'a str,
     pub(super) remote_message_id: &'a str,
-    pub(super) timeout: Option<Duration>,
+    pub(super) cancel: &'a CancellationToken,
     pub(super) disconnect: Option<oneshot::Receiver<String>>,
 }
 
-pub(super) type StatementPageStream = BoxStream<'static, Result<Value, String>>;
-pub(super) type StatementSubmitFuture = BoxFuture<'static, Result<(), String>>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CancelError {
+    reason: CancellationReason,
+    remote_message_id: String,
+}
+
+impl CancelError {
+    fn new(reason: CancellationReason, remote_message_id: &str) -> Self {
+        Self {
+            reason,
+            remote_message_id: remote_message_id.to_string(),
+        }
+    }
+
+    pub(super) fn reason(&self) -> CancellationReason {
+        self.reason.clone()
+    }
+
+    pub(super) fn remote_message_id(&self) -> &str {
+        &self.remote_message_id
+    }
+
+    pub(super) fn with_remote_message_id(self, remote_message_id: &str) -> Self {
+        Self {
+            reason: self.reason,
+            remote_message_id: remote_message_id.to_string(),
+        }
+    }
+}
+
+impl Display for CancelError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.reason {
+            CancellationReason::Cancelled => {
+                write!(
+                    f,
+                    "{SSO_CALL_CANCELLED_REASON} for {}",
+                    self.remote_message_id
+                )
+            }
+            CancellationReason::TimedOut { timeout } => write!(
+                f,
+                "SSO response timed out after {} for {}",
+                format_timeout_duration(*timeout),
+                self.remote_message_id
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum SsoRemoteResponseError {
+    Cancelled(CancelError),
+    LocalDisconnected,
+    PeerDisconnected,
+    Failure(String),
+}
+
+impl Display for SsoRemoteResponseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Cancelled(err) => err.fmt(f),
+            Self::LocalDisconnected => f.write_str(SSO_LOCAL_DISCONNECT_REASON),
+            Self::PeerDisconnected => f.write_str(SSO_PEER_DISCONNECT_REASON),
+            Self::Failure(reason) => f.write_str(reason),
+        }
+    }
+}
+
+impl From<String> for SsoRemoteResponseError {
+    fn from(reason: String) -> Self {
+        Self::Failure(reason)
+    }
+}
+
+fn disconnect_error(reason: String) -> SsoRemoteResponseError {
+    match reason.as_str() {
+        SSO_LOCAL_DISCONNECT_REASON => SsoRemoteResponseError::LocalDisconnected,
+        SSO_PEER_DISCONNECT_REASON => SsoRemoteResponseError::PeerDisconnected,
+        _ => SsoRemoteResponseError::Failure(reason),
+    }
+}
 
 #[instrument(skip_all, fields(runtime.method = "sso.remote_response.wait"))]
 pub(super) async fn wait_for_sso_remote_response(
-    own_statements: StatementPageStream,
-    peer_statements: StatementPageStream,
-    submit: StatementSubmitFuture,
-    wait: SsoRemoteResponseWait<'_>,
-) -> Result<SsoRemoteResponse, String> {
-    let timeout_reason = wait.timeout.map(|timeout| {
-        format!(
-            "SSO response timed out after {} for {}",
-            format_timeout_duration(timeout),
-            wait.remote_message_id
-        )
-    });
+    wait: RemoteResponseWait<'_>,
+) -> Result<SsoRemoteResponse, SsoRemoteResponseError> {
+    let RemoteResponseWait {
+        own_statements,
+        peer_statements,
+        submit,
+        session,
+        statement_request_id,
+        remote_message_id,
+        cancel,
+        disconnect,
+    } = wait;
     let response = wait_for_sso_remote_response_inner(
         own_statements,
         peer_statements,
         submit,
-        wait.session,
-        wait.statement_request_id,
-        wait.remote_message_id,
+        session,
+        statement_request_id,
+        remote_message_id,
     )
     .fuse();
-    let timeout = async move {
-        match (wait.timeout, timeout_reason) {
-            (Some(timeout), Some(reason)) => {
-                futures_timer::Delay::new(timeout).await;
-                reason
-            }
-            _ => futures::future::pending::<String>().await,
-        }
-    }
-    .fuse();
     let disconnect = async move {
-        match wait.disconnect {
-            Some(rx) => rx
-                .await
-                .unwrap_or_else(|_| SSO_LOCAL_DISCONNECT_REASON.to_string()),
-            None => futures::future::pending::<String>().await,
+        match disconnect {
+            Some(rx) => match rx.await {
+                Ok(reason) => disconnect_error(reason),
+                Err(_) => SsoRemoteResponseError::LocalDisconnected,
+            },
+            None => futures::future::pending::<SsoRemoteResponseError>().await,
         }
     }
     .fuse();
-    pin_mut!(response, timeout, disconnect);
+    let cancel_message_id = remote_message_id.to_string();
+    let cancelled = async move {
+        let reason = cancel.cancelled().await;
+        SsoRemoteResponseError::Cancelled(CancelError::new(reason, &cancel_message_id))
+    }
+    .fuse();
+    pin_mut!(response, disconnect, cancelled);
     futures::select! {
         result = response => result,
-        reason = timeout => Err(reason),
         reason = disconnect => Err(reason),
+        reason = cancelled => Err(reason),
     }
 }
 
@@ -205,7 +290,7 @@ async fn wait_for_sso_remote_response_inner(
     session: &SsoSessionInfo,
     statement_request_id: &str,
     remote_message_id: &str,
-) -> Result<SsoRemoteResponse, String> {
+) -> Result<SsoRemoteResponse, SsoRemoteResponseError> {
     let mut own_statements = own_statements.fuse();
     let mut peer_statements = peer_statements.fuse();
     let mut submit = submit.fuse();
@@ -216,10 +301,10 @@ async fn wait_for_sso_remote_response_inner(
 
     loop {
         if own_done && peer_done {
-            return Err(format!(
+            return Err(SsoRemoteResponseError::Failure(format!(
                 "SSO response stream ended before response for {}",
                 remote_message_id
-            ));
+            )));
         }
         futures::select! {
             item = own_statements.next() => {
@@ -236,7 +321,7 @@ async fn wait_for_sso_remote_response_inner(
                             return Ok(response);
                         }
                     }
-                    Some(Err(reason)) => return Err(reason),
+                    Some(Err(reason)) => return Err(SsoRemoteResponseError::Failure(reason)),
                     None => own_done = true,
                 }
             }
@@ -254,7 +339,7 @@ async fn wait_for_sso_remote_response_inner(
                             return Ok(response);
                         }
                     }
-                    Some(Err(reason)) => return Err(reason),
+                    Some(Err(reason)) => return Err(SsoRemoteResponseError::Failure(reason)),
                     None => peer_done = true,
                 }
             }
@@ -272,16 +357,18 @@ fn handle_sso_remote_statement_page(
     remote_message_id: &str,
     request_accepted: &mut bool,
     pending_remote_response: &mut Option<SsoRemoteResponse>,
-) -> Result<Option<SsoRemoteResponse>, String> {
+) -> Result<Option<SsoRemoteResponse>, SsoRemoteResponseError> {
     let page = parse_new_statements_result("sso-remote".to_string(), value)
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| SsoRemoteResponseError::Failure(err.to_string()))?;
     for statement in page.statements {
         match decode_sso_session_statement(
             session,
             &statement,
             statement_request_id,
             remote_message_id,
-        )? {
+        )
+        .map_err(SsoRemoteResponseError::Failure)?
+        {
             Some(SsoSessionStatement::RequestAccepted) => {
                 *request_accepted = true;
                 if let Some(response) = pending_remote_response.take() {
@@ -295,7 +382,7 @@ fn handle_sso_remote_statement_page(
                 *pending_remote_response = Some(response);
             }
             Some(SsoSessionStatement::Disconnected) => {
-                return Err(SSO_PEER_DISCONNECT_REASON.to_string());
+                return Err(SsoRemoteResponseError::PeerDisconnected);
             }
             None => {}
         }
@@ -327,14 +414,9 @@ fn format_timeout_duration(duration: Duration) -> String {
     }
 }
 
-/// Stable message id for an SSO request: the wire request id when present,
-/// otherwise a fixed per-action fallback.
-pub(super) fn sso_message_id(cx: &CallContext, action: impl Display) -> String {
-    if cx.request_id().is_empty() {
-        format!("truapi:sso:{action}")
-    } else {
-        cx.request_id().to_string()
-    }
+/// Fresh opaque message id for one SSO request.
+pub(super) fn sso_message_id() -> String {
+    nanoid::nanoid!(8)
 }
 
 pub(super) fn fresh_statement_expiry() -> u64 {
@@ -349,44 +431,75 @@ mod tests {
     use futures::stream;
 
     #[test]
-    fn sso_remote_response_waiter_times_out() {
+    fn sso_message_id_uses_short_opaque_nanoids() {
+        let first = sso_message_id();
+        let second = sso_message_id();
+
+        assert_eq!(first.len(), 8);
+        assert_eq!(second.len(), 8);
+        assert_ne!(first, "p:1");
+        assert_ne!(second, "p:1");
+        assert_ne!(first, second);
+        assert!(first.bytes().all(is_nanoid_safe_byte));
+        assert!(second.bytes().all(is_nanoid_safe_byte));
+    }
+
+    fn is_nanoid_safe_byte(value: u8) -> bool {
+        value.is_ascii_alphanumeric() || value == b'_' || value == b'-'
+    }
+
+    #[test]
+    fn sso_remote_response_waiter_reports_timeout_cancellation() {
         let session = sso_session_info();
-        let err = futures::executor::block_on(wait_for_sso_remote_response(
-            stream::pending().boxed(),
-            stream::pending().boxed(),
-            futures::future::pending().boxed(),
-            SsoRemoteResponseWait {
-                session: session.sso.as_ref().unwrap(),
-                statement_request_id: "request-1",
-                remote_message_id: "request-1",
-                timeout: Some(Duration::from_millis(1)),
-                disconnect: None,
-            },
-        ))
+        let cancel = CancellationToken::new();
+        cancel.cancel_with_reason(CancellationReason::TimedOut {
+            timeout: Duration::from_millis(1),
+        });
+        let err = futures::executor::block_on(wait_for_sso_remote_response(RemoteResponseWait {
+            own_statements: stream::pending().boxed(),
+            peer_statements: stream::pending().boxed(),
+            submit: futures::future::pending().boxed(),
+            session: session.sso.as_ref().unwrap(),
+            statement_request_id: "request-1",
+            remote_message_id: "request-1",
+            cancel: &cancel,
+            disconnect: None,
+        }))
         .unwrap_err();
 
-        assert_eq!(err, "SSO response timed out after 1ms for request-1");
+        let SsoRemoteResponseError::Cancelled(err) = err else {
+            panic!("expected cancellation error");
+        };
+        assert_eq!(
+            err.to_string(),
+            "SSO response timed out after 1ms for request-1"
+        );
     }
 
     #[test]
     fn sso_remote_response_waiter_reports_submit_rejections() {
         let session = sso_session_info();
-        let err = futures::executor::block_on(wait_for_sso_remote_response(
-            stream::pending().boxed(),
-            stream::pending().boxed(),
-            futures::future::ready(Err("SSO statement submit failed: no allowance".to_string()))
-                .boxed(),
-            SsoRemoteResponseWait {
-                session: session.sso.as_ref().unwrap(),
-                statement_request_id: "request-1",
-                remote_message_id: "request-1",
-                timeout: Some(Duration::from_secs(60)),
-                disconnect: None,
-            },
-        ))
+        let err = futures::executor::block_on(wait_for_sso_remote_response(RemoteResponseWait {
+            own_statements: stream::pending().boxed(),
+            peer_statements: stream::pending().boxed(),
+            submit: futures::future::ready(Err(SsoRemoteResponseError::Failure(
+                "SSO statement submit failed: no allowance".to_string(),
+            )))
+            .boxed(),
+            session: session.sso.as_ref().unwrap(),
+            statement_request_id: "request-1",
+            remote_message_id: "request-1",
+            cancel: &CancellationToken::new(),
+            disconnect: None,
+        }))
         .unwrap_err();
 
-        assert_eq!(err, "SSO statement submit failed: no allowance");
+        assert_eq!(
+            err,
+            SsoRemoteResponseError::Failure(
+                "SSO statement submit failed: no allowance".to_string()
+            )
+        );
     }
 
     #[test]
@@ -394,21 +507,19 @@ mod tests {
         let session = sso_session_info();
         let (tx, rx) = oneshot::channel();
         tx.send(SSO_LOCAL_DISCONNECT_REASON.to_string()).unwrap();
-        let err = futures::executor::block_on(wait_for_sso_remote_response(
-            stream::pending().boxed(),
-            stream::pending().boxed(),
-            futures::future::pending().boxed(),
-            SsoRemoteResponseWait {
-                session: session.sso.as_ref().unwrap(),
-                statement_request_id: "request-1",
-                remote_message_id: "request-1",
-                timeout: Some(Duration::from_secs(60)),
-                disconnect: Some(rx),
-            },
-        ))
+        let err = futures::executor::block_on(wait_for_sso_remote_response(RemoteResponseWait {
+            own_statements: stream::pending().boxed(),
+            peer_statements: stream::pending().boxed(),
+            submit: futures::future::pending().boxed(),
+            session: session.sso.as_ref().unwrap(),
+            statement_request_id: "request-1",
+            remote_message_id: "request-1",
+            cancel: &CancellationToken::new(),
+            disconnect: Some(rx),
+        }))
         .unwrap_err();
 
-        assert_eq!(err, SSO_LOCAL_DISCONNECT_REASON);
+        assert_eq!(err, SsoRemoteResponseError::LocalDisconnected);
     }
 
     #[test]
@@ -416,20 +527,45 @@ mod tests {
         let session = sso_session_info();
         let (tx, rx) = oneshot::channel();
         tx.send(SSO_LOCAL_DISCONNECT_REASON.to_string()).unwrap();
-        let err = futures::executor::block_on(wait_for_sso_remote_response(
-            stream::pending().boxed(),
-            stream::pending().boxed(),
-            futures::future::pending().boxed(),
-            SsoRemoteResponseWait {
-                session: session.sso.as_ref().unwrap(),
-                statement_request_id: "request-1",
-                remote_message_id: "request-1",
-                timeout: None,
-                disconnect: Some(rx),
-            },
-        ))
+        let err = futures::executor::block_on(wait_for_sso_remote_response(RemoteResponseWait {
+            own_statements: stream::pending().boxed(),
+            peer_statements: stream::pending().boxed(),
+            submit: futures::future::pending().boxed(),
+            session: session.sso.as_ref().unwrap(),
+            statement_request_id: "request-1",
+            remote_message_id: "request-1",
+            cancel: &CancellationToken::new(),
+            disconnect: Some(rx),
+        }))
         .unwrap_err();
 
-        assert_eq!(err, SSO_LOCAL_DISCONNECT_REASON);
+        assert_eq!(err, SsoRemoteResponseError::LocalDisconnected);
+    }
+
+    #[test]
+    fn sso_remote_response_waiter_stops_on_call_cancellation() {
+        let session = sso_session_info();
+        let cancel = CancellationToken::new();
+        let wait = wait_for_sso_remote_response(RemoteResponseWait {
+            own_statements: stream::pending().boxed(),
+            peer_statements: stream::pending().boxed(),
+            submit: futures::future::pending().boxed(),
+            session: session.sso.as_ref().unwrap(),
+            statement_request_id: "request-1",
+            remote_message_id: "request-1",
+            cancel: &cancel,
+            disconnect: None,
+        });
+
+        cancel.cancel();
+        let err = futures::executor::block_on(wait).unwrap_err();
+
+        let SsoRemoteResponseError::Cancelled(err) = err else {
+            panic!("expected cancellation error");
+        };
+        assert_eq!(
+            err.to_string(),
+            "SSO response wait cancelled by caller for request-1"
+        );
     }
 }

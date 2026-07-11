@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use blake2_rfc::blake2b::blake2b;
 use futures::stream::{self, BoxStream};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
@@ -253,17 +252,7 @@ impl ThemeHost for CliPlatform {
     }
 }
 
-#[async_trait]
 impl PreimageHost for CliPlatform {
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        let key = blake2b(32, &[], &value).as_bytes().to_vec();
-        self.preimages
-            .lock()
-            .expect("preimage mutex poisoned")
-            .insert(key.clone(), value);
-        Ok(key)
-    }
-
     fn lookup_preimage(
         &self,
         key: Vec<u8>,

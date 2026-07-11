@@ -28,7 +28,7 @@ use crate::subscription::Spawner;
 
 use futures::channel::{mpsc, oneshot};
 use futures::{FutureExt, StreamExt, pin_mut};
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use serde_json::Value;
 use subxt_rpcs::RpcClient;
 use subxt_rpcs::client::RpcSubscription;
@@ -97,9 +97,24 @@ impl<'a> SsoPairingFlow<'a> {
     pub(super) async fn request_session(
         &self,
     ) -> Result<SsoPairingOutcome, CallError<HostRequestLoginError>> {
-        let pairing_identity = create_fresh_pairing_device_identity(self.host.platform.as_ref())
-            .await
-            .map_err(|reason| self.fail_before_pairing(reason))?;
+        let (mut pairing_identity, reused_identity) =
+            read_or_create_pairing_device_identity(self.host.platform.as_ref())
+                .await
+                .map_err(|reason| self.fail_before_pairing(reason))?;
+        let last_processed_statement =
+            read_last_processed_pairing_statement(self.host.platform.as_ref())
+                .await
+                .map_err(|reason| self.fail_before_pairing(reason))?;
+        // Pairing success statements are retained by statement-store. Reusing a
+        // previous pairing identity means reusing its topic, where the only
+        // retained response may be the last processed success. Rotate before
+        // presenting QR so every explicit login waits on a fresh wallet scan.
+        if reused_identity {
+            debug!("regenerating stored pairing device identity");
+            pairing_identity = create_fresh_pairing_device_identity(self.host.platform.as_ref())
+                .await
+                .map_err(|reason| self.fail_before_pairing(reason))?;
+        }
         let bootstrap =
             create_pairing_bootstrap_from_identity(&self.host.host_config, pairing_identity)
                 .map_err(|err| self.fail_before_pairing(err.to_string()))?;
@@ -122,7 +137,10 @@ impl<'a> SsoPairingFlow<'a> {
             active: true,
         };
 
-        match self.run_pairing_flow(&bootstrap, cancel_rx).await {
+        match self
+            .run_pairing_flow(&bootstrap, cancel_rx, last_processed_statement)
+            .await
+        {
             Ok(outcome @ SsoPairingOutcome::Cancelled) => {
                 reset_guard.disarm();
                 Ok(outcome)
@@ -156,6 +174,7 @@ impl<'a> SsoPairingFlow<'a> {
         &self,
         bootstrap: &PairingBootstrap,
         cancel_rx: oneshot::Receiver<()>,
+        last_processed_statement: Option<Vec<u8>>,
     ) -> Result<SsoPairingOutcome, String> {
         let mut cancel = cancel_rx.fuse();
         let statement_store = self.host.statement_store.clone();
@@ -182,6 +201,7 @@ impl<'a> SsoPairingFlow<'a> {
             live_subscription,
             bootstrap.topic,
             bootstrap.encryption_secret_key,
+            last_processed_statement,
             self.host.spawner.clone(),
         )
         .fuse();
@@ -191,6 +211,8 @@ impl<'a> SsoPairingFlow<'a> {
             _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
             response_result = pairing_response => response_result?,
         };
+        write_last_processed_pairing_statement(self.host.platform.as_ref(), &response.statement)
+            .await;
         let sso = establish_sso_session_info(
             bootstrap,
             response.peer_statement_account_id,
@@ -225,9 +247,19 @@ impl<'a> SsoPairingFlow<'a> {
             .fuse();
         pin_mut!(persist_session);
         futures::select! {
-            _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
+            _ = cancel => {
+                clear_auth_session(self.host.platform.as_ref()).await;
+                return Ok(SsoPairingOutcome::Cancelled);
+            },
             persist_result = persist_session => persist_result
                 .map_err(|err| format!("session persist failed: {err:?}"))?,
+        };
+        futures::select! {
+            _ = cancel => {
+                clear_auth_session(self.host.platform.as_ref()).await;
+                return Ok(SsoPairingOutcome::Cancelled);
+            },
+            default => {}
         };
         Ok(SsoPairingOutcome::Success(Box::new(session)))
     }
@@ -246,12 +278,76 @@ async fn create_fresh_pairing_device_identity(
     Ok(identity)
 }
 
+#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.read_or_create"))]
+async fn read_or_create_pairing_device_identity(
+    storage: &(impl CoreStorage + ?Sized),
+) -> Result<(PairingDeviceIdentity, bool), String> {
+    let stored = storage
+        .read_core_storage(CoreStorageKey::PairingDeviceIdentity)
+        .await
+        .map_err(|err| format!("pairing device identity read failed: {err:?}"))?;
+    if let Some(stored) = stored {
+        match PairingDeviceIdentity::decode(&mut stored.as_slice()) {
+            Ok(identity) => return Ok((identity, true)),
+            Err(err) => {
+                debug!("discarding invalid stored pairing device identity: {err}");
+            }
+        }
+    }
+
+    create_fresh_pairing_device_identity(storage)
+        .await
+        .map(|identity| (identity, false))
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.last_processed.read"))]
+async fn read_last_processed_pairing_statement(
+    storage: &(impl CoreStorage + ?Sized),
+) -> Result<Option<Vec<u8>>, String> {
+    storage
+        .read_core_storage(CoreStorageKey::LastProcessedPairingStatement)
+        .await
+        .map_err(|err| format!("last processed pairing statement read failed: {err:?}"))
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.last_processed.write"))]
+async fn write_last_processed_pairing_statement(
+    storage: &(impl CoreStorage + ?Sized),
+    statement: &[u8],
+) {
+    if let Err(err) = storage
+        .write_core_storage(
+            CoreStorageKey::LastProcessedPairingStatement,
+            statement.to_vec(),
+        )
+        .await
+    {
+        debug!("last processed pairing statement write failed: {err:?}");
+    }
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.auth_session.clear"))]
+async fn clear_auth_session(storage: &(impl CoreStorage + ?Sized)) {
+    if let Err(err) = storage
+        .clear_core_storage(CoreStorageKey::AuthSession)
+        .await
+    {
+        debug!("auth session clear failed: {err:?}");
+    }
+}
+
+/// Decoded wallet handshake success plus the statement metadata needed to
+/// persist the authenticated session and remember the handled statement.
 struct PairingSuccess {
+    statement: Vec<u8>,
     peer_statement_account_id: [u8; 32],
     success: v2::Success,
 }
 
 impl PairingSuccess {
+    /// Decode one retained statement-store response for the current pairing
+    /// topic. `Ok(None)` means the wallet has not produced a final response for
+    /// this statement yet; wallet failure statuses are surfaced as `Err`.
     #[instrument(skip_all, fields(runtime.method = "sso.pairing.decode_statement"))]
     fn from_v2_statement(
         statement: &[u8],
@@ -271,6 +367,7 @@ impl PairingSuccess {
             v2::EncryptedResponse::Pending(_) => Ok(None),
             v2::EncryptedResponse::Failed(reason) => Err(reason),
             v2::EncryptedResponse::Success(success) => Ok(Some(Self {
+                statement: statement.to_vec(),
                 peer_statement_account_id: verified.signer,
                 success: *success,
             })),
@@ -284,6 +381,7 @@ async fn wait_for_v2_pairing_success(
     mut live_subscription: RpcSubscription<Value>,
     topic: [u8; 32],
     core_encryption_secret_key: [u8; 32],
+    last_processed_statement: Option<Vec<u8>>,
     spawner: Spawner,
 ) -> Result<PairingSuccess, String> {
     let (query_tx, mut query_rx) = mpsc::unbounded();
@@ -297,7 +395,11 @@ async fn wait_for_v2_pairing_success(
                     return Err("pairing statement-store live subscription ended".to_string());
                 };
                 let value = item.map_err(|err| format!("pairing statement-store live error: {err}"))?;
-                if let Some(success) = handle_v2_pairing_result(&value, core_encryption_secret_key)? {
+                if let Some(success) = handle_v2_pairing_result(
+                    &value,
+                    core_encryption_secret_key,
+                    last_processed_statement.as_deref(),
+                )? {
                     return Ok(success);
                 }
             }
@@ -313,11 +415,13 @@ async fn wait_for_v2_pairing_success(
                     query_active = true;
                     let rpc_client = rpc_client.clone();
                     let query_tx = query_tx.clone();
+                    let last_processed_statement = last_processed_statement.clone();
                     let fut = async move {
                         let result = run_pairing_snapshot_query(
                             rpc_client,
                             topic,
                             core_encryption_secret_key,
+                            last_processed_statement,
                         ).await;
                         let _ = query_tx.unbounded_send(result);
                     };
@@ -337,6 +441,7 @@ async fn run_pairing_snapshot_query(
     rpc_client: RpcClient,
     topic: [u8; 32],
     core_encryption_secret_key: [u8; 32],
+    last_processed_statement: Option<Vec<u8>>,
 ) -> Result<Option<PairingSuccess>, String> {
     let topics = [topic];
     let mut subscription = statement_store_rpc::subscribe_match_all(&rpc_client, &topics)
@@ -351,7 +456,11 @@ async fn run_pairing_snapshot_query(
                     return Ok(None);
                 };
                 let value = item.map_err(|err| format!("pairing statement-store query item failed: {err}"))?;
-                if let Some(success) = handle_v2_pairing_result(&value, core_encryption_secret_key)? {
+                if let Some(success) = handle_v2_pairing_result(
+                    &value,
+                    core_encryption_secret_key,
+                    last_processed_statement.as_deref(),
+                )? {
                     return Ok(Some(success));
                 }
                 let page = parse_new_statements_result("query".to_string(), &value)
@@ -370,10 +479,14 @@ async fn run_pairing_snapshot_query(
 fn handle_v2_pairing_result(
     value: &Value,
     core_encryption_secret_key: [u8; 32],
+    last_processed_statement: Option<&[u8]>,
 ) -> Result<Option<PairingSuccess>, String> {
     let page =
         parse_new_statements_result("pairing".to_string(), value).map_err(|err| err.to_string())?;
     for statement in page.statements {
+        if last_processed_statement == Some(statement.as_slice()) {
+            continue;
+        }
         if let Some(success) =
             PairingSuccess::from_v2_statement(&statement, core_encryption_secret_key)?
         {
@@ -389,9 +502,11 @@ mod tests {
     use super::super::connected_session_ui_info;
     use super::super::{PairingHostRole, ProductRuntimeHost};
     use super::*;
+    use crate::host_rpc_client::HostRpcClient;
     use crate::test_support::{
         StubPlatform, core_storage_test_key, pairing_device_from_deeplink, peer_statement_keypair,
-        runtime_config, session_info, signed_test_statement, stub_platform, test_spawner,
+        runtime_config, session_info, signed_test_statement, stub_platform, subscribe_ack_frame,
+        test_spawner, wallet_handshake_statement,
     };
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use truapi::CallContext;
@@ -399,7 +514,7 @@ mod tests {
     use truapi::versioned::account::{
         HostAccountConnectionStatusSubscribeItem, HostRequestLoginRequest,
     };
-    use truapi_platform::{AuthState, CoreStorageKey};
+    use truapi_platform::{AuthState, ChainProvider, CoreStorageKey};
 
     /// Cancel the login as soon as the host observes the `Pairing` state,
     /// mimicking a user dismissing the pairing UI immediately.
@@ -454,7 +569,7 @@ mod tests {
     }
 
     #[test]
-    fn request_login_rotates_pairing_device_identity_between_attempts() {
+    fn request_login_regenerates_unmarked_pairing_device_identity_between_attempts() {
         let platform = stub_platform();
         let (host, pairing_host) =
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
@@ -496,7 +611,70 @@ mod tests {
                 .expect("local storage mutex poisoned")
                 .contains_key(&core_storage_test_key(
                     CoreStorageKey::PairingDeviceIdentity
-                ))
+                )),
+            "cancelled pairing keeps the latest identity; the next unmarked reuse regenerates it"
+        );
+    }
+
+    #[test]
+    fn request_login_regenerates_marked_stored_pairing_device_identity() {
+        let platform = stub_platform();
+        let identity = generate_pairing_device_identity().unwrap();
+        platform
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(
+                core_storage_test_key(CoreStorageKey::PairingDeviceIdentity),
+                identity.encode(),
+            );
+        platform
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(
+                core_storage_test_key(CoreStorageKey::LastProcessedPairingStatement),
+                vec![0xde, 0xad],
+            );
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let host = Arc::new(host);
+        cancel_on_pairing(&platform, pairing_host);
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
+        let deeplink = platform
+            .auth_states
+            .lock()
+            .expect("auth state list mutex poisoned")
+            .iter()
+            .find_map(|state| match state {
+                AuthState::Pairing { deeplink } => Some(deeplink.clone()),
+                _ => None,
+            })
+            .expect("pairing state should be emitted");
+        assert_ne!(
+            pairing_device_from_deeplink(&deeplink),
+            (
+                identity.statement_store_public_key,
+                identity.encryption_public_key
+            )
+        );
+        assert!(
+            platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&core_storage_test_key(
+                    CoreStorageKey::PairingDeviceIdentity
+                )),
+            "cancelled pairing keeps the rotated identity; the next login rotates again"
         );
     }
 
@@ -512,7 +690,7 @@ mod tests {
         };
         let statement = signed_test_statement(handshake.encode());
         let notification = format!(
-            r#"{{"jsonrpc":"2.0","method":"statement_subscribeStatement","params":{{"subscription":"remote-sub","result":{{"event":"newStatements","data":{{"statements":["0x{}"],"remaining":0}}}}}}}}"#,
+            r#"{{"jsonrpc":"2.0","method":"statement_statement","params":{{"subscription":"remote-sub","result":{{"event":"newStatements","data":{{"statements":["0x{}"],"remaining":0}}}}}}}}"#,
             hex::encode(statement)
         );
         let platform = Arc::new(StubPlatform {
@@ -534,22 +712,26 @@ mod tests {
             other => panic!("expected handshake decrypt failure, got {other:?}"),
         }
         let sent_rpc = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
-        let methods = sent_rpc
+        let requests = sent_rpc
             .iter()
             .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
-            .map(|request| request["method"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        let methods = requests
+            .iter()
+            .map(|request| request["method"].as_str().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(
-            methods.first().map(String::as_str),
+            methods.first().copied(),
             Some("statement_subscribeStatement")
         );
         assert!(
-            methods
-                .iter()
-                .any(|method| method == "statement_unsubscribeStatement"),
+            methods.contains(&"statement_unsubscribeStatement"),
             "pairing subscription should be cleaned up"
         );
-        let unsubscribe: serde_json::Value = serde_json::from_str(&sent_rpc[1]).unwrap();
+        let unsubscribe = requests
+            .iter()
+            .find(|request| request["method"].as_str() == Some("statement_unsubscribeStatement"))
+            .expect("pairing subscription should be cleaned up");
         assert_eq!(unsubscribe["params"][0], "remote-sub");
     }
 
@@ -642,6 +824,93 @@ mod tests {
     }
 
     #[test]
+    fn request_login_surfaces_wallet_failure_status() {
+        let session_writes = Arc::new(Mutex::new(Vec::new()));
+        let platform = Arc::new(StubPlatform {
+            pairing_failure_response: true,
+            session_writes: session_writes.clone(),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
+
+        let expected_reason =
+            "The operation couldn't be completed. (SubstrateSdk.JSONRPCError error 1.)";
+        assert_eq!(
+            err,
+            CallError::HostFailure {
+                reason: expected_reason.to_string()
+            }
+        );
+        assert!(
+            session_writes
+                .lock()
+                .expect("session writes mutex poisoned")
+                .is_empty()
+        );
+        let auth_states = platform
+            .auth_states
+            .lock()
+            .expect("auth state list mutex poisoned");
+        assert!(
+            auth_states
+                .iter()
+                .any(|state| matches!(state, AuthState::LoginFailed { reason } if reason == expected_reason)),
+            "wallet failure should be surfaced to the modal: {auth_states:?}"
+        );
+    }
+
+    #[test]
+    fn request_login_clears_auth_session_when_cancelled_after_persist() {
+        let session_writes = Arc::new(Mutex::new(Vec::new()));
+        let session_clears = Arc::new(Mutex::new(0));
+        let platform = Arc::new(StubPlatform {
+            pairing_success_response: true,
+            session_writes: session_writes.clone(),
+            session_clears: session_clears.clone(),
+            ..Default::default()
+        });
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let cancel_host = pairing_host.clone();
+        *platform
+            .on_auth_session_write
+            .lock()
+            .expect("auth session write hook mutex poisoned") = Some(Arc::new(move || {
+            cancel_host.cancel_login();
+        }));
+
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
+        assert!(host.test_session_state().current().is_none());
+        assert_eq!(
+            session_writes
+                .lock()
+                .expect("session write list mutex poisoned")
+                .len(),
+            1
+        );
+        assert_eq!(
+            *session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            1
+        );
+    }
+
+    #[test]
     fn request_login_connected_callback_can_clear_session_without_reinstalling_it() {
         let platform = Arc::new(StubPlatform {
             pairing_success_response: true,
@@ -680,34 +949,40 @@ mod tests {
         assert!(matches!(&auth_states[1], AuthState::Connected(_)));
     }
 
-    /// The pairing success must also be reachable through the core's own 2s
-    /// snapshot queries: the live subscription stays silent and the wallet
-    /// statement is delivered only on a query subscription page.
+    /// Pairing success must also be decoded from a snapshot query page, not only
+    /// from the live pairing subscription.
     #[test]
     fn request_login_accepts_pairing_statement_from_snapshot_query_page() {
+        let (host_config, _) = runtime_config("myapp.dot");
+        let pairing_identity = generate_pairing_device_identity().unwrap();
+        let bootstrap =
+            create_pairing_bootstrap_from_identity(&host_config, pairing_identity).unwrap();
+        let statement = wallet_handshake_statement(&bootstrap.deeplink);
         let platform = Arc::new(StubPlatform {
-            pairing_success_via_query: true,
+            rpc_responses: vec![
+                subscribe_ack_frame("truapi:1", "query-sub"),
+                crate::test_support::new_statements_frame("query-sub", vec![statement]),
+            ],
             ..Default::default()
         });
-        let host = ProductRuntimeHost::new(
-            platform.clone(),
-            runtime_config("myapp.dot"),
-            test_spawner(),
-        );
-        let cx = CallContext::new();
-        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
-        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+        let connection =
+            futures::executor::block_on(platform.connect(host_config.people_chain_genesis_hash))
+                .unwrap();
+        let rpc_client = RpcClient::new(HostRpcClient::new(Arc::from(connection), test_spawner()));
+        let success = futures::executor::block_on(run_pairing_snapshot_query(
+            rpc_client,
+            bootstrap.topic,
+            bootstrap.encryption_secret_key,
+            None,
+        ))
+        .unwrap()
+        .expect("snapshot query should return pairing success");
 
         assert_eq!(
-            response,
-            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Success)
+            success.peer_statement_account_id,
+            peer_statement_keypair().1
         );
-        assert_eq!(
-            host.test_session_state()
-                .current()
-                .map(|session| session.public_key),
-            Some(session_info().public_key)
-        );
+        assert_eq!(success.success.root_account_id, session_info().public_key);
 
         let methods = platform
             .sent_rpc
@@ -717,19 +992,41 @@ mod tests {
             .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
             .map(|request| request["method"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
-        assert!(
-            methods
-                .iter()
-                .filter(|method| method.as_str() == "statement_subscribeStatement")
-                .count()
-                >= 2,
-            "core should issue snapshot queries while pairing: {methods:?}"
+        assert_eq!(
+            methods.first().map(String::as_str),
+            Some("statement_subscribeStatement")
         );
-        assert!(
-            methods
-                .iter()
-                .any(|method| method == "statement_unsubscribeStatement"),
-            "drained query subscription should be cleaned up: {methods:?}"
+    }
+
+    #[test]
+    fn pairing_result_skips_last_processed_statement() {
+        let (host_config, _) = runtime_config("myapp.dot");
+        let pairing_identity = generate_pairing_device_identity().unwrap();
+        let bootstrap =
+            create_pairing_bootstrap_from_identity(&host_config, pairing_identity).unwrap();
+        let statement = wallet_handshake_statement(&bootstrap.deeplink);
+        let page = serde_json::json!({
+            "event": "newStatements",
+            "data": {
+                "statements": [format!("0x{}", hex::encode(&statement))],
+                "remaining": 0,
+            },
+        });
+
+        let ignored = handle_v2_pairing_result(
+            &page,
+            bootstrap.encryption_secret_key,
+            Some(statement.as_slice()),
+        )
+        .unwrap();
+        assert!(ignored.is_none());
+
+        let accepted = handle_v2_pairing_result(&page, bootstrap.encryption_secret_key, None)
+            .unwrap()
+            .expect("unmarked statement should be accepted");
+        assert_eq!(
+            accepted.peer_statement_account_id,
+            peer_statement_keypair().1
         );
     }
 

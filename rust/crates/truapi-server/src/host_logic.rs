@@ -10,8 +10,10 @@ pub mod alias;
 /// Lite-person username registration parameters (native signing host only).
 #[cfg(not(target_arch = "wasm32"))]
 pub mod attestation;
+pub mod bulletin;
 pub mod dotns;
 pub mod entropy;
+pub mod extrinsic;
 pub mod features;
 pub mod identity;
 pub mod permissions;

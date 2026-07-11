@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, release/v0.3.0]
+    branches: [main, release/v0.3.2]
   merge_group:
   workflow_dispatch:
 
@@ -21,7 +21,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -33,11 +33,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
         with:
           toolchain: stable
+          targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - name: cargo build
         run: cargo build --workspace --all-targets --all-features
+
+      - name: cargo build (wasm32)
+        # Guards the wasm host bridge and its offline subxt surface, which the
+        # host-target build never compiles.
+        run: cargo build -p truapi-server --target wasm32-unknown-unknown --no-default-features
 
       - name: cargo +nightly fmt --check
         run: cargo +nightly fmt --check
@@ -52,7 +58,7 @@ jobs:
     name: Dependency licenses
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -65,7 +71,7 @@ jobs:
     name: Codegen
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -76,6 +82,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
         with:
           toolchain: nightly
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
@@ -89,6 +96,15 @@ jobs:
       - name: Run codegen
         run: ./scripts/codegen.sh
 
+      - name: Check generated Rust output is committed
+        run: |
+          git diff --exit-code -- \
+            rust/crates/truapi-server/src/generated \
+            rust/crates/truapi-server/src/wasm/generated_bridge.rs
+
+      - name: Check Rust/TS wire table parity
+        run: TRUAPI_REQUIRE_GENERATED_TS=1 cargo test -p truapi-server --test wire_table_ts_parity
+
       - name: Upload codegen output
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -100,17 +116,17 @@ jobs:
             js/packages/truapi/src/playground/codegen
             js/packages/truapi/src/explorer/codegen
             js/packages/truapi/src/explorer/versions.ts
-            js/packages/truapi-host-wasm/src/generated
+            js/packages/truapi-host/src/generated
             playground/test/generated
 
   ts-client:
-    name: '@parity/truapi'
+    name: "@parity/truapi"
     runs-on: ubuntu-latest
     needs: codegen
     env:
       TRUAPI_REQUIRE_GENERATED: 1
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -143,7 +159,7 @@ jobs:
     env:
       TRUAPI_REQUIRE_GENERATED: 1
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -188,7 +204,7 @@ jobs:
     env:
       TRUAPI_REQUIRE_GENERATED: 1
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -228,7 +244,7 @@ jobs:
     env:
       TRUAPI_REQUIRE_GENERATED: 1
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: recursive
           persist-credentials: false

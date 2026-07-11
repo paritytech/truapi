@@ -1,11 +1,10 @@
 //! Product-scoped deterministic entropy derivation.
 //!
-//! Matches dotli's product entropy contract: three keyed BLAKE2b-256 layers
+//! Matches the host product entropy contract: three keyed BLAKE2b-256 layers
 //! over the session secret, product id, and caller key.
 //! Host-spec C.8 defines the RFC-0007 product entropy algorithm:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L129-L147>
 
-use blake2_rfc::blake2b::blake2b;
 use thiserror::Error;
 
 const DOMAIN_SEPARATOR: &[u8] = b"product-entropy-derivation";
@@ -51,8 +50,11 @@ pub fn derive_product_entropy_from_source(
 }
 
 fn blake2b256_keyed(message: &[u8], key: &[u8]) -> [u8; 32] {
-    let hash = blake2b(32, key, message);
-    hash.as_bytes()
+    blake2b_simd::Params::new()
+        .hash_length(32)
+        .key(key)
+        .hash(message)
+        .as_bytes()
         .try_into()
         .expect("BLAKE2b-256 returns 32 bytes")
 }

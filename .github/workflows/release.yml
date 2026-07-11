@@ -6,11 +6,11 @@ name: Release
 # guarded by conclusion == success and a release: commit subject, and checks
 # out the pinned head_sha with persist-credentials: false. No untrusted PR code
 # ever runs in this privileged context.
-on:  # zizmor: ignore[dangerous-triggers]
+on: # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main, release/v0.3.0]
+    branches: [main, release/v0.3.2]
 
 permissions:
   contents: read
@@ -30,25 +30,43 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
-      - name: Resolve target version
+      - name: Resolve target packages
         id: version
         run: |
-          version=$(jq -r '.version' js/packages/truapi/package.json)
-          tag="@parity/truapi@${version}"
-          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
-            echo "Tag ${tag} already exists; nothing to publish."
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Publishing ${tag}."
+          set -euo pipefail
+          packages=(
+            "@parity/truapi js/packages/truapi"
+            "@parity/truapi-host js/packages/truapi-host"
+          )
+          pending="$(mktemp)"
+          for entry in "${packages[@]}"; do
+            name="${entry%% *}"
+            path="${entry#* }"
+            version="$(jq -r '.version' "${path}/package.json")"
+            tag="${name}@${version}"
+            if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+              echo "Tag ${tag} already exists; skipping ${name}."
+            else
+              echo "Publishing ${tag}."
+              echo "${name}|${path}|${version}|${tag}" >> "${pending}"
+            fi
+          done
+          if [ -s "${pending}" ]; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
-            echo "version=${version}" >> "$GITHUB_OUTPUT"
-            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+            {
+              echo "packages<<EOF"
+              cat "${pending}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "No unpublished package tags found."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - if: steps.version.outputs.proceed == 'true'
@@ -74,23 +92,45 @@ jobs:
         if: steps.version.outputs.proceed == 'true'
         run: npm ci
 
-      - name: Build @parity/truapi
+      - name: Install wasm-pack
+        if: steps.version.outputs.proceed == 'true' && contains(steps.version.outputs.packages, '@parity/truapi-host|')
+        run: cargo install wasm-pack --version 0.14.0 --locked
+
+      - name: Build packages
         if: steps.version.outputs.proceed == 'true'
-        run: ./scripts/codegen.sh
+        run: |
+          set -euo pipefail
+          ./scripts/codegen.sh
+          if grep -q '^@parity/truapi-host|' <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"; then
+            npm run build --prefix js/packages/truapi-host
+            npm run build:wasm --prefix js/packages/truapi-host
+          fi
+        env:
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
 
       - name: Tag release
         if: steps.version.outputs.proceed == 'true'
         run: |
-          git tag "${STEPS_VERSION_OUTPUTS_TAG}"
-          git push origin "${STEPS_VERSION_OUTPUTS_TAG}"
+          set -euo pipefail
+          tags=()
+          while IFS='|' read -r name path version tag; do
+            git tag "${tag}"
+            tags+=("${tag}")
+          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
+          git push origin "${tags[@]}"
         env:
-          STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
 
       - name: Pack package
         if: steps.version.outputs.proceed == 'true'
         run: |
+          set -euo pipefail
           mkdir -p artifacts
-          (cd js/packages/truapi && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/")
+          while IFS='|' read -r name path version tag; do
+            (cd "${path}" && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/")
+          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
+        env:
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
 
       - name: Upload package artifacts
         if: steps.version.outputs.proceed == 'true'
@@ -113,10 +153,14 @@ jobs:
         if: steps.version.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
-          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
         run: |
-          gh release create "${STEPS_VERSION_OUTPUTS_TAG}" \
-            --title "@parity/truapi ${STEPS_VERSION_OUTPUTS_VERSION}" \
-            --generate-notes \
-            artifacts/*.tgz
+          set -euo pipefail
+          while IFS='|' read -r name path version tag; do
+            tarball_name="${name#@}"
+            tarball_name="${tarball_name//\//-}-${version}.tgz"
+            gh release create "${tag}" \
+              --title "${name} ${version}" \
+              --generate-notes \
+              "artifacts/${tarball_name}"
+          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"

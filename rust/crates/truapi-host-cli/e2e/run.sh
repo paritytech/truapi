@@ -27,8 +27,18 @@ ENV_FILE="$(dirname "$0")/.env"
 
 LOG="$(mktemp)"
 SIGNER_PID=""
+PAIR_PID=""
+stop_pairing_host() {
+  [ -n "$PAIR_PID" ] || return 0
+  pkill -TERM -P "$PAIR_PID" 2>/dev/null || true
+  kill -TERM "$PAIR_PID" 2>/dev/null || true
+  sleep 0.5
+  pkill -KILL -P "$PAIR_PID" 2>/dev/null || true
+  kill -KILL "$PAIR_PID" 2>/dev/null || true
+}
 cleanup() {
   [ -n "$SIGNER_PID" ] && kill "$SIGNER_PID" 2>/dev/null || true
+  stop_pairing_host
   rm -f "$LOG"
 }
 trap cleanup EXIT
@@ -37,7 +47,7 @@ trap cleanup EXIT
 # `truapi.account.requestLogin` makes the host emit a pairing deeplink, which we
 # hand to a signing host. The pairing host exits with the script's status.
 "$BIN" pairing-host --product-id "$PRODUCT_ID" --script "$SCRIPT" \
-  --frame-listen "$FRAME" --auto-accept 2>&1 | tee "$LOG" &
+  --frame-listen "$FRAME" --auto-accept > >(tee "$LOG") 2>&1 &
 PAIR_PID=$!
 
 deeplink=""
@@ -54,4 +64,20 @@ done
 "$BIN" signing-host --deeplink "$deeplink" --auto-accept &
 SIGNER_PID=$!
 
-wait "$PAIR_PID"
+pid_running() {
+  local stat
+  stat="$(ps -p "$1" -o stat= 2>/dev/null || true)"
+  [ -n "$stat" ] && [ "${stat#Z}" = "$stat" ]
+}
+
+while :; do
+  if ! pid_running "$PAIR_PID"; then
+    wait "$PAIR_PID"
+    exit $?
+  fi
+  if ! pid_running "$SIGNER_PID"; then
+    stop_pairing_host
+    exit 1
+  fi
+  sleep 0.5
+done

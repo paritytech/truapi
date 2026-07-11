@@ -1,45 +1,32 @@
 //! SSO statement-store channel to the paired remote signing host.
-//!
-//! The channel half of [`PairingHost`]: message submission and response
-//! correlation over the statement store, plus the peer-disconnect monitor.
-//! Role policy (session lifecycle, login, revalidation) stays in the parent
-//! module.
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Duration;
-#[cfg(target_arch = "wasm32")]
-use web_time::Duration;
 
 use super::super::authority::{
-    AuthorityError, CreateTransactionAuthorityRequest, SignPayloadAuthorityRequest,
-    SignRawAuthorityRequest,
+    AuthorityCancelError, AuthorityError, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
+    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
 };
 use super::super::sso_remote::{
-    SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON, SsoRemoteResponseWait, SsoSessionKey,
-    fresh_statement_expiry, sso_message_id, statement_subscription_stream,
-    subscribe_statement_topic, wait_for_sso_remote_response,
+    RemoteResponseWait, SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON,
+    SsoRemoteResponseError, SsoSessionKey, fresh_statement_expiry, sso_message_id,
+    statement_subscription_stream, subscribe_statement_topic, wait_for_sso_remote_response,
 };
 use super::super::statement_store_rpc::{self, StatementStoreRpc};
 use super::AuthorityRequestKind;
 use super::PairingHost;
 use crate::host_logic::session::{SessionInfo, SessionState, SsoSessionInfo};
 use crate::host_logic::sso::messages::{
-    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, SsoAllocationOutcome,
-    SsoRemoteResponse, SsoSessionStatement, alias_request_message,
+    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, SsoAllocatedResource,
+    SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement, alias_request_message,
     build_outgoing_request_statement, create_transaction_message, decode_sso_session_statement,
-    resource_allocation_message, sign_payload_message, sign_raw_message, v1,
+    resource_allocation_message, sign_payload_message, sign_raw_message,
+    statement_store_product_sign_message, v1,
 };
 use crate::host_logic::statement_store::parse_new_statements_result;
 
 use futures::FutureExt;
 use futures::future::{AbortHandle, Abortable};
 use tracing::{debug, instrument, warn};
-use truapi::{CallContext, v01};
+use truapi::{CallContext, latest};
 
-/// Host-spec B.6.2 recommends timing out unanswered SSO application requests
-/// after 180 seconds:
-/// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L303-L307>
-const DEFAULT_SSO_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
 const UNEXPECTED_SSO_SIGNING_RESPONSE: &str = "Unexpected SSO response for signing request";
 const UNEXPECTED_SSO_TRANSACTION_RESPONSE: &str = "Unexpected SSO response for transaction request";
 
@@ -51,6 +38,8 @@ enum RemoteAction {
     AccountAlias,
     #[display("resource-allocation")]
     ResourceAllocation,
+    #[display("statement-store-product-sign")]
+    StatementStoreProductSign,
 }
 
 /// Active peer-disconnect watcher for one SSO session; aborts on drop.
@@ -72,25 +61,22 @@ impl PairingHost {
         session: &SessionInfo,
         action: AuthorityRequestKind,
         message: RemoteMessage,
-    ) -> Result<v01::HostSignPayloadResponse, String> {
+    ) -> Result<latest::HostSignPayloadResponse, SsoRemoteResponseError> {
         let response = self
-            .submit_remote_message(
-                cx,
-                session,
-                RemoteAction::Signing(action),
-                message,
-                Some(DEFAULT_SSO_RESPONSE_TIMEOUT),
-            )
+            .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await?;
         let SsoRemoteResponse::Sign(response) = response else {
-            return Err(UNEXPECTED_SSO_SIGNING_RESPONSE.to_string());
+            return Err(SsoRemoteResponseError::Failure(
+                UNEXPECTED_SSO_SIGNING_RESPONSE.to_string(),
+            ));
         };
         response
             .payload
-            .map(|payload| v01::HostSignPayloadResponse {
+            .map(|payload| latest::HostSignPayloadResponse {
                 signature: payload.signature,
                 signed_transaction: payload.signed_transaction,
             })
+            .map_err(SsoRemoteResponseError::Failure)
     }
 
     fn stop_disconnect_monitor(&self) {
@@ -155,6 +141,8 @@ impl PairingHost {
             self.session_disconnects
                 .notify(sso, SSO_LOCAL_DISCONNECT_REASON);
         }
+        self.clear_statement_store_allowance_keys(session);
+        self.clear_bulletin_allowance_keys(session);
         self.stop_disconnect_monitor();
     }
 
@@ -187,9 +175,6 @@ impl PairingHost {
     }
 
     /// Submit an SSO remote message and wait for the signing-host response.
-    ///
-    /// `timeout = None` is reserved for flows that block on remote user
-    /// interaction, such as alias approval.
     #[instrument(skip_all, fields(runtime.method = "sso.remote_message.submit", action = %action))]
     async fn submit_remote_message(
         &self,
@@ -197,62 +182,76 @@ impl PairingHost {
         session: &SessionInfo,
         action: RemoteAction,
         message: RemoteMessage,
-        timeout: Option<Duration>,
-    ) -> Result<SsoRemoteResponse, String> {
+    ) -> Result<SsoRemoteResponse, SsoRemoteResponseError> {
         let sso = session
             .sso
             .as_ref()
-            .ok_or_else(|| "No SSO session state".to_string())?;
+            .ok_or_else(|| SsoRemoteResponseError::Failure("No SSO session state".to_string()))?;
         let key = SsoSessionKey::from_session(sso);
         let (_disconnect_guard, disconnect) = self.session_disconnects.subscribe(sso);
         if !session_matches_key(&self.session_state, key) {
-            return Err(SSO_LOCAL_DISCONNECT_REASON.to_string());
+            return Err(SsoRemoteResponseError::LocalDisconnected);
         }
-        let message_id = sso_message_id(cx, action);
+        let message_id = message.message_id.clone();
         let statement = build_outgoing_request_statement(
             sso,
             message_id.clone(),
             vec![message],
             fresh_statement_expiry(),
-        )?;
+        )
+        .map_err(SsoRemoteResponseError::Failure)?;
         let rpc_client = self.statement_store.client("SSO statement-store").await?;
         let own_subscription = subscribe_statement_topic(&rpc_client, sso.session_id_own)
             .await
-            .map_err(|err| format!("SSO own statement-store subscribe failed: {err}"))?;
+            .map_err(|err| {
+                SsoRemoteResponseError::Failure(format!(
+                    "SSO own statement-store subscribe failed: {err}"
+                ))
+            })?;
         let peer_subscription = subscribe_statement_topic(&rpc_client, sso.session_id_peer)
             .await
-            .map_err(|err| format!("SSO peer statement-store subscribe failed: {err}"))?;
+            .map_err(|err| {
+                SsoRemoteResponseError::Failure(format!(
+                    "SSO peer statement-store subscribe failed: {err}"
+                ))
+            })?;
         let submit_client = rpc_client.clone();
         let session_state = self.session_state.clone();
         let submit = async move {
             if !session_matches_key(&session_state, key) {
-                return Err(SSO_LOCAL_DISCONNECT_REASON.to_string());
+                return Err(SsoRemoteResponseError::LocalDisconnected);
             }
             statement_store_rpc::submit(&submit_client, statement)
                 .await
-                .map_err(|err| format!("SSO statement submit failed: {err}"))
+                .map_err(|err| {
+                    SsoRemoteResponseError::Failure(format!("SSO statement submit failed: {err}"))
+                })
         }
         .boxed();
         let action = action.to_string();
         debug!(action, %message_id, "submitted SSO remote message, awaiting response");
-        let result = wait_for_sso_remote_response(
-            statement_subscription_stream(own_subscription, "own"),
-            statement_subscription_stream(peer_subscription, "peer"),
+        let result = wait_for_sso_remote_response(RemoteResponseWait {
+            own_statements: statement_subscription_stream(own_subscription, "own"),
+            peer_statements: statement_subscription_stream(peer_subscription, "peer"),
             submit,
-            SsoRemoteResponseWait {
-                session: sso,
-                statement_request_id: &message_id,
-                remote_message_id: &message_id,
-                timeout,
-                disconnect: Some(disconnect),
-            },
-        )
+            session: sso,
+            statement_request_id: &message_id,
+            remote_message_id: &message_id,
+            cancel: cx.cancel(),
+            disconnect: Some(disconnect),
+        })
         .await;
+        let result = result.map_err(|reason| match reason {
+            SsoRemoteResponseError::Cancelled(err) if !cx.request_id().is_empty() => {
+                SsoRemoteResponseError::Cancelled(err.with_remote_message_id(cx.request_id()))
+            }
+            reason => reason,
+        });
         match &result {
             Ok(_) => debug!(action, %message_id, "SSO remote response received"),
             Err(reason) => warn!(action, %message_id, %reason, "SSO remote message failed"),
         }
-        if matches!(&result, Err(reason) if reason == SSO_PEER_DISCONNECT_REASON) {
+        if matches!(&result, Err(SsoRemoteResponseError::PeerDisconnected)) {
             self.handle_signing_host_disconnected(key).await;
         }
         result
@@ -263,15 +262,15 @@ impl PairingHost {
         cx: &CallContext,
         session: &SessionInfo,
         request: SignPayloadAuthorityRequest,
-    ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
+    ) -> Result<latest::HostSignPayloadResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
-        let message_id = sso_message_id(cx, RemoteAction::Signing(action));
+        let message_id = sso_message_id();
         let request = match request {
             SignPayloadAuthorityRequest::Product(request) => request,
             SignPayloadAuthorityRequest::LegacyAccount {
                 product_account,
                 request,
-            } => v01::HostSignPayloadRequest {
+            } => latest::HostSignPayloadRequest {
                 account: product_account,
                 payload: request.payload,
             },
@@ -287,28 +286,22 @@ impl PairingHost {
         cx: &CallContext,
         session: &SessionInfo,
         request: SignRawAuthorityRequest,
-    ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
+    ) -> Result<latest::HostSignPayloadResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
-        let message_id = sso_message_id(cx, RemoteAction::Signing(action));
+        let message_id = sso_message_id();
         let request = match request {
             SignRawAuthorityRequest::Product(request) => request,
             SignRawAuthorityRequest::LegacyAccount {
                 product_account,
                 request,
-            } => v01::HostSignRawRequest {
+            } => latest::HostSignRawRequest {
                 account: product_account,
                 payload: request.payload,
             },
         };
         let message = sign_raw_message(message_id, request);
         let response = self
-            .submit_remote_message(
-                cx,
-                session,
-                RemoteAction::Signing(action),
-                message,
-                Some(DEFAULT_SSO_RESPONSE_TIMEOUT),
-            )
+            .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await
             .map_err(remote_authority_error)?;
         let SsoRemoteResponse::Sign(response) = response else {
@@ -318,7 +311,7 @@ impl PairingHost {
         };
         response
             .payload
-            .map(|payload| v01::HostSignPayloadResponse {
+            .map(|payload| latest::HostSignPayloadResponse {
                 signature: payload.signature,
                 signed_transaction: payload.signed_transaction,
             })
@@ -330,15 +323,15 @@ impl PairingHost {
         cx: &CallContext,
         session: &SessionInfo,
         request: CreateTransactionAuthorityRequest,
-    ) -> Result<v01::HostCreateTransactionResponse, AuthorityError> {
+    ) -> Result<latest::HostCreateTransactionResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
-        let message_id = sso_message_id(cx, RemoteAction::Signing(action));
+        let message_id = sso_message_id();
         let request = match request {
             CreateTransactionAuthorityRequest::Product(request) => request,
             CreateTransactionAuthorityRequest::LegacyAccount {
                 product_account,
                 request,
-            } => v01::ProductAccountTxPayload {
+            } => latest::ProductAccountTxPayload {
                 signer: product_account,
                 genesis_hash: request.genesis_hash,
                 call_data: request.call_data,
@@ -348,13 +341,7 @@ impl PairingHost {
         };
         let message = create_transaction_message(message_id, request);
         let response = self
-            .submit_remote_message(
-                cx,
-                session,
-                RemoteAction::Signing(action),
-                message,
-                Some(DEFAULT_SSO_RESPONSE_TIMEOUT),
-            )
+            .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await
             .map_err(remote_authority_error)?;
         let SsoRemoteResponse::CreateTransaction(response) = response else {
@@ -364,7 +351,7 @@ impl PairingHost {
         };
         response
             .signed_transaction
-            .map(|transaction| v01::HostCreateTransactionResponse { transaction })
+            .map(|transaction| latest::HostCreateTransactionResponse { transaction })
             .map_err(remote_authority_error)
     }
 
@@ -372,17 +359,17 @@ impl PairingHost {
         &self,
         cx: &CallContext,
         session: &SessionInfo,
-        product_account_id: v01::ProductAccountId,
+        product_account_id: latest::ProductAccountId,
         requesting_product_id: String,
-    ) -> Result<v01::HostAccountGetAliasResponse, AuthorityError> {
-        let message_id = sso_message_id(cx, RemoteAction::AccountAlias);
+    ) -> Result<latest::HostAccountGetAliasResponse, AuthorityError> {
+        let message_id = sso_message_id();
         let message = alias_request_message(
             message_id.clone(),
             product_account_id,
             requesting_product_id,
         );
         let response = self
-            .submit_remote_message(cx, session, RemoteAction::AccountAlias, message, None)
+            .submit_remote_message(cx, session, RemoteAction::AccountAlias, message)
             .await
             .map_err(remote_authority_error)?;
         let SsoRemoteResponse::RingVrfAlias(response) = response else {
@@ -393,28 +380,57 @@ impl PairingHost {
         response.payload.map_err(remote_authority_error)
     }
 
+    pub(super) async fn remote_sign_statement_store_product_payload(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        account: latest::ProductAccountId,
+        payload: Vec<u8>,
+    ) -> Result<[u8; 64], AuthorityError> {
+        let message_id = sso_message_id();
+        let message = statement_store_product_sign_message(message_id, account, payload);
+        let response = self
+            .submit_remote_message(
+                cx,
+                session,
+                RemoteAction::StatementStoreProductSign,
+                message,
+            )
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::StatementStoreProductSign(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for statement-store proof signing request"
+                    .to_string(),
+            });
+        };
+        let signature = response.signature.map_err(remote_authority_error)?;
+        signature
+            .try_into()
+            .map_err(|signature: Vec<u8>| AuthorityError::Unknown {
+                reason: format!(
+                    "Invalid statement-store proof signature length: {}",
+                    signature.len()
+                ),
+            })
+    }
+
     pub(super) async fn remote_allocate_resources(
         &self,
         cx: &CallContext,
         session: &SessionInfo,
         product_id: String,
-        request: v01::HostRequestResourceAllocationRequest,
-    ) -> Result<v01::HostRequestResourceAllocationResponse, AuthorityError> {
-        let message_id = sso_message_id(cx, RemoteAction::ResourceAllocation);
+        request: latest::HostRequestResourceAllocationRequest,
+    ) -> Result<latest::HostRequestResourceAllocationResponse, AuthorityError> {
+        let message_id = sso_message_id();
         let message = resource_allocation_message(
             message_id,
-            product_id,
+            product_id.clone(),
             request.resources,
             OnExistingAllowancePolicy::Increase,
         );
         let response = self
-            .submit_remote_message(
-                cx,
-                session,
-                RemoteAction::ResourceAllocation,
-                message,
-                Some(DEFAULT_SSO_RESPONSE_TIMEOUT),
-            )
+            .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
             .await
             .map_err(remote_authority_error)?;
         let SsoRemoteResponse::ResourceAllocation(response) = response else {
@@ -422,12 +438,205 @@ impl PairingHost {
                 reason: "Unexpected SSO response for resource allocation request".to_string(),
             });
         };
-        response
+        let outcomes = response.payload.map_err(remote_authority_error)?;
+        self.cache_allowance_outcomes(session, &product_id, &outcomes)
+            .await?;
+        Ok(latest::HostRequestResourceAllocationResponse {
+            outcomes: outcomes.into_iter().map(Into::into).collect(),
+        })
+    }
+
+    pub(super) async fn remote_statement_store_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        product_id: String,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        if let Some(cached) = self
+            .cached_statement_store_allowance_key(session, &product_id)
+            .await?
+        {
+            return Ok(cached);
+        }
+
+        let message_id = sso_message_id();
+        let message = resource_allocation_message(
+            message_id,
+            product_id.clone(),
+            vec![latest::AllocatableResource::StatementStoreAllowance],
+            OnExistingAllowancePolicy::Ignore,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::ResourceAllocation(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for statement-store allowance request".to_string(),
+            });
+        };
+        let mut outcomes = response
             .payload
-            .map(|outcomes| v01::HostRequestResourceAllocationResponse {
-                outcomes: outcomes.into_iter().map(Into::into).collect(),
-            })
-            .map_err(remote_authority_error)
+            .map_err(remote_authority_error)?
+            .into_iter();
+        let outcome = outcomes.next().ok_or_else(|| AuthorityError::Unknown {
+            reason: "Empty statement-store allowance response".to_string(),
+        })?;
+        match outcome {
+            SsoAllocationOutcome::Allocated(SsoAllocatedResource::StatementStoreAllowance {
+                slot_account_key,
+            }) => {
+                self.cache_statement_store_allowance_key(session, &product_id, slot_account_key)
+                    .await
+            }
+            SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
+                reason: format!(
+                    "Unexpected statement-store allowance response resource: {other:?}"
+                ),
+            }),
+            SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
+            SsoAllocationOutcome::NotAvailable => Err(AuthorityError::Unavailable {
+                reason: "statement-store allowance is not available".to_string(),
+            }),
+        }
+    }
+
+    pub(super) async fn remote_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        if let Some(cached) = self
+            .cached_bulletin_allowance_key(session, &product_id)
+            .await?
+        {
+            return Ok(cached);
+        }
+
+        let message_id = sso_message_id();
+        let message = resource_allocation_message(
+            message_id,
+            product_id.clone(),
+            vec![latest::AllocatableResource::BulletinAllowance],
+            OnExistingAllowancePolicy::Ignore,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::ResourceAllocation(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for bulletin allowance request".to_string(),
+            });
+        };
+        let mut outcomes = response
+            .payload
+            .map_err(remote_authority_error)?
+            .into_iter();
+        let outcome = outcomes.next().ok_or_else(|| AuthorityError::Unknown {
+            reason: "Empty bulletin allowance response".to_string(),
+        })?;
+        match outcome {
+            SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
+                slot_account_key,
+            }) => {
+                self.cache_bulletin_allowance_key(session, &product_id, slot_account_key)
+                    .await
+            }
+            SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
+                reason: format!("Unexpected bulletin allowance response resource: {other:?}"),
+            }),
+            SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
+            SsoAllocationOutcome::NotAvailable => Err(AuthorityError::Unavailable {
+                reason: "bulletin allowance is not available".to_string(),
+            }),
+        }
+    }
+
+    pub(super) async fn remote_refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        // Drop the cached (and persisted) key so a stale/exhausted slot is not
+        // reused, then request a fresh allocation with `Increase` so the
+        // wallet grants a new allowance rather than echoing the old slot.
+        self.evict_bulletin_allowance_key(session, &product_id)
+            .await?;
+
+        let message_id = sso_message_id();
+        let message = resource_allocation_message(
+            message_id,
+            product_id.clone(),
+            vec![latest::AllocatableResource::BulletinAllowance],
+            OnExistingAllowancePolicy::Increase,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::ResourceAllocation(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for bulletin allowance refresh".to_string(),
+            });
+        };
+        let mut outcomes = response
+            .payload
+            .map_err(remote_authority_error)?
+            .into_iter();
+        let outcome = outcomes.next().ok_or_else(|| AuthorityError::Unknown {
+            reason: "Empty bulletin allowance refresh response".to_string(),
+        })?;
+        match outcome {
+            SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
+                slot_account_key,
+            }) => {
+                self.cache_bulletin_allowance_key(session, &product_id, slot_account_key)
+                    .await
+            }
+            SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
+                reason: format!("Unexpected bulletin allowance refresh resource: {other:?}"),
+            }),
+            SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
+            SsoAllocationOutcome::NotAvailable => Err(AuthorityError::Unavailable {
+                reason: "bulletin allowance is not available".to_string(),
+            }),
+        }
+    }
+
+    async fn cache_allowance_outcomes(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        outcomes: &[SsoAllocationOutcome],
+    ) -> Result<(), AuthorityError> {
+        for outcome in outcomes {
+            if let SsoAllocationOutcome::Allocated(resource) = outcome {
+                match resource {
+                    SsoAllocatedResource::StatementStoreAllowance { slot_account_key } => {
+                        self.cache_statement_store_allowance_key(
+                            session,
+                            product_id,
+                            slot_account_key.clone(),
+                        )
+                        .await?;
+                    }
+                    SsoAllocatedResource::BulletinAllowance { slot_account_key } => {
+                        self.cache_bulletin_allowance_key(
+                            session,
+                            product_id,
+                            slot_account_key.clone(),
+                        )
+                        .await?;
+                    }
+                    SsoAllocatedResource::SmartContractAllowance
+                    | SsoAllocatedResource::AutoSigning { .. } => {}
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -441,11 +650,21 @@ pub(super) fn session_matches_key(session_state: &SessionState, key: SsoSessionK
     })
 }
 
-fn remote_authority_error(reason: String) -> AuthorityError {
-    match reason.as_str() {
-        "Rejected" | "User rejected" => AuthorityError::Rejected,
-        SSO_LOCAL_DISCONNECT_REASON | SSO_PEER_DISCONNECT_REASON => AuthorityError::Disconnected,
-        _ => AuthorityError::Unknown { reason },
+fn remote_authority_error(reason: impl Into<SsoRemoteResponseError>) -> AuthorityError {
+    match reason.into() {
+        SsoRemoteResponseError::Cancelled(err) => AuthorityError::Cancelled(
+            AuthorityCancelError::new(err.remote_message_id(), err.reason()),
+        ),
+        SsoRemoteResponseError::LocalDisconnected | SsoRemoteResponseError::PeerDisconnected => {
+            AuthorityError::Disconnected
+        }
+        SsoRemoteResponseError::Failure(reason) => match reason.as_str() {
+            "Rejected" | "User rejected" => AuthorityError::Rejected,
+            SSO_LOCAL_DISCONNECT_REASON | SSO_PEER_DISCONNECT_REASON => {
+                AuthorityError::Disconnected
+            }
+            _ => AuthorityError::Unknown { reason },
+        },
     }
 }
 
@@ -480,7 +699,7 @@ async fn wait_for_sso_peer_disconnect(
     Err("SSO disconnect monitor response stream ended".to_string())
 }
 
-impl From<SsoAllocationOutcome> for v01::AllocationOutcome {
+impl From<SsoAllocationOutcome> for latest::AllocationOutcome {
     fn from(outcome: SsoAllocationOutcome) -> Self {
         match outcome {
             SsoAllocationOutcome::Allocated(_) => Self::Allocated,

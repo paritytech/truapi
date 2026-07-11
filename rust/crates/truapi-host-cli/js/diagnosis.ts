@@ -13,7 +13,7 @@ import type { TrUApiClient } from "../../../../js/packages/truapi/src/index.ts";
 // Mirrors auto-test.ts.
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
-const SSO_TIMEOUT_MS = 60_000;
+const SSO_TIMEOUT_MS = 180_000;
 const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);
 const SKIPPED_METHODS = new Set(["Account/create_account_proof"]);
 const LONG_TIMEOUT_METHODS = new Set([

@@ -1,8 +1,4 @@
-//! Signing-host-only capability: activate a wallet-local session from
-//! host-held secret material. Implemented solely by [`SigningHost`].
-
-use super::{SigningHost, product_authority_error};
-use crate::host_logic::product_account::derive_root_keypair_from_entropy;
+use super::{SigningHost, wallet_root_keypair};
 use crate::host_logic::session::SessionInfo;
 use crate::runtime::authority::AuthorityError;
 use crate::runtime::connected_session_ui_info;
@@ -25,8 +21,8 @@ pub(crate) trait LocalActivation: Send + Sync {
 impl LocalActivation for SigningHost {
     async fn activate_local_session(&self, secret: Vec<u8>) -> Result<(), AuthorityError> {
         let secret = Zeroizing::new(secret);
-        let root = derive_root_keypair_from_entropy(&secret).map_err(product_authority_error)?;
-        let public_key = root.public.to_bytes();
+        let wallet = wallet_root_keypair(&secret)?;
+        let public_key = wallet.public.to_bytes();
         *self
             .root_entropy
             .lock()

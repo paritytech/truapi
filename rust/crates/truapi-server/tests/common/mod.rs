@@ -57,6 +57,7 @@ pub fn test_runtime_config() -> (PairingHostConfig, ProductContext) {
             },
             PlatformInfo::default(),
             [0xa2; 32],
+            [0xbb; 32],
             "polkadotapp".to_string(),
         )
         .expect("test host runtime config is valid"),
@@ -188,11 +189,7 @@ impl ThemeHost for WireShapePlatform {
     }
 }
 
-#[truapi_platform::async_trait]
 impl PreimageHost for WireShapePlatform {
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        Ok(value)
-    }
     fn lookup_preimage(
         &self,
         _key: Vec<u8>,
