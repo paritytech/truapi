@@ -11,6 +11,10 @@ lerna-debug.log*
 node_modules
 target
 
+# Local Bun side effects (repo lockfiles are npm/yarn)
+bun.lock
+bun.lockb
+
 # Gradle (Android workspace at repo root)
 /.gradle/
 /build/
@@ -56,3 +60,4 @@ js/packages/truapi/dist/generated/
 js/packages/truapi-host/src/generated/
 js/packages/truapi-host/dist/generated/
 js/packages/truapi-host/dist/wasm/
+js/packages/truapi-host-wasm/
