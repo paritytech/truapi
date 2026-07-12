@@ -1,9 +1,10 @@
 //! Minimal metadata-driven SCALE walker.
 //!
 //! Just enough to read one field out of a storage struct without a full dynamic
-//! codec: `skip` advances a cursor past one value of a given type, and
+//! codec: `skip` advances a cursor past one value of a given type,
 //! `read_field_variant_name` walks a composite to a named field and returns its
-//! enum variant name (used for `CollectionInfo.ring_size` -> `R2e9`/`R2e10`/`R2e14`).
+//! enum variant name (used for `CollectionInfo.ring_size` -> `R2e9`/`R2e10`/`R2e14`),
+//! and `read_field_u32` reads simple numeric fields such as `RingRoot.revision`.
 
 use parity_scale_codec::{Compact, Decode};
 use scale_info::{PortableRegistry, TypeDef, TypeDefPrimitive};
@@ -101,6 +102,37 @@ pub fn read_field_variant_name(
                 .find(|var| var.index == index)
                 .map(|var| var.name.clone())
                 .ok_or_else(|| format!("unknown variant index {index} for `{field_name}`"));
+        }
+        skip(registry, field.ty.id, &mut input)?;
+    }
+    Err(format!("field `{field_name}` not found"))
+}
+
+/// Walk composite `struct_type_id` to `field_name` and decode the field as a
+/// SCALE `u32`.
+pub fn read_field_u32(
+    registry: &PortableRegistry,
+    struct_type_id: u32,
+    field_name: &str,
+    bytes: &[u8],
+) -> Result<u32, String> {
+    let ty = registry
+        .resolve(struct_type_id)
+        .ok_or_else(|| format!("unknown type id {struct_type_id}"))?;
+    let TypeDef::Composite(composite) = &ty.type_def else {
+        return Err(format!("type {struct_type_id} is not a composite"));
+    };
+
+    let mut input = bytes;
+    for field in &composite.fields {
+        if field.name.as_deref() == Some(field_name) {
+            let field_ty = registry
+                .resolve(field.ty.id)
+                .ok_or_else(|| format!("unknown field type id {}", field.ty.id))?;
+            if !matches!(field_ty.type_def, TypeDef::Primitive(TypeDefPrimitive::U32)) {
+                return Err(format!("field `{field_name}` is not a u32"));
+            }
+            return u32::decode(&mut input).map_err(|err| format!("field `{field_name}`: {err}"));
         }
         skip(registry, field.ty.id, &mut input)?;
     }

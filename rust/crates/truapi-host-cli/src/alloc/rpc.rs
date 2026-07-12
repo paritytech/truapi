@@ -6,7 +6,7 @@
 //! statement-store traffic keeps using the runtime's own transport.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use futures_util::{SinkExt, StreamExt};
@@ -87,10 +87,13 @@ impl RpcClient {
             .context("send author_submitAndWatchExtrinsic")?;
 
         // First the subscription id, then a stream of status notifications.
+        let started = Instant::now();
         let mut subscription_id: Option<String> = None;
         loop {
-            let value =
-                next_json(&mut ws, SUBMIT_TIMEOUT, "author_submitAndWatchExtrinsic").await?;
+            let remaining = SUBMIT_TIMEOUT
+                .checked_sub(started.elapsed())
+                .ok_or_else(|| anyhow!("timed out waiting for author_submitAndWatchExtrinsic"))?;
+            let value = next_json(&mut ws, remaining, "author_submitAndWatchExtrinsic").await?;
             if subscription_id.is_none() {
                 if value.get("id").and_then(Value::as_u64) == Some(id) {
                     if let Some(err) = value.get("error") {

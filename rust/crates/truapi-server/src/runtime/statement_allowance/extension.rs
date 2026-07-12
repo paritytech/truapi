@@ -101,6 +101,53 @@ macro_rules! collect_metadata {
     }};
 }
 
+macro_rules! collect_metadata_v16 {
+    ($m:expr) => {{
+        let extension_indexes = $m
+            .extrinsic
+            .transaction_extensions_by_version
+            .get(&5)
+            .map(|indexes| {
+                indexes
+                    .iter()
+                    .map(|Compact(index)| *index as usize)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| (0..$m.extrinsic.transaction_extensions.len()).collect());
+        let extensions = extension_indexes
+            .into_iter()
+            .filter_map(|index| $m.extrinsic.transaction_extensions.get(index))
+            .map(|e| ExtensionDef {
+                identifier: e.identifier.clone(),
+                extra_type: e.ty.id,
+                additional_signed_type: e.implicit.id,
+            })
+            .collect();
+        let mut storage_values = HashMap::new();
+        let mut constants = HashMap::new();
+        for pallet in &$m.pallets {
+            for constant in &pallet.constants {
+                constants.insert(
+                    (pallet.name.clone(), constant.name.clone()),
+                    constant.value.clone(),
+                );
+            }
+            let Some(storage) = &pallet.storage else {
+                continue;
+            };
+            for entry in &storage.entries {
+                use frame_metadata::v16::StorageEntryType as EntryType;
+                let value_type = match &entry.ty {
+                    EntryType::Plain(ty) => ty.id,
+                    EntryType::Map { value, .. } => value.id,
+                };
+                storage_values.insert((pallet.name.clone(), entry.name.clone()), value_type);
+            }
+        }
+        (extensions, $m.types, storage_values, constants)
+    }};
+}
+
 impl Metadata {
     /// Decode `state_getMetadata` bytes (a `RuntimeMetadataPrefixed`, V14 or
     /// V15) into the ordered signed-extension defs, type registry, and storage
@@ -111,6 +158,7 @@ impl Metadata {
         let (extensions, registry, storage_values, constants) = match prefixed.1 {
             RuntimeMetadata::V14(m) => collect_metadata!(m, frame_metadata::v14::StorageEntryType),
             RuntimeMetadata::V15(m) => collect_metadata!(m, frame_metadata::v15::StorageEntryType),
+            RuntimeMetadata::V16(m) => collect_metadata_v16!(m),
             other => return Err(format!("unsupported metadata version {}", other.version())),
         };
         Ok(Self {

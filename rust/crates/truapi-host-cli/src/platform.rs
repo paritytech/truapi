@@ -7,10 +7,13 @@
 //! pairing deeplink and observe connection status.
 
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use futures::stream::{self, BoxStream};
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
 use truapi::v01;
@@ -36,6 +39,8 @@ pub struct CliPlatform {
     chain: WsChainProvider,
     product_storage: Mutex<HashMap<String, Vec<u8>>>,
     core_storage: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
+    product_storage_path: Option<PathBuf>,
+    core_storage_path: Option<PathBuf>,
     preimages: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
     approval: ApprovalPolicy,
     /// Serializes interactive CLI prompts so concurrent confirmations don't
@@ -44,12 +49,39 @@ pub struct CliPlatform {
 }
 
 impl CliPlatform {
-    /// Build a platform whose chain provider connects to `statement_store_url`.
-    pub fn new(statement_store_url: impl Into<String>, approval: ApprovalPolicy) -> Arc<Self> {
+    /// Build a platform whose chain provider connects to the network's People
+    /// chain and whose optional state directory backs product/core storage.
+    pub fn new(
+        statement_store_url: impl Into<String>,
+        live_chain_endpoints: &[crate::network::ChainEndpoint],
+        storage_dir: Option<PathBuf>,
+        approval: ApprovalPolicy,
+    ) -> Arc<Self> {
+        let (product_storage_path, core_storage_path) = storage_dir
+            .as_ref()
+            .map(|dir| {
+                let _ = fs::create_dir_all(dir);
+                (
+                    Some(dir.join("product-storage.json")),
+                    Some(dir.join("core-storage.json")),
+                )
+            })
+            .unwrap_or((None, None));
+        let product_storage = product_storage_path
+            .as_deref()
+            .map(load_string_map)
+            .unwrap_or_default();
+        let core_storage = core_storage_path
+            .as_deref()
+            .map(load_hex_key_map)
+            .unwrap_or_default();
+
         Arc::new(Self {
-            chain: WsChainProvider::new(statement_store_url),
-            product_storage: Mutex::new(HashMap::new()),
-            core_storage: Mutex::new(HashMap::new()),
+            chain: WsChainProvider::new(statement_store_url, live_chain_endpoints),
+            product_storage: Mutex::new(product_storage),
+            core_storage: Mutex::new(core_storage),
+            product_storage_path,
+            core_storage_path,
             preimages: Mutex::new(HashMap::new()),
             approval,
             prompt_lock: AsyncMutex::new(()),
@@ -59,6 +91,28 @@ impl CliPlatform {
     fn core_key(key: &CoreStorageKey) -> Vec<u8> {
         use parity_scale_codec::Encode;
         key.encode()
+    }
+
+    fn persist_product_storage(&self) -> Result<(), String> {
+        let Some(path) = &self.product_storage_path else {
+            return Ok(());
+        };
+        let storage = self
+            .product_storage
+            .lock()
+            .expect("product storage mutex poisoned");
+        save_string_map(path, &storage)
+    }
+
+    fn persist_core_storage(&self) -> Result<(), String> {
+        let Some(path) = &self.core_storage_path else {
+            return Ok(());
+        };
+        let storage = self
+            .core_storage
+            .lock()
+            .expect("core storage mutex poisoned");
+        save_hex_key_map(path, &storage)
     }
 
     /// Resolve a confirmation: auto-accept, or prompt y/n on the CLI.
@@ -112,19 +166,25 @@ impl ProductStorage for CliPlatform {
         key: String,
         value: Vec<u8>,
     ) -> Result<(), v01::HostLocalStorageReadError> {
-        self.product_storage
-            .lock()
-            .expect("product storage mutex poisoned")
-            .insert(key, value);
-        Ok(())
+        {
+            self.product_storage
+                .lock()
+                .expect("product storage mutex poisoned")
+                .insert(key, value);
+        }
+        self.persist_product_storage()
+            .map_err(|reason| v01::HostLocalStorageReadError::Unknown { reason })
     }
 
     async fn clear(&self, key: String) -> Result<(), v01::HostLocalStorageReadError> {
-        self.product_storage
-            .lock()
-            .expect("product storage mutex poisoned")
-            .remove(&key);
-        Ok(())
+        {
+            self.product_storage
+                .lock()
+                .expect("product storage mutex poisoned")
+                .remove(&key);
+        }
+        self.persist_product_storage()
+            .map_err(|reason| v01::HostLocalStorageReadError::Unknown { reason })
     }
 }
 
@@ -147,19 +207,25 @@ impl CoreStorage for CliPlatform {
         key: CoreStorageKey,
         value: Vec<u8>,
     ) -> Result<(), v01::GenericError> {
-        self.core_storage
-            .lock()
-            .expect("core storage mutex poisoned")
-            .insert(Self::core_key(&key), value);
-        Ok(())
+        {
+            self.core_storage
+                .lock()
+                .expect("core storage mutex poisoned")
+                .insert(Self::core_key(&key), value);
+        }
+        self.persist_core_storage()
+            .map_err(|reason| v01::GenericError { reason })
     }
 
     async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), v01::GenericError> {
-        self.core_storage
-            .lock()
-            .expect("core storage mutex poisoned")
-            .remove(&Self::core_key(&key));
-        Ok(())
+        {
+            self.core_storage
+                .lock()
+                .expect("core storage mutex poisoned")
+                .remove(&Self::core_key(&key));
+        }
+        self.persist_core_storage()
+            .map_err(|reason| v01::GenericError { reason })
     }
 }
 
@@ -265,4 +331,53 @@ impl PreimageHost for CliPlatform {
             .cloned();
         Box::pin(stream::once(async move { Ok(value) }))
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct JsonMap {
+    values: HashMap<String, String>,
+}
+
+fn load_string_map(path: &Path) -> HashMap<String, Vec<u8>> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    serde_json::from_str::<JsonMap>(&text)
+        .ok()
+        .map(|json| {
+            json.values
+                .into_iter()
+                .filter_map(|(key, value)| hex::decode(value).ok().map(|bytes| (key, bytes)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn save_string_map(path: &Path, values: &HashMap<String, Vec<u8>>) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("create storage dir: {err}"))?;
+    }
+    let json = JsonMap {
+        values: values
+            .iter()
+            .map(|(key, value)| (key.clone(), hex::encode(value)))
+            .collect(),
+    };
+    let text = serde_json::to_string_pretty(&json).map_err(|err| err.to_string())?;
+    fs::write(path, text).map_err(|err| format!("write {}: {err}", path.display()))
+}
+
+fn load_hex_key_map(path: &Path) -> HashMap<Vec<u8>, Vec<u8>> {
+    load_string_map(path)
+        .into_iter()
+        .filter_map(|(key, value)| hex::decode(key).ok().map(|decoded| (decoded, value)))
+        .collect()
+}
+
+fn save_hex_key_map(path: &Path, values: &HashMap<Vec<u8>, Vec<u8>>) -> Result<(), String> {
+    let keyed: HashMap<String, Vec<u8>> = values
+        .iter()
+        .map(|(key, value)| (hex::encode(key), value.clone()))
+        .collect();
+    save_string_map(path, &keyed)
 }

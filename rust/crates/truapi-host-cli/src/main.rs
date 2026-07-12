@@ -9,65 +9,42 @@
 //!
 //! Plus `alloc-check`, a diagnostic for on-chain statement-store allowance.
 
+mod accounts;
 mod alloc;
 mod attestation;
 mod chain;
 mod frame_server;
+mod network;
 mod platform;
 mod script_runner;
 
-use std::io::BufRead;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::process::ExitStatus;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use futures::future::BoxFuture;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use truapi_platform::{HostInfo, PlatformInfo};
 use truapi_server::subscription::Spawner;
 use truapi_server::{PairingHostConfig, PairingHostRuntime, SigningHostConfig, SigningHostRuntime};
 
+use crate::accounts::{ResolveSignerConfig, ResolvedSigner};
+use crate::network::{Network, NetworkConfig};
 use crate::platform::{ApprovalPolicy, CliPlatform};
 
-/// Default dev mnemonic used when a signing host is started without one.
-const DEFAULT_MNEMONIC: &str =
-    "bottom drive obey lake curtain smoke basket hold race lonely fit walk";
 /// Default product served by the pairing host's frame endpoint. Product ids
 /// must be a `.dot` name or a `localhost` identifier (host-spec product id).
 const DEFAULT_PRODUCT_ID: &str = "headless-playground.dot";
+/// Default product-frame address for the pairing host.
+const DEFAULT_PAIRING_FRAME_LISTEN: &str = "127.0.0.1:9955";
+/// Default product-frame address for the signing host.
+const DEFAULT_SIGNING_FRAME_LISTEN: &str = "127.0.0.1:9956";
 /// Deeplink scheme advertised by the pairing host.
 const DEEPLINK_SCHEME: &str = "polkadotapp";
-/// paseo-next-v2 identity backend base (includes /api/v1).
-const IDENTITY_BACKEND_BASE: &str = "https://identity-backend-next.parity-testnet.parity.io/api/v1";
-/// paseo-next-v2 People-chain WebSocket for the attestation on-chain poll.
-const PEOPLE_CHAIN_WS: &str = "wss://paseo-people-next-system-rpc.polkadot.io";
-/// paseo-next-v2 People/Individuality chain genesis (username lookups).
-const PEOPLE_CHAIN_GENESIS: [u8; 32] =
-    hex_literal_genesis("c5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5");
-/// Headless CLI sentinel for Bulletin submissions. The current CLI scenarios
-/// do not allocate live Bulletin allowance keys.
-const BULLETIN_CHAIN_GENESIS: [u8; 32] = [0u8; 32];
-
-/// Decode a 64-char hex genesis at compile time.
-const fn hex_literal_genesis(hex: &str) -> [u8; 32] {
-    let bytes = hex.as_bytes();
-    let mut out = [0u8; 32];
-    let mut i = 0;
-    while i < 32 {
-        out[i] = hex_nibble(bytes[i * 2]) << 4 | hex_nibble(bytes[i * 2 + 1]);
-        i += 1;
-    }
-    out
-}
-
-const fn hex_nibble(c: u8) -> u8 {
-    match c {
-        b'0'..=b'9' => c - b'0',
-        b'a'..=b'f' => c - b'a' + 10,
-        _ => panic!("invalid hex digit in genesis literal"),
-    }
-}
 
 #[derive(Parser)]
 #[command(name = "truapi-host", about = "Headless TrUAPI hosts for e2e testing")]
@@ -78,73 +55,36 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run a seedless pairing host and drive a product script against it.
+    /// Run a seedless pairing host for product scripts or interactive pairing.
     ///
-    /// Starts the product-frame server, then runs `--script` with a global
-    /// `truapi` injected (the `@parity/truapi` client, scoped to `--product-id`).
-    /// The host command exits with the script's exit status.
-    PairingHost {
-        /// Product script to run (JS/TS). Receives the global `truapi`.
-        #[arg(long)]
-        script: PathBuf,
-        /// Product id the host serves; scopes storage and product accounts.
-        #[arg(long = "product-id", default_value = DEFAULT_PRODUCT_ID)]
-        product_id: String,
-        /// Address to serve product frames on.
-        #[arg(long, default_value = "127.0.0.1:9955")]
-        frame_listen: SocketAddr,
-        /// Statement-store WebSocket URL (the real People chain by default).
-        #[arg(long = "statement-store", default_value = PEOPLE_CHAIN_WS)]
-        statement_store: String,
-        /// Approve every confirmation without prompting on the CLI.
-        #[arg(long)]
-        auto_accept: bool,
-    },
-    /// Answer a pairing deeplink as a wallet-local signing host and sign.
+    /// With `--script`, exits with the script's status. Without it, stays in an
+    /// interactive shell where scripts can be run repeatedly.
+    PairingHost(PairingHostArgs),
+    /// Run a wallet-local signing host for scripts or pairing deeplinks.
     ///
-    /// Registers statement allowance on-chain, answers the deeplink, and serves
-    /// the SSO session. Confirmations are prompted on the CLI unless
-    /// `--auto-accept` is set.
-    SigningHost {
-        /// Pairing deeplink to answer. Read from stdin when omitted.
-        #[arg(long)]
-        deeplink: Option<String>,
-        /// BIP-39 mnemonic for the wallet root. Defaults to the
-        /// `HOST_CLI_SIGNER_MNEMONIC` env var if set, otherwise the dev mnemonic.
-        /// Must be a registered LitePeople ring member for allowance to succeed.
-        #[arg(long, env = "HOST_CLI_SIGNER_MNEMONIC", default_value = DEFAULT_MNEMONIC)]
-        mnemonic: String,
-        /// Statement-store WebSocket URL (the real People chain by default).
-        #[arg(long = "statement-store", default_value = PEOPLE_CHAIN_WS)]
-        statement_store: String,
-        /// Approve every confirmation without prompting on the CLI.
-        #[arg(long)]
-        auto_accept: bool,
-        /// Register this lite username base (6+ lowercase letters) on the
-        /// People chain via the identity backend before pairing, so
-        /// `get_user_id` resolves. Requires network access.
-        #[arg(long)]
-        username: Option<String>,
-    },
+    /// Owns signer identity, auto-manages accounts when no mnemonic/account is
+    /// specified, and can accept pairing deeplinks. With `--script`, exits with
+    /// the script's status; otherwise stays interactive.
+    SigningHost(SigningHostArgs),
     /// Probe the People chain for a mnemonic's registered identity/username.
     IdentityCheck {
         /// BIP-39 mnemonic to probe.
-        #[arg(long, default_value = DEFAULT_MNEMONIC)]
+        #[arg(long, env = "HOST_CLI_SIGNER_MNEMONIC")]
         mnemonic: String,
-        /// People-chain WebSocket URL.
-        #[arg(long, default_value = PEOPLE_CHAIN_WS)]
-        people_ws: String,
+        /// Network preset to probe.
+        #[arg(long, value_enum, default_value = "paseo-next-v2")]
+        network: Network,
     },
     /// Check (and optionally submit) a statement-store allowance registration
     /// against the real People chain: ring membership, the chosen slot, and
     /// (with `--submit`) the `set_statement_store_account` extrinsic.
     AllocCheck {
         /// BIP-39 mnemonic proving LitePeople ring membership.
-        #[arg(long, default_value = DEFAULT_MNEMONIC)]
+        #[arg(long, env = "HOST_CLI_SIGNER_MNEMONIC")]
         mnemonic: String,
-        /// People-chain WebSocket URL (statement store + chain RPC).
-        #[arg(long, default_value = PEOPLE_CHAIN_WS)]
-        people_ws: String,
+        /// Network preset to use for People-chain RPC.
+        #[arg(long, value_enum, default_value = "paseo-next-v2")]
+        network: Network,
         /// Target account (hex, 32 bytes) to grant allowance to. Defaults to
         /// all-zero (read-only slot scan only).
         #[arg(long)]
@@ -156,6 +96,66 @@ enum Command {
         #[arg(long)]
         submit: bool,
     },
+}
+
+#[derive(Args)]
+struct PairingHostArgs {
+    /// Product script to run (JS/TS). If omitted, start an interactive shell.
+    #[arg(long)]
+    script: Option<PathBuf>,
+    /// Product id the host serves; scopes storage and product accounts.
+    #[arg(long = "product-id", default_value = DEFAULT_PRODUCT_ID)]
+    product_id: String,
+    /// Address to serve product frames on.
+    #[arg(long, default_value = DEFAULT_PAIRING_FRAME_LISTEN)]
+    frame_listen: SocketAddr,
+    /// Root directory for CLI-managed host state.
+    #[arg(long = "base-path", env = "TRUAPI_HOST_BASE_PATH")]
+    base_path: Option<PathBuf>,
+    /// Network preset that supplies all RPC/backend/genesis config.
+    #[arg(long, value_enum, default_value = "paseo-next-v2")]
+    network: Network,
+    /// Approve every confirmation without prompting on the CLI.
+    #[arg(long)]
+    auto_accept: bool,
+}
+
+#[derive(Args)]
+struct SigningHostArgs {
+    /// Product script to run (JS/TS). If omitted, start an interactive shell.
+    #[arg(long)]
+    script: Option<PathBuf>,
+    /// Product id used by scripts and product-scoped operations.
+    #[arg(long = "product-id", default_value = DEFAULT_PRODUCT_ID)]
+    product_id: String,
+    /// Pairing deeplink to answer. If omitted, no pairing is accepted
+    /// automatically; interactive mode lets you paste one later.
+    #[arg(long)]
+    deeplink: Option<String>,
+    /// BIP-39 mnemonic for the wallet root. If omitted, the
+    /// `HOST_CLI_SIGNER_MNEMONIC` env var is used when set. Any mnemonic
+    /// bypasses account auto-management.
+    #[arg(long, env = "HOST_CLI_SIGNER_MNEMONIC")]
+    mnemonic: Option<String>,
+    /// Named stored account to use. Omit this and `--mnemonic` to auto-select
+    /// or create a usable account.
+    #[arg(long)]
+    account: Option<String>,
+    /// Prefix for newly-created lite usernames in auto-account mode.
+    #[arg(long = "lite-username-prefix")]
+    lite_username_prefix: Option<String>,
+    /// Root directory for CLI-managed account and host state.
+    #[arg(long = "base-path", env = "TRUAPI_HOST_BASE_PATH")]
+    base_path: Option<PathBuf>,
+    /// Network preset that supplies all RPC/backend/genesis config.
+    #[arg(long, value_enum, default_value = "paseo-next-v2")]
+    network: Network,
+    /// Address to serve product frames on when running scripts.
+    #[arg(long, default_value = DEFAULT_SIGNING_FRAME_LISTEN)]
+    frame_listen: SocketAddr,
+    /// Approve every confirmation without prompting on the CLI.
+    #[arg(long)]
+    auto_accept: bool,
 }
 
 #[tokio::main]
@@ -173,45 +173,21 @@ async fn main() -> Result<()> {
         .init();
 
     match Cli::parse().command {
-        Command::PairingHost {
-            script,
-            product_id,
-            frame_listen,
-            statement_store,
-            auto_accept,
-        } => {
-            run_pairing_host(
-                script,
-                product_id,
-                frame_listen,
-                statement_store,
-                auto_accept,
-            )
-            .await
-        }
-        Command::SigningHost {
-            deeplink,
-            mnemonic,
-            statement_store,
-            auto_accept,
-            username,
-        } => run_signing_host(deeplink, mnemonic, statement_store, auto_accept, username).await,
-        Command::IdentityCheck {
-            mnemonic,
-            people_ws,
-        } => {
+        Command::PairingHost(args) => run_pairing_host(args).await,
+        Command::SigningHost(args) => run_signing_host(args).await,
+        Command::IdentityCheck { mnemonic, network } => {
             let entropy = bip39::Mnemonic::parse(mnemonic.trim())
                 .context("invalid BIP-39 mnemonic")?
                 .to_entropy();
-            attestation::check_identity(&people_ws, &entropy).await
+            attestation::check_identity(network.config().people_ws, &entropy).await
         }
         Command::AllocCheck {
             mnemonic,
-            people_ws,
+            network,
             target,
             lookback,
             submit,
-        } => run_alloc_check(mnemonic, people_ws, target, lookback, submit).await,
+        } => run_alloc_check(mnemonic, network.config(), target, lookback, submit).await,
     }
 }
 
@@ -219,7 +195,7 @@ async fn main() -> Result<()> {
 /// slot, and (with `submit`) the `set_statement_store_account` extrinsic.
 async fn run_alloc_check(
     mnemonic: String,
-    people_ws: String,
+    network: NetworkConfig,
     target: Option<String>,
     lookback: u32,
     submit: bool,
@@ -239,7 +215,7 @@ async fn run_alloc_check(
         None => [0u8; 32],
     };
 
-    let rpc = alloc::rpc::RpcClient::connect(&people_ws).await?;
+    let rpc = alloc::rpc::RpcClient::connect(network.people_ws).await?;
     let metadata = alloc::fetch_metadata(&rpc)
         .await
         .map_err(anyhow::Error::msg)?;
@@ -350,101 +326,279 @@ fn platform_info() -> PlatformInfo {
     }
 }
 
-async fn run_pairing_host(
-    script: PathBuf,
-    product_id: String,
-    frame_listen: SocketAddr,
-    statement_store: String,
-    auto_accept: bool,
-) -> Result<()> {
-    let platform = CliPlatform::new(statement_store, approval_policy(auto_accept));
+async fn run_pairing_host(args: PairingHostArgs) -> Result<()> {
+    let network = args.network.config();
+    let base_path = args.base_path.unwrap_or_else(default_base_path);
+    let product_id = args.product_id;
+    let platform = CliPlatform::new(
+        network.people_ws,
+        network.live_chain_endpoints,
+        Some(role_state_path(&base_path, network, "pairing-host")),
+        approval_policy(args.auto_accept),
+    );
     // SSO and identity both run over the real People chain, so usernames always
     // resolve from `Resources.Consumers` (host-spec G).
     let config = PairingHostConfig::new(
         host_info("Headless Pairing Host"),
         platform_info(),
-        [0u8; 32],
-        BULLETIN_CHAIN_GENESIS,
+        network.people_genesis,
+        network.bulletin_genesis,
         DEEPLINK_SCHEME.to_string(),
     )
     .context("invalid pairing host config")?
-    .with_identity_chain_genesis_hash(PEOPLE_CHAIN_GENESIS);
+    .with_identity_chain_genesis_hash(network.people_genesis);
     let runtime = Arc::new(PairingHostRuntime::new(platform, config, tokio_spawner()));
 
-    // Bind the frame server, then drive the product script against it; the
-    // command exits with the script's status. The frame accept loop is `!Send`,
-    // so it runs on a LocalSet alongside the (Send) script subprocess.
-    let listener = frame_server::bind(frame_listen).await?;
+    let listener = frame_server::bind(args.frame_listen).await?;
     let frame_url = format!("ws://{}", listener.local_addr()?);
     println!("FRAMES_LISTENING {frame_url}");
+    let runtime: Arc<dyn frame_server::ProductRuntimeFactory> = runtime;
 
-    let local = tokio::task::LocalSet::new();
-    let status = local
-        .run_until(async move {
-            let server = tokio::task::spawn_local(frame_server::accept_loop(
-                runtime,
-                product_id.clone(),
-                listener,
-            ));
-            let status = script_runner::run(&frame_url, &product_id, &script).await;
-            server.abort();
-            status
+    if let Some(script) = args.script {
+        let script_product_id = product_id.clone();
+        let script_frame_url = frame_url.clone();
+        let status = with_frame_server(runtime, product_id, listener, async move {
+            script_runner::run(&script_frame_url, &script_product_id, &script).await
         })
         .await?;
-
-    std::process::exit(status.code().unwrap_or(1));
-}
-
-async fn run_signing_host(
-    deeplink: Option<String>,
-    mnemonic: String,
-    statement_store: String,
-    auto_accept: bool,
-    username: Option<String>,
-) -> Result<()> {
-    let entropy = bip39::Mnemonic::parse(mnemonic.trim())
-        .context("invalid BIP-39 mnemonic")?
-        .to_entropy();
-
-    if let Some(username_base) = username {
-        let registered = attestation::attest(&attestation::AttestConfig {
-            backend_base: IDENTITY_BACKEND_BASE.to_string(),
-            people_ws: PEOPLE_CHAIN_WS.to_string(),
-            entropy: entropy.clone(),
-            username_base,
-        })
-        .await
-        .context("lite username attestation failed")?;
-        println!("SIGNING_HOST_ATTESTED {registered}");
+        std::process::exit(status.code().unwrap_or(1));
     }
 
-    let deeplink = match deeplink {
-        Some(deeplink) => deeplink,
-        None => read_deeplink_from_stdin()?,
-    };
+    with_frame_server(runtime, product_id.clone(), listener, async move {
+        pairing_interactive_loop(frame_url, product_id).await
+    })
+    .await
+}
 
-    // Grant statement-store allowance to the accounts that submit statements
-    // over the real store: our own `//wallet//sso` and the pairing host's
-    // device key. A real client does this on-chain; without it the store
-    // rejects the handshake with `NoAllowance`.
-    register_pairing_allowances(&statement_store, &entropy, &deeplink).await?;
+async fn run_signing_host(args: SigningHostArgs) -> Result<()> {
+    validate_signing_args(&args)?;
+    let network = args.network.config();
+    let base_path = args.base_path.clone().unwrap_or_else(default_base_path);
+    let mut session = start_signing_host(&args, base_path, network).await?;
+    let listener = frame_server::bind(args.frame_listen).await?;
+    let frame_url = format!("ws://{}", listener.local_addr()?);
+    println!("FRAMES_LISTENING {frame_url}");
+    let runtime_for_frames: Arc<dyn frame_server::ProductRuntimeFactory> = session.runtime.clone();
 
-    let platform = CliPlatform::new(statement_store, approval_policy(auto_accept));
+    if let Some(script) = args.script {
+        let product_id = args.product_id.clone();
+        let script_product_id = product_id.clone();
+        let script_frame_url = frame_url.clone();
+        let initial_deeplink = args.deeplink.clone();
+        let status = with_frame_server(runtime_for_frames, product_id, listener, async move {
+            let mut responder = None;
+            if let Some(deeplink) = initial_deeplink {
+                prepare_pairing_response(&mut session, &deeplink).await?;
+                let runtime = session.runtime.clone();
+                responder = Some(tokio::spawn(async move {
+                    match runtime.respond_to_pairing(&deeplink).await {
+                        Ok(exit) => println!("SIGNING_HOST_EXIT {exit:?}"),
+                        Err(err) => eprintln!("SIGNING_HOST_ERROR {}", err.reason),
+                    }
+                }));
+            }
+            ensure_signer(&mut session).await?;
+            let status = script_runner::run(&script_frame_url, &script_product_id, &script).await?;
+            if let Some(responder) = responder {
+                responder.abort();
+            }
+            Ok::<ExitStatus, anyhow::Error>(status)
+        })
+        .await?;
+        std::process::exit(status.code().unwrap_or(1));
+    }
+
+    let product_id = args.product_id.clone();
+    let initial_deeplink = args.deeplink.clone();
+    with_frame_server(
+        runtime_for_frames,
+        product_id.clone(),
+        listener,
+        async move {
+            if let Some(deeplink) = initial_deeplink {
+                respond_to_deeplink(&mut session, deeplink).await?;
+            }
+            signing_interactive_loop(&mut session, frame_url, product_id).await
+        },
+    )
+    .await
+}
+
+struct SigningHostSession {
+    runtime: Arc<SigningHostRuntime>,
+    signer: Option<ResolvedSigner>,
+    base_path: PathBuf,
+    network: NetworkConfig,
+    mnemonic: Option<String>,
+    account: Option<String>,
+    lite_username_prefix: Option<String>,
+}
+
+async fn start_signing_host(
+    args: &SigningHostArgs,
+    base_path: PathBuf,
+    network: NetworkConfig,
+) -> Result<SigningHostSession> {
+    let platform = CliPlatform::new(
+        network.people_ws,
+        network.live_chain_endpoints,
+        Some(role_state_path(&base_path, network, "signing-host")),
+        approval_policy(args.auto_accept),
+    );
     let config = SigningHostConfig::new(
         host_info("Headless Signing Host"),
         platform_info(),
-        [0u8; 32],
-        BULLETIN_CHAIN_GENESIS,
+        network.people_genesis,
+        network.bulletin_genesis,
     )
     .context("invalid signing host config")?;
-    let runtime = SigningHostRuntime::new(platform, config, tokio_spawner());
-    runtime
-        .activate_local_session(entropy)
+    let runtime = Arc::new(SigningHostRuntime::new(platform, config, tokio_spawner()));
+
+    Ok(SigningHostSession {
+        runtime,
+        signer: None,
+        base_path,
+        network,
+        mnemonic: normalized(args.mnemonic.clone()),
+        account: normalized(args.account.clone()),
+        lite_username_prefix: normalized(args.lite_username_prefix.clone()),
+    })
+}
+
+fn validate_signing_args(args: &SigningHostArgs) -> Result<()> {
+    let mnemonic = normalized(args.mnemonic.clone());
+    let account = normalized(args.account.clone());
+    let prefix = normalized(args.lite_username_prefix.clone());
+    if mnemonic.is_some() && account.is_some() {
+        bail!("--account cannot be used when --mnemonic or HOST_CLI_SIGNER_MNEMONIC is set");
+    }
+    if mnemonic.is_some() && prefix.is_some() {
+        bail!(
+            "--lite-username-prefix cannot be used when --mnemonic or HOST_CLI_SIGNER_MNEMONIC is set"
+        );
+    }
+    if account.is_some() && prefix.is_some() {
+        bail!("--lite-username-prefix only applies when --account is omitted");
+    }
+    Ok(())
+}
+
+fn normalized(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        (!trimmed.is_empty()).then_some(trimmed)
+    })
+}
+
+async fn with_frame_server<T, Fut>(
+    runtime: Arc<dyn frame_server::ProductRuntimeFactory>,
+    product_id: String,
+    listener: tokio::net::TcpListener,
+    body: Fut,
+) -> Result<T>
+where
+    Fut: Future<Output = Result<T>>,
+{
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async move {
+            let server =
+                tokio::task::spawn_local(frame_server::accept_loop(runtime, product_id, listener));
+            let result = body.await;
+            server.abort();
+            result
+        })
+        .await
+}
+
+async fn ensure_signer(session: &mut SigningHostSession) -> Result<()> {
+    if session.signer.is_some() {
+        return Ok(());
+    }
+    session.signer = Some(
+        accounts::resolve_signer(ResolveSignerConfig {
+            base_path: &session.base_path,
+            network: session.network,
+            mnemonic: session.mnemonic.clone(),
+            account: session.account.clone(),
+            lite_username_prefix: session.lite_username_prefix.clone(),
+        })
+        .await?,
+    );
+    activate_current_signer(session).await
+}
+
+async fn activate_current_signer(session: &mut SigningHostSession) -> Result<()> {
+    let signer = session
+        .signer
+        .as_ref()
+        .context("signer has not been resolved")?;
+    session
+        .runtime
+        .activate_local_session_with_identity(signer.entropy.clone(), signer.lite_username.clone())
         .await
         .map_err(|err| anyhow::anyhow!("failed to activate local session: {}", err.reason))?;
     println!("SIGNING_HOST_READY");
+    Ok(())
+}
 
-    let exit = runtime
+async fn prepare_pairing_response(session: &mut SigningHostSession, deeplink: &str) -> Result<()> {
+    let mut attempts = 0usize;
+    loop {
+        ensure_signer(session).await?;
+        let (entropy, auto_managed, account_name) = {
+            let signer = session
+                .signer
+                .as_ref()
+                .context("signer has not been resolved")?;
+            (
+                signer.entropy.clone(),
+                signer.auto_managed,
+                signer.account_name.clone(),
+            )
+        };
+        match register_pairing_allowances(session.network.people_ws, &entropy, deeplink).await {
+            Ok(()) => return Ok(()),
+            Err(err) if auto_managed && is_statement_slot_exhaustion(&err) => {
+                attempts += 1;
+                if attempts > 8 {
+                    return Err(err);
+                }
+                if let Some(name) = &account_name {
+                    let period = accounts::current_statement_period()?;
+                    accounts::mark_account_exhausted(
+                        &session.base_path,
+                        session.network.id,
+                        name,
+                        period,
+                    )?;
+                    println!("SIGNING_HOST_ACCOUNT_EXHAUSTED {name} period={period}");
+                }
+                session.signer = Some(
+                    accounts::resolve_signer(ResolveSignerConfig {
+                        base_path: &session.base_path,
+                        network: session.network,
+                        mnemonic: None,
+                        account: None,
+                        lite_username_prefix: session.lite_username_prefix.clone(),
+                    })
+                    .await?,
+                );
+                activate_current_signer(session).await?;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+fn is_statement_slot_exhaustion(err: &anyhow::Error) -> bool {
+    err.to_string().contains("no free StatementStore slot")
+}
+
+async fn respond_to_deeplink(session: &mut SigningHostSession, deeplink: String) -> Result<()> {
+    prepare_pairing_response(session, &deeplink).await?;
+    let exit = session
+        .runtime
         .respond_to_pairing(&deeplink)
         .await
         .map_err(|err| anyhow::anyhow!("pairing failed: {}", err.reason))?;
@@ -509,6 +663,7 @@ async fn register_pairing_allowances(
     );
 
     for (label, target) in [("wallet-sso", wallet_sso), ("device", device)] {
+        println!("SIGNING_HOST_ALLOWANCE {label} checking");
         let outcome = alloc::register_statement_account(
             &rpc,
             &metadata,
@@ -532,14 +687,101 @@ async fn register_pairing_allowances(
     Ok(())
 }
 
-fn read_deeplink_from_stdin() -> Result<String> {
-    let stdin = std::io::stdin();
-    for line in stdin.lock().lines() {
-        let line = line.context("failed to read deeplink from stdin")?;
-        let line = line.trim().to_string();
-        if !line.is_empty() {
-            return Ok(line);
+async fn pairing_interactive_loop(frame_url: String, product_id: String) -> Result<()> {
+    println!("PAIRING_HOST_INTERACTIVE commands: script <path>, quit");
+    let mut lines = BufReader::new(tokio::io::stdin()).lines();
+    loop {
+        print_prompt("pairing-host> ").await?;
+        let Some(line) = lines.next_line().await? else {
+            return Ok(());
+        };
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
         }
+        if is_quit(line) {
+            return Ok(());
+        }
+        let Some(script) = script_command(line) else {
+            println!("unknown command; use: script <path>, quit");
+            continue;
+        };
+        let status = script_runner::run(&frame_url, &product_id, &script).await?;
+        println!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
     }
-    bail!("no pairing deeplink received on stdin");
+}
+
+async fn signing_interactive_loop(
+    session: &mut SigningHostSession,
+    frame_url: String,
+    product_id: String,
+) -> Result<()> {
+    println!("SIGNING_HOST_INTERACTIVE commands: deeplink <url>, script <path>, quit");
+    let mut lines = BufReader::new(tokio::io::stdin()).lines();
+    loop {
+        print_prompt("signing-host> ").await?;
+        let Some(line) = lines.next_line().await? else {
+            return Ok(());
+        };
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if is_quit(line) {
+            return Ok(());
+        }
+        if let Some(deeplink) = deeplink_command(line) {
+            respond_to_deeplink(session, deeplink).await?;
+            continue;
+        }
+        if let Some(script) = script_command(line) {
+            ensure_signer(session).await?;
+            let status = script_runner::run(&frame_url, &product_id, &script).await?;
+            println!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
+            continue;
+        }
+        println!("unknown command; use: deeplink <url>, script <path>, quit");
+    }
+}
+
+async fn print_prompt(prompt: &str) -> Result<()> {
+    let mut stdout = tokio::io::stdout();
+    stdout.write_all(prompt.as_bytes()).await?;
+    stdout.flush().await?;
+    Ok(())
+}
+
+fn is_quit(line: &str) -> bool {
+    matches!(line, "quit" | "exit" | "q")
+}
+
+fn script_command(line: &str) -> Option<PathBuf> {
+    line.strip_prefix("script ")
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
+fn deeplink_command(line: &str) -> Option<String> {
+    if line.starts_with("polkadotapp://pair?") {
+        return Some(line.to_string());
+    }
+    line.strip_prefix("deeplink ")
+        .map(str::trim)
+        .filter(|deeplink| !deeplink.is_empty())
+        .map(str::to_string)
+}
+
+fn default_base_path() -> PathBuf {
+    if let Some(path) = std::env::var_os("XDG_STATE_HOME") {
+        return PathBuf::from(path).join("truapi-host");
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".local/state/truapi-host");
+    }
+    PathBuf::from(".truapi-host")
+}
+
+fn role_state_path(base_path: &std::path::Path, network: NetworkConfig, role: &str) -> PathBuf {
+    base_path.join(network.id).join(role)
 }

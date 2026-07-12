@@ -526,6 +526,19 @@ impl ChainRuntime {
         Ok(self.subxt_connection(genesis_hash).await?.client)
     }
 
+    /// Raw JSON-RPC client for the chain identified by `genesis_hash`.
+    pub(crate) async fn rpc_client(
+        &self,
+        method: &'static str,
+        genesis_hash: &[u8],
+    ) -> Result<HostRpcClient, RuntimeFailure> {
+        Ok(self
+            .connection_for(method, genesis_hash)
+            .await?
+            .rpc_client
+            .clone())
+    }
+
     async fn subxt_connection(
         &self,
         genesis_hash: &[u8],

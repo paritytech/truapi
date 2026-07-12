@@ -6,18 +6,18 @@ host-spec §B roles and pair over the **real People-chain statement store** (the
 same node an iOS/web client uses), so tests run against a real signer with no
 Novasama-operated dependency.
 
-The pairing host is driven by a **product script** you write: a JS/TS file that
+Either host can be driven by a **product script** you write: a JS/TS file that
 receives a global `truapi` (the `@parity/truapi` client, scoped to a product id)
-and calls it like any product would. The CLI runs the script and exits with its
-status, so `truapi-host pairing-host --script foo.ts` *is* the test — there is no
-separate bun orchestrator.
+and calls it like any product would. With `--script`, the CLI runs the script
+and exits with its status. Without `--script`, the host stays in an interactive
+shell until you quit.
 
 One binary, `truapi-host`:
 
 | Command | Role |
 | --- | --- |
-| `pairing-host` | Seedless host: serves product frames and runs your `--script` with `truapi` injected. |
-| `signing-host` | Wallet-local host: answers a pairing deeplink, registers statement allowance on-chain, signs. |
+| `pairing-host` | Seedless host: serves product frames, emits pairing deeplinks, and can run product scripts. |
+| `signing-host` | Wallet-local host: owns signer identity, can run product scripts, accepts pairing deeplinks, registers statement allowance on-chain, signs. |
 | `identity-check` | Probe which derivation of a mnemonic carries a registered username. |
 | `alloc-check` | Diagnose (or `--submit`) on-chain statement-store allowance: ring membership, chosen slot, and the `set_statement_store_account` extrinsic. |
 
@@ -31,10 +31,12 @@ rust/crates/truapi-host-cli/e2e/run.sh path/to/my-script.ts   # or a custom scri
 
 `run.sh` starts a pairing host running the product script, hands the emitted
 pairing deeplink to a signing host, and exits with the script's status. The
-signing host uses `HOST_CLI_SIGNER_MNEMONIC` (from the environment or a gitignored
-`e2e/.env`) if set, otherwise the dev mnemonic — either must be a registered
-LitePeople ring member. Override the product with `PRODUCT_ID=...` and the port
-with `FRAME=...`.
+signing host uses `--mnemonic` / `HOST_CLI_SIGNER_MNEMONIC` if set. Otherwise it
+auto-selects or creates a stored account under `--base-path` (default
+`$XDG_STATE_HOME/truapi-host` or `~/.local/state/truapi-host`), attests it
+through the identity backend, waits for ring readiness, and rotates when the
+current account exhausts Statement Store slots. Override the product with
+`PRODUCT_ID=...` and the pairing frame port with `FRAME=...`.
 
 ## Writing a product script
 
@@ -84,10 +86,15 @@ Two scripts ship under `js/scripts/`:
     rust/crates/truapi-host-cli/e2e/run.sh rust/crates/truapi-host-cli/js/scripts/diagnosis.ts
   ```
 
-  With a live chain, this is **43 passed, 1 failed, 20 skipped**; the lone
-  failure is `Chain/stop_transaction` (the example sends a deliberately-invalid
-  operation id the real RPC node rejects, which the browser host's smoldot
-  tolerates). It needs the playground's deps (`cd playground && bun install`).
+  With live routing enabled, `Chain/stop_transaction` uses host-owned operation
+  ids and treats already-finished provider operations as stopped. `Preimage/*`
+  also uses the real Bulletin Next chain and asks the signing host to claim
+  People-chain long-term storage before returning the product-scoped Bulletin
+  allowance key. It needs the playground's deps
+  (`cd playground && bun install`). Repeated live runs can exhaust the
+  signer's per-period Statement Store or Bulletin allocation slots; the
+  signing host now rotates auto-managed signer accounts when Statement Store
+  slots are exhausted.
 
 ## Confirmations
 
@@ -107,8 +114,10 @@ per-pairing device key. The port lives in `src/alloc/` (metadata-driven
 signed-extension encoding, ring fetch, slot scan, ring-VRF proof, extrinsic
 assembly, submit). The signing account must be an attested LitePeople member,
 and may sit in an old ring, so the signing host scans back from the current ring
-index (slow, one-time per pairing). `alloc-check` verifies membership and can
-submit a test registration.
+index (slow, one-time per pairing). Auto-managed accounts are stored in
+`accounts.json` under `--base-path`; mnemonics are plaintext local test secrets
+and the file is written with `0600` permissions on Unix. `alloc-check` verifies
+membership and can submit a test registration.
 
 ## Manual use (two terminals)
 
@@ -120,35 +129,35 @@ BIN=target/debug/truapi-host
 $BIN pairing-host --product-id myapp.dot --script js/scripts/battery.ts --auto-accept
 
 # Terminal 2 — hand the deeplink to a signing host (registers allowance, signs).
-# The wallet mnemonic comes from --mnemonic, else $HOST_CLI_SIGNER_MNEMONIC,
-# else the dev mnemonic; it must be a registered LitePeople ring member.
+# The wallet mnemonic comes from --mnemonic / $HOST_CLI_SIGNER_MNEMONIC when set;
+# otherwise the CLI auto-selects or creates an attested account.
 $BIN signing-host --deeplink '<deeplink>' --auto-accept
 HOST_CLI_SIGNER_MNEMONIC="spin battle …" $BIN signing-host --deeplink '<deeplink>' --auto-accept
 
 # Inspect on-chain statement-store allowance for a mnemonic:
-$BIN alloc-check --lookback 100          # ring membership + free slot (read-only)
+$BIN alloc-check --mnemonic "spin battle …" --lookback 100
 ```
 
-Both hosts default `--statement-store` to the real People chain
-(`wss://paseo-people-next-system-rpc.polkadot.io`); override with
-`--statement-store`.
+Both hosts take `--network` (default `paseo-next-v2`). The network preset owns
+the identity backend URL, People RPC, Bulletin RPC, and genesis hashes; there is
+no public `--statement-store` flag.
 
 ## Scope / gaps
 
-- **Chain methods** route to real `wss://` nodes when `E2E_LIVE_CHAIN=1`
-  (`src/chain.rs`, `PASEO_NEXT_V2_CHAIN_ENDPOINTS`); off by default. A rustls
-  crypto provider is installed at startup for the TLS connections.
+- **Chain methods** route to real `wss://` nodes from the selected `--network`
+  when `E2E_LIVE_CHAIN=1`; off by default. A rustls crypto provider is
+  installed at startup for the TLS connections.
 - **Ring-VRF product-account aliases** are implemented natively via the
   `verifiable` crate (`get_account_alias`); on wasm they remain `Unavailable`.
 - **`get_user_id`** resolves the signing account's username from People-chain
-  `Resources.Consumers`. `truapi-host signing-host --username <base>` registers a
-  fresh lite username via the identity backend (`src/attestation.rs`); first
-  registration is backend-async and can take minutes (ring onboarding), so the
-  e2e uses an already-registered account. `truapi-host identity-check --mnemonic
-  <m>` probes which derivation carries a username.
-- `set_statement_store_account` resource-allocation over SSO is still reported
-  `NotAvailable`.
+  `Resources.Consumers`. Auto-managed signing accounts register fresh lite
+  usernames via the identity backend (`src/attestation.rs`); first registration
+  is backend-async and can take minutes (ring onboarding). `truapi-host
+  identity-check --mnemonic <m>` probes which derivation carries a username.
+- `set_statement_store_account` and Bulletin long-term-storage resource
+  allocation are implemented over SSO on native headless hosts.
 - Everything else the browser host exercises passes: signing (raw, payload,
   create-transaction, and their legacy variants), statement store, entropy,
   aliases, preimage, storage, permissions, notifications, theme, system, chain
-  (with `E2E_LIVE_CHAIN=1`), and user id.
+  (with `E2E_LIVE_CHAIN=1`), and user id, subject to live chain availability
+  and allowance-slot capacity.

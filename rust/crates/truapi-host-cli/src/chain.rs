@@ -20,50 +20,33 @@ use tracing::debug;
 use truapi::v01;
 use truapi_platform::{ChainProvider, JsonRpcConnection};
 
+use crate::network::ChainEndpoint;
+
 /// Broadcast backlog for inbound JSON-RPC frames per connection.
 const INBOUND_CHANNEL_CAPACITY: usize = 1024;
-
-/// Public paseo-next-v2 endpoints that speak the new JSON-RPC (`chainHead_v1`)
-/// API, so the pairing host can serve the playground's `Chain/*` examples
-/// against real nodes (read-only) just like the browser host.
-const PASEO_NEXT_V2_CHAIN_ENDPOINTS: &[(&str, &str)] = &[
-    // Asset Hub Next (the chain the `Chain/*` examples target).
-    (
-        "bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-        "wss://paseo-asset-hub-next-rpc.polkadot.io",
-    ),
-    // Individuality/People Next (used by the create-transaction example to
-    // build a payload from live metadata).
-    (
-        "c5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5",
-        "wss://paseo-people-next-system-rpc.polkadot.io",
-    ),
-];
 
 /// Chain provider that maps a requested genesis hash to a WebSocket endpoint.
 ///
 /// The all-zero genesis (the headless SSO sentinel) and any unmapped genesis
-/// fall back to the People-chain statement store; the Asset Hub genesis routes
-/// to its own node (opt-in) for the `Chain/*` playground examples.
+/// fall back to the People-chain statement store; the Asset Hub and Bulletin
+/// genesis hashes route to their own nodes (opt-in) for live playground
+/// examples.
 pub struct WsChainProvider {
     fallback_url: String,
     by_genesis: HashMap<[u8; 32], String>,
 }
 
 impl WsChainProvider {
-    pub fn new(fallback_url: impl Into<String>) -> Self {
+    pub fn new(fallback_url: impl Into<String>, live_chain_endpoints: &[ChainEndpoint]) -> Self {
         // The fallback is the People-chain statement store, which serves the
         // SSO/identity path directly. Asset Hub routing (for the `Chain/*`
         // examples) is opt-in; when off, those genesis requests fall back to the
         // People node, which does not serve Asset Hub chainHead, so they fail
         // cleanly without disturbing the SSO/signer path.
         let by_genesis = if std::env::var("E2E_LIVE_CHAIN").as_deref() == Ok("1") {
-            PASEO_NEXT_V2_CHAIN_ENDPOINTS
+            live_chain_endpoints
                 .iter()
-                .filter_map(|(genesis_hex, url)| {
-                    let bytes = hex::decode(genesis_hex).ok()?;
-                    Some((<[u8; 32]>::try_from(bytes).ok()?, url.to_string()))
-                })
+                .map(|endpoint| (endpoint.genesis, endpoint.ws.to_string()))
                 .collect()
         } else {
             HashMap::new()

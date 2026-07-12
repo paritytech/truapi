@@ -7,7 +7,7 @@
 use parity_scale_codec::{Compact, Decode};
 use sp_crypto_hashing::{blake2_128, twox_64, twox_128};
 
-use super::dynamic::read_field_variant_name;
+use super::dynamic::{read_field_u32, read_field_variant_name};
 use super::extension::Metadata;
 use super::rpc::RpcClient;
 
@@ -51,6 +51,17 @@ fn ring_keys_status_key(ring_index: u32) -> Vec<u8> {
     [
         twox_128(b"Members").as_slice(),
         twox_128(b"RingKeysStatus").as_slice(),
+        LITE_PEOPLE_IDENTIFIER.as_slice(),
+        &blake2_128_concat(&ring_index.to_le_bytes()),
+    ]
+    .concat()
+}
+
+/// `Members.Root[(id, ring_index)]` storage key.
+fn ring_root_key(ring_index: u32) -> Vec<u8> {
+    [
+        twox_128(b"Members").as_slice(),
+        twox_128(b"Root").as_slice(),
         LITE_PEOPLE_IDENTIFIER.as_slice(),
         &blake2_128_concat(&ring_index.to_le_bytes()),
     ]
@@ -161,4 +172,26 @@ pub async fn read_ring_members_at(
     }
 
     Ok(members)
+}
+
+/// Read `Members.Root[LitePeople][ring_index].revision` (absent => 0).
+pub async fn read_ring_revision(
+    rpc: &RpcClient,
+    metadata: &Metadata,
+    ring_index: u32,
+) -> Result<u32, String> {
+    match rpc
+        .get_storage(&ring_root_key(ring_index))
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        Some(bytes) => {
+            let value_type = metadata
+                .storage_value_type("Members", "Root")
+                .ok_or_else(|| "Members.Root type not in metadata".to_string())?;
+            read_field_u32(metadata.registry(), value_type, "revision", &bytes)
+                .map_err(|e| format!("ring revision: {e}"))
+        }
+        None => Ok(0),
+    }
 }

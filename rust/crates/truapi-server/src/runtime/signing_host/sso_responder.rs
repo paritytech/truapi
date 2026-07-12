@@ -27,8 +27,8 @@ use crate::host_logic::entropy::root_entropy_source;
 use crate::host_logic::product_account::{ProductAccountError, derive_sr25519_hard_path};
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
-    self, CreateTransactionPayload, IncomingSsoRequest, RemoteMessage, RemoteMessageData,
-    ResourceAllocationResponse, RingVrfAliasResponse, SignRawLegacyResponse,
+    self, CreateTransactionPayload, IncomingSsoRequest, OnExistingAllowancePolicy, RemoteMessage,
+    RemoteMessageData, ResourceAllocationResponse, RingVrfAliasResponse, SignRawLegacyResponse,
     SigningPayloadResponseData, SigningRequest, SigningResponse, SsoAllocatableResource,
     SsoAllocatedResource, SsoAllocationOutcome, StatementStoreProductSignResponse,
     build_outgoing_request_statement, build_signed_session_response_statement,
@@ -235,6 +235,9 @@ async fn answer_remote_message(
         }
         v1::RemoteMessage::ResourceAllocationRequest(request) => {
             let payload = resource_allocation_response(services, signing_host, request).await;
+            if let Err(reason) = &payload {
+                warn!(%reason, "resource allocation request failed");
+            }
             v1::RemoteMessage::ResourceAllocationResponse(ResourceAllocationResponse {
                 responding_to: message_id,
                 payload,
@@ -312,8 +315,19 @@ async fn resource_allocation_response(
                     slot_account_key,
                 })
             }
-            SsoAllocatableResource::BulletinAllowance
-            | SsoAllocatableResource::SmartContractAllowance(_)
+            SsoAllocatableResource::BulletinAllowance => {
+                let slot_account_key = allocate_bulletin_allowance(
+                    services,
+                    signing_host,
+                    &request.calling_product_id,
+                    request.on_existing,
+                )
+                .await?;
+                SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
+                    slot_account_key,
+                })
+            }
+            SsoAllocatableResource::SmartContractAllowance(_)
             | SsoAllocatableResource::AutoSigning => SsoAllocationOutcome::NotAvailable,
         };
         outcomes.push(outcome);
@@ -322,9 +336,9 @@ async fn resource_allocation_response(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-async fn allocate_statement_store_allowance(
+pub(super) async fn allocate_statement_store_allowance(
     services: &Arc<RuntimeServices>,
-    signing_host: &Arc<SigningHost>,
+    signing_host: &SigningHost,
     product_id: &str,
 ) -> Result<Vec<u8>, String> {
     use crate::runtime::statement_allowance::{
@@ -388,13 +402,112 @@ async fn allocate_statement_store_allowance(
     Ok(allowance.secret.to_bytes().to_vec())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) async fn allocate_bulletin_allowance(
+    services: &Arc<RuntimeServices>,
+    signing_host: &SigningHost,
+    product_id: &str,
+    policy: OnExistingAllowancePolicy,
+) -> Result<Vec<u8>, String> {
+    use crate::runtime::statement_allowance::{
+        self, claim_long_term_storage, fetch_bulletin_allowance, fetch_chain_state, fetch_metadata,
+        find_including_ring, wait_bulletin_authorization,
+    };
+
+    const AUTHORIZATION_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+    let entropy = signing_host.root_entropy().map_err(|err| err.reason())?;
+    let allowance = derive_sr25519_hard_path(&entropy, &["allowance", "bulletin", product_id])
+        .map_err(product_account_error)?;
+    let target = allowance.public.to_bytes();
+
+    let bulletin_rpc = statement_allowance::rpc::RpcClient::new(
+        services.bulletin.client("bulletin allowance").await?,
+    );
+    let current_allowance = fetch_bulletin_allowance(&bulletin_rpc, &target).await?;
+    if matches!(policy, OnExistingAllowancePolicy::Ignore)
+        && current_allowance.is_some_and(|allowance| allowance.available())
+    {
+        return Ok(allowance.secret.to_bytes().to_vec());
+    }
+
+    let people_rpc = statement_allowance::rpc::RpcClient::new(
+        services
+            .statement_store
+            .client("bulletin allowance claim")
+            .await?,
+    );
+    let metadata = fetch_metadata(&people_rpc).await?;
+    let chain_state = fetch_chain_state(&people_rpc).await?;
+    let bandersnatch = statement_allowance::bandersnatch_entropy(&entropy);
+    let current = statement_allowance::ring::read_current_ring_index(&people_rpc).await?;
+    let ring = find_including_ring(&people_rpc, &metadata, bandersnatch, current)
+        .await?
+        .ok_or_else(|| {
+            "signing account is not a LitePeople ring member; cannot grant Bulletin allowance"
+                .to_string()
+        })?;
+    let period_duration = statement_allowance::slot::long_term_storage_period_duration(&metadata)?;
+    let period = statement_allowance::slot::current_long_term_storage_period(
+        current_unix_secs()?,
+        period_duration,
+    )?;
+    let outcome = claim_long_term_storage(
+        &people_rpc,
+        &metadata,
+        &chain_state,
+        bandersnatch,
+        &target,
+        period,
+        &ring,
+    )
+    .await?;
+    let statement_allowance::LongTermStorageOutcome::Claimed {
+        block_hash,
+        counter,
+        ring_index,
+    } = outcome;
+    info!(
+        %product_id,
+        %block_hash,
+        counter,
+        ring_index,
+        "claimed Bulletin long-term storage allowance"
+    );
+
+    let authorization = wait_bulletin_authorization(
+        &bulletin_rpc,
+        &target,
+        current_allowance,
+        AUTHORIZATION_WAIT,
+    )
+    .await?;
+    info!(
+        %product_id,
+        remained_size = authorization.remained_size,
+        remained_transactions = authorization.remained_transactions,
+        "Bulletin authorization visible"
+    );
+    Ok(allowance.secret.to_bytes().to_vec())
+}
+
 #[cfg(target_arch = "wasm32")]
-async fn allocate_statement_store_allowance(
+pub(super) async fn allocate_statement_store_allowance(
     _services: &Arc<RuntimeServices>,
-    _signing_host: &Arc<SigningHost>,
+    _signing_host: &SigningHost,
     _product_id: &str,
 ) -> Result<Vec<u8>, String> {
     Err("signing host: statement-store allowance allocation is native-only".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(super) async fn allocate_bulletin_allowance(
+    _services: &Arc<RuntimeServices>,
+    _signing_host: &SigningHost,
+    _product_id: &str,
+    _policy: OnExistingAllowancePolicy,
+) -> Result<Vec<u8>, String> {
+    Err("signing host: Bulletin allowance allocation is native-only".to_string())
 }
 
 #[cfg(not(target_arch = "wasm32"))]

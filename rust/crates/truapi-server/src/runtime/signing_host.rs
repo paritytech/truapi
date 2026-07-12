@@ -9,8 +9,9 @@
 //! Implemented: local session lifecycle, raw-bytes signing, extrinsic-payload
 //! signing, v4 transaction construction (payload fields and extensions arrive
 //! pre-encoded, so no chain metadata is needed), RFC-0007 product entropy, and
-//! bandersnatch ring-VRF product-account aliases (native only). Deferred
-//! (returns [`AuthorityError::Unavailable`]): on-chain resource allocation.
+//! bandersnatch ring-VRF product-account aliases (native only), and
+//! product-scoped Bulletin allowance keys. Deferred (returns
+//! [`AuthorityError::Unavailable`]): on-chain resource allocation.
 
 mod local_activation;
 mod sso_responder;
@@ -33,8 +34,10 @@ use crate::host_logic::product_account::{
     ProductAccountError, SR25519_SIGNING_CONTEXT, derive_product_keypair, derive_sr25519_hard_path,
 };
 use crate::host_logic::session::SessionState;
+use crate::host_logic::sso::messages::OnExistingAllowancePolicy;
 use crate::host_logic::transaction::extrinsic_payload_preimage;
 use crate::runtime::auth_state::AuthStateMachine;
+use crate::runtime::services::RuntimeServices;
 
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, v01};
@@ -46,6 +49,7 @@ const BYTES_WRAP_SUFFIX: &[u8] = b"</Bytes>";
 
 /// Wallet-local account authority for a signing host.
 pub(crate) struct SigningHost {
+    services: Arc<RuntimeServices>,
     session_state: Arc<SessionState>,
     auth_state: AuthStateMachine,
     /// Root BIP-39 entropy held only while a session is active.
@@ -53,8 +57,9 @@ pub(crate) struct SigningHost {
 }
 
 impl SigningHost {
-    pub(crate) fn new(platform: Arc<dyn Platform>) -> Arc<Self> {
+    pub(crate) fn new(platform: Arc<dyn Platform>, services: Arc<RuntimeServices>) -> Arc<Self> {
         Arc::new(Self {
+            services,
             session_state: SessionState::new(),
             auth_state: AuthStateMachine::new(platform),
             root_entropy: Mutex::new(None),
@@ -95,6 +100,52 @@ impl SigningHost {
             })?;
         derive_product_keypair(&wallet, &product_id, account.derivation_index)
             .map_err(product_authority_error)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn local_statement_store_allowance_key(
+        &self,
+        product_id: &str,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        let secret =
+            sso_responder::allocate_statement_store_allowance(&self.services, self, product_id)
+                .await
+                .map_err(allocation_error)?;
+        StatementStoreAllowanceKey::from_secret_bytes(secret)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn local_statement_store_allowance_key(
+        &self,
+        _product_id: &str,
+    ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        Err(AuthorityError::Unavailable {
+            reason: "signing host: statement-store allowance allocation is native-only".to_string(),
+        })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn local_bulletin_allowance_key(
+        &self,
+        product_id: &str,
+        policy: OnExistingAllowancePolicy,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let secret =
+            sso_responder::allocate_bulletin_allowance(&self.services, self, product_id, policy)
+                .await
+                .map_err(allocation_error)?;
+        BulletinAllowanceKey::from_secret_bytes(secret).map_err(AuthorityError::from)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn local_bulletin_allowance_key(
+        &self,
+        _product_id: &str,
+        _policy: OnExistingAllowancePolicy,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        Err(AuthorityError::Unavailable {
+            reason: "signing host: Bulletin allowance allocation is native-only".to_string(),
+        })
     }
 }
 
@@ -168,15 +219,16 @@ impl ProductAuthority for SigningHost {
         session: &AuthoritySession,
         request: SignRawAuthorityRequest,
     ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
-        let SignRawAuthorityRequest::Product(request) = request else {
-            return Err(AuthorityError::Unavailable {
-                reason: "signing host: legacy-account raw signing is not yet implemented"
-                    .to_string(),
-            });
+        let (account, payload) = match request {
+            SignRawAuthorityRequest::Product(request) => (request.account, request.payload),
+            SignRawAuthorityRequest::LegacyAccount {
+                product_account,
+                request,
+            } => (product_account, request.payload),
         };
         require_current_session(&self.session_state, session)?;
-        let keypair = self.product_keypair(&request.account)?;
-        let message = raw_payload_bytes(request.payload)?;
+        let keypair = self.product_keypair(&account)?;
+        let message = raw_payload_bytes(payload)?;
         let signature = keypair
             .secret
             .sign_simple(SR25519_SIGNING_CONTEXT, &message, &keypair.public)
@@ -269,50 +321,65 @@ impl ProductAuthority for SigningHost {
     async fn allocate_resources(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _product_id: String,
-        _request: v01::HostRequestResourceAllocationRequest,
+        session: &AuthoritySession,
+        product_id: String,
+        request: v01::HostRequestResourceAllocationRequest,
     ) -> Result<v01::HostRequestResourceAllocationResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: on-chain resource allocation not yet implemented".to_string(),
-        })
+        require_current_session(&self.session_state, session)?;
+        let mut outcomes = Vec::with_capacity(request.resources.len());
+        for resource in request.resources {
+            let outcome = match resource {
+                v01::AllocatableResource::StatementStoreAllowance => {
+                    self.local_statement_store_allowance_key(&product_id)
+                        .await?;
+                    v01::AllocationOutcome::Allocated
+                }
+                v01::AllocatableResource::BulletinAllowance => {
+                    self.local_bulletin_allowance_key(
+                        &product_id,
+                        OnExistingAllowancePolicy::Ignore,
+                    )
+                    .await?;
+                    v01::AllocationOutcome::Allocated
+                }
+                v01::AllocatableResource::SmartContractAllowance(_)
+                | v01::AllocatableResource::AutoSigning => v01::AllocationOutcome::NotAvailable,
+            };
+            outcomes.push(outcome);
+        }
+        Ok(v01::HostRequestResourceAllocationResponse { outcomes })
     }
 
     async fn statement_store_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: statement-store allowance allocation not yet implemented"
-                .to_string(),
-        })
+        self.local_statement_store_allowance_key(&product_id).await
     }
 
     async fn bulletin_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: bulletin allowance allocation not yet implemented".to_string(),
-        })
+        self.local_bulletin_allowance_key(&product_id, OnExistingAllowancePolicy::Ignore)
+            .await
     }
 
     async fn refresh_bulletin_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: bulletin allowance allocation not yet implemented".to_string(),
-        })
+        self.local_bulletin_allowance_key(&product_id, OnExistingAllowancePolicy::Increase)
+            .await
     }
 
     async fn sign_statement_store_product_payload(
@@ -352,11 +419,26 @@ fn product_authority_error(err: ProductAccountError) -> AuthorityError {
     }
 }
 
+fn allocation_error(reason: String) -> AuthorityError {
+    AuthorityError::Unavailable { reason }
+}
+
 /// The user's main wallet keypair at `//wallet` (host-spec C.0), the root of
 /// product-account derivation and the `rootUserAccountId` shared with paired
 /// hosts.
 pub(crate) fn wallet_root_keypair(entropy: &[u8]) -> Result<schnorrkel::Keypair, AuthorityError> {
     derive_sr25519_hard_path(entropy, &["wallet"]).map_err(product_authority_error)
+}
+
+#[cfg(test)]
+fn derive_bulletin_allowance_key(
+    entropy: &[u8],
+    product_id: &str,
+) -> Result<BulletinAllowanceKey, AuthorityError> {
+    let allowance = derive_sr25519_hard_path(entropy, &["allowance", "bulletin", product_id])
+        .map_err(product_authority_error)?;
+    BulletinAllowanceKey::from_secret_bytes(allowance.secret.to_bytes().to_vec())
+        .map_err(AuthorityError::from)
 }
 
 /// Assemble and sign a transaction locally from caller-supplied, pre-encoded
@@ -426,7 +508,10 @@ mod tests {
         AuthorityError, CreateTransactionAuthorityRequest, SignRawAuthorityRequest,
     };
     use super::super::{ProductAuthority, ProductRuntimeHost, RuntimeServices, SigningHostRole};
-    use super::{BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, raw_payload_bytes};
+    use super::{
+        BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, derive_bulletin_allowance_key,
+        raw_payload_bytes,
+    };
     use crate::host_logic::extrinsic::tests::split_v4;
     use crate::host_logic::product_account::{derive_product_keypair, derive_sr25519_hard_path};
     use crate::test_support::{StubPlatform, test_spawner};
@@ -463,7 +548,7 @@ mod tests {
             config.bulletin_chain_genesis_hash,
             test_spawner(),
         );
-        let signing_host = SigningHostRole::new(platform);
+        let signing_host = SigningHostRole::new(platform, services.clone());
         (services, signing_host)
     }
 
@@ -1080,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn deferred_operations_return_unavailable() {
+    fn empty_resource_allocation_returns_empty_response() {
         let (_services, authority) = signing_runtime();
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation");
@@ -1093,7 +1178,20 @@ mod tests {
             "myapp.dot".to_string(),
             v01::HostRequestResourceAllocationRequest { resources: vec![] },
         ))
-        .expect_err("allocation deferred");
-        assert!(matches!(alloc, AuthorityError::Unavailable { .. }));
+        .expect("empty allocation");
+        assert!(alloc.outcomes.is_empty());
+    }
+
+    #[test]
+    fn bulletin_allowance_key_uses_product_scoped_ios_path() {
+        let key = derive_bulletin_allowance_key(&ENTROPY, "truapi-playground.dot")
+            .expect("bulletin allowance key");
+        let expected = derive_sr25519_hard_path(
+            &ENTROPY,
+            &["allowance", "bulletin", "truapi-playground.dot"],
+        )
+        .unwrap();
+
+        assert_eq!(key.as_secret_bytes(), &expected.secret.to_bytes());
     }
 }

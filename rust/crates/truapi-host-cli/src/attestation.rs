@@ -34,6 +34,32 @@ pub struct AttestConfig {
     pub username_base: String,
 }
 
+/// Check whether a lite username base is available through the identity
+/// backend. The username must be the base form without the digit suffix.
+pub async fn lite_username_available(backend_base: &str, username_base: &str) -> Result<bool> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
+    let url = format!("{backend_base}/usernames/available");
+    let body = json!({ "usernames": [username_base] });
+    let response = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .with_context(|| format!("POST {url}"))?
+        .error_for_status()
+        .with_context(|| format!("username availability check failed for {username_base}"))?;
+    let body: Value = response
+        .json()
+        .await
+        .context("decoding availability response")?;
+    Ok(body
+        .get(username_base)
+        .and_then(Value::as_str)
+        .is_some_and(|status| status == "AVAILABLE"))
+}
+
 /// Register (or confirm) the signing host's lite username and wait until the
 /// People-chain `Resources.Consumers` record exists. Returns the candidate
 /// account's SS58 address.

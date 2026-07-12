@@ -14,9 +14,14 @@ pub mod ring;
 pub mod rpc;
 pub mod slot;
 
+use std::time::{Duration, Instant};
+
 use blake2_rfc::blake2b::blake2b;
+use futures::FutureExt;
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
+use sp_crypto_hashing::twox_128;
+use tracing::{info, warn};
 
 use extension::{ChainState, Metadata};
 use ring::RingParams;
@@ -112,6 +117,37 @@ pub enum RegistrationOutcome {
     },
 }
 
+/// Result of a long-term storage claim attempt.
+pub enum LongTermStorageOutcome {
+    /// The extrinsic reached a block; the target should receive Bulletin
+    /// authorization once XCM/chain propagation completes.
+    Claimed {
+        /// Block hash the extrinsic landed in.
+        block_hash: String,
+        /// Claimed counter within the long-term storage period.
+        counter: u8,
+        /// Ring index the proof was built against.
+        ring_index: u32,
+    },
+}
+
+/// Bulletin authorization state for one account.
+#[derive(Debug, Clone, Copy)]
+pub struct BulletinAllowanceInfo {
+    pub remained_size: u64,
+    pub remained_transactions: u32,
+    pub expires_in: u32,
+    pub fetched_at: u32,
+}
+
+impl BulletinAllowanceInfo {
+    pub fn available(self) -> bool {
+        self.remained_size > 0
+            && self.remained_transactions > 0
+            && self.fetched_at < self.expires_in
+    }
+}
+
 /// Find the newest ring (scanning up to `lookback` back from the current index)
 /// that includes our member key. Reads the ring exponent once and stops at the
 /// first match.
@@ -190,6 +226,164 @@ pub async fn register_statement_account(
             Err(err) => return Err(err.to_string()),
         }
     }
+}
+
+/// Claim long-term Bulletin storage authorization for `target`, proving
+/// membership in the already-located `ring`, at People-chain `period`.
+pub async fn claim_long_term_storage(
+    rpc: &RpcClient,
+    metadata: &Metadata,
+    chain_state: &ChainState,
+    entropy: [u8; 32],
+    target: &[u8; 32],
+    period: u32,
+    ring: &RingParams,
+) -> Result<LongTermStorageOutcome, String> {
+    let revision = ring::read_ring_revision(rpc, metadata, ring.ring_index).await?;
+    let mut skipped_duplicate_counters = Vec::new();
+    loop {
+        let counter = slot::scan_long_term_storage_counter_excluding(
+            rpc,
+            metadata,
+            entropy,
+            period,
+            &skipped_duplicate_counters,
+        )
+        .await?;
+
+        let context = slot::derive_long_term_storage_context(period, counter);
+        let call = extrinsic::build_claim_long_term_storage_call(period, counter, target);
+        let message = extension::build_proof_message(metadata, &call, chain_state)?;
+        let domain = proof::domain_for_ring_exponent(ring.exponent)?;
+        let ring_proof = proof::ring_vrf_proof(domain, entropy, &ring.members, &context, &message)?;
+        let as_resources_extra =
+            extrinsic::build_long_term_storage_extra(&ring_proof, ring.ring_index, revision);
+        let extrinsic =
+            extrinsic::build_unsigned_extrinsic(metadata, chain_state, &call, &as_resources_extra)?;
+        info!(
+            period,
+            counter,
+            ring_index = ring.ring_index,
+            revision,
+            "submitting Bulletin long-term-storage claim"
+        );
+
+        match rpc.submit_and_watch(&extrinsic).await {
+            Ok(block_hash) => {
+                return Ok(LongTermStorageOutcome::Claimed {
+                    block_hash,
+                    counter,
+                    ring_index: ring.ring_index,
+                });
+            }
+            Err(err) if duplicate_submit_error(&err) => {
+                skipped_duplicate_counters.push(counter);
+            }
+            Err(err) => {
+                warn!(
+                    period,
+                    counter,
+                    ring_index = ring.ring_index,
+                    revision,
+                    %err,
+                    "Bulletin long-term-storage claim failed"
+                );
+                return Err(err.to_string());
+            }
+        }
+    }
+}
+
+/// Fetch Bulletin `TransactionStorage.Authorizations[Account(target)]`.
+pub async fn fetch_bulletin_allowance(
+    rpc: &RpcClient,
+    target: &[u8; 32],
+) -> Result<Option<BulletinAllowanceInfo>, String> {
+    let Some(bytes) = rpc
+        .get_storage(&bulletin_authorization_key(target))
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    let fetched_at = fetch_block_number(rpc).await?;
+    decode_bulletin_allowance(&bytes, fetched_at).map(Some)
+}
+
+/// Wait until Bulletin authorization appears with more remaining transactions
+/// than `current`.
+pub async fn wait_bulletin_authorization(
+    rpc: &RpcClient,
+    target: &[u8; 32],
+    current: Option<BulletinAllowanceInfo>,
+    timeout: Duration,
+) -> Result<BulletinAllowanceInfo, String> {
+    let started = Instant::now();
+    let current_transactions = current.map(|info| info.remained_transactions).unwrap_or(0);
+    loop {
+        if let Some(info) = fetch_bulletin_allowance(rpc, target).await? {
+            if info.remained_transactions > current_transactions && info.available() {
+                return Ok(info);
+            }
+        }
+        let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
+            return Err("timed out waiting for Bulletin authorization".to_string());
+        };
+        let delay = futures_timer::Delay::new(remaining.min(Duration::from_secs(2))).fuse();
+        futures::pin_mut!(delay);
+        delay.await;
+    }
+}
+
+/// `TransactionStorage.Authorizations[AuthorizationScope::Account(target)]`.
+fn bulletin_authorization_key(target: &[u8; 32]) -> Vec<u8> {
+    let mut scope = Vec::with_capacity(1 + 32);
+    scope.push(0x00);
+    scope.extend_from_slice(target);
+    [
+        twox_128(b"TransactionStorage").as_slice(),
+        twox_128(b"Authorizations").as_slice(),
+        &ring::blake2_128_concat(&scope),
+    ]
+    .concat()
+}
+
+fn decode_bulletin_allowance(
+    bytes: &[u8],
+    fetched_at: u32,
+) -> Result<BulletinAllowanceInfo, String> {
+    let mut input = bytes;
+    let transactions =
+        u32::decode(&mut input).map_err(|err| format!("authorization transactions: {err}"))?;
+    let transactions_allowance = u32::decode(&mut input)
+        .map_err(|err| format!("authorization transactions_allowance: {err}"))?;
+    let bytes_used =
+        u64::decode(&mut input).map_err(|err| format!("authorization bytes: {err}"))?;
+    let _bytes_permanent =
+        u64::decode(&mut input).map_err(|err| format!("authorization bytes_permanent: {err}"))?;
+    let bytes_allowance =
+        u64::decode(&mut input).map_err(|err| format!("authorization bytes_allowance: {err}"))?;
+    let expires_in =
+        u32::decode(&mut input).map_err(|err| format!("authorization expiration: {err}"))?;
+    Ok(BulletinAllowanceInfo {
+        remained_size: bytes_allowance.saturating_sub(bytes_used),
+        remained_transactions: transactions_allowance.saturating_sub(transactions),
+        expires_in,
+        fetched_at,
+    })
+}
+
+async fn fetch_block_number(rpc: &RpcClient) -> Result<u32, String> {
+    let header = rpc
+        .call("chain_getHeader", json!([]))
+        .await
+        .map_err(|err| err.to_string())?;
+    let number = header
+        .get("number")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "chain_getHeader returned no number".to_string())?;
+    u32::from_str_radix(number.trim_start_matches("0x"), 16)
+        .map_err(|err| format!("chain_getHeader number: {err}"))
 }
 
 fn duplicate_submit_error(message: &str) -> bool {

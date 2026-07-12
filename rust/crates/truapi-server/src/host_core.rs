@@ -207,7 +207,7 @@ impl SigningHostRuntime {
             config.bulletin_chain_genesis_hash,
             spawner,
         );
-        let signing_host = SigningHostRole::new(platform);
+        let signing_host = SigningHostRole::new(platform, services.clone());
         Self {
             services,
             signing_host,
@@ -247,6 +247,22 @@ impl SigningHostRuntime {
     pub async fn activate_local_session(&self, secret: Vec<u8>) -> Result<(), v01::GenericError> {
         self.signing_host
             .activate_local_session(secret)
+            .await
+            .map_err(|err| v01::GenericError {
+                reason: err.reason(),
+            })
+    }
+
+    /// Activate a wallet-local session from host-held secret material and
+    /// attach known identity metadata.
+    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.activate_local_session"))]
+    pub async fn activate_local_session_with_identity(
+        &self,
+        secret: Vec<u8>,
+        lite_username: Option<String>,
+    ) -> Result<(), v01::GenericError> {
+        self.signing_host
+            .activate_local_session_with_identity(secret, lite_username)
             .await
             .map_err(|err| v01::GenericError {
                 reason: err.reason(),

@@ -15,7 +15,25 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, info};
-use truapi_server::{FrameSink, PairingHostRuntime, ProductContext};
+use truapi_server::{
+    FrameSink, PairingHostRuntime, ProductContext, ProductRuntime, SigningHostRuntime,
+};
+
+pub trait ProductRuntimeFactory: Send + Sync + 'static {
+    fn product_runtime(&self, product: ProductContext, sink: Arc<dyn FrameSink>) -> ProductRuntime;
+}
+
+impl ProductRuntimeFactory for PairingHostRuntime {
+    fn product_runtime(&self, product: ProductContext, sink: Arc<dyn FrameSink>) -> ProductRuntime {
+        PairingHostRuntime::product_runtime(self, product, sink)
+    }
+}
+
+impl ProductRuntimeFactory for SigningHostRuntime {
+    fn product_runtime(&self, product: ProductContext, sink: Arc<dyn FrameSink>) -> ProductRuntime {
+        SigningHostRuntime::product_runtime(self, product, sink)
+    }
+}
 
 /// Frame sink that writes each outgoing protocol frame as one binary message.
 struct WsFrameSink {
@@ -43,7 +61,7 @@ pub async fn bind(addr: SocketAddr) -> Result<TcpListener> {
 /// this inside a `tokio::task::LocalSet`. The runtime's own subscription work
 /// is `Send` and still runs on the multi-thread pool via the tokio spawner.
 pub async fn accept_loop(
-    runtime: Arc<PairingHostRuntime>,
+    runtime: Arc<dyn ProductRuntimeFactory>,
     product_id: String,
     listener: TcpListener,
 ) -> Result<()> {
@@ -62,7 +80,7 @@ pub async fn accept_loop(
 }
 
 async fn serve_connection(
-    runtime: Arc<PairingHostRuntime>,
+    runtime: Arc<dyn ProductRuntimeFactory>,
     product_id: String,
     stream: TcpStream,
 ) -> Result<()> {

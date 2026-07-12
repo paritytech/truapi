@@ -18,7 +18,7 @@ truapi-platform = { path = "../truapi-platform" }
 truapi-server = { path = "../truapi-server" }
 anyhow = "1"
 async-trait = "0.1"
-bip39 = "2"
+bip39 = { version = "2", features = ["rand"] }
 blake2-rfc = { version = "0.2", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
 frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
@@ -30,6 +30,7 @@ scale-info = { version = "2.11", default-features = false, features = ["decode"]
 sp-crypto-hashing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "io-std", "net", "time", "signal", "process"] }
 tokio-stream = { version = "0.1", features = ["sync"] }

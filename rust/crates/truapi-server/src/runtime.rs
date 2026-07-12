@@ -24,7 +24,8 @@ mod statement_store_rpc;
 
 use core::future::Future;
 use core::time::Duration;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use crate::chain_runtime::RuntimeFailure;
 use crate::host_logic::bulletin::preimage_key;
@@ -218,6 +219,8 @@ pub struct ProductRuntimeHost {
     /// Stable per-product-runtime id used to scope long-lived chain follow
     /// operation ids within one shared host runtime.
     core_instance: u64,
+    /// Host-owned transaction operation ids mapped to provider operation ids.
+    transaction_operations: Mutex<HashMap<String, TransactionOperation>>,
 }
 
 impl ProductRuntimeHost {
@@ -233,6 +236,7 @@ impl ProductRuntimeHost {
             authority,
             product,
             core_instance,
+            transaction_operations: Mutex::new(HashMap::new()),
         }
     }
 
@@ -321,6 +325,7 @@ impl ProductRuntimeHost {
             authority: pairing_host.clone(),
             product,
             core_instance,
+            transaction_operations: Mutex::new(HashMap::new()),
         };
         (host, pairing_host)
     }
@@ -377,6 +382,16 @@ impl ProductRuntimeHost {
     fn follow_id(&self, id: &str) -> String {
         format!("c{}:{id}", self.core_instance)
     }
+
+    fn transaction_id(&self) -> String {
+        format!("c{}:tx:{}", self.core_instance, nanoid::nanoid!(10))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TransactionOperation {
+    genesis_hash: Vec<u8>,
+    provider_operation_id: String,
 }
 
 impl ProductRuntimeHost {
@@ -1566,12 +1581,34 @@ impl Chain for ProductRuntimeHost {
             },
         ))
         .await?;
-        self.services
+        let genesis_hash = inner.genesis_hash.clone();
+        let response = self
+            .services
             .chain
             .remote_chain_transaction_broadcast(inner)
             .await
-            .map(RemoteChainTransactionBroadcastResponse::V1)
-            .map_err(runtime_failure_to_call_error)
+            .map_err(runtime_failure_to_call_error)?;
+        let Some(provider_operation_id) = response.operation_id else {
+            return Ok(RemoteChainTransactionBroadcastResponse::V1(
+                v01::RemoteChainTransactionBroadcastResponse { operation_id: None },
+            ));
+        };
+        let operation_id = self.transaction_id();
+        self.transaction_operations
+            .lock()
+            .expect("transaction operations mutex poisoned")
+            .insert(
+                operation_id.clone(),
+                TransactionOperation {
+                    genesis_hash,
+                    provider_operation_id,
+                },
+            );
+        Ok(RemoteChainTransactionBroadcastResponse::V1(
+            v01::RemoteChainTransactionBroadcastResponse {
+                operation_id: Some(operation_id),
+            },
+        ))
     }
 
     #[instrument(skip_all, fields(runtime.method = "chain.stop_transaction"))]
@@ -1582,16 +1619,56 @@ impl Chain for ProductRuntimeHost {
     ) -> Result<RemoteChainTransactionStopResponse, CallError<RemoteChainTransactionStopError>>
     {
         let RemoteChainTransactionStopRequest::V1(inner) = request;
-        // We intentionally forward the provider operation id here. Transaction
-        // operation ids are node-assigned and short-lived, so cross-product
-        // collision or guessing is not worth local id indirection yet.
-        self.services
+        let operation = {
+            let operations = self
+                .transaction_operations
+                .lock()
+                .expect("transaction operations mutex poisoned");
+            let Some(operation) = operations.get(&inner.operation_id).cloned() else {
+                return Err(CallError::HostFailure {
+                    reason: format!("unknown transaction operation id: {}", inner.operation_id),
+                });
+            };
+            if operation.genesis_hash != inner.genesis_hash {
+                return Err(CallError::HostFailure {
+                    reason: "transaction operation id belongs to a different chain".to_string(),
+                });
+            }
+            operation
+        };
+        let stop_request = v01::RemoteChainTransactionStopRequest {
+            genesis_hash: operation.genesis_hash,
+            operation_id: operation.provider_operation_id,
+        };
+        let result = self
+            .services
             .chain
-            .remote_chain_transaction_stop(inner)
+            .remote_chain_transaction_stop(stop_request)
             .await
+            .or_else(|failure| {
+                if transaction_operation_already_finished(&failure) {
+                    Ok(())
+                } else {
+                    Err(failure)
+                }
+            })
             .map(|()| RemoteChainTransactionStopResponse::V1)
-            .map_err(runtime_failure_to_call_error)
+            .map_err(runtime_failure_to_call_error);
+        if result.is_ok() {
+            self.transaction_operations
+                .lock()
+                .expect("transaction operations mutex poisoned")
+                .remove(&inner.operation_id);
+        }
+        result
     }
+}
+
+fn transaction_operation_already_finished(failure: &RuntimeFailure) -> bool {
+    failure
+        .reason()
+        .to_ascii_lowercase()
+        .contains("invalid operation id")
 }
 
 // ---------------------------------------------------------------------------
@@ -2907,6 +2984,150 @@ mod tests {
             other => panic!("expected chain broadcast permission denial, got {other:?}"),
         }
         assert!(platform.sent_rpc.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn chain_stop_transaction_uses_host_operation_id_and_accepts_finished_remote_op() {
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: vec![
+                r#"{"jsonrpc":"2.0","id":"truapi:1","result":"remote-op"}"#.to_string(),
+                r#"{"jsonrpc":"2.0","id":"truapi:2","error":{"code":-32602,"message":"Invalid operation id"}}"#.to_string(),
+            ],
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let genesis_hash = vec![7u8; 32];
+        let broadcast = futures::executor::block_on(Chain::broadcast_transaction(
+            &host,
+            &cx,
+            RemoteChainTransactionBroadcastRequest::V1(
+                v01::RemoteChainTransactionBroadcastRequest {
+                    genesis_hash: genesis_hash.clone(),
+                    transaction: vec![1, 2, 3],
+                },
+            ),
+        ))
+        .unwrap();
+        let RemoteChainTransactionBroadcastResponse::V1(broadcast) = broadcast;
+        let operation_id = broadcast.operation_id.expect("host operation id");
+        assert!(operation_id.starts_with("c"));
+        assert!(operation_id.contains(":tx:"));
+        assert_ne!(operation_id, "remote-op");
+
+        futures::executor::block_on(Chain::stop_transaction(
+            &host,
+            &cx,
+            RemoteChainTransactionStopRequest::V1(v01::RemoteChainTransactionStopRequest {
+                genesis_hash,
+                operation_id: operation_id.clone(),
+            }),
+        ))
+        .expect("finished provider operation should count as stopped");
+
+        let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        let stop_request: serde_json::Value = serde_json::from_str(
+            sent.iter()
+                .find(|request| request.contains("transaction_v1_stop"))
+                .expect("remote stop request sent"),
+        )
+        .unwrap();
+        assert_eq!(stop_request["params"][0], "remote-op");
+        assert_ne!(stop_request["params"][0], operation_id);
+    }
+
+    #[test]
+    fn chain_stop_transaction_rejects_unknown_host_operation_id() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(Chain::stop_transaction(
+            &host,
+            &cx,
+            RemoteChainTransactionStopRequest::V1(v01::RemoteChainTransactionStopRequest {
+                genesis_hash: vec![7u8; 32],
+                operation_id: "missing-op".to_string(),
+            }),
+        ))
+        .unwrap_err();
+        assert!(
+            matches!(err, CallError::HostFailure { ref reason } if reason.contains("unknown transaction operation id")),
+            "unexpected error: {err:?}",
+        );
+        assert!(platform.sent_rpc.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn chain_stop_transaction_keeps_operation_retryable_after_remote_failure() {
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: vec![
+                r#"{"jsonrpc":"2.0","id":"truapi:1","result":"remote-op"}"#.to_string(),
+                r#"{"jsonrpc":"2.0","id":"truapi:2","error":{"code":-32000,"message":"temporary stop failure"}}"#.to_string(),
+                r#"{"jsonrpc":"2.0","id":"truapi:3","result":null}"#.to_string(),
+            ],
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let genesis_hash = vec![7u8; 32];
+        let broadcast = futures::executor::block_on(Chain::broadcast_transaction(
+            &host,
+            &cx,
+            RemoteChainTransactionBroadcastRequest::V1(
+                v01::RemoteChainTransactionBroadcastRequest {
+                    genesis_hash: genesis_hash.clone(),
+                    transaction: vec![1, 2, 3],
+                },
+            ),
+        ))
+        .unwrap();
+        let RemoteChainTransactionBroadcastResponse::V1(broadcast) = broadcast;
+        let operation_id = broadcast.operation_id.expect("host operation id");
+
+        let first_stop = futures::executor::block_on(Chain::stop_transaction(
+            &host,
+            &cx,
+            RemoteChainTransactionStopRequest::V1(v01::RemoteChainTransactionStopRequest {
+                genesis_hash: genesis_hash.clone(),
+                operation_id: operation_id.clone(),
+            }),
+        ))
+        .unwrap_err();
+        assert!(
+            matches!(first_stop, CallError::HostFailure { ref reason } if reason.contains("temporary stop failure")),
+            "unexpected error: {first_stop:?}",
+        );
+
+        futures::executor::block_on(Chain::stop_transaction(
+            &host,
+            &cx,
+            RemoteChainTransactionStopRequest::V1(v01::RemoteChainTransactionStopRequest {
+                genesis_hash,
+                operation_id,
+            }),
+        ))
+        .expect("operation should remain retryable");
+
+        let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        let stop_operation_ids = sent
+            .iter()
+            .filter(|request| request.contains("transaction_v1_stop"))
+            .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
+            .map(|request| request["params"][0].clone())
+            .collect::<Vec<_>>();
+        assert_eq!(stop_operation_ids, vec!["remote-op", "remote-op"]);
     }
 
     #[test]

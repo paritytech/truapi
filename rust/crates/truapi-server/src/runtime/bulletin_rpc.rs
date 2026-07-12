@@ -22,6 +22,7 @@ use subxt::tx::{
     SubmittableTransaction, TransactionInBlock, TransactionInvalid, TransactionStatus,
     TransactionUnknown, ValidationResult,
 };
+use subxt_rpcs::RpcClient;
 use tracing::{instrument, warn};
 use truapi::CallContext;
 use truapi_platform::BulletinAllowanceKey;
@@ -156,6 +157,15 @@ impl BulletinRpc {
         }
     }
 
+    /// Open a raw RPC client over the configured Bulletin chain.
+    pub(crate) async fn client(&self, label: &'static str) -> Result<RpcClient, String> {
+        self.chain
+            .rpc_client(label, &self.genesis_hash)
+            .await
+            .map(RpcClient::new)
+            .map_err(|failure| failure.reason())
+    }
+
     /// Submit `value` as a Bulletin preimage signed by `allowance`, returning
     /// the preimage key once the transaction is included and its dispatch
     /// succeeded.
@@ -275,18 +285,32 @@ impl BulletinRpc {
                     .map_err(|error| BulletinSubmitError::ChainUnavailable {
                         reason: format!("block {} unavailable: {error}", block.number()),
                     })?;
-            let signed = build_signed_store_transaction(&at_block, signer, value)
-                .await
-                .map_err(map_store_transaction_build_error)?;
+            let signed = match build_signed_store_transaction(&at_block, signer, value).await {
+                Ok(signed) => signed,
+                Err(error) => {
+                    warn!(
+                        block = block.number(),
+                        error = %error,
+                        "Bulletin store transaction assembly failed"
+                    );
+                    return Err(map_store_transaction_build_error(error));
+                }
+            };
 
             self.enter_phase("dry-run");
-            let validity =
-                signed
-                    .validate()
-                    .await
-                    .map_err(|error| BulletinSubmitError::ChainUnavailable {
+            let validity = match signed.validate().await {
+                Ok(validity) => validity,
+                Err(error) => {
+                    warn!(
+                        block = block.number(),
+                        error = %error,
+                        "Bulletin transaction dry-run failed"
+                    );
+                    return Err(BulletinSubmitError::ChainUnavailable {
                         reason: format!("transaction dry-run unavailable: {error}"),
-                    })?;
+                    });
+                }
+            };
             match Self::classify_dry_run_validity(validity)? {
                 DryRunStatus::Valid => return Ok(signed),
                 DryRunStatus::AllowanceRejected
