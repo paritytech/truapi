@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test dev dev-bootstrap dev-link-check e2e-dotli headless matrix explorer
+.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test dev dev-bootstrap dev-link-check e2e-dotli headless install matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -53,6 +53,9 @@ build: ## Build the Rust workspace and the TypeScript client.
 headless: ## Build everything the headless-host e2e needs; then run rust/crates/truapi-host-cli/e2e/run.sh.
 	cargo build -p truapi-host-cli
 	cd $(TRUAPI_PKG) && npm run build
+
+install: headless ## Install the truapi-host CLI into Cargo's bin dir; use as `make headless install`.
+	cargo install --path rust/crates/truapi-host-cli --bin truapi-host --locked --force
 
 codegen: ## Regenerate generated TS/Rust artifacts from the Rust crates.
 	./scripts/codegen.sh

@@ -24,7 +24,7 @@ One binary, `truapi-host`:
 ## Quick start
 
 ```bash
-make headless                                # build the CLI + JS client (once)
+make headless install                        # build deps + install truapi-host (once)
 rust/crates/truapi-host-cli/e2e/run.sh       # run js/scripts/battery.ts end-to-end
 rust/crates/truapi-host-cli/e2e/run.sh path/to/my-script.ts   # or a custom script
 ```
@@ -122,20 +122,19 @@ membership and can submit a test registration.
 ## Manual use (two terminals)
 
 ```bash
-make headless
-BIN=target/debug/truapi-host
+make headless install
 
 # Terminal 1 — pairing host runs a product script and prints PAIRING_DEEPLINK:
-$BIN pairing-host --product-id myapp.dot --script js/scripts/battery.ts --auto-accept
+truapi-host pairing-host --product-id myapp.dot --script js/scripts/battery.ts --auto-accept
 
 # Terminal 2 — hand the deeplink to a signing host (registers allowance, signs).
 # The wallet mnemonic comes from --mnemonic / $HOST_CLI_SIGNER_MNEMONIC when set;
 # otherwise the CLI auto-selects or creates an attested account.
-$BIN signing-host --deeplink '<deeplink>' --auto-accept
-HOST_CLI_SIGNER_MNEMONIC="spin battle …" $BIN signing-host --deeplink '<deeplink>' --auto-accept
+truapi-host signing-host --deeplink '<deeplink>' --auto-accept
+HOST_CLI_SIGNER_MNEMONIC="spin battle …" truapi-host signing-host --deeplink '<deeplink>' --auto-accept
 
 # Inspect on-chain statement-store allowance for a mnemonic:
-$BIN alloc-check --mnemonic "spin battle …" --lookback 100
+truapi-host alloc-check --mnemonic "spin battle …" --lookback 100
 ```
 
 Both hosts take `--network` (default `paseo-next-v2`). The network preset owns
