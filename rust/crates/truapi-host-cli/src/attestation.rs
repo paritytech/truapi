@@ -9,10 +9,8 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use tokio_tungstenite::connect_async;
-use tokio_tungstenite::tungstenite::Message;
+use subxt_rpcs::client::{RpcClient, rpc_params};
 use tracing::{info, warn};
 use truapi_server::host_logic::attestation::build_lite_registration;
 use truapi_server::host_logic::identity::{
@@ -215,28 +213,15 @@ async fn wait_for_consumer_record(people_ws: &str, storage_key: &str) -> Result<
     bail!("Resources.Consumers record did not appear after attestation")
 }
 
-/// One `state_getStorage` request over a fresh WebSocket; returns the value
+/// One `state_getStorage` request over a fresh RPC connection; returns the value
 /// hex when present.
 async fn query_storage(people_ws: &str, storage_key: &str) -> Result<Option<String>> {
-    let (mut ws, _) = connect_async(people_ws).await?;
-    let request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "state_getStorage",
-        "params": [storage_key],
-    });
-    ws.send(Message::Text(request.to_string())).await?;
-    while let Some(message) = ws.next().await {
-        if let Message::Text(text) = message? {
-            let value: Value = serde_json::from_str(&text)?;
-            if value.get("id").and_then(Value::as_u64) == Some(1) {
-                let _ = ws.close(None).await;
-                return Ok(value
-                    .get("result")
-                    .and_then(Value::as_str)
-                    .map(str::to_string));
-            }
-        }
-    }
-    Ok(None)
+    let rpc = RpcClient::from_insecure_url(people_ws)
+        .await
+        .with_context(|| format!("connect {people_ws}"))?;
+    let value = rpc
+        .request::<Value>("state_getStorage", rpc_params![storage_key])
+        .await
+        .context("rpc state_getStorage")?;
+    Ok(value.as_str().map(str::to_string))
 }
