@@ -22,12 +22,15 @@ use subxt::tx::{
     SubmittableTransaction, TransactionInBlock, TransactionInvalid, TransactionStatus,
     TransactionUnknown, ValidationResult,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use subxt_rpcs::RpcClient;
 use tracing::{instrument, warn};
 use truapi::CallContext;
 use truapi_platform::BulletinAllowanceKey;
 
-use crate::chain_runtime::{ChainRuntime, RuntimeFailure};
+use crate::chain_runtime::ChainRuntime;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::chain_runtime::RuntimeFailure;
 use crate::host_logic::bulletin::{
     STORE_PALLET_NAME, allowance_signer, build_signed_store_transaction, preimage_key,
 };
@@ -158,6 +161,7 @@ impl BulletinRpc {
     }
 
     /// Open a raw RPC client over the configured Bulletin chain.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) async fn client(&self, label: &'static str) -> Result<RpcClient, RuntimeFailure> {
         self.chain
             .rpc_client(label, &self.genesis_hash)

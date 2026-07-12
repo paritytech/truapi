@@ -527,6 +527,7 @@ impl ChainRuntime {
     }
 
     /// Raw JSON-RPC client for the chain identified by `genesis_hash`.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) async fn rpc_client(
         &self,
         method: &'static str,

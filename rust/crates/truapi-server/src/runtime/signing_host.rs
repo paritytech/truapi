@@ -49,6 +49,7 @@ const BYTES_WRAP_SUFFIX: &[u8] = b"</Bytes>";
 
 /// Wallet-local account authority for a signing host.
 pub(crate) struct SigningHost {
+    #[cfg(not(target_arch = "wasm32"))]
     services: Arc<RuntimeServices>,
     session_state: Arc<SessionState>,
     auth_state: AuthStateMachine,
@@ -58,7 +59,11 @@ pub(crate) struct SigningHost {
 
 impl SigningHost {
     pub(crate) fn new(platform: Arc<dyn Platform>, services: Arc<RuntimeServices>) -> Arc<Self> {
+        #[cfg(target_arch = "wasm32")]
+        let _ = services;
+
         Arc::new(Self {
+            #[cfg(not(target_arch = "wasm32"))]
             services,
             session_state: SessionState::new(),
             auth_state: AuthStateMachine::new(platform),
@@ -419,6 +424,7 @@ fn product_authority_error(err: ProductAccountError) -> AuthorityError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn allocation_error(reason: String) -> AuthorityError {
     AuthorityError::Unavailable { reason }
 }

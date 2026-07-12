@@ -320,18 +320,28 @@ pub async fn wait_bulletin_authorization(
     let started = Instant::now();
     let baseline = current.filter(|info| info.available());
     loop {
-        if let Some(info) = fetch_bulletin_allowance(rpc, target).await? {
-            if authorization_refreshed(info, baseline) {
-                return Ok(info);
-            }
-        }
-        let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
-            return Err("timed out waiting for Bulletin authorization".to_string());
+        let Some(info) = fetch_bulletin_allowance(rpc, target).await? else {
+            wait_before_next_bulletin_authorization_poll(started, timeout).await?;
+            continue;
         };
-        let delay = futures_timer::Delay::new(remaining.min(Duration::from_secs(2))).fuse();
-        futures::pin_mut!(delay);
-        delay.await;
+        if authorization_refreshed(info, baseline) {
+            return Ok(info);
+        }
+        wait_before_next_bulletin_authorization_poll(started, timeout).await?;
     }
+}
+
+async fn wait_before_next_bulletin_authorization_poll(
+    started: Instant,
+    timeout: Duration,
+) -> Result<(), String> {
+    let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
+        return Err("timed out waiting for Bulletin authorization".to_string());
+    };
+    let delay = futures_timer::Delay::new(remaining.min(Duration::from_secs(2))).fuse();
+    futures::pin_mut!(delay);
+    delay.await;
+    Ok(())
 }
 
 fn authorization_refreshed(

@@ -24,7 +24,9 @@ use truapi_platform::{
 
 use super::SigningHost;
 use crate::host_logic::entropy::root_entropy_source;
-use crate::host_logic::product_account::{ProductAccountError, derive_sr25519_hard_path};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::host_logic::product_account::ProductAccountError;
+use crate::host_logic::product_account::derive_sr25519_hard_path;
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
     self, CreateTransactionPayload, IncomingSsoRequest, OnExistingAllowancePolicy, RemoteMessage,
@@ -522,6 +524,7 @@ fn current_unix_secs() -> Result<u64, String> {
         .map_err(|_| "system clock before UNIX epoch".to_string())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn product_account_error(err: ProductAccountError) -> String {
     err.to_string()
 }

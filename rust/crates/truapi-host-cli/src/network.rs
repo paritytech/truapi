@@ -1,9 +1,10 @@
 use clap::ValueEnum;
 
 /// Supported live network presets for the headless hosts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum Network {
     #[value(name = "paseo-next-v2")]
+    #[default]
     PaseoNextV2,
 }
 
@@ -47,12 +48,6 @@ const PASEO_NEXT_V2_CHAIN_ENDPOINTS: &[ChainEndpoint] = &[
         ws: "wss://paseo-bulletin-next-rpc.polkadot.io",
     },
 ];
-
-impl Default for Network {
-    fn default() -> Self {
-        Self::PaseoNextV2
-    }
-}
 
 /// Resolved RPC/backend/genesis values for one network preset.
 #[derive(Debug, Clone, Copy)]
