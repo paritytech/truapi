@@ -31,6 +31,8 @@ export VITE_NETWORKS
 # preview by default. Override with `DOTLI_PREVIEW=preview` to test production
 # preview behavior.
 DOTLI_PREVIEW ?= preview:debug
+TRUAPI_WASM_PROFILE ?= dev
+E2E_DOTLI_WASM_PROFILE ?= release
 
 help: ## Show this help.
 	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n" } \
@@ -112,7 +114,7 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 	if [ ! -f "$(HOST_CALLBACKS_GENERATED)" ] || [ ! -f "$(HOST_WASM_ADAPTER_GENERATED)" ] || [ ! -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" ]; then ./scripts/codegen.sh; fi
 	cd $(TRUAPI_PKG) && npm run build
 	cd $(HOST_WASM_PKG) && npm run build
-	TRUAPI_WASM_PROFILE=dev $(MAKE) wasm
+	TRUAPI_WASM_PROFILE=$(TRUAPI_WASM_PROFILE) $(MAKE) wasm
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
 	cd $(DOTLI) && bun install --frozen-lockfile
 	$(MAKE) dev-link-check
@@ -146,7 +148,7 @@ e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_
 	if [ "$$SIGNER_BOT_BASE_URL_ORIGIN" != "file" ] && [ -n "$$SIGNER_BOT_BASE_URL_ENV" ]; then SIGNER_BOT_BASE_URL="$$SIGNER_BOT_BASE_URL_ENV"; export SIGNER_BOT_BASE_URL; fi; \
 	if [ "$$SIGNER_BOT_NETWORK_ORIGIN" != "file" ] && [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
 	if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_SVC_TOKEN" || { echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1; }; fi; \
-	$(MAKE) dev-bootstrap; \
+	TRUAPI_WASM_PROFILE=$(E2E_DOTLI_WASM_PROFILE) $(MAKE) dev-bootstrap; \
 	cd $(PLAYGROUND) && bun tests/e2e/dotli-diagnosis.ts
 
 matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
