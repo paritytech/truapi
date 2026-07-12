@@ -27,7 +27,7 @@ use tracing::{instrument, warn};
 use truapi::CallContext;
 use truapi_platform::BulletinAllowanceKey;
 
-use crate::chain_runtime::ChainRuntime;
+use crate::chain_runtime::{ChainRuntime, RuntimeFailure};
 use crate::host_logic::bulletin::{
     STORE_PALLET_NAME, allowance_signer, build_signed_store_transaction, preimage_key,
 };
@@ -158,12 +158,11 @@ impl BulletinRpc {
     }
 
     /// Open a raw RPC client over the configured Bulletin chain.
-    pub(crate) async fn client(&self, label: &'static str) -> Result<RpcClient, String> {
+    pub(crate) async fn client(&self, label: &'static str) -> Result<RpcClient, RuntimeFailure> {
         self.chain
             .rpc_client(label, &self.genesis_hash)
             .await
             .map(RpcClient::new)
-            .map_err(|failure| failure.reason())
     }
 
     /// Submit `value` as a Bulletin preimage signed by `allowance`, returning

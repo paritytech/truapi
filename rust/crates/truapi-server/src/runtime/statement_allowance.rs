@@ -310,8 +310,7 @@ pub async fn fetch_bulletin_allowance(
     decode_bulletin_allowance(&bytes, fetched_at).map(Some)
 }
 
-/// Wait until Bulletin authorization appears with more remaining transactions
-/// than `current`.
+/// Wait until Bulletin authorization is available and fresher than `current`.
 pub async fn wait_bulletin_authorization(
     rpc: &RpcClient,
     target: &[u8; 32],
@@ -319,10 +318,10 @@ pub async fn wait_bulletin_authorization(
     timeout: Duration,
 ) -> Result<BulletinAllowanceInfo, String> {
     let started = Instant::now();
-    let current_transactions = current.map(|info| info.remained_transactions).unwrap_or(0);
+    let baseline = current.filter(|info| info.available());
     loop {
         if let Some(info) = fetch_bulletin_allowance(rpc, target).await? {
-            if info.remained_transactions > current_transactions && info.available() {
+            if authorization_refreshed(info, baseline) {
                 return Ok(info);
             }
         }
@@ -332,6 +331,23 @@ pub async fn wait_bulletin_authorization(
         let delay = futures_timer::Delay::new(remaining.min(Duration::from_secs(2))).fuse();
         futures::pin_mut!(delay);
         delay.await;
+    }
+}
+
+fn authorization_refreshed(
+    info: BulletinAllowanceInfo,
+    baseline: Option<BulletinAllowanceInfo>,
+) -> bool {
+    if !info.available() {
+        return false;
+    }
+    match baseline {
+        None => true,
+        Some(current) => {
+            info.remained_transactions > current.remained_transactions
+                || info.remained_size > current.remained_size
+                || info.expires_in > current.expires_in
+        }
     }
 }
 
@@ -391,4 +407,49 @@ fn duplicate_submit_error(message: &str) -> bool {
     message.contains("priority is too low")
         || message.contains("already imported")
         || message.contains("temporarily banned")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn allowance(
+        remained_size: u64,
+        remained_transactions: u32,
+        expires_in: u32,
+    ) -> BulletinAllowanceInfo {
+        BulletinAllowanceInfo {
+            remained_size,
+            remained_transactions,
+            expires_in,
+            fetched_at: 10,
+        }
+    }
+
+    #[test]
+    fn bulletin_refresh_accepts_available_state_when_baseline_was_unusable() {
+        let exhausted_by_size = allowance(0, 4, 100);
+        let refreshed_same_transactions = allowance(4096, 4, 100);
+
+        assert!(!exhausted_by_size.available());
+        assert!(authorization_refreshed(
+            refreshed_same_transactions,
+            Some(exhausted_by_size).filter(|info| info.available()),
+        ));
+    }
+
+    #[test]
+    fn bulletin_refresh_accepts_size_only_increase() {
+        let baseline = allowance(128, 4, 100);
+        let refreshed = allowance(4096, 4, 100);
+
+        assert!(authorization_refreshed(refreshed, Some(baseline)));
+    }
+
+    #[test]
+    fn bulletin_refresh_rejects_unchanged_available_state() {
+        let baseline = allowance(128, 4, 100);
+
+        assert!(!authorization_refreshed(baseline, Some(baseline)));
+    }
 }

@@ -15,14 +15,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 BIN="$ROOT/target/debug/truapi-host"
-SCRIPT="${1:-$ROOT/rust/crates/truapi-host-cli/js/scripts/battery.ts}"
-PRODUCT_ID="${PRODUCT_ID:-headless-playground.dot}"
-FRAME="${FRAME:-127.0.0.1:9955}"
 
 # Load HOST_CLI_SIGNER_MNEMONIC / TRUAPI_HOST_BASE_PATH (and any other vars)
 # from a gitignored e2e/.env if present.
 ENV_FILE="$(dirname "$0")/.env"
 [ -f "$ENV_FILE" ] && { set -a; . "$ENV_FILE"; set +a; }
+
+SCRIPT="${1:-$ROOT/rust/crates/truapi-host-cli/js/scripts/battery.ts}"
+PRODUCT_ID="${PRODUCT_ID:-headless-playground.dot}"
+FRAME="${FRAME:-127.0.0.1:9955}"
 
 [ -x "$BIN" ] || { echo "missing $BIN — run: make headless" >&2; exit 2; }
 

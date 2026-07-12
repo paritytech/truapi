@@ -205,6 +205,10 @@ async fn run_alloc_check(
         .to_entropy();
     let bandersnatch = alloc::bandersnatch_entropy(&entropy);
 
+    if submit && target.is_none() {
+        bail!("--target is required with --submit; the all-zero default is read-only");
+    }
+
     let target = match target {
         Some(hex_str) => {
             let bytes = hex::decode(hex_str.strip_prefix("0x").unwrap_or(&hex_str))

@@ -32,6 +32,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+subxt-rpcs = { version = "0.50.1", default-features = false, features = ["jsonrpsee", "native"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "io-std", "net", "time", "signal", "process"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-tungstenite = { version = "0.24", features = ["connect", "rustls-tls-webpki-roots"] }

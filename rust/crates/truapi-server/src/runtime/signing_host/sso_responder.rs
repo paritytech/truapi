@@ -422,7 +422,11 @@ pub(super) async fn allocate_bulletin_allowance(
     let target = allowance.public.to_bytes();
 
     let bulletin_rpc = statement_allowance::rpc::RpcClient::new(
-        services.bulletin.client("bulletin allowance").await?,
+        services
+            .bulletin
+            .client("bulletin allowance")
+            .await
+            .map_err(|err| err.reason())?,
     );
     let current_allowance = fetch_bulletin_allowance(&bulletin_rpc, &target).await?;
     if matches!(policy, OnExistingAllowancePolicy::Ignore)
