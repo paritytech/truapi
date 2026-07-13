@@ -90,6 +90,22 @@ impl ChainProviderBuilder {
         Ok(())
     }
 
+    /// Seed a warm-start database blob (from
+    /// [`snapshot`](ChainProviderHandle::snapshot)) for the `0x`-prefixed
+    /// genesis hash, so its light client resumes from that finalized state
+    /// instead of re-syncing from the checkpoint.
+    #[cfg(feature = "smoldot")]
+    #[wasm_bindgen(js_name = setDatabase)]
+    pub fn set_database(&mut self, genesis_hash: &str, blob: String) -> Result<(), JsError> {
+        let genesis = parse_genesis(genesis_hash)?;
+        let builder = self
+            .inner
+            .take()
+            .ok_or_else(|| JsError::new("builder was already consumed by build()"))?;
+        self.inner = Some(builder.database(genesis, blob));
+        Ok(())
+    }
+
     /// Register every chain of the bundled network `name` (relay plus system
     /// parachains, with relay wiring and statement-store placement supplied by
     /// the catalog). Returns the network's genesis hashes.
@@ -153,6 +169,18 @@ impl ChainProviderHandle {
             inner: Arc::from(connection),
             responses: Arc::new(Mutex::new(responses)),
         })
+    }
+
+    /// Produce a warm-start database blob for the `0x`-prefixed genesis hash.
+    /// Persist it and feed it back via
+    /// [`setDatabase`](ChainProviderBuilder::set_database) on a later run.
+    #[cfg(feature = "smoldot")]
+    pub async fn snapshot(&self, genesis_hash: &str) -> Result<String, JsError> {
+        let genesis = parse_genesis(genesis_hash)?;
+        self.inner
+            .snapshot(genesis)
+            .await
+            .map_err(|err| JsError::new(&err.reason))
     }
 }
 

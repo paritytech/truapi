@@ -95,6 +95,17 @@ pub(crate) fn synthetic_error_frame(request: &str, message: &str) -> Option<Stri
     )
 }
 
+/// Extract a JSON-RPC `result` string from `frame` when its `id` matches `id`,
+/// or `None` otherwise. Used to pick a specific response out of a raw pipe.
+#[cfg(feature = "smoldot")]
+pub(crate) fn result_string_for_id(frame: &str, id: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(frame).ok()?;
+    if value.get("id")?.as_str()? != id {
+        return None;
+    }
+    value.get("result")?.as_str().map(str::to_owned)
+}
+
 #[cfg(all(test, feature = "smoldot"))]
 mod tests {
     use super::synthetic_error_frame;

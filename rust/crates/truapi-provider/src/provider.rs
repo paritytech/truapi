@@ -12,6 +12,10 @@ use crate::error::ProviderError;
 #[derive(Debug, Default)]
 pub struct EmbeddedChainProviderBuilder {
     chains: HashMap<[u8; 32], ChainSource>,
+    /// Warm-start database blobs keyed by genesis hash, applied to a
+    /// light-client chain at connect time if it has no explicit blob.
+    #[cfg(feature = "smoldot")]
+    databases: HashMap<[u8; 32], String>,
 }
 
 impl EmbeddedChainProviderBuilder {
@@ -28,11 +32,24 @@ impl EmbeddedChainProviderBuilder {
         self
     }
 
+    /// Seed a warm-start database blob (previously produced by
+    /// [`EmbeddedChainProvider::snapshot`]) for `genesis_hash`, so its light
+    /// client resumes from that finalized state instead of syncing from the
+    /// chain-spec checkpoint. Applies to catalog-resolved chains too, and is
+    /// ignored for a chain that already carries an explicit blob.
+    #[cfg(feature = "smoldot")]
+    pub fn database(mut self, genesis_hash: [u8; 32], blob: String) -> Self {
+        self.databases.insert(genesis_hash, blob);
+        self
+    }
+
     /// Build the provider. Light-client resources start lazily on the first
     /// light-client connect.
     pub fn build(self) -> EmbeddedChainProvider {
         EmbeddedChainProvider {
             chains: self.chains,
+            #[cfg(feature = "smoldot")]
+            databases: self.databases,
             #[cfg(feature = "smoldot")]
             light: crate::light::LightState::new(),
         }
@@ -53,6 +70,8 @@ impl EmbeddedChainProviderBuilder {
 /// call yields the live stream, later calls yield an ended stream.
 pub struct EmbeddedChainProvider {
     chains: HashMap<[u8; 32], ChainSource>,
+    #[cfg(feature = "smoldot")]
+    databases: HashMap<[u8; 32], String>,
     #[cfg(feature = "smoldot")]
     light: crate::light::LightState,
 }
@@ -78,6 +97,67 @@ impl EmbeddedChainProvider {
             ChainSource::LightClient { .. } => self.light.connect(chains, source).await,
         }
     }
+
+    /// Apply a seeded warm-start database blob to `source` if one exists for
+    /// `genesis_hash` and the source is a light client with no explicit blob.
+    #[cfg(feature = "smoldot")]
+    fn with_seeded_database(&self, genesis_hash: [u8; 32], mut source: ChainSource) -> ChainSource {
+        if let Some(blob) = self.databases.get(&genesis_hash)
+            && let ChainSource::LightClient {
+                database_content, ..
+            } = &mut source
+            && database_content.is_none()
+        {
+            *database_content = Some(blob.clone());
+        }
+        source
+    }
+
+    #[cfg(not(feature = "smoldot"))]
+    fn with_seeded_database(&self, _genesis_hash: [u8; 32], source: ChainSource) -> ChainSource {
+        source
+    }
+}
+
+/// Max size for a [`snapshot`](EmbeddedChainProvider::snapshot) database blob.
+#[cfg(feature = "smoldot")]
+const SNAPSHOT_MAX_BYTES: usize = 8_000_000;
+
+#[cfg(feature = "smoldot")]
+impl EmbeddedChainProvider {
+    /// Produce a warm-start database blob for `genesis_hash` by asking the
+    /// embedded light client for its finalized-database snapshot.
+    ///
+    /// Persist the returned string and feed it back on a later run via
+    /// [`EmbeddedChainProviderBuilder::database`] so the chain resumes from
+    /// finalized state instead of re-syncing from the checkpoint. Meaningful
+    /// only for light-client chains; a remote-node chain never answers and the
+    /// call resolves once that connection ends.
+    pub async fn snapshot(&self, genesis_hash: [u8; 32]) -> Result<String, GenericError> {
+        use futures::stream::StreamExt;
+
+        let connection = self.connect(genesis_hash).await?;
+        let mut responses = connection.responses();
+        let id = "truapi-provider:finalizedDatabase";
+        connection.send(format!(
+            concat!(
+                r#"{{"jsonrpc":"2.0","id":"{}","#,
+                r#""method":"chainHead_unstable_finalizedDatabase","params":[{}]}}"#
+            ),
+            id, SNAPSHOT_MAX_BYTES,
+        ));
+        while let Some(frame) = responses.next().await {
+            if let Some(result) = crate::error::result_string_for_id(&frame, id) {
+                connection.close();
+                return Ok(result);
+            }
+        }
+        connection.close();
+        Err(ProviderError::Transport {
+            reason: "connection ended before the finalized-database snapshot".to_owned(),
+        }
+        .into())
+    }
 }
 
 #[truapi_platform::async_trait]
@@ -91,14 +171,17 @@ impl ChainProvider for EmbeddedChainProvider {
         // the whole network — relay wiring and statement placement included —
         // from the genesis hash alone.
         if let Some(source) = self.chains.get(&genesis_hash) {
-            return Ok(self.connect_source(source, &self.chains).await?);
+            let source = self.with_seeded_database(genesis_hash, source.clone());
+            return Ok(self.connect_source(&source, &self.chains).await?);
         }
         #[cfg(feature = "networks")]
         if let Some(catalog) = crate::networks::catalog_network_chains(genesis_hash) {
             let source = catalog
                 .get(&genesis_hash)
-                .expect("catalog_network_chains includes the queried genesis");
-            return Ok(self.connect_source(source, &catalog).await?);
+                .expect("catalog_network_chains includes the queried genesis")
+                .clone();
+            let source = self.with_seeded_database(genesis_hash, source);
+            return Ok(self.connect_source(&source, &catalog).await?);
         }
         Err(ProviderError::UnknownGenesis {
             genesis: genesis_hash,
