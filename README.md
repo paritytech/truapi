@@ -58,6 +58,7 @@ rust/crates/
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
+  truapi-provider/       Network provider backends (WebSocket RPC or smoldot light-client)
   truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM surface
 js/packages/
   truapi/                  @parity/truapi TypeScript client

@@ -1,0 +1,116 @@
+[package]
+name = "truapi-provider"
+version = "0.1.0"
+edition.workspace = true
+description = "Network provider backends for ChainProvider: remote WebSocket JSON-RPC nodes on every target, plus an embedded smoldot light client on native targets"
+license = "MIT AND Apache-2.0"
+
+[lib]
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+# Builds the uniffi-bindgen binary used to generate the Swift bindings.
+[[bin]]
+name = "uniffi-bindgen"
+required-features = ["cli"]
+
+# wasm-pack's bundled wasm-opt rejects the bulk-memory ops modern rustc emits
+# for wasm32; skip it. The wasm-bindgen output is already valid for browsers,
+# and bundlers (e.g. Vite) optimize the asset downstream.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
+[features]
+default = ["ws"]
+ws = [
+    "dep:jsonrpsee-client-transport",
+    "dep:jsonrpsee-core",
+    "dep:tokio",
+    "dep:js-sys",
+    "dep:send_wrapper",
+    "dep:wasm-bindgen",
+    "dep:web-sys",
+]
+smoldot = [
+    "dep:futures-timer",
+    "dep:getrandom",
+    "dep:js-sys",
+    "dep:pin-project",
+    "dep:rand",
+    "dep:send_wrapper",
+    "dep:smoldot",
+    "dep:smoldot-light",
+    "dep:thiserror",
+    "dep:wasm-bindgen",
+    "dep:wasm-bindgen-futures",
+    "dep:web-sys",
+    "dep:web-time",
+]
+js = ["ws", "dep:wasm-bindgen-futures"]
+networks = ["smoldot"]
+# Swift/UniFFI bindings for native hosts (iOS, macOS, ...).
+uniffi = ["smoldot", "networks", "dep:uniffi"]
+# Builds the uniffi-bindgen binary (implies uniffi).
+cli = ["uniffi", "uniffi/cli"]
+
+[dependencies]
+truapi = { path = "../truapi" }
+truapi-platform = { path = "../truapi-platform" }
+derive_more = { version = "2", features = ["display"] }
+futures = "0.3"
+hex = "0.4"
+serde_json = "1"
+tracing = "0.1"
+url = "2"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+jsonrpsee-client-transport = { version = "0.24", features = ["ws", "tls-rustls-platform-verifier"], optional = true }
+jsonrpsee-core = { version = "0.24", features = ["client"], optional = true }
+tokio = { version = "1", features = ["rt", "sync"], optional = true }
+smoldot-light = { version = "1.3", default-features = false, features = ["std"], optional = true }
+rand = { version = "0.8", optional = true }
+thiserror = { version = "1", optional = true }
+uniffi = { version = "0.28", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+futures-timer = { version = "3", features = ["wasm-bindgen"], optional = true }
+getrandom = { version = "0.2", features = ["js"], optional = true }
+js-sys = { version = "0.3", optional = true }
+pin-project = { version = "1", optional = true }
+send_wrapper = { version = "0.6", optional = true }
+smoldot = { version = "2", default-features = false, features = ["std"], optional = true }
+smoldot-light = { version = "1.3", default-features = false, optional = true }
+thiserror = { version = "1", optional = true }
+wasm-bindgen = { version = "0.2.118", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", features = [
+    "BinaryType",
+    "CloseEvent",
+    "Event",
+    "MessageEvent",
+    "WebSocket",
+], optional = true }
+web-time = { version = "1", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+jsonrpsee = { version = "0.24", features = ["server"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time"] }
+tokio-tungstenite = "0.24"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[[example]]
+name = "paseo_demo"
+required-features = ["ws", "smoldot"]
+
+[[example]]
+name = "gateway"
+required-features = ["ws", "smoldot"]
+
+# `deny` rather than `forbid`: the `uniffi` feature scopes an `allow(unsafe_code)`
+# for UniFFI's generated FFI glue (see src/lib.rs). Every other build has no unsafe.
+[lints.rust]
+unsafe_code = "deny"

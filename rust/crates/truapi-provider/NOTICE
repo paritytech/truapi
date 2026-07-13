@@ -1,0 +1,19 @@
+truapi-provider
+
+This crate is licensed MIT (see the repository LICENSE) except for the files
+under src/light_platform_web/, which are vendored from subxt-lightclient and
+licensed under Apache-2.0 (see LICENSE-APACHE).
+
+Vendored components
+-------------------
+
+src/light_platform_web/{platform,helpers,socket}.rs
+  Copyright 2019-2026 Parity Technologies (UK) Ltd.
+  Vendored from subxt-lightclient 0.50.1 (github.com/paritytech/subxt,
+  crates/lightclient), which is dual-licensed Apache-2.0 OR GPL-3.0; used here
+  under Apache-2.0. The `onmessage` handler in socket.rs was modified to ignore
+  non-ArrayBuffer frames instead of panicking; otherwise the copy is faithful.
+
+The embedded light client itself (the `smoldot` / `smoldot-light` crates,
+GPL-3.0-or-later WITH Classpath-exception-2.0) is an ordinary Cargo dependency,
+linked under the Classpath exception; its source is not vendored here.
