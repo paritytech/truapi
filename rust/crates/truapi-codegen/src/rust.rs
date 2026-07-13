@@ -11,12 +11,15 @@ use anyhow::Result;
 
 use convert_case::{Case, Casing};
 
+use crate::platform::PlatformDefinition;
 use crate::rustdoc::*;
 
 mod dispatcher;
+mod wasm_bridge;
 mod wire_table;
 
 pub use dispatcher::generate_dispatcher;
+pub use wasm_bridge::generate_wasm_bridge;
 pub use wire_table::generate_wire_table;
 
 /// Generates the Rust wire dispatcher and wire-table sources into `output_dir`.
@@ -26,6 +29,20 @@ pub fn generate(api: &ApiDefinition, output_dir: &Path) -> Result<()> {
     fs::write(output_dir.join("dispatcher.rs"), dispatcher)?;
     let wire_table = generate_wire_table(api)?;
     fs::write(output_dir.join("wire_table.rs"), wire_table)?;
+    Ok(())
+}
+
+/// Generates the Rust wasm-bindgen platform bridge source into `output_dir`.
+pub fn generate_wasm_bridge_file(
+    definition: &PlatformDefinition,
+    api: &ApiDefinition,
+    output_dir: &Path,
+) -> Result<()> {
+    fs::create_dir_all(output_dir)?;
+    fs::write(
+        output_dir.join("generated_bridge.rs"),
+        generate_wasm_bridge(definition, api)?,
+    )?;
     Ok(())
 }
 

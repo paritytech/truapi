@@ -5,3 +5,11 @@ members = ["rust/crates/*"]
 [workspace.package]
 edition = "2024"
 license = "MIT"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = false

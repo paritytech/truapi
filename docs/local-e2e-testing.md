@@ -25,6 +25,21 @@ The chain below is also automated:
 The doc below is still the canonical narrative and the source of truth
 for failure modes — both the skills and CI cite it.
 
+`make e2e-dotli` is the end-to-end dotli + playground diagnosis harness. It
+starts the local dotli preview and playground, opens Chromium, signs out any
+restored host session, signs in through the signer-bot SSO service, runs the
+playground Diagnosis screen, and writes
+`playground/test-results/e2e-dotli/diagnosis-report.md`. Full automation
+requires `SIGNER_BOT_SVC_TOKEN`; `SIGNER_BOT_BASE_URL` and
+`SIGNER_BOT_NETWORK` default to dotli CI's signer-bot service and
+`paseo-next-v2`. Without the token, use
+`E2E_DOTLI_SMOKE=1 make e2e-dotli` to verify the local stack, browser launch,
+login click, TrUAPI debug logs, and QR/deeplink extraction without a phone.
+In root CI, the job also needs `DOTLI_CHECKOUT_TOKEN` to read the private
+dotli submodule. Without dotli access it reports a warning and skips the e2e
+job; with dotli access but without `SIGNER_BOT_SVC_TOKEN`, it runs the smoke
+path only.
+
 The order matters: each layer assumes the layer below it builds clean.
 Skip a step only if you are certain the change cannot affect that layer.
 
@@ -164,12 +179,19 @@ method from the UI.
 ```bash
 cd hosts/dotli
 bun run preview            # → http://localhost:5173
-# or, for the TrUAPI debug panel:
-bun run preview:debugger   # = VITE_APP_DEBUG=true bun run preview
 ```
 
-`preview:debugger` is recommended whenever you're investigating a wire
-issue — the debug panel logs every host↔product TrUAPI frame.
+When investigating a wire issue, raise the Rust core's log level from the
+host origin. The WASM worker bridge forwards core `tracing` output to the
+browser console, mapping each level to the matching `console` method:
+
+```js
+window.__truapi.setLogLevel("trace");
+```
+
+`debug` and `trace` are emitted via `console.debug`, which Chrome hides
+unless the console **Default levels ▾** dropdown includes **Verbose**;
+`info`/`warn`/`error` always render.
 
 ### Start the playground dev server
 
@@ -225,9 +247,9 @@ failing. Check:
   stale; redo step 4).
 
 If a method call hangs, the host either didn't receive the frame
-(check dotli's debug panel or console) or didn't respond. The bridge
-auto-responds to `host_handshake_request` only; everything else is on
-the host implementation.
+(check dotli's console with `truapi:logLevel` set to `debug`) or didn't respond.
+The bridge auto-responds to `host_handshake_request` only; everything
+else is on the host implementation.
 
 ## 7. Codegen tests
 

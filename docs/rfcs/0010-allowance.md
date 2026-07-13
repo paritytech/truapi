@@ -87,7 +87,7 @@ enum AllocatableResource {
     /// Allocate slot in SSS slot table
     StatementStoreAllowance,
     /// Allocate slot in Bulletin slot table
-    BulletInAllowance,
+    BulletinAllowance,
     /// Pre-claim PGAS into product account at `dest` to cover AH fees / storage deposits
     SmartContractAllowance { dest: DerivationIndex },
     /// Grant auto-signing from product's own accounts.
@@ -134,7 +134,7 @@ struct ResourceAllocationRequest {
 
 enum ApAllocatableResource {
     StatementStoreAllowance,
-    BulletInAllowance,
+    BulletinAllowance,
     SmartContractAllowance { dest: DerivationIndex },
     AutoSigning,
 }
@@ -162,7 +162,7 @@ enum ApAllocationOutcome {
 
 enum ApAllocatedResource {
     StatementStoreAllowance { slot_account_key: PrivateKey },
-    BulletInAllowance { slot_account_key: PrivateKey },
+    BulletinAllowance { slot_account_key: PrivateKey },
     SmartContractAllowance,
     AutoSigning {
         /// Secret component of the soft-derivation path.
@@ -252,7 +252,7 @@ sequenceDiagram
   participant B as Bulletin Chain
 
   P->>H: preimage_submit(chunk)
-  H->>A: request_resource_allocation(ProductId, [BulletInAllowance])
+  H->>A: request_resource_allocation(ProductId, [BulletinAllowance])
   A->>U: show authorization UI (single resource)
   U-->>A: approve
   A->>A: derive //allowance//bulletin//{productId}
