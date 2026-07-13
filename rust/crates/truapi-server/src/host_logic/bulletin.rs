@@ -488,8 +488,8 @@ mod tests {
 
     #[test]
     fn builds_large_preimage_without_pathological_cost() {
-        // Keep a generous bound around Subxt's metadata-aware dynamic encoder
-        // so a future library change cannot make large preimages pathological.
+        // Keep a generous bound around metadata validation and byte encoding so
+        // a future library change cannot make large preimages pathological.
         let data = vec![0x5au8; 8 * 1024 * 1024];
         let client = bulletin_chain_state()
             .client_at(anchor_fixture().number)

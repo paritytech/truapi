@@ -155,9 +155,8 @@ const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(
 /// build + dry-run + broadcast + best-block inclusion. Passed explicitly to the
 /// chain layer, which uses the call context only for cancellation.
 const PREIMAGE_SUBMIT_BUDGET: Duration = Duration::from_secs(180);
-/// Preimage submission is exercised by host diagnosis with a 240s live-chain
-/// watchdog. Keep the allowance request well below that so the 180s chain
-/// submission budget can still return a TrUAPI error before the outer timeout.
+/// Timeout for obtaining or refreshing the Bulletin allowance before chain
+/// submission begins.
 const PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(45);
 
 fn remote_authority_context(cx: &CallContext) -> CallContext {
