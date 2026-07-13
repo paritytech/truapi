@@ -41,7 +41,7 @@ use subxt::OnlineClient;
 use subxt::backend::ChainHeadBackend;
 use subxt::config::substrate::{SubstrateConfig, SubstrateConfigBuilder};
 use subxt::utils::H256;
-use subxt_rpcs::client::RpcClient;
+use subxt_rpcs::client::{RpcClient, rpc_params};
 use subxt_rpcs::methods::chain_head as subxt_chain;
 use subxt_rpcs::{ChainHeadRpcMethods, Error as SubxtRpcError, RpcConfig};
 use tracing::instrument;
@@ -387,13 +387,15 @@ impl ChainRuntime {
         let remote_follow_id = self
             .ensure_follow_context(method, &connection, request.follow_subscription_id, false)
             .await?;
-        for hash in request.hashes {
-            connection
-                .methods
-                .chainhead_v1_unpin(&remote_follow_id, hash_from_bytes(method, &hash)?)
-                .await
-                .map_err(|err| rpc_failure(method, err))?;
-        }
+        let hashes = request
+            .hashes
+            .iter()
+            .map(|hash| hash_from_bytes(method, hash))
+            .collect::<Result<Vec<_>, _>>()?;
+        RpcClient::new(connection.rpc_client.clone())
+            .request::<()>("chainHead_v1_unpin", rpc_params![remote_follow_id, hashes])
+            .await
+            .map_err(|err| rpc_failure(method, err))?;
         Ok(())
     }
 
@@ -1709,6 +1711,77 @@ mod tests {
         assert_eq!(sent.len(), 2);
         assert!(sent[0].contains("chainHead_v1_follow"));
         assert!(sent[1].contains("chainHead_v1_header"));
+    }
+
+    #[test]
+    fn unpin_sends_hash_array_from_core() {
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            if request.contains("chainHead_v1_follow") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-FOLLOW"}}"#
+                ))
+            } else if request.contains("chainHead_v1_unpin") {
+                Some(format!(r#"{{"jsonrpc":"2.0","id":"{id}","result":null}}"#))
+            } else {
+                None
+            }
+        }));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let _follow_stream = runtime.remote_chain_head_follow(
+            "local-follow".to_string(),
+            RemoteChainHeadFollowRequest {
+                genesis_hash: vec![0u8; 32],
+                with_runtime: false,
+            },
+        );
+        let sent = wait_for_sent(&provider, |sent| {
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow"))
+        });
+        assert!(
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow")),
+            "follow setup did not start; sent: {sent:?}",
+        );
+
+        futures::executor::block_on(
+            runtime.remote_chain_head_unpin(RemoteChainHeadUnpinRequest {
+                genesis_hash: vec![0u8; 32],
+                follow_subscription_id: "local-follow".to_string(),
+                hashes: vec![vec![0x11; 32], vec![0x22; 32]],
+            }),
+        )
+        .expect("unpin succeeds");
+
+        let sent = provider.sent.lock().unwrap().clone();
+        let unpin_requests: Vec<_> = sent
+            .iter()
+            .filter(|request| request.contains("chainHead_v1_unpin"))
+            .collect();
+        assert_eq!(
+            unpin_requests.len(),
+            1,
+            "unpin should batch hashes in one request; sent: {sent:?}",
+        );
+        let request: Value = serde_json::from_str(unpin_requests[0]).expect("json request");
+        assert_eq!(
+            request.get("method").and_then(Value::as_str),
+            Some("chainHead_v1_unpin"),
+        );
+        let params = request
+            .get("params")
+            .and_then(Value::as_array)
+            .expect("params array");
+        assert_eq!(params[0].as_str(), Some("REMOTE-FOLLOW"));
+        let hashes = params[1].as_array().expect("hashes array");
+        assert_eq!(
+            hashes.iter().map(Value::as_str).collect::<Vec<_>>(),
+            vec![
+                Some("0x1111111111111111111111111111111111111111111111111111111111111111"),
+                Some("0x2222222222222222222222222222222222222222222222222222222222222222"),
+            ],
+        );
     }
 
     #[test]
