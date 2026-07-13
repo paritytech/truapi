@@ -11,7 +11,7 @@
 Redesign `host_account_create_proof` and `host_account_get_alias`:
 
 1. **Junction-based ring addressing** — replace the `ring_root_hash`-based `RingLocation` with a struct carrying a required `chain_id` and a `Vec<RingLocationJunction>` path of stable, immutable identifiers.
-2. **Member-key-based, context-scoped proofs** — replace `domain: ProductAccountId` with `ProductProofContext = (ProductId, ProductProofContextSuffix)`. The proof is created with a member key the host holds (selected for the requested ring); the context scopes the derived alias for unlinkability.
+2. **Member-key-based, context-scoped proofs** — replace `domain: ProductAccountId` with a `ProductProofContext { product_id, suffix }` struct. The proof is created with a member key the host holds (selected for the requested ring); the context scopes the derived alias for unlinkability.
 3. **Richer output and errors** — return `contextual_alias`, `ring_index`, and `ring_revision`; specify host member-key selection; add a `NotMember` error.
 
 No protocol version bump is required: the current shape of these methods is unusable (the `ring_root_hash` race makes it broken by construction) and is not implemented or consumed anywhere yet, so it can be replaced in place.
@@ -58,15 +58,17 @@ struct RingLocation {
 
 ### Product-scoped proof context
 
-`ProductId` is the existing dotNS product identifier (named here as a reminder of what scopes the context). `domain: ProductAccountId` is replaced by:
+`domain: ProductAccountId` is replaced by a product-scoped context struct. `product_id` is the existing dotNS product identifier; `suffix` distinguishes contexts within that product:
 
 ```rust
-type ProductProofContextSuffix = Vec<u8>;            // arbitrary bytes
-type ProductProofContext = (ProductId, ProductProofContextSuffix);
+struct ProductProofContext {
+    product_id: String,   // dotNS product identifier, e.g. "my-product.dot"
+    suffix: Vec<u8>,      // arbitrary bytes distinguishing contexts within the product
+}
 
 // 32-byte context bound into the proof.
-fn product_context_bytes(context: ProductProofContext) -> [u8; 32] {
-    blake2b256(utf8("product/") ++ utf8(context.0) ++ utf8("/") ++ context.1)
+fn product_context_bytes(ctx: ProductProofContext) -> [u8; 32] {
+    blake2b256(utf8("product/") ++ utf8(ctx.product_id) ++ utf8("/") ++ ctx.suffix)
 }
 ```
 
@@ -129,7 +131,7 @@ let location = RingLocation {
     ],
 };
 let result = host_account_create_proof(
-    (product_id, suffix),
+    ProductProofContext { product_id, suffix },
     location,
     message,
 )?;
@@ -155,8 +157,6 @@ fn get_account_alias(
 ) -> Result<ContextualAlias, GetAliasErr>;
 ```
 
-The two boundaries are kept as distinct method sets so they can evolve independently, even though they currently share request/response shapes.
-
 ## Out of Scope: Product-SDK Helpers (Non-Normative)
 
 These live at the product-sdk level, not in truAPI; the host implements none of them. Documented only because they shape how products build a `ProductProofContext`.
@@ -165,15 +165,15 @@ These live at the product-sdk level, not in truAPI; the host implements none of 
 
 ```rust
 const SINGLETON_PROOF_SUFFIX: [u8; 1] = [0];
-fn singleton_proof_context(product_id: ProductId) -> ProductProofContext {
-    (product_id, SINGLETON_PROOF_SUFFIX.to_vec())
+fn singleton_proof_context(product_id: String) -> ProductProofContext {
+    ProductProofContext { product_id, suffix: SINGLETON_PROOF_SUFFIX.to_vec() }
 }
 ```
 
 **Context ↔ accountId linkability.** To set an account as the alias for a context, the sdk needs a canonical suffix → `DerivationIndex` mapping (`host_account_get_account` takes `ProductAccountId = (ProductId, DerivationIndex)`):
 
 ```rust
-fn product_account_id_for_proof_context(product_id: ProductId, suffix: [u8; 4]) -> ProductAccountId {
+fn product_account_id_for_proof_context(product_id: String, suffix: [u8; 4]) -> ProductAccountId {
     ProductAccountId { product_id, derivation_index: u32_from_be_bytes(suffix) }
 }
 fn u32_from_be_bytes(bytes: [u8; 4]) -> u32;   // big-endian

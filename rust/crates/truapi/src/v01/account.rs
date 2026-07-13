@@ -59,19 +59,18 @@ pub struct RingLocation {
     pub junctions: Vec<RingLocationJunction>,
 }
 
-/// dotNS product identifier (e.g. `"my-product.dot"`).
-pub type ProductId = String;
-
-/// Arbitrary-byte suffix distinguishing contexts within a single product.
-pub type ProductProofContextSuffix = Vec<u8>;
-
 /// A product-scoped proof context: a product and a context within it.
 ///
-/// Hashed (with a `product/<ProductId>/` prefix) into the 32-byte context bound
+/// Hashed (with a `product/<product_id>/` prefix) into the 32-byte context bound
 /// to a ring VRF proof, so contexts cannot collide across products and the same
 /// member key under different contexts yields unlinkable aliases.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct ProductProofContext(pub ProductId, pub ProductProofContextSuffix);
+pub struct ProductProofContext {
+    /// dotNS product identifier (e.g. `"my-product.dot"`) scoping the context.
+    pub product_id: String,
+    /// Arbitrary-byte suffix distinguishing contexts within the product.
+    pub suffix: Vec<u8>,
+}
 
 /// Request to create a ring VRF proof.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
