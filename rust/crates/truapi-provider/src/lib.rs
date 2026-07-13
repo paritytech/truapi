@@ -17,6 +17,9 @@
 //!   targets it runs on smoldot's default platform (OS threads, TCP + plain
 //!   WebSocket dialing); on `wasm32` it runs on a vendored browser platform
 //!   (JS event loop, browser `WebSocket` — including `wss` bootnodes).
+//! - `networks` feature — a bundled catalog so `connect(genesis_hash)`
+//!   resolves the whole network (relay wiring + statement placement included)
+//!   from the genesis hash alone, with no prior registration.
 //! - `js` feature — a JavaScript-facing API ([`js`]) on `wasm32`, so web
 //!   hosts can consume the provider directly without a Rust caller.
 

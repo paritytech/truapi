@@ -61,6 +61,23 @@ impl NativeChainProvider {
     pub fn builder() -> NativeChainProviderBuilder {
         NativeChainProviderBuilder::new()
     }
+
+    /// Open a connection for `source`, using `chains` to resolve a parachain's
+    /// relay entry.
+    async fn connect_source(
+        &self,
+        source: &ChainSource,
+        chains: &HashMap<[u8; 32], ChainSource>,
+    ) -> Result<Box<dyn JsonRpcConnection>, GenericError> {
+        match source {
+            #[cfg(feature = "ws")]
+            ChainSource::RpcNode { url } => crate::ws::connect(url.clone()).await,
+            #[cfg(feature = "smoldot")]
+            ChainSource::LightClient { .. } => self.light.connect(chains, source).await,
+            #[cfg(not(any(feature = "ws", feature = "smoldot")))]
+            _ => match *source {},
+        }
+    }
 }
 
 #[truapi_platform::async_trait]
@@ -69,20 +86,23 @@ impl ChainProvider for NativeChainProvider {
         &self,
         genesis_hash: [u8; 32],
     ) -> Result<Box<dyn JsonRpcConnection>, GenericError> {
-        let genesis_hex = hex::encode(genesis_hash);
-        match self.chains.get(&genesis_hash) {
-            None => Err(GenericError {
-                reason: format!("no chain registered for genesis 0x{genesis_hex}"),
-            }),
-            #[cfg(feature = "ws")]
-            Some(ChainSource::RpcNode { url }) => crate::ws::connect(url.clone()).await,
-            #[cfg(feature = "smoldot")]
-            Some(source @ ChainSource::LightClient { .. }) => {
-                self.light.connect(&self.chains, source).await
-            }
-            #[cfg(not(any(feature = "ws", feature = "smoldot")))]
-            Some(source) => match *source {},
+        // Explicit registrations win; otherwise the bundled catalog resolves
+        // the whole network — relay wiring and statement placement included —
+        // from the genesis hash alone.
+        if let Some(source) = self.chains.get(&genesis_hash) {
+            return self.connect_source(source, &self.chains).await;
         }
+        #[cfg(feature = "networks")]
+        if let Some(catalog) = crate::networks::catalog_network_chains(genesis_hash) {
+            let source = catalog
+                .get(&genesis_hash)
+                .expect("catalog_network_chains includes the queried genesis");
+            return self.connect_source(source, &catalog).await;
+        }
+        let genesis_hex = hex::encode(genesis_hash);
+        Err(GenericError {
+            reason: format!("no chain registered for genesis 0x{genesis_hex}"),
+        })
     }
 }
 

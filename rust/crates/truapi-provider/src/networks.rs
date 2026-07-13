@@ -8,6 +8,8 @@
 //! unfit for a light-client binary); other networks are supplied per chain via
 //! [`ChainSource::light_client`](crate::ChainSource::light_client).
 
+use std::collections::HashMap;
+
 use truapi::latest::GenericError;
 
 use crate::config::ChainSource;
@@ -85,6 +87,38 @@ fn genesis(chain: &ChainDef) -> Result<[u8; 32], GenericError> {
         })
 }
 
+/// A network's genesis hashes paired with each chain's genesis hash and
+/// [`ChainSource`].
+type NetworkSources = (NetworkChains, Vec<([u8; 32], ChainSource)>);
+
+/// Genesis hashes and per-chain [`ChainSource`]s of one network, with the
+/// parachains wired to the relay and the statement-store protocol set per the
+/// catalog.
+fn network_sources(network: &NetworkDef) -> Result<NetworkSources, GenericError> {
+    let chains = NetworkChains {
+        relay: genesis(&network.relay)?,
+        asset_hub: genesis(&network.asset_hub)?,
+        bulletin: genesis(&network.bulletin)?,
+        people: genesis(&network.people)?,
+    };
+    let sources = vec![
+        (chains.relay, light_source(&network.relay, None)),
+        (
+            chains.asset_hub,
+            light_source(&network.asset_hub, Some(chains.relay)),
+        ),
+        (
+            chains.bulletin,
+            light_source(&network.bulletin, Some(chains.relay)),
+        ),
+        (
+            chains.people,
+            light_source(&network.people, Some(chains.relay)),
+        ),
+    ];
+    Ok((chains, sources))
+}
+
 /// Register every chain of the bundled network `name`, wiring the parachains
 /// to the relay and enabling the statement-store protocol where the catalog
 /// specifies it. Returns the chains' genesis hashes.
@@ -102,30 +136,31 @@ pub(crate) fn add_network(
             ),
         })?;
 
-    let chains = NetworkChains {
-        relay: genesis(&network.relay)?,
-        asset_hub: genesis(&network.asset_hub)?,
-        bulletin: genesis(&network.bulletin)?,
-        people: genesis(&network.people)?,
-    };
-
-    let relay_source = light_source(&network.relay, None);
-    let builder = builder
-        .chain(chains.relay, relay_source)
-        .chain(
-            chains.asset_hub,
-            light_source(&network.asset_hub, Some(chains.relay)),
-        )
-        .chain(
-            chains.bulletin,
-            light_source(&network.bulletin, Some(chains.relay)),
-        )
-        .chain(
-            chains.people,
-            light_source(&network.people, Some(chains.relay)),
-        );
-
+    let (chains, sources) = network_sources(network)?;
+    let builder = sources
+        .into_iter()
+        .fold(builder, |builder, (genesis_hash, source)| {
+            builder.chain(genesis_hash, source)
+        });
     Ok((builder, chains))
+}
+
+/// Per-chain [`ChainSource`]s of the bundled network that contains
+/// `genesis_hash`, keyed by genesis hash, or `None` when no bundled network
+/// defines it. Lets a provider resolve a whole network — relay wiring and
+/// statement-store placement included — from a single genesis hash.
+pub(crate) fn catalog_network_chains(
+    genesis_hash: [u8; 32],
+) -> Option<HashMap<[u8; 32], ChainSource>> {
+    for network in CATALOG {
+        let Ok((_, sources)) = network_sources(network) else {
+            continue;
+        };
+        if sources.iter().any(|(hash, _)| *hash == genesis_hash) {
+            return Some(sources.into_iter().collect());
+        }
+    }
+    None
 }
 
 fn light_source(chain: &ChainDef, relay: Option<[u8; 32]>) -> ChainSource {
@@ -173,5 +208,28 @@ mod tests {
             .add_network("mainnet")
             .expect_err("an unbundled network must fail");
         assert!(error.reason.contains("paseo-next-v2"));
+    }
+
+    #[test]
+    fn connect_resolves_network_from_genesis_alone() {
+        use futures::executor::block_on;
+        use futures::stream::StreamExt;
+        use truapi_platform::ChainProvider;
+
+        // An empty provider — no explicit registration — still connects to a
+        // catalog chain from its genesis hash alone.
+        let relay = genesis(&CATALOG[0].relay).expect("catalog genesis parses");
+        let provider = crate::NativeChainProvider::builder().build();
+        let connection = block_on(provider.connect(relay))
+            .expect("catalog resolves the relay genesis without registration");
+        let mut responses = connection.responses();
+        connection.send(
+            r#"{"jsonrpc":"2.0","id":1,"method":"chainSpec_v1_chainName","params":[]}"#.to_owned(),
+        );
+        let response = block_on(responses.next()).expect("smoldot answers spec-local queries");
+        assert!(
+            response.contains("\"Paseo\""),
+            "unexpected response: {response}"
+        );
     }
 }

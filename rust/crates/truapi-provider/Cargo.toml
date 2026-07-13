@@ -8,6 +8,15 @@ license = "MIT"
 [lib]
 crate-type = ["rlib", "cdylib"]
 
+# wasm-pack's bundled wasm-opt rejects the bulk-memory ops modern rustc emits
+# for wasm32; skip it. The wasm-bindgen output is already valid for browsers,
+# and bundlers (e.g. Vite) optimize the asset downstream.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
 [features]
 default = ["ws"]
 ws = [
