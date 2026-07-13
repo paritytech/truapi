@@ -617,44 +617,6 @@ pub trait ThemeHost: Send + Sync {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<ThemeVariant, GenericError>>;
 }
 
-/// Secret key allocated for Bulletin preimage submission.
-///
-/// The core is the sole holder: the secret never crosses the host boundary.
-/// Zeroized on drop, and its `Debug` redacts the material.
-#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop, derive_more::Debug)]
-pub struct BulletinAllowanceKey {
-    #[debug("\"<redacted>\"")]
-    secret: [u8; 64],
-}
-
-impl BulletinAllowanceKey {
-    /// Build a Bulletin allowance key from raw secret bytes.
-    pub fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, BulletinAllowanceKeyError> {
-        let secret: [u8; 64] = secret.try_into().map_err(|secret: Vec<u8>| {
-            BulletinAllowanceKeyError::InvalidLength {
-                actual: secret.len(),
-            }
-        })?;
-        Ok(Self { secret })
-    }
-
-    /// Borrow the raw secret bytes for in-core signing.
-    pub fn as_secret_bytes(&self) -> &[u8; 64] {
-        &self.secret
-    }
-}
-
-/// Invalid Bulletin allowance key material.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
-pub enum BulletinAllowanceKeyError {
-    /// Secret material was not a 64-byte sr25519 secret key.
-    #[display("bulletin allowance key must be 64 bytes, got {actual}")]
-    InvalidLength {
-        /// Actual secret byte length.
-        actual: usize,
-    },
-}
-
 /// Host preimage backend. The core builds, signs, and submits the Bulletin
 /// `TransactionStorage.store` transaction itself; the host only owns preimage
 /// content retrieval (P2P/IPFS lookup).

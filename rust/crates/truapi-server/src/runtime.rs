@@ -38,7 +38,7 @@ use crate::host_logic::session::SessionState;
 use crate::runtime::bulletin_rpc::BulletinSubmitError;
 #[cfg(test)]
 use crate::subscription::Spawner;
-pub(crate) use authority::ProductAuthority;
+pub(crate) use authority::{BulletinAllowanceKey, ProductAuthority};
 #[cfg(test)]
 use pairing_host::PairingHost;
 pub(crate) use pairing_host::PairingHost as PairingHostRole;
@@ -151,9 +151,9 @@ const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(
 /// build + dry-run + broadcast + best-block inclusion. Passed explicitly to the
 /// chain layer, which uses the call context only for cancellation.
 const PREIMAGE_SUBMIT_BUDGET: Duration = Duration::from_secs(180);
-/// Preimage submission is exercised by host diagnosis with a 60s method
-/// watchdog. Keep the allowance request below that so products receive a
-/// TrUAPI error instead of an outer harness timeout.
+/// Preimage submission is exercised by host diagnosis with a 240s live-chain
+/// watchdog. Keep the allowance request well below that so the 180s chain
+/// submission budget can still return a TrUAPI error before the outer timeout.
 const PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(45);
 
 fn remote_authority_context(cx: &CallContext) -> CallContext {

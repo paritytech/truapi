@@ -3684,7 +3684,6 @@ dependencies = [
  "truapi",
  "unicode-normalization",
  "url",
- "zeroize",
 ]
 
 [[package]]

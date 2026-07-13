@@ -90,6 +90,10 @@ function runtimeConfig(
       genesisHash:
         "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
     },
+    bulletin: {
+      genesisHash:
+        "0xbbcccc1cbe333151b8ed63b17e9e0dec61ee53b57296f1fbe2d161ae3e6fb4dc",
+    },
     pairing: {
       deeplinkScheme: "polkadotapp",
     },

@@ -17,12 +17,39 @@ use truapi::latest::{
 };
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, CancellationReason};
-use truapi_platform::{BulletinAllowanceKeyError, ProductContext};
-
-pub(crate) use truapi_platform::BulletinAllowanceKey;
+use truapi_platform::ProductContext;
 
 use crate::host_logic::session::{SessionInfo, SessionState};
 use crate::host_logic::statement_store::statement_public_key_from_secret;
+
+/// Secret key allocated for Bulletin preimage submission.
+///
+/// The core is the sole holder: the secret never crosses the host boundary.
+/// Zeroized on drop, and its `Debug` redacts the material.
+#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop, derive_more::Debug)]
+pub(crate) struct BulletinAllowanceKey {
+    #[debug("\"<redacted>\"")]
+    secret: [u8; 64],
+}
+
+impl BulletinAllowanceKey {
+    pub(crate) fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, AuthorityError> {
+        let secret: [u8; 64] =
+            secret
+                .try_into()
+                .map_err(|secret: Vec<u8>| AuthorityError::Unavailable {
+                    reason: format!(
+                        "bulletin allowance key must be 64 bytes, got {}",
+                        secret.len()
+                    ),
+                })?;
+        Ok(Self { secret })
+    }
+
+    pub(crate) fn as_secret_bytes(&self) -> &[u8; 64] {
+        &self.secret
+    }
+}
 
 /// Snapshot of an account-authority session selected by the authority.
 ///
@@ -93,14 +120,6 @@ pub(crate) enum AuthorityError {
 impl AuthorityError {
     pub(crate) fn reason(self) -> String {
         self.to_string()
-    }
-}
-
-impl From<BulletinAllowanceKeyError> for AuthorityError {
-    fn from(err: BulletinAllowanceKeyError) -> Self {
-        AuthorityError::Unavailable {
-            reason: err.to_string(),
-        }
     }
 }
 

@@ -14,6 +14,12 @@ use std::time::{Duration, Instant};
 #[cfg(target_arch = "wasm32")]
 use web_time::{Duration, Instant};
 
+use crate::chain_runtime::ChainRuntime;
+use crate::host_logic::bulletin::{
+    STORE_PALLET_NAME, allowance_signer, build_signed_store_transaction, preimage_key,
+};
+use crate::host_logic::extrinsic::Sr25519Signer;
+use crate::runtime::BulletinAllowanceKey;
 use futures::{FutureExt, pin_mut};
 use subxt::client::{Block, Blocks, OnlineClientAtBlockImpl};
 use subxt::config::substrate::SubstrateConfig;
@@ -24,13 +30,6 @@ use subxt::tx::{
 };
 use tracing::{instrument, warn};
 use truapi::CallContext;
-use truapi_platform::BulletinAllowanceKey;
-
-use crate::chain_runtime::ChainRuntime;
-use crate::host_logic::bulletin::{
-    STORE_PALLET_NAME, allowance_signer, build_signed_store_transaction, preimage_key,
-};
-use crate::host_logic::extrinsic::Sr25519Signer;
 
 /// Retry once when a broadcast cannot be verified after a successful dry-run.
 /// This covers the post-allocation propagation window where dry-run can

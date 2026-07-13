@@ -5,17 +5,14 @@
 //! takes raw preimage bytes plus a [`BulletinAllowanceKey`], never
 //! caller-supplied call data.
 
-use parity_scale_codec::{Compact, Encode};
+use crate::host_logic::extrinsic::Sr25519Signer;
+use crate::runtime::BulletinAllowanceKey;
 use subxt::client::{ClientAtBlock, OnlineClientAtBlockT};
 use subxt::config::DefaultExtrinsicParamsBuilder;
 use subxt::config::substrate::SubstrateConfig;
+use subxt::dynamic;
 use subxt::error::ExtrinsicError;
-use subxt::ext::scale_encode::{self, EncodeAsFields, FieldIter, TypeResolver};
-use subxt::ext::scale_type_resolver::{Primitive, visitor};
-use subxt::tx::{StaticPayload, SubmittableTransaction};
-use truapi_platform::BulletinAllowanceKey;
-
-use crate::host_logic::extrinsic::Sr25519Signer;
+use subxt::tx::SubmittableTransaction;
 
 pub(crate) const STORE_PALLET_NAME: &str = "TransactionStorage";
 pub(crate) const STORE_CALL_NAME: &str = "store";
@@ -37,7 +34,7 @@ pub(crate) async fn build_signed_store_transaction<C: OnlineClientAtBlockT<Subst
     signer: &Sr25519Signer,
     data: &[u8],
 ) -> Result<SubmittableTransaction<SubstrateConfig, C>, ExtrinsicError> {
-    let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(data));
+    let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data,));
     let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
         .mortal(MORTAL_PERIOD_BLOCKS)
         .build();
@@ -50,66 +47,6 @@ pub(crate) async fn build_signed_store_transaction<C: OnlineClientAtBlockT<Subst
 pub(crate) fn allowance_signer(allowance: &BulletinAllowanceKey) -> Result<Sr25519Signer, String> {
     Sr25519Signer::from_secret_bytes(allowance.as_secret_bytes())
         .map_err(|reason| format!("invalid bulletin allowance key: {reason}"))
-}
-
-/// `store { data: Vec<u8> }` call arguments with a byte-level fast path.
-///
-/// scale-encode has no `u8` specialization, so encoding the preimage as a
-/// `Vec<u8>` value would pay a registry resolution and visitor dispatch per
-/// byte, twice per transaction. This implementation verifies once that the
-/// `data` field resolves to a sequence of `u8` (hard error otherwise, so
-/// metadata lies about the argument type are rejected) and then memcpys.
-struct StoreCallData<'a>(&'a [u8]);
-
-impl EncodeAsFields for StoreCallData<'_> {
-    fn encode_as_fields_to<R: TypeResolver>(
-        &self,
-        fields: &mut dyn FieldIter<'_, R::TypeId>,
-        types: &R,
-        out: &mut Vec<u8>,
-    ) -> Result<(), scale_encode::Error> {
-        let field = fields
-            .next()
-            .ok_or_else(|| scale_encode::Error::custom_str("store call has no data field"))?;
-        if fields.next().is_some() {
-            return Err(scale_encode::Error::custom_str(
-                "store call has more than one field",
-            ));
-        }
-        require_u8_sequence(types, field.id)?;
-
-        Compact(self.0.len() as u32).encode_to(out);
-        out.extend_from_slice(self.0);
-        Ok(())
-    }
-}
-
-/// Hard-error unless `type_id` resolves to a sequence whose element type is
-/// the `u8` primitive.
-fn require_u8_sequence<R: TypeResolver>(
-    types: &R,
-    type_id: R::TypeId,
-) -> Result<(), scale_encode::Error> {
-    let sequence_visitor = visitor::new((), |(), _kind| None::<R::TypeId>)
-        .visit_sequence(|(), _path, inner| Some(inner));
-    let inner = types
-        .resolve_type(type_id, sequence_visitor)
-        .map_err(|err| scale_encode::Error::custom_string(err.to_string()))?
-        .ok_or_else(|| {
-            scale_encode::Error::custom_str("store data field is not a byte sequence")
-        })?;
-
-    let u8_visitor = visitor::new((), |(), _kind| false)
-        .visit_primitive(|(), primitive| matches!(primitive, Primitive::U8));
-    let is_u8 = types
-        .resolve_type(inner, u8_visitor)
-        .map_err(|err| scale_encode::Error::custom_string(err.to_string()))?;
-    if !is_u8 {
-        return Err(scale_encode::Error::custom_str(
-            "store data field is not a sequence of u8",
-        ));
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -158,7 +95,7 @@ mod tests {
         nonce: u64,
         data: &[u8],
     ) -> Result<SubmittableTransaction<SubstrateConfig, C>, String> {
-        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(data));
+        let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data,));
         let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
             .nonce(nonce)
             .mortal_from_unchecked(MORTAL_PERIOD_BLOCKS, anchor.number, H256(anchor.hash))
@@ -233,7 +170,7 @@ mod tests {
 
         let (account, signature, tail) = split_v4(signed.encoded());
         assert_eq!(account, signer_fixture().account_id().0);
-        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(&data));
+        let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data.as_slice(),));
         let call_data = client.tx().call_data(&payload).unwrap();
         assert!(tail.ends_with(&call_data));
 
@@ -246,7 +183,7 @@ mod tests {
                 H256(anchor_fixture().hash),
             )
             .build();
-        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(&data));
+        let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data.as_slice(),));
         let signer_payload = client
             .tx()
             .create_v4_signable_offline(&payload, params)
@@ -293,7 +230,7 @@ mod tests {
                 H256(anchor_fixture().hash),
             )
             .build();
-        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(&data));
+        let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data.as_slice(),));
         let mutated_payload = client
             .tx()
             .create_v4_signable_offline(&payload, params)
@@ -355,7 +292,7 @@ mod tests {
             &[1, 2, 3],
         )
         .unwrap_err();
-        assert!(error.contains("not a"), "{error}");
+        assert!(error.contains("cannot encode call data"), "{error}");
     }
 
     #[test]
@@ -441,10 +378,8 @@ mod tests {
 
     #[test]
     fn builds_large_preimage_without_pathological_cost() {
-        // The store call data must not encode per byte (scale-encode has no u8
-        // fast path); the StoreCallData memcpy keeps an 8 MiB preimage cheap.
-        // A generous bound catches an O(n^2)/per-byte-visitor regression
-        // without being flaky under CI load.
+        // Keep a generous bound around Subxt's metadata-aware dynamic encoder
+        // so a future library change cannot make large preimages pathological.
         let data = vec![0x5au8; 8 * 1024 * 1024];
         let client = bulletin_chain_state()
             .client_at(anchor_fixture().number)

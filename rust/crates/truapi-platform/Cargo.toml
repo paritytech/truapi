@@ -13,7 +13,6 @@ futures = "0.3"
 parity-scale-codec = { version = "3", features = ["derive"] }
 unicode-normalization = "0.1"
 url = "2"
-zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [lints.rust]
 unsafe_code = "forbid"

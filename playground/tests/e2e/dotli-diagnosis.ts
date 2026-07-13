@@ -41,6 +41,7 @@ const loginUserBadgeTimeoutMs = Number(
 const botToken = readEnv("SIGNER_BOT_SVC_TOKEN");
 const botBase = process.env.SIGNER_BOT_BASE_URL ?? defaultBotBase;
 const botNetwork = process.env.SIGNER_BOT_NETWORK ?? defaultBotNetwork;
+const botUsername = process.env.SIGNER_BOT_USERNAME;
 
 const serverProcesses: ChildProcess[] = [];
 const pageErrors: string[] = [];
@@ -250,7 +251,7 @@ async function openLoginQr(page: Page): Promise<string> {
 async function signInWithBot(page: Page): Promise<PairResult> {
   const { token, base, network } = requireBotEnv();
   const handshake = await openLoginQr(page);
-  const username = generateUsername();
+  const username = botUsername ?? generateUsername();
   console.log(`[e2e-dotli] pairing signer-bot user ${username}`);
   const result = await pair(base, token, {
     handshake,
@@ -488,6 +489,7 @@ async function runDiagnosis(page: Page): Promise<{
   summary: string;
   report: string;
   copyReportClicked: boolean;
+  failedMethods: string[];
 }> {
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
@@ -510,6 +512,7 @@ async function runDiagnosisOnce(page: Page): Promise<{
   summary: string;
   report: string;
   copyReportClicked: boolean;
+  failedMethods: string[];
 }> {
   const frame = await findPlaygroundFrame(page);
   await captureStep(page, "diagnosis-ready");
@@ -531,10 +534,13 @@ async function runDiagnosisOnce(page: Page): Promise<{
   if (report.trim().length === 0) {
     throw new Error("diagnosis report markdown is empty");
   }
+  const failedMethods = await frame
+    .locator('[data-testid="diagnosis-row"][data-status="fail"] .diag__name')
+    .allInnerTexts();
 
   await frame.locator('[data-testid="diagnosis-copy-report"]').click();
 
-  return { summary, report, copyReportClicked: true };
+  return { summary, report, copyReportClicked: true, failedMethods };
 }
 
 async function waitForDiagnosisReportReady(frame: Frame): Promise<void> {
@@ -701,7 +707,8 @@ async function main(): Promise<void> {
     pairResult = await signInWithBot(page);
     const stopClicker = startHostModalClicker(page);
     try {
-      const { summary, report, copyReportClicked } = await runDiagnosis(page);
+      const { summary, report, copyReportClicked, failedMethods } =
+        await runDiagnosis(page);
       const reportPath = resolve(outputDir, "diagnosis-report.md");
       writeFileSync(reportPath, report);
       pairResult = await assertHostSignOutAndReconnect(page);
@@ -711,6 +718,7 @@ async function main(): Promise<void> {
         `${JSON.stringify(
           {
             summary,
+            failedMethods,
             reportPath,
             copyReportClicked,
             screenshots,
@@ -726,6 +734,11 @@ async function main(): Promise<void> {
       );
       console.log(`[e2e-dotli] diagnosis complete: ${summary}`);
       console.log(`[e2e-dotli] report: ${reportPath}`);
+      if (failedMethods.length > 0) {
+        throw new Error(
+          `diagnosis reported failed methods: ${failedMethods.join(", ")}`,
+        );
+      }
       if (pageErrors.length > 0) {
         throw new Error(`browser page errors occurred: ${pageErrors.length}`);
       }

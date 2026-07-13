@@ -1,6 +1,9 @@
 import type { WireProvider } from "@parity/truapi";
 import { CoreStorageKey as GeneratedCoreStorageKey } from "./generated/host-callbacks.js";
-import type { CoreAdmin, CoreStorageKey } from "./generated/host-callbacks.js";
+import type {
+  CoreAdmin,
+  CoreStorageKey,
+} from "./generated/host-callbacks.js";
 
 // The typed capability interfaces below come straight from the
 // `truapi-platform` Rust crate via `truapi-codegen --platform-ts-output`.
@@ -9,7 +12,9 @@ import type { CoreAdmin, CoreStorageKey } from "./generated/host-callbacks.js";
 // SCALE bytes. The web worker pairing-host runtime adapts this typed surface
 // into the byte-oriented callback bridge consumed by the WASM core.
 export * from "./generated/host-callbacks.js";
-export type { JsonRpcConnection as PlatformJsonRpcConnection } from "./generated/host-callbacks.js";
+export type {
+  JsonRpcConnection as PlatformJsonRpcConnection,
+} from "./generated/host-callbacks.js";
 
 /** Encode a typed core-storage slot for hosts that need an opaque backing key. */
 export function encodeCoreStorageKey(key: CoreStorageKey): Uint8Array {
@@ -61,6 +66,10 @@ export interface ProductRuntimeConfig {
     version?: string;
   };
   people: {
+    genesisHash: string | Uint8Array;
+  };
+  /** Bulletin-chain genesis hash used for in-core preimage submission. */
+  bulletin: {
     genesisHash: string | Uint8Array;
   };
   pairing: {

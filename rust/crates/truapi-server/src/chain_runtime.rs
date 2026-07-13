@@ -41,7 +41,7 @@ use subxt::OnlineClient;
 use subxt::backend::ChainHeadBackend;
 use subxt::config::substrate::{SubstrateConfig, SubstrateConfigBuilder};
 use subxt::utils::H256;
-use subxt_rpcs::client::{RpcClient, rpc_params};
+use subxt_rpcs::client::RpcClient;
 use subxt_rpcs::methods::chain_head as subxt_chain;
 use subxt_rpcs::{ChainHeadRpcMethods, Error as SubxtRpcError, RpcConfig};
 use tracing::instrument;
@@ -392,10 +392,13 @@ impl ChainRuntime {
             .iter()
             .map(|hash| hash_from_bytes(method, hash))
             .collect::<Result<Vec<_>, _>>()?;
-        RpcClient::new(connection.rpc_client.clone())
-            .request::<()>("chainHead_v1_unpin", rpc_params![remote_follow_id, hashes])
-            .await
-            .map_err(|err| rpc_failure(method, err))?;
+        for hash in hashes {
+            connection
+                .methods
+                .chainhead_v1_unpin(&remote_follow_id, hash)
+                .await
+                .map_err(|err| rpc_failure(method, err))?;
+        }
         Ok(())
     }
 
@@ -1714,7 +1717,7 @@ mod tests {
     }
 
     #[test]
-    fn unpin_sends_hash_array_from_core() {
+    fn unpin_uses_typed_subxt_method_for_each_hash() {
         let provider = Arc::new(ScriptedProvider::new(|request| {
             let id = extract_id(request).unwrap();
             if request.contains("chainHead_v1_follow") {
@@ -1761,26 +1764,33 @@ mod tests {
             .collect();
         assert_eq!(
             unpin_requests.len(),
-            1,
-            "unpin should batch hashes in one request; sent: {sent:?}",
+            2,
+            "unpin should send each hash through Subxt; sent: {sent:?}",
         );
-        let request: Value = serde_json::from_str(unpin_requests[0]).expect("json request");
+        let params = unpin_requests
+            .iter()
+            .map(|request| {
+                let request: Value = serde_json::from_str(request).expect("json request");
+                assert_eq!(
+                    request.get("method").and_then(Value::as_str),
+                    Some("chainHead_v1_unpin"),
+                );
+                request
+                    .get("params")
+                    .and_then(Value::as_array)
+                    .expect("params array")
+                    .clone()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(params[0][0].as_str(), Some("REMOTE-FOLLOW"));
+        assert_eq!(params[1][0].as_str(), Some("REMOTE-FOLLOW"));
         assert_eq!(
-            request.get("method").and_then(Value::as_str),
-            Some("chainHead_v1_unpin"),
+            params[0][1][0].as_str(),
+            Some("0x1111111111111111111111111111111111111111111111111111111111111111"),
         );
-        let params = request
-            .get("params")
-            .and_then(Value::as_array)
-            .expect("params array");
-        assert_eq!(params[0].as_str(), Some("REMOTE-FOLLOW"));
-        let hashes = params[1].as_array().expect("hashes array");
         assert_eq!(
-            hashes.iter().map(Value::as_str).collect::<Vec<_>>(),
-            vec![
-                Some("0x1111111111111111111111111111111111111111111111111111111111111111"),
-                Some("0x2222222222222222222222222222222222222222222222222222222222222222"),
-            ],
+            params[1][1][0].as_str(),
+            Some("0x2222222222222222222222222222222222222222222222222222222222222222"),
         );
     }
 
