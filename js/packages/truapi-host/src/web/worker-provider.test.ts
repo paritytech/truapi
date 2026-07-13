@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { ok } from "neverthrow";
+import { err, ok } from "neverthrow";
 
 import {
   HostPushNotificationRequest,
@@ -89,10 +89,6 @@ function runtimeConfig(
     people: {
       genesisHash:
         "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
-    },
-    bulletin: {
-      genesisHash:
-        "0x2e7ffab63d8e86f6828a42445c7e3036f6bb47dd437e52a65457015f0605d8be",
     },
     pairing: {
       deeplinkScheme: "polkadotapp",
@@ -629,13 +625,11 @@ describe("createWebWorkerPairingHostRuntime", () => {
       genesisHash: "0xab",
     });
     await settle();
-    await settle();
 
     const closes: Error[] = [];
     provider.subscribeClose!((error) => closes.push(error));
 
     worker.emitError("boom");
-    await settle();
     await settle();
 
     expect(worker.terminated).toBe(true);
@@ -723,12 +717,48 @@ describe("createWebWorkerPairingHostRuntime", () => {
     });
 
     await settle();
-    await settle();
     expect(keys).toEqual([new Uint8Array([9, 9])]);
     expect(worker.messages.at(-1)).toEqual({
       kind: "subscriptionItem",
       subId: 4,
       value: new Uint8Array([1]),
+    });
+
+    provider.dispose();
+  });
+
+  it("propagates host subscription stream errors to the worker", async () => {
+    const worker = new FakeWorker();
+    const providerPromise = createProviderFromRuntime(
+      asWorker(worker),
+      makeHostCallbacks({
+        theme: {
+          subscribeTheme: async function* () {
+            yield err<ThemeVariant, GenericError>({
+              reason: "theme stream failed",
+            });
+          },
+        },
+      }),
+      { runtimeConfig: runtimeConfig() },
+    );
+    worker.emit({ kind: "loaded" });
+    worker.emit({ kind: "ready" });
+    const provider = await finishProviderReady(worker, providerPromise);
+
+    worker.emit({
+      kind: "subscriptionStart",
+      subId: 7,
+      name: "subscribeTheme",
+      payload: null,
+    });
+
+    await settle();
+
+    expect(worker.messages.at(-1)).toEqual({
+      kind: "subscriptionError",
+      subId: 7,
+      error: "theme stream failed",
     });
 
     provider.dispose();

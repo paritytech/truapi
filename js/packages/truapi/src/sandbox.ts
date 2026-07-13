@@ -76,6 +76,32 @@ function resolveHostOrigin(): string | null {
 const HOST_PORT_TIMEOUT_MS = 20_000;
 let iframePortPromise: Promise<MessagePort> | null = null;
 
+function withAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | undefined,
+  message: string,
+): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new Error(message));
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(new Error(message));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 /**
  * Resolve the host-injected `MessagePort`, polling `window.__HOST_API_PORT__`
  * until it appears or the timeout elapses. Rejects on timeout or abort.
@@ -110,9 +136,8 @@ function waitForIframePort(
 ): Promise<MessagePort> {
   const existing = hostWindow()?.__HOST_API_PORT__;
   if (existing) return Promise.resolve(existing);
-  if (iframePortPromise) return iframePortPromise;
 
-  iframePortPromise = new Promise<MessagePort>((resolve, reject) => {
+  iframePortPromise ??= new Promise<MessagePort>((resolve, reject) => {
     const win = hostWindow();
     if (!win) {
       reject(new Error("window is unavailable"));
@@ -123,7 +148,6 @@ function waitForIframePort(
     let done = false;
     const cleanup = (): void => {
       win.removeEventListener("message", onMessage);
-      signal?.removeEventListener("abort", onAbort);
       clearTimeout(timer);
     };
     const finish = (result: MessagePort | Error): void => {
@@ -137,18 +161,9 @@ function waitForIframePort(
         resolve(result);
       }
     };
-    const onAbort = (): void => {
-      finish(new Error("waitForIframePort aborted"));
-    };
     const onMessage = (event: MessageEvent): void => {
       if (event.source !== win.parent) return;
-      if (
-        hostOrigin !== null &&
-        event.origin !== hostOrigin &&
-        event.origin !== "null"
-      ) {
-        return;
-      }
+      if (hostOrigin !== null && event.origin !== hostOrigin) return;
       if (event.data?.type !== "truapi-init") return;
       const [port] = event.ports;
       if (!port) {
@@ -164,14 +179,16 @@ function waitForIframePort(
     }, timeoutMs);
 
     win.addEventListener("message", onMessage);
-    signal?.addEventListener("abort", onAbort, { once: true });
+    // This readiness ping carries no MessagePort or account data. When the
+    // browser hides the parent origin, `*` is required so the parent can answer
+    // with the actual capability transfer, which is still source-checked above.
     win.parent.postMessage({ type: "truapi-ready" }, hostOrigin ?? "*");
   }).catch((error: unknown) => {
     iframePortPromise = null;
     throw error;
   });
 
-  return iframePortPromise;
+  return withAbort(iframePortPromise, signal, "waitForIframePort aborted");
 }
 
 /** Build the {@link WireProvider} matching the detected environment (iframe or webview). */

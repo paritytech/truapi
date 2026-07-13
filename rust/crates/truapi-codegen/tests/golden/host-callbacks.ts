@@ -105,7 +105,10 @@ export type CoreStorageKey =
   /**
    * Persisted authorization for one product-scoped permission request.
    */
-  | { tag: "PermissionAuthorization"; value: { productId: string; request: PermissionAuthorizationRequest } }
+  | {
+      tag: "PermissionAuthorization";
+      value: { productId: string; request: PermissionAuthorizationRequest };
+    }
   /**
    * Persisted allowance-slot keys for one paired SSO session.
    */
@@ -162,7 +165,10 @@ export type PermissionAuthorizationRequest =
  * `NotDetermined` means the core has no persisted answer and will prompt the
  * host the next time the product requests this permission.
  */
-export type PermissionAuthorizationStatus = "NotDetermined" | "Denied" | "Authorized";
+export type PermissionAuthorizationStatus =
+  | "NotDetermined"
+  | "Denied"
+  | "Authorized";
 
 /**
  * Review shown before a preimage is submitted.
@@ -266,19 +272,39 @@ export type UserConfirmationReview =
 /**
  * Review shown before a product asks to access another product account.
  */
-export const AccountAccessReview: S.Codec<AccountAccessReview> = S.lazy((): S.Codec<AccountAccessReview> => S.Struct({requestingProductId: S.str, targetProductId: S.str}) as S.Codec<AccountAccessReview>);
+export const AccountAccessReview: S.Codec<AccountAccessReview> = S.lazy(
+  (): S.Codec<AccountAccessReview> =>
+    S.Struct({
+      requestingProductId: S.str,
+      targetProductId: S.str,
+    }) as S.Codec<AccountAccessReview>,
+);
 
 /**
  * Review shown before a product asks to alias another product account.
  */
-export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Codec<AccountAliasReview> => S.Struct({requestingProductId: S.str, targetProductId: S.str}) as S.Codec<AccountAliasReview>);
+export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy(
+  (): S.Codec<AccountAliasReview> =>
+    S.Struct({
+      requestingProductId: S.str,
+      targetProductId: S.str,
+    }) as S.Codec<AccountAliasReview>,
+);
 
 /**
  * Auth/session lifecycle state the core projects for host UI. The core owns
  * every transition and emits states in order; hosts render the current state
  * and never derive auth UI from any other signal.
  */
-export const AuthState: S.Codec<AuthState> = S.lazy((): S.Codec<AuthState> => S.TaggedUnion({Disconnected: S._void, Pairing: S.Struct({deeplink: S.str}) as S.Codec<{ deeplink: string }>, Connected: SessionUiInfo, LoginFailed: S.Struct({reason: S.str}) as S.Codec<{ reason: string }>}));
+export const AuthState: S.Codec<AuthState> = S.lazy(
+  (): S.Codec<AuthState> =>
+    S.TaggedUnion({
+      Disconnected: S._void,
+      Pairing: S.Struct({ deeplink: S.str }) as S.Codec<{ deeplink: string }>,
+      Connected: SessionUiInfo,
+      LoginFailed: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
+);
 
 /**
  * Core-owned host-private storage slots. Products never address these slots;
@@ -287,23 +313,58 @@ export const AuthState: S.Codec<AuthState> = S.lazy((): S.Codec<AuthState> => S.
  * Storage is host-local; `storage.md` records the current status quo:
  * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
-export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({productId: S.str, request: PermissionAuthorizationRequest}) as S.Codec<{ productId: string; request: PermissionAuthorizationRequest }>, AllowanceKeys: S.Struct({sessionId: S.str}) as S.Codec<{ sessionId: string }>, LastProcessedPairingStatement: S._void}));
+export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy(
+  (): S.Codec<CoreStorageKey> =>
+    S.TaggedUnion({
+      AuthSession: S._void,
+      PairingDeviceIdentity: S._void,
+      PermissionAuthorization: S.Struct({
+        productId: S.str,
+        request: PermissionAuthorizationRequest,
+      }) as S.Codec<{
+        productId: string;
+        request: PermissionAuthorizationRequest;
+      }>,
+      AllowanceKeys: S.Struct({ sessionId: S.str }) as S.Codec<{
+        sessionId: string;
+      }>,
+      LastProcessedPairingStatement: S._void,
+    }),
+);
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
  */
-export const CreateTransactionReview: S.Codec<CreateTransactionReview> = S.lazy((): S.Codec<CreateTransactionReview> => S.TaggedUnion({Product: ProductAccountTxPayload, LegacyAccount: LegacyAccountTxPayload}));
+export const CreateTransactionReview: S.Codec<CreateTransactionReview> = S.lazy(
+  (): S.Codec<CreateTransactionReview> =>
+    S.TaggedUnion({
+      Product: ProductAccountTxPayload,
+      LegacyAccount: LegacyAccountTxPayload,
+    }),
+);
 
 /**
  * Review shown before a product learns the user's primary identity.
  */
-export const IdentityDisclosureReview: S.Codec<IdentityDisclosureReview> = S.lazy((): S.Codec<IdentityDisclosureReview> => S.Struct({productId: S.str}) as S.Codec<IdentityDisclosureReview>);
+export const IdentityDisclosureReview: S.Codec<IdentityDisclosureReview> =
+  S.lazy(
+    (): S.Codec<IdentityDisclosureReview> =>
+      S.Struct({ productId: S.str }) as S.Codec<IdentityDisclosureReview>,
+  );
 
 /**
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
-export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequest> = S.lazy((): S.Codec<PermissionAuthorizationRequest> => S.TaggedUnion({Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void}));
+export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequest> =
+  S.lazy(
+    (): S.Codec<PermissionAuthorizationRequest> =>
+      S.TaggedUnion({
+        Device: HostDevicePermissionRequest,
+        Remote: RemotePermissionRequest,
+        IdentityDisclosure: S._void,
+      }),
+  );
 
 /**
  * Authorization status for a permission request.
@@ -311,33 +372,72 @@ export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequ
  * `NotDetermined` means the core has no persisted answer and will prompt the
  * host the next time the product requests this permission.
  */
-export const PermissionAuthorizationStatus: S.Codec<PermissionAuthorizationStatus> = S.lazy((): S.Codec<PermissionAuthorizationStatus> => S.Status("NotDetermined", "Denied", "Authorized"));
+export const PermissionAuthorizationStatus: S.Codec<PermissionAuthorizationStatus> =
+  S.lazy(
+    (): S.Codec<PermissionAuthorizationStatus> =>
+      S.Status("NotDetermined", "Denied", "Authorized"),
+  );
 
 /**
  * Review shown before a preimage is submitted.
  */
-export const PreimageSubmitReview: S.Codec<PreimageSubmitReview> = S.lazy((): S.Codec<PreimageSubmitReview> => S.Struct({size: S.u64}) as S.Codec<PreimageSubmitReview>);
+export const PreimageSubmitReview: S.Codec<PreimageSubmitReview> = S.lazy(
+  (): S.Codec<PreimageSubmitReview> =>
+    S.Struct({ size: S.u64 }) as S.Codec<PreimageSubmitReview>,
+);
 
 /**
  * Decoded session fields a host shell needs to render account UI without
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
-export const SessionUiInfo: S.Codec<SessionUiInfo> = S.lazy((): S.Codec<SessionUiInfo> => S.Struct({publicKey: S.Bytes(32), identityAccountId: S.Option(S.Bytes(32)), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str)}) as S.Codec<SessionUiInfo>);
+export const SessionUiInfo: S.Codec<SessionUiInfo> = S.lazy(
+  (): S.Codec<SessionUiInfo> =>
+    S.Struct({
+      publicKey: S.Bytes(32),
+      identityAccountId: S.Option(S.Bytes(32)),
+      liteUsername: S.Option(S.str),
+      fullUsername: S.Option(S.str),
+    }) as S.Codec<SessionUiInfo>,
+);
 
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */
-export const SignPayloadReview: S.Codec<SignPayloadReview> = S.lazy((): S.Codec<SignPayloadReview> => S.TaggedUnion({Product: HostSignPayloadRequest, LegacyAccount: HostSignPayloadWithLegacyAccountRequest}));
+export const SignPayloadReview: S.Codec<SignPayloadReview> = S.lazy(
+  (): S.Codec<SignPayloadReview> =>
+    S.TaggedUnion({
+      Product: HostSignPayloadRequest,
+      LegacyAccount: HostSignPayloadWithLegacyAccountRequest,
+    }),
+);
 
 /**
  * Review shown before a sign-raw request is sent to the paired wallet.
  */
-export const SignRawReview: S.Codec<SignRawReview> = S.lazy((): S.Codec<SignRawReview> => S.TaggedUnion({Product: HostSignRawRequest, LegacyAccount: HostSignRawWithLegacyAccountRequest}));
+export const SignRawReview: S.Codec<SignRawReview> = S.lazy(
+  (): S.Codec<SignRawReview> =>
+    S.TaggedUnion({
+      Product: HostSignRawRequest,
+      LegacyAccount: HostSignRawWithLegacyAccountRequest,
+    }),
+);
 
 /**
  * Review shown before a user-confirmed core action continues.
  */
-export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy((): S.Codec<UserConfirmationReview> => S.TaggedUnion({SignPayload: SignPayloadReview, SignRaw: SignRawReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: HostRequestResourceAllocationRequest, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview}));
+export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy(
+  (): S.Codec<UserConfirmationReview> =>
+    S.TaggedUnion({
+      SignPayload: SignPayloadReview,
+      SignRaw: SignRawReview,
+      CreateTransaction: CreateTransactionReview,
+      AccountAlias: AccountAliasReview,
+      IdentityDisclosure: IdentityDisclosureReview,
+      ResourceAllocation: HostRequestResourceAllocationRequest,
+      PreimageSubmit: PreimageSubmitReview,
+      AccountAccess: AccountAccessReview,
+    }),
+);
 
 /**
  * Host auth UI driven by core-owned `AuthState` transitions.
@@ -384,20 +484,27 @@ export interface CoreAdmin {
   /**
    * Read a stored permission authorization status without prompting.
    */
-  getPermissionAuthorizationStatus(request: PermissionAuthorizationRequest): Promise<PermissionAuthorizationStatus>;
+  getPermissionAuthorizationStatus(
+    request: PermissionAuthorizationRequest,
+  ): Promise<PermissionAuthorizationStatus>;
 
   /**
    * Read stored permission authorization statuses without prompting.
    *
    * Results are returned in the same order as `requests`.
    */
-  getPermissionAuthorizationStatuses(requests: Array<PermissionAuthorizationRequest>): Promise<Array<PermissionAuthorizationStatus>>;
+  getPermissionAuthorizationStatuses(
+    requests: Array<PermissionAuthorizationRequest>,
+  ): Promise<Array<PermissionAuthorizationStatus>>;
 
   /**
    * Update a stored permission authorization status. `NotDetermined` clears
    * the stored value so the next product request prompts again.
    */
-  setPermissionAuthorizationStatus(request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus): Promise<void>;
+  setPermissionAuthorizationStatus(
+    request: PermissionAuthorizationRequest,
+    status: PermissionAuthorizationStatus,
+  ): Promise<void>;
 }
 
 /**
@@ -428,7 +535,9 @@ export interface Features {
   /**
    * Report whether the requested feature is supported.
    */
-  featureSupported(request: HostFeatureSupportedRequest): Promise<HostFeatureSupportedResponse>;
+  featureSupported(
+    request: HostFeatureSupportedRequest,
+  ): Promise<HostFeatureSupportedResponse>;
 }
 
 /**
@@ -474,7 +583,9 @@ export interface Notifications {
    * Schedule or immediately display the given notification and return the
    * host-assigned id.
    */
-  pushNotification(notification: HostPushNotificationRequest): Promise<HostPushNotificationResponse>;
+  pushNotification(
+    notification: HostPushNotificationRequest,
+  ): Promise<HostPushNotificationResponse>;
 
   /**
    * Cancel a notification by id. Idempotent: cancelling an already-fired or
@@ -510,12 +621,16 @@ export interface Permissions {
   /**
    * Prompt the user for a device-level permission.
    */
-  devicePermission(request: HostDevicePermissionRequest): Promise<HostDevicePermissionResponse>;
+  devicePermission(
+    request: HostDevicePermissionRequest,
+  ): Promise<HostDevicePermissionResponse>;
 
   /**
    * Prompt the user for a remote (product-scoped) permission bundle.
    */
-  remotePermission(request: RemotePermissionRequest): Promise<RemotePermissionResponse>;
+  remotePermission(
+    request: RemotePermissionRequest,
+  ): Promise<RemotePermissionResponse>;
 }
 
 /**
@@ -527,7 +642,9 @@ export interface PreimageHost {
   /**
    * Emits current value/miss immediately, then future updates.
    */
-  lookupPreimage(key: Uint8Array): AsyncIterable<Result<Uint8Array | undefined, GenericError>>;
+  lookupPreimage(
+    key: Uint8Array,
+  ): AsyncIterable<Result<Uint8Array | undefined, GenericError>>;
 }
 
 /**

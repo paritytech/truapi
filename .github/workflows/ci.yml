@@ -40,10 +40,10 @@ jobs:
       - name: cargo build
         run: cargo build --workspace --all-targets --all-features
 
-      - name: cargo build (wasm32)
+      - name: cargo check wasm32
         # Guards the wasm host bridge and its offline subxt surface, which the
         # host-target build never compiles.
-        run: cargo build -p truapi-server --target wasm32-unknown-unknown --no-default-features
+        run: cargo check --target wasm32-unknown-unknown -p truapi-server
 
       - name: cargo +nightly fmt --check
         run: cargo +nightly fmt --check

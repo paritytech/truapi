@@ -53,7 +53,7 @@ use authority::{
 use futures::{FutureExt, StreamExt, pin_mut};
 #[cfg(test)]
 use parity_scale_codec::Encode;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
     Preimage, ResourceAllocation, Signing, System, Theme,
@@ -151,11 +151,22 @@ const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(
 /// build + dry-run + broadcast + best-block inclusion. Passed explicitly to the
 /// chain layer, which uses the call context only for cancellation.
 const PREIMAGE_SUBMIT_BUDGET: Duration = Duration::from_secs(180);
+/// Preimage submission is exercised by host diagnosis with a 60s method
+/// watchdog. Keep the allowance request below that so products receive a
+/// TrUAPI error instead of an outer harness timeout.
+const PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(45);
 
 fn remote_authority_context(cx: &CallContext) -> CallContext {
+    remote_authority_context_with_default(cx, DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT)
+}
+
+fn remote_authority_context_with_default(
+    cx: &CallContext,
+    default_timeout: Duration,
+) -> CallContext {
     let mut cx = cx.clone();
     if cx.timeout().is_none() {
-        cx.set_timeout(DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT);
+        cx.set_timeout(default_timeout);
     }
     cx
 }
@@ -1788,14 +1799,20 @@ impl Preimage for ProductRuntimeHost {
             .filter_map(move |item| {
                 let key = key.clone();
                 async move {
-                    // TODO: preserve platform stream errors as terminal
-                    // subscription interrupts once subscription items can carry
-                    // in-stream failures.
-                    let value = item.ok()?;
+                    let value = match item {
+                        Ok(value) => value,
+                        Err(error) => {
+                            warn!(
+                                reason = %error.reason,
+                                "preimage lookup platform stream failed"
+                            );
+                            return None;
+                        }
+                    };
                     let value = value.filter(|value| {
                         let matches = preimage_key(value)[..] == key[..];
                         if !matches {
-                            tracing::warn!(
+                            warn!(
                                 "preimage lookup returned a value whose hash does not match the \
                                  requested key; downgrading to a miss"
                             );
@@ -1843,8 +1860,8 @@ impl Preimage for ProductRuntimeHost {
                 "User rejected preimage submission".to_string(),
             ));
         }
-
-        let authority_cx = remote_authority_context(cx);
+        let authority_cx =
+            remote_authority_context_with_default(cx, PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT);
         let allowance = remote_authority_call(
             &authority_cx,
             self.authority
