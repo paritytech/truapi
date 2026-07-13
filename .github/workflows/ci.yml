@@ -43,6 +43,9 @@ jobs:
       - name: cargo check wasm32
         run: cargo check --target wasm32-unknown-unknown -p truapi-server
 
+      - name: cargo check wasm32 (truapi-provider browser backends)
+        run: cargo check -p truapi-provider --target wasm32-unknown-unknown --no-default-features --features "js smoldot networks" --all-targets
+
       - name: cargo +nightly fmt --check
         run: cargo +nightly fmt --check
 
@@ -51,6 +54,27 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace --all-features
+
+  wasm-provider:
+    name: truapi-provider (wasm browser tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: wasm-pack test --headless --chrome
+        run: wasm-pack test --headless --chrome rust/crates/truapi-provider --no-default-features --features "js smoldot"
 
   licenses:
     name: Dependency licenses
@@ -293,12 +317,13 @@ jobs:
     name: CI Status
     if: always()
     runs-on: ubuntu-latest
-    needs: [rust, licenses, codegen, ts-client, playground, explorer, e2e]
+    needs: [rust, wasm-provider, licenses, codegen, ts-client, playground, explorer, e2e]
     steps:
       - name: Check all jobs
         run: |
           results=(
             "${{ needs.rust.result }}"
+            "${{ needs.wasm-provider.result }}"
             "${{ needs.licenses.result }}"
             "${{ needs.codegen.result }}"
             "${{ needs.ts-client.result }}"

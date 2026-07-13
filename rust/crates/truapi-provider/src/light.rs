@@ -350,6 +350,8 @@ impl Drop for LightConnection {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use futures::executor::block_on;
     use futures::stream::StreamExt;
     use truapi_platform::ChainProvider;
@@ -490,6 +492,38 @@ mod tests {
         connection.send(
             r#"{"jsonrpc":"2.0","id":2,"method":"chainSpec_v1_chainName","params":[]}"#.to_owned(),
         );
+    }
+
+    #[test]
+    fn concurrent_parachain_connects_share_and_reclaim_the_relay() {
+        // Many threads race the lazy client init and the shared relay refcount;
+        // once every connection closes the relay must be fully reclaimed, with
+        // no panic and no leak.
+        let provider = Arc::new(
+            EmbeddedChainProvider::builder()
+                .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
+                .chain(
+                    PARACHAIN_GENESIS,
+                    ChainSource::light_client(PARACHAIN_SPEC)
+                        .relay(RELAY_GENESIS)
+                        .build(),
+                )
+                .build(),
+        );
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let provider = Arc::clone(&provider);
+                std::thread::spawn(move || {
+                    let connection =
+                        block_on(provider.connect(PARACHAIN_GENESIS)).expect("parachain connects");
+                    connection.close();
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().expect("connect thread does not panic");
+        }
+        assert_eq!(provider.relay_count(), 0, "no relay leaks under contention");
     }
 
     #[test]
