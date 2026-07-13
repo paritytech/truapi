@@ -151,12 +151,12 @@ pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
 /// after 180 seconds:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L303-L307>
 const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
-/// Whole-submission budget for an in-core Bulletin preimage submit, covering
-/// build + dry-run + broadcast + best-block inclusion. Passed explicitly to the
-/// chain layer, which uses the call context only for cancellation.
-const PREIMAGE_SUBMIT_BUDGET: Duration = Duration::from_secs(180);
-/// Timeout for obtaining or refreshing the Bulletin allowance before chain
-/// submission begins.
+/// End-to-end timeout for an in-core Bulletin preimage submit, starting after
+/// user confirmation and covering allowance allocation, chain submission, and
+/// one optional allowance refresh and retry.
+const PREIMAGE_SUBMIT_TIMEOUT: Duration = Duration::from_secs(60);
+/// Per-request cap for obtaining or refreshing the Bulletin allowance. The
+/// end-to-end submit deadline may reduce it further.
 const PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(45);
 
 fn remote_authority_context(cx: &CallContext) -> CallContext {
@@ -171,6 +171,20 @@ fn remote_authority_context_with_default(
     if cx.timeout().is_none() {
         cx.set_timeout(default_timeout);
     }
+    cx
+}
+
+fn remote_authority_context_until(
+    cx: &CallContext,
+    default_timeout: Duration,
+    deadline: Instant,
+) -> CallContext {
+    let mut cx = cx.clone();
+    let timeout = cx
+        .timeout()
+        .unwrap_or(default_timeout)
+        .min(deadline.saturating_duration_since(Instant::now()));
+    cx.set_timeout(timeout);
     cx
 }
 
@@ -1863,8 +1877,12 @@ impl Preimage for ProductRuntimeHost {
                 "User rejected preimage submission".to_string(),
             ));
         }
-        let authority_cx =
-            remote_authority_context_with_default(cx, PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT);
+        let submission_deadline = Instant::now() + PREIMAGE_SUBMIT_TIMEOUT;
+        let authority_cx = remote_authority_context_until(
+            cx,
+            PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT,
+            submission_deadline,
+        );
         let allowance = remote_authority_call(
             &authority_cx,
             self.authority
@@ -1873,9 +1891,6 @@ impl Preimage for ProductRuntimeHost {
         .await
         .map_err(|err| preimage_submit_error(err.reason()))?;
 
-        // The initial chain submission and one refreshed-allowance retry share
-        // one budget so the API remains bounded by its diagnosis watchdog.
-        let submission_deadline = Instant::now() + PREIMAGE_SUBMIT_BUDGET;
         let key = match bulletin
             .submit_preimage(cx, submission_deadline, &allowance, &value)
             .await
@@ -1885,6 +1900,11 @@ impl Preimage for ProductRuntimeHost {
             // evict the exhausted key, allocate a fresh (increased) allowance,
             // and try exactly once more.
             Err(BulletinSubmitError::AllowanceRejected { .. }) => {
+                let authority_cx = remote_authority_context_until(
+                    cx,
+                    PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT,
+                    submission_deadline,
+                );
                 let allowance = remote_authority_call(
                     &authority_cx,
                     self.authority.refresh_bulletin_allowance_key(

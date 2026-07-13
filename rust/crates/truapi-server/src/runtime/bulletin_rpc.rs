@@ -37,15 +37,14 @@ use truapi::CallContext;
 /// broadcast.
 const SUBMIT_ATTEMPTS: usize = 2;
 /// Number of newer best blocks to try before treating a dry-run allowance
-/// rejection as real. Wallet allocation can return before the freshly granted
-/// Bulletin authorization is visible to the chain state used by dry-run.
-const ALLOWANCE_DRY_RUN_PROPAGATION_BLOCKS: usize = 20;
-/// Keep propagation retries below the whole-submission budget so a confirmed
-/// allowance rejection still reaches the refresh-and-retry path.
+/// rejection as real. Three blocks are about 18 seconds on Bulletin and leave
+/// room in the end-to-end submit timeout for one refresh and retry.
+const ALLOWANCE_DRY_RUN_PROPAGATION_BLOCKS: usize = 3;
+/// Bound each wait for a newer best block while allowance state propagates.
 #[cfg(not(test))]
-const ALLOWANCE_DRY_RUN_PROPAGATION_TIMEOUT: Duration = Duration::from_secs(120);
+const ALLOWANCE_DRY_RUN_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 #[cfg(test)]
-const ALLOWANCE_DRY_RUN_PROPAGATION_TIMEOUT: Duration = Duration::from_millis(25);
+const ALLOWANCE_DRY_RUN_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_millis(25);
 /// Budget for the best-block stream to replay the current chain head.
 const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(10);
 /// Quiet window after which the newest replayed block is taken as the head.
@@ -307,34 +306,25 @@ impl BulletinRpc {
                             phase: AllowanceRejectionPhase::DryRun,
                         });
                     }
-                    let Some(remaining) =
-                        ALLOWANCE_DRY_RUN_PROPAGATION_TIMEOUT.checked_sub(elapsed)
-                    else {
-                        warn!(
-                            rejections = allowance_rejections + 1,
-                            elapsed_ms = elapsed.as_millis(),
-                            stop = "deadline",
-                            "Bulletin allowance remained unavailable to dry-run"
-                        );
-                        return Err(BulletinSubmitError::AllowanceRejected {
-                            phase: AllowanceRejectionPhase::DryRun,
-                        });
-                    };
                     allowance_rejections += 1;
                     warn!(
                         attempt = allowance_rejections,
                         elapsed_ms = elapsed.as_millis(),
-                        remaining_ms = remaining.as_millis(),
+                        block_wait_timeout_ms = ALLOWANCE_DRY_RUN_BLOCK_WAIT_TIMEOUT.as_millis(),
                         "Bulletin allowance not visible to dry-run yet; rebuilding at next block"
                     );
-                    block = match next_best_block(best_blocks, remaining, SubmissionPhase::DryRun)
-                        .await
+                    block = match next_best_block(
+                        best_blocks,
+                        ALLOWANCE_DRY_RUN_BLOCK_WAIT_TIMEOUT,
+                        SubmissionPhase::DryRun,
+                    )
+                    .await
                     {
                         Err(BulletinSubmitError::Timeout { .. }) => {
                             warn!(
                                 rejections = allowance_rejections,
                                 elapsed_ms = started.elapsed().as_millis(),
-                                stop = "deadline",
+                                stop = "block-wait-timeout",
                                 "Bulletin allowance remained unavailable to dry-run"
                             );
                             return Err(BulletinSubmitError::AllowanceRejected {
@@ -1305,7 +1295,7 @@ mod tests {
         }
 
         #[test]
-        fn dry_run_propagation_deadline_remains_an_allowance_rejection() {
+        fn dry_run_propagation_block_wait_timeout_remains_an_allowance_rejection() {
             let provider = Arc::new(
                 BulletinScriptedProvider::new([])
                     .with_validation_outcomes([ValidationOutcome::AllowanceRejected], false),
@@ -1314,7 +1304,7 @@ mod tests {
                 &CallContext::new(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
-                b"scripted propagation deadline",
+                b"scripted propagation block wait timeout",
             ))
             .unwrap_err();
 
