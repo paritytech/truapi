@@ -6,8 +6,8 @@
 //! deliberately not handled here — a dropped socket ends the responses
 //! stream, and the consumer recovers by connecting again.
 
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::channel::mpsc;
 use futures::stream::{self, AbortHandle, BoxStream, Stream, StreamExt};

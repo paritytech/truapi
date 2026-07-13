@@ -17,11 +17,11 @@
 //! `log`->`tracing` bridge (e.g. `tracing_log::LogTracer`); the provider does
 //! not install a global logger of its own.
 
+use core::num::{NonZero, NonZeroUsize};
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::time::Duration;
 use std::collections::HashMap;
-use std::num::{NonZero, NonZeroUsize};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
-use std::time::Duration;
 
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, StreamExt};
@@ -203,7 +203,7 @@ fn add_relay(
             user_data: (),
             specification: chain_spec,
             database_content: database_content.as_deref().unwrap_or(""),
-            potential_relay_chains: std::iter::empty(),
+            potential_relay_chains: core::iter::empty(),
             json_rpc: AddChainConfigJsonRpc::Disabled,
             statement_protocol_config: statement_protocol.then(statement_protocol_config),
         })

@@ -6,10 +6,10 @@
 //! bounds without real cross-thread use — calling a connection from another
 //! thread would panic, and no such thread exists in this environment.
 
-use std::cell::RefCell;
+use core::cell::RefCell;
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::rc::Rc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::channel::{mpsc, oneshot};
 use futures::stream::{BoxStream, StreamExt};
