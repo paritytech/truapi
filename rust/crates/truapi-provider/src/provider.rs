@@ -160,6 +160,14 @@ impl EmbeddedChainProvider {
     }
 }
 
+#[cfg(all(test, feature = "smoldot"))]
+impl EmbeddedChainProvider {
+    /// Number of implicit relay chains the shared light client currently holds.
+    pub(crate) fn relay_count(&self) -> usize {
+        self.light.relay_count()
+    }
+}
+
 #[truapi_platform::async_trait]
 impl ChainProvider for EmbeddedChainProvider {
     #[tracing::instrument(skip_all, fields(genesis = %hex::encode(genesis_hash)))]

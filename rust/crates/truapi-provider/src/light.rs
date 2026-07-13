@@ -78,9 +78,16 @@ const MAX_SUBSCRIPTIONS: u32 = 1024;
 
 struct LightInner {
     client: Client<Platform, ()>,
-    /// Relay chains added implicitly for parachain entries, kept for the
-    /// provider's lifetime so parachain connections can come and go freely.
-    relays: HashMap<[u8; 32], ChainId>,
+    /// Relay chains added implicitly to sync parachain connections, refcounted
+    /// by the live parachain connections that named them. A relay is removed
+    /// from the client when its last such connection closes.
+    relays: HashMap<[u8; 32], RelayEntry>,
+}
+
+/// A shared implicit relay chain and how many live parachain connections use it.
+struct RelayEntry {
+    chain_id: ChainId,
+    refcount: usize,
 }
 
 /// Lazily-started shared smoldot client owned by a provider.
@@ -102,6 +109,12 @@ impl LightState {
                 relays: HashMap::new(),
             }))
         })
+    }
+
+    /// Number of implicit relay chains currently held.
+    #[cfg(test)]
+    pub(crate) fn relay_count(&self) -> usize {
+        lock(self.inner()).relays.len()
     }
 
     /// Add `source` (a [`ChainSource::LightClient`] entry) to the shared
@@ -164,6 +177,7 @@ impl LightState {
         Ok(Box::new(LightConnection {
             inner,
             chain_id: success.chain_id,
+            relay: *relay,
             errors_tx,
             responses: Mutex::new(Some((responses, errors_rx))),
             closed: AtomicBool::new(false),
@@ -171,7 +185,8 @@ impl LightState {
     }
 }
 
-/// Add the relay chain for a parachain entry, reusing an already-added one.
+/// Add the relay chain for a parachain entry, reusing an already-added one and
+/// taking a reference on it for the calling connection.
 ///
 /// The relay is added with JSON-RPC disabled: it exists only so the parachain
 /// can sync, and a direct connection to the relay genesis goes through its own
@@ -181,8 +196,9 @@ fn add_relay(
     chains: &HashMap<[u8; 32], ChainSource>,
     relay_genesis: [u8; 32],
 ) -> Result<ChainId, ProviderError> {
-    if let Some(existing) = guard.relays.get(&relay_genesis) {
-        return Ok(*existing);
+    if let Some(existing) = guard.relays.get_mut(&relay_genesis) {
+        existing.refcount += 1;
+        return Ok(existing.chain_id);
     }
 
     let Some(ChainSource::LightClient {
@@ -211,7 +227,13 @@ fn add_relay(
             reason: err.to_string(),
         })?;
 
-    guard.relays.insert(relay_genesis, success.chain_id);
+    guard.relays.insert(
+        relay_genesis,
+        RelayEntry {
+            chain_id: success.chain_id,
+            refcount: 1,
+        },
+    );
     Ok(success.chain_id)
 }
 
@@ -242,6 +264,9 @@ fn statement_seed() -> u128 {
 struct LightConnection {
     inner: Arc<Mutex<LightInner>>,
     chain_id: ChainId,
+    /// Genesis of the implicit relay this connection holds a reference on, if
+    /// it is a parachain; released on close.
+    relay: Option<[u8; 32]>,
     /// Synthetic JSON-RPC error frames for requests smoldot rejected, merged
     /// into [`responses`](Self::responses) so the caller fails fast.
     errors_tx: mpsc::UnboundedSender<String>,
@@ -295,6 +320,24 @@ impl JsonRpcConnection for LightConnection {
         // channel ends its half of the merged stream, so `responses()`
         // terminates cleanly.
         let _: () = guard.client.remove_chain(self.chain_id);
+
+        // Release the hold on the implicit relay and remove it once the last
+        // parachain connection using it is gone. This connection's own chain is
+        // already removed above, so no live chain still depends on the relay.
+        if let Some(relay_genesis) = self.relay {
+            let orphaned = match guard.relays.get_mut(&relay_genesis) {
+                Some(entry) => {
+                    entry.refcount -= 1;
+                    (entry.refcount == 0).then_some(entry.chain_id)
+                }
+                None => None,
+            };
+            if let Some(relay_id) = orphaned {
+                guard.relays.remove(&relay_genesis);
+                let _: () = guard.client.remove_chain(relay_id);
+            }
+        }
+
         self.errors_tx.close_channel();
     }
 }
@@ -400,6 +443,38 @@ mod tests {
                 "unexpected response: {response}"
             );
         }
+    }
+
+    #[test]
+    fn relay_is_reclaimed_when_the_last_parachain_closes() {
+        let provider = EmbeddedChainProvider::builder()
+            .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
+            .chain(
+                PARACHAIN_GENESIS,
+                ChainSource::light_client(PARACHAIN_SPEC)
+                    .relay(RELAY_GENESIS)
+                    .build(),
+            )
+            .build();
+        let first = block_on(provider.connect(PARACHAIN_GENESIS)).expect("parachain connects");
+        let second = block_on(provider.connect(PARACHAIN_GENESIS)).expect("parachain connects");
+        assert_eq!(
+            provider.relay_count(),
+            1,
+            "both connections share one relay"
+        );
+        first.close();
+        assert_eq!(
+            provider.relay_count(),
+            1,
+            "the relay stays while a parachain connection is live"
+        );
+        second.close();
+        assert_eq!(
+            provider.relay_count(),
+            0,
+            "the relay is reclaimed after the last parachain connection closes"
+        );
     }
 
     #[test]
