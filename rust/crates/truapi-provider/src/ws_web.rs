@@ -86,6 +86,10 @@ fn open_socket(
     })?;
     socket.set_binary_type(BinaryType::Arraybuffer);
 
+    // Unbounded on purpose: the browser `onmessage` callback cannot apply
+    // backpressure, so a bound would force dropping inbound frames and break the
+    // consumer's id correlation. Depth is governed by the consumer draining the
+    // responses stream.
     let (responses_tx, responses_rx) = mpsc::unbounded::<String>();
     // Resolved exactly once by whichever of onopen/onerror/onclose fires
     // first, so the handshake can be awaited.

@@ -18,6 +18,12 @@ use url::Url;
 
 use crate::error::ProviderError;
 
+/// Bounded depth of the outbound request buffer. The sole producer is a trusted
+/// in-process consumer, so this rarely fills; when it does the socket is not
+/// draining, and [`send`](WsConnection::send) ends the response stream rather
+/// than letting the buffer grow without bound.
+const REQUEST_BUFFER: usize = 1024;
+
 /// Open a WebSocket connection to `url`.
 ///
 /// Requires an ambient tokio runtime; both the handshake and the spawned
@@ -40,7 +46,7 @@ pub(crate) async fn connect(url: Url) -> Result<Box<dyn JsonRpcConnection>, Prov
 
 /// A live WebSocket connection exposed as a raw JSON-RPC pipe.
 struct WsConnection {
-    requests: mpsc::UnboundedSender<String>,
+    requests: Mutex<mpsc::Sender<String>>,
     responses: Mutex<Option<BoxStream<'static, String>>>,
     stream_abort: AbortHandle,
     closed: AtomicBool,
@@ -56,11 +62,21 @@ impl WsConnection {
         S: TransportSenderT + Send,
         R: TransportReceiverT + Send,
     {
-        let (requests, request_queue) = mpsc::unbounded();
+        Self::start_with_buffer(sender, receiver, REQUEST_BUFFER)
+    }
+
+    /// [`start`](Self::start) with an explicit request-buffer depth, so tests
+    /// can force an overflow deterministically.
+    fn start_with_buffer<S, R>(sender: S, receiver: R, buffer: usize) -> Self
+    where
+        S: TransportSenderT + Send,
+        R: TransportReceiverT + Send,
+    {
+        let (requests, request_queue) = mpsc::channel(buffer);
         let (responses, stream_abort) = stream::abortable(response_stream(receiver));
         tokio::spawn(writer_pump(sender, request_queue, stream_abort.clone()));
         WsConnection {
-            requests,
+            requests: Mutex::new(requests),
             responses: Mutex::new(Some(responses.boxed())),
             stream_abort,
             closed: AtomicBool::new(false),
@@ -70,9 +86,22 @@ impl WsConnection {
 
 impl JsonRpcConnection for WsConnection {
     fn send(&self, request: String) {
-        // Infallible by contract: after a close or socket death the request
-        // is dropped and the consumer notices via the ended responses stream.
-        let _ = self.requests.unbounded_send(request);
+        if self.closed.load(Ordering::SeqCst) {
+            return;
+        }
+        // A full buffer means the socket is not draining, and a disconnected
+        // channel means the writer is already gone. Either way, end the
+        // response stream so the id-correlating consumer reconnects rather than
+        // buffering without bound or waiting on a request that will not be sent.
+        if self
+            .requests
+            .lock()
+            .expect("requests mutex poisoned")
+            .try_send(request)
+            .is_err()
+        {
+            self.close();
+        }
     }
 
     fn responses(&self) -> BoxStream<'static, String> {
@@ -91,7 +120,10 @@ impl JsonRpcConnection for WsConnection {
         if self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
-        self.requests.close_channel();
+        self.requests
+            .lock()
+            .expect("requests mutex poisoned")
+            .close_channel();
         self.stream_abort.abort();
         self.responses
             .lock()
@@ -115,7 +147,7 @@ impl Drop for WsConnection {
 /// is the disconnect signal it acts on.
 async fn writer_pump<S: TransportSenderT>(
     mut sender: S,
-    mut request_queue: mpsc::UnboundedReceiver<String>,
+    mut request_queue: mpsc::Receiver<String>,
     stream_abort: AbortHandle,
 ) {
     while let Some(request) = request_queue.next().await {
@@ -203,6 +235,23 @@ mod tests {
 
         async fn send(&mut self, _msg: String) -> Result<(), Self::Error> {
             Err(FakeError("dead socket"))
+        }
+
+        async fn close(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
+    /// Sender whose `send` never resolves, so the writer parks after taking one
+    /// request and the bounded buffer fills.
+    struct StalledSender;
+
+    #[truapi_platform::async_trait]
+    impl TransportSenderT for StalledSender {
+        type Error = FakeError;
+
+        async fn send(&mut self, _msg: String) -> Result<(), Self::Error> {
+            core::future::pending().await
         }
 
         async fn close(&mut self) -> Result<(), Self::Error> {
@@ -322,6 +371,20 @@ mod tests {
         let connection = WsConnection::start(FailingSender, FakeReceiver { frames: frames_rx });
         let mut responses = connection.responses();
         connection.send("req".to_owned());
+        assert_eq!(responses.next().await, None);
+    }
+
+    #[tokio::test]
+    async fn a_full_request_buffer_ends_the_response_stream() {
+        // The writer stalls on the first request, so a tiny buffer fills and a
+        // later send overflows; the consumer must see the stream end, not hang.
+        let (_frames_tx, frames_rx) = mpsc::unbounded::<Result<ReceivedMessage, FakeError>>();
+        let connection =
+            WsConnection::start_with_buffer(StalledSender, FakeReceiver { frames: frames_rx }, 2);
+        let mut responses = connection.responses();
+        for _ in 0..64 {
+            connection.send("req".to_owned());
+        }
         assert_eq!(responses.next().await, None);
     }
 
