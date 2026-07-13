@@ -92,6 +92,9 @@ impl LightState {
         chains: &HashMap<[u8; 32], ChainSource>,
         source: &ChainSource,
     ) -> Result<Box<dyn JsonRpcConnection>, GenericError> {
+        // `ChainSource` collapses to a single variant when only the smoldot
+        // backend is enabled (e.g. the iOS build), making this match irrefutable.
+        #[allow(irrefutable_let_patterns)]
         let ChainSource::LightClient {
             chain_spec,
             relay,
