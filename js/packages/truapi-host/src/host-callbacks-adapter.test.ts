@@ -323,7 +323,6 @@ describe("createWasmRawCallbacks", () => {
     ).toBe(true);
 
     await settle();
-    await settle();
 
     expect(preimageEvents).toEqual([null, [4, 5, 6]]);
     expect(calls).toEqual([
