@@ -30,6 +30,8 @@ const LOG_TARGET: &str = "subxt-platform-wasm";
 pub struct SubxtPlatform {}
 
 impl SubxtPlatform {
+    /// Create a browser platform. Stateless: all per-connection state lives in
+    /// the sockets it opens.
     pub fn new() -> Self {
         SubxtPlatform {}
     }
@@ -79,7 +81,11 @@ impl PlatformRef for SubxtPlatform {
     }
 
     fn client_name(&self) -> std::borrow::Cow<'_, str> {
-        "subxt-light-client".into()
+        // Divergence from the vendored upstream (which reports
+        // "subxt-light-client"): report this crate so peer/telemetry
+        // attribution matches the client that is actually connecting, and
+        // stays consistent with the native `DefaultPlatform` identity.
+        env!("CARGO_PKG_NAME").into()
     }
 
     fn client_version(&self) -> std::borrow::Cow<'_, str> {

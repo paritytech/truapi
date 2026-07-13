@@ -194,6 +194,22 @@ mod tests {
         }
     }
 
+    /// Sender whose `send` always fails, modelling a dead socket.
+    struct FailingSender;
+
+    #[truapi_platform::async_trait]
+    impl TransportSenderT for FailingSender {
+        type Error = FakeError;
+
+        async fn send(&mut self, _msg: String) -> Result<(), Self::Error> {
+            Err(FakeError("dead socket"))
+        }
+
+        async fn close(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+
     struct FakeReceiver {
         frames: mpsc::UnboundedReceiver<Result<ReceivedMessage, FakeError>>,
     }
@@ -296,6 +312,17 @@ mod tests {
         assert_eq!(harness.sent.next().await, None);
         tokio::task::yield_now().await;
         assert!(*harness.sender_closed.lock().expect("lock"));
+    }
+
+    #[tokio::test]
+    async fn writer_failure_ends_the_response_stream() {
+        // A dead socket (send fails) must end the responses stream so the
+        // consumer sees a disconnect instead of hanging on the request.
+        let (_frames_tx, frames_rx) = mpsc::unbounded::<Result<ReceivedMessage, FakeError>>();
+        let connection = WsConnection::start(FailingSender, FakeReceiver { frames: frames_rx });
+        let mut responses = connection.responses();
+        connection.send("req".to_owned());
+        assert_eq!(responses.next().await, None);
     }
 
     #[tokio::test]

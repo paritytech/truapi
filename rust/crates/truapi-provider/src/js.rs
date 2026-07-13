@@ -125,6 +125,7 @@ impl ChainProviderBuilder {
 }
 
 impl Default for ChainProviderBuilder {
+    /// Same as [`ChainProviderBuilder::new`]: an empty builder.
     fn default() -> Self {
         Self::new()
     }

@@ -82,6 +82,7 @@ impl NativeChainProvider {
 
 #[truapi_platform::async_trait]
 impl ChainProvider for NativeChainProvider {
+    #[tracing::instrument(skip_all, fields(genesis = %hex::encode(genesis_hash)))]
     async fn connect(
         &self,
         genesis_hash: [u8; 32],

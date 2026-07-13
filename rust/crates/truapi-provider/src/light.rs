@@ -11,6 +11,11 @@
 //! Warm-start snapshots: send `chainHead_unstable_finalizedDatabase` over any
 //! live connection, persist the returned string, and feed it back through
 //! [`LightClientBuilder::database`](crate::LightClientBuilder::database).
+//!
+//! Observability: on native targets smoldot logs through the `log` crate. A
+//! host that wants those lines in its `tracing` output should install a
+//! `log`->`tracing` bridge (e.g. `tracing_log::LogTracer`); the provider does
+//! not install a global logger of its own.
 
 use std::collections::HashMap;
 use std::num::{NonZero, NonZeroUsize};
