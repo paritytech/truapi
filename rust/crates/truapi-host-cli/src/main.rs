@@ -10,7 +10,6 @@
 //! Plus `alloc-check`, a diagnostic for on-chain statement-store allowance.
 
 mod accounts;
-mod alloc;
 mod attestation;
 mod chain;
 mod frame_server;
@@ -29,6 +28,7 @@ use clap::{Args, Parser, Subcommand};
 use futures::future::BoxFuture;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use truapi_platform::{HostInfo, PlatformInfo};
+use truapi_server::statement_allowance as alloc;
 use truapi_server::subscription::Spawner;
 use truapi_server::{PairingHostConfig, PairingHostRuntime, SigningHostConfig, SigningHostRuntime};
 
@@ -219,7 +219,9 @@ async fn run_alloc_check(
         None => [0u8; 32],
     };
 
-    let rpc = alloc::rpc::RpcClient::connect(network.people_ws).await?;
+    let rpc = alloc::rpc::RpcClient::connect(network.people_ws)
+        .await
+        .map_err(anyhow::Error::msg)?;
     let metadata = alloc::fetch_metadata(&rpc)
         .await
         .map_err(anyhow::Error::msg)?;
@@ -633,7 +635,9 @@ async fn register_pairing_allowances(
     let device = proposal.device.statement_account_id;
 
     let bandersnatch = alloc::bandersnatch_entropy(entropy);
-    let rpc = alloc::rpc::RpcClient::connect(statement_store_url).await?;
+    let rpc = alloc::rpc::RpcClient::connect(statement_store_url)
+        .await
+        .map_err(anyhow::Error::msg)?;
     let metadata = alloc::fetch_metadata(&rpc)
         .await
         .map_err(anyhow::Error::msg)?;
@@ -710,8 +714,10 @@ async fn pairing_interactive_loop(frame_url: String, product_id: String) -> Resu
             println!("unknown command; use: script <path>, quit");
             continue;
         };
-        let status = script_runner::run(&frame_url, &product_id, &script).await?;
-        println!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
+        match script_runner::run(&frame_url, &product_id, &script).await {
+            Ok(status) => println!("SCRIPT_EXIT {}", status.code().unwrap_or(1)),
+            Err(err) => println!("SCRIPT_ERROR {err:#}"),
+        }
     }
 }
 
@@ -735,13 +741,19 @@ async fn signing_interactive_loop(
             return Ok(());
         }
         if let Some(deeplink) = deeplink_command(line) {
-            respond_to_deeplink(session, deeplink).await?;
+            if let Err(err) = respond_to_deeplink(session, deeplink).await {
+                println!("DEEPLINK_ERROR {err:#}");
+            }
             continue;
         }
         if let Some(script) = script_command(line) {
-            ensure_signer(session).await?;
-            let status = script_runner::run(&frame_url, &product_id, &script).await?;
-            println!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
+            match ensure_signer(session).await {
+                Ok(()) => match script_runner::run(&frame_url, &product_id, &script).await {
+                    Ok(status) => println!("SCRIPT_EXIT {}", status.code().unwrap_or(1)),
+                    Err(err) => println!("SCRIPT_ERROR {err:#}"),
+                },
+                Err(err) => println!("SIGNER_ERROR {err:#}"),
+            }
             continue;
         }
         println!("unknown command; use: deeplink <url>, script <path>, quit");

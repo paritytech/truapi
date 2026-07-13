@@ -6,7 +6,7 @@
 // the pairing host must serve that product id (else signing methods fail with
 // PermissionDenied). Top-level product code: logs in, runs the examples against
 // the paired signing host, writes a web.md-shape report to
-// explorer/diagnosis-reports/headless.md, and gates on the signer-critical
+// explorer/diagnosis-reports/headless-pairing.md, and gates on the signer-critical
 // methods (chain-node methods and deferred features are reported, not gated,
 // unless a live chain node is routed in).
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -32,7 +32,7 @@ const MUST_PASS = new Set([
 ]);
 
 const DEFAULT_REPORT_PATH = fileURLToPath(
-  new URL("../../../../../explorer/diagnosis-reports/headless.md", import.meta.url),
+  new URL("../../../../../explorer/diagnosis-reports/headless-pairing.md", import.meta.url),
 );
 const REPORT_PATH = process.env.TRUAPI_DIAGNOSIS_REPORT_PATH || DEFAULT_REPORT_PATH;
 const REPORT_TITLE = process.env.TRUAPI_DIAGNOSIS_TITLE || "Truapi Headless Pairing Host Diagnosis";

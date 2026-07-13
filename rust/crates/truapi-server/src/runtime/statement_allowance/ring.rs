@@ -167,7 +167,11 @@ pub async fn read_ring_members_at(
         .map_err(|e| e.to_string())?
     {
         // RingStatus = { total: u32 LE, included: u32 LE, .. }.
-        let included = u32::decode(&mut &status[4..]).map_err(|e| format!("ring status: {e}"))?;
+        let included_bytes = status
+            .get(4..)
+            .ok_or_else(|| "ring status truncated before included field".to_string())?;
+        let included =
+            u32::decode(&mut &included_bytes[..]).map_err(|e| format!("ring status: {e}"))?;
         members.truncate(included as usize);
     }
 

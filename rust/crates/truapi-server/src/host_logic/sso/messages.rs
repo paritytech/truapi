@@ -21,9 +21,8 @@
 
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
-    AccountId, AllocatableResource, HostAccountGetAliasResponse, HostSignPayloadRequest,
-    HostSignRawRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload,
-    RawPayload,
+    AccountId, AllocatableResource, HostAccountGetAliasResponse, LegacyAccountTxPayload,
+    ProductAccountId, ProductAccountTxPayload, RawPayload,
 };
 
 use crate::host_logic::session::SsoSessionInfo;
@@ -90,7 +89,7 @@ pub enum SigningRequest {
 /// Request sent when a product asks the paired signing host to sign a Substrate
 /// payload with a product-derived account.
 ///
-/// Built from [`HostSignPayloadRequest`] but kept as a dedicated wire type
+/// Built from [`truapi::v01::HostSignPayloadRequest`] but kept as a dedicated wire type
 /// because the host-papp SSO dialect flattens the public request payload and
 /// encodes `with_signed_transaction` as `OptionBool`.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -114,7 +113,7 @@ pub struct SigningPayloadRequest {
 }
 
 impl SigningPayloadRequest {
-    fn from_host_request(value: HostSignPayloadRequest) -> Self {
+    fn from_host_request(value: truapi::v01::HostSignPayloadRequest) -> Self {
         let payload = value.payload;
         Self {
             product_account_id: value.account,
@@ -165,7 +164,7 @@ impl From<SigningPayloadRequest> for truapi::v01::HostSignPayloadRequest {
 /// Request sent when a product asks the paired signing host to sign raw bytes or a
 /// string message with a product-derived account.
 ///
-/// Built from [`HostSignRawRequest`] and wrapped in
+/// Built from [`truapi::v01::HostSignRawRequest`] and wrapped in
 /// [`v1::RemoteMessage::SignRequest`] before being encrypted into an SSO session
 /// statement.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -175,7 +174,7 @@ pub struct SigningRawRequest {
 }
 
 impl SigningRawRequest {
-    fn from_host_request(value: HostSignRawRequest) -> Self {
+    fn from_host_request(value: truapi::v01::HostSignRawRequest) -> Self {
         Self {
             product_account_id: value.account,
             data: value.payload.into(),
@@ -554,7 +553,10 @@ pub fn statement_store_product_sign_message(
 }
 
 /// Build a signing-host payload-signing request message.
-pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest) -> RemoteMessage {
+pub fn sign_payload_message(
+    message_id: String,
+    request: truapi::v01::HostSignPayloadRequest,
+) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::SignRequest(Box::new(
@@ -564,7 +566,10 @@ pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest)
 }
 
 /// Build a signing-host raw-signing request message.
-pub fn sign_raw_message(message_id: String, request: HostSignRawRequest) -> RemoteMessage {
+pub fn sign_raw_message(
+    message_id: String,
+    request: truapi::v01::HostSignRawRequest,
+) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::SignRequest(Box::new(
@@ -857,7 +862,7 @@ mod tests {
     fn raw_sign_request_uses_remote_message_variant_indices() {
         let message = sign_raw_message(
             "m1".to_string(),
-            HostSignRawRequest {
+            truapi::v01::HostSignRawRequest {
                 account: account(),
                 payload: RawPayload::Bytes {
                     bytes: vec![0xde, 0xad],
@@ -1025,7 +1030,7 @@ mod tests {
 
     #[test]
     fn option_bool_matches_host_papp_option_bool_encoding() {
-        let mut request = HostSignPayloadRequest {
+        let mut request = truapi::v01::HostSignPayloadRequest {
             account: account(),
             payload: HostSignPayloadData {
                 block_hash: vec![],
@@ -1092,7 +1097,7 @@ mod tests {
         let session = session();
         let remote_message = sign_raw_message(
             "remote-1".to_string(),
-            HostSignRawRequest {
+            truapi::v01::HostSignRawRequest {
                 account: account(),
                 payload: RawPayload::Payload {
                     payload: "<Bytes>hello</Bytes>".to_string(),
@@ -1132,7 +1137,7 @@ mod tests {
         let session = session();
         let remote_message = sign_raw_message(
             "remote-1".to_string(),
-            HostSignRawRequest {
+            truapi::v01::HostSignRawRequest {
                 account: account(),
                 payload: RawPayload::Payload {
                     payload: "<Bytes>hello</Bytes>".to_string(),
@@ -1208,7 +1213,7 @@ mod tests {
         let (host_session, responder_session) = host_and_responder_sessions();
         let request = sign_raw_message(
             "remote-1".to_string(),
-            HostSignRawRequest {
+            truapi::v01::HostSignRawRequest {
                 account: account(),
                 payload: RawPayload::Payload {
                     payload: "<Bytes>hello</Bytes>".to_string(),

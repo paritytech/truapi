@@ -9,7 +9,6 @@
 //! Reference: polkadot-app-ios-v2 `Packages/Products/.../ProductAccountHolder.swift`
 //! and `verifiable-swift` over `paritytech/verifiable`.
 
-use blake2_rfc::blake2b::blake2b;
 use verifiable::GenerateVerifiable;
 use verifiable::ring::bandersnatch::BandersnatchVrfVerifiable;
 
@@ -41,7 +40,9 @@ pub fn derive_product_alias(
 }
 
 fn blake2b256(message: &[u8]) -> [u8; 32] {
-    blake2b(32, &[], message)
+    blake2b_simd::Params::new()
+        .hash_length(32)
+        .hash(message)
         .as_bytes()
         .try_into()
         .expect("BLAKE2b-256 returns 32 bytes")

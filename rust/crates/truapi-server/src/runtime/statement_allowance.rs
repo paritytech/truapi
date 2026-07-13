@@ -16,7 +16,6 @@ pub mod slot;
 
 use std::time::{Duration, Instant};
 
-use blake2_rfc::blake2b::blake2b;
 use futures::FutureExt;
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
@@ -30,7 +29,9 @@ use slot::SlotSelection;
 
 /// Bandersnatch entropy for a bip39 entropy: `blake2b256(bip39_entropy)`.
 pub fn bandersnatch_entropy(bip39_entropy: &[u8]) -> [u8; 32] {
-    blake2b(32, &[], bip39_entropy)
+    blake2b_simd::Params::new()
+        .hash_length(32)
+        .hash(bip39_entropy)
         .as_bytes()
         .try_into()
         .expect("BLAKE2b-256 returns 32 bytes")

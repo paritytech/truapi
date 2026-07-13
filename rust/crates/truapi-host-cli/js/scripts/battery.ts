@@ -32,10 +32,10 @@ async function record(name: string, fn: () => Promise<{ ok: boolean; detail: str
 const login = await truapi.account.requestLogin({ reason: undefined });
 results.push({
   name: "account.requestLogin",
-  ok: login.isOk() && login.value === "Success",
+  ok: login.isOk() && ["Success", "AlreadyConnected"].includes(String(login.value)),
   detail: login.isOk() ? String(login.value) : JSON.stringify(login.error),
 });
-if (!(login.isOk() && login.value === "Success")) {
+if (!(login.isOk() && ["Success", "AlreadyConnected"].includes(String(login.value)))) {
   report();
   throw new Error("login did not succeed");
 }

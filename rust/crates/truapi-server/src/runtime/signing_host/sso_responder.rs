@@ -17,9 +17,10 @@ use std::sync::Arc;
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument, warn};
 use truapi::latest::HostAccountGetAliasResponse;
-use truapi::{CallContext, v01};
+use truapi::{CallContext, latest as api};
 use truapi_platform::{
-    CreateTransactionReview, SignPayloadReview, SignRawReview, UserConfirmationReview,
+    AccountAliasReview, CreateTransactionReview, SignPayloadReview, SignRawReview,
+    UserConfirmationReview,
 };
 
 use super::SigningHost;
@@ -41,7 +42,10 @@ use crate::host_logic::sso::pairing::{
     derive_p256_keypair_from_entropy, encrypt_v2_handshake_response,
     establish_responder_session_info, v2,
 };
-use crate::host_logic::statement_store::{build_signed_statement, parse_new_statements_result};
+use crate::host_logic::statement_store::{
+    build_signed_statement, parse_new_statements_result,
+    validate_unsigned_statement_signing_payload,
+};
 use crate::runtime::authority::{
     CreateTransactionAuthorityRequest, ProductAuthority, SignPayloadAuthorityRequest,
     SignRawAuthorityRequest,
@@ -229,7 +233,7 @@ async fn answer_remote_message(
             sign_response(services, signing_host, &message_id, *request).await,
         ),
         v1::RemoteMessage::RingVrfAliasRequest(request) => {
-            let payload = account_alias_response(signing_host, request).await;
+            let payload = account_alias_response(services, signing_host, request).await;
             v1::RemoteMessage::RingVrfAliasResponse(RingVrfAliasResponse {
                 responding_to: message_id,
                 payload,
@@ -276,7 +280,8 @@ async fn answer_remote_message(
             })
         }
         v1::RemoteMessage::StatementStoreProductSignRequest(request) => {
-            let signature = statement_store_product_sign_response(signing_host, request).await;
+            let signature =
+                statement_store_product_sign_response(services, signing_host, request).await;
             v1::RemoteMessage::StatementStoreProductSignResponse(
                 StatementStoreProductSignResponse {
                     responding_to: message_id,
@@ -303,38 +308,69 @@ async fn resource_allocation_response(
     signing_host: &Arc<SigningHost>,
     request: messages::ResourceAllocationRequest,
 ) -> Result<Vec<SsoAllocationOutcome>, String> {
+    confirm(
+        services,
+        UserConfirmationReview::ResourceAllocation(api::HostRequestResourceAllocationRequest {
+            resources: request
+                .resources
+                .iter()
+                .map(public_allocatable_resource)
+                .collect(),
+        }),
+    )
+    .await?;
+
     let mut outcomes = Vec::with_capacity(request.resources.len());
     for resource in request.resources {
         let outcome = match resource {
-            SsoAllocatableResource::StatementStoreAllowance => {
-                let slot_account_key = allocate_statement_store_allowance(
-                    services,
-                    signing_host,
-                    &request.calling_product_id,
-                )
-                .await?;
+            SsoAllocatableResource::StatementStoreAllowance => allocate_statement_store_allowance(
+                services,
+                signing_host,
+                &request.calling_product_id,
+            )
+            .await
+            .map(|slot_account_key| {
                 SsoAllocationOutcome::Allocated(SsoAllocatedResource::StatementStoreAllowance {
                     slot_account_key,
                 })
-            }
-            SsoAllocatableResource::BulletinAllowance => {
-                let slot_account_key = allocate_bulletin_allowance(
-                    services,
-                    signing_host,
-                    &request.calling_product_id,
-                    request.on_existing,
-                )
-                .await?;
+            }),
+            SsoAllocatableResource::BulletinAllowance => allocate_bulletin_allowance(
+                services,
+                signing_host,
+                &request.calling_product_id,
+                request.on_existing,
+            )
+            .await
+            .map(|slot_account_key| {
                 SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
                     slot_account_key,
                 })
-            }
+            }),
             SsoAllocatableResource::SmartContractAllowance(_)
-            | SsoAllocatableResource::AutoSigning => SsoAllocationOutcome::NotAvailable,
+            | SsoAllocatableResource::AutoSigning => Ok(SsoAllocationOutcome::NotAvailable),
         };
-        outcomes.push(outcome);
+        match outcome {
+            Ok(outcome) => outcomes.push(outcome),
+            Err(reason) => {
+                warn!(%reason, "resource allocation item failed");
+                outcomes.push(SsoAllocationOutcome::Rejected);
+            }
+        }
     }
     Ok(outcomes)
+}
+
+fn public_allocatable_resource(resource: &SsoAllocatableResource) -> api::AllocatableResource {
+    match resource {
+        SsoAllocatableResource::StatementStoreAllowance => {
+            api::AllocatableResource::StatementStoreAllowance
+        }
+        SsoAllocatableResource::BulletinAllowance => api::AllocatableResource::BulletinAllowance,
+        SsoAllocatableResource::SmartContractAllowance(index) => {
+            api::AllocatableResource::SmartContractAllowance(*index)
+        }
+        SsoAllocatableResource::AutoSigning => api::AllocatableResource::AutoSigning,
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -557,7 +593,7 @@ async fn serve_sign_request(
     let cx = CallContext::new();
     let response = match request {
         SigningRequest::Payload(request) => {
-            let request: v01::HostSignPayloadRequest = (*request).into();
+            let request: api::HostSignPayloadRequest = (*request).into();
             confirm(
                 services,
                 UserConfirmationReview::SignPayload(SignPayloadReview::Product(request.clone())),
@@ -568,7 +604,7 @@ async fn serve_sign_request(
                 .await
         }
         SigningRequest::Raw(request) => {
-            let request: v01::HostSignRawRequest = request.into();
+            let request: api::HostSignRawRequest = request.into();
             confirm(
                 services,
                 UserConfirmationReview::SignRaw(SignRawReview::Product(request.clone())),
@@ -587,9 +623,21 @@ async fn serve_sign_request(
 }
 
 async fn statement_store_product_sign_response(
+    services: &Arc<RuntimeServices>,
     signing_host: &Arc<SigningHost>,
     request: messages::StatementStoreProductSignRequest,
 ) -> Result<Vec<u8>, String> {
+    validate_unsigned_statement_signing_payload(&request.payload)?;
+    confirm(
+        services,
+        UserConfirmationReview::SignRaw(SignRawReview::Product(api::HostSignRawRequest {
+            account: request.product_account_id.clone(),
+            payload: api::RawPayload::Bytes {
+                bytes: request.payload.clone(),
+            },
+        })),
+    )
+    .await?;
     let session = signing_host
         .current_session()
         .ok_or_else(|| "signing host session is not active".to_string())?;
@@ -626,9 +674,20 @@ async fn create_transaction_response(
 }
 
 async fn account_alias_response(
+    services: &Arc<RuntimeServices>,
     signing_host: &Arc<SigningHost>,
     request: messages::RingVrfAliasRequest,
 ) -> Result<HostAccountGetAliasResponse, String> {
+    if request.product_account_id.dot_ns_identifier != request.product_id {
+        confirm(
+            services,
+            UserConfirmationReview::AccountAlias(AccountAliasReview {
+                requesting_product_id: request.product_id.clone(),
+                target_product_id: request.product_account_id.dot_ns_identifier.clone(),
+            }),
+        )
+        .await?;
+    }
     let session = signing_host
         .current_session()
         .ok_or_else(|| "signing host session is not active".to_string())?;
@@ -654,5 +713,166 @@ async fn confirm(
         Ok(true) => Ok(()),
         Ok(false) => Err("Rejected".to_string()),
         Err(err) => Err(format!("confirmation failed: {}", err.reason)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::LocalActivation;
+    use super::*;
+    use crate::host_logic::statement_store::{StatementField, unsigned_statement_signing_payload};
+    use crate::runtime::services::RuntimeServices;
+    use crate::test_support::{StubPlatform, test_spawner};
+    use std::sync::Arc;
+    use truapi_platform::{HostInfo, Platform, PlatformInfo, SigningHostConfig};
+
+    const ENTROPY: [u8; 16] = [0xab; 16];
+
+    fn product_account(product_id: &str) -> api::ProductAccountId {
+        api::ProductAccountId {
+            dot_ns_identifier: product_id.to_string(),
+            derivation_index: 0,
+        }
+    }
+
+    fn signing_fixture(platform: Arc<StubPlatform>) -> (Arc<RuntimeServices>, Arc<SigningHost>) {
+        let platform: Arc<dyn Platform> = platform;
+        let config = SigningHostConfig::new(
+            HostInfo {
+                name: "Polkadot Mobile".to_string(),
+                icon: None,
+                version: None,
+            },
+            PlatformInfo::default(),
+            [0; 32],
+            [0xbb; 32],
+        )
+        .expect("signing host config is valid");
+        let services = RuntimeServices::new(
+            platform.clone(),
+            config.people_chain_genesis_hash,
+            config.bulletin_chain_genesis_hash,
+            test_spawner(),
+        );
+        let signing_host = SigningHost::new(platform, services.clone());
+        futures::executor::block_on(signing_host.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        (services, signing_host)
+    }
+
+    fn statement_sign_request(payload: Vec<u8>) -> v1::RemoteMessage {
+        v1::RemoteMessage::StatementStoreProductSignRequest(
+            messages::StatementStoreProductSignRequest {
+                product_account_id: product_account("myapp.dot"),
+                payload,
+            },
+        )
+    }
+
+    fn statement_payload() -> Vec<u8> {
+        unsigned_statement_signing_payload(vec![
+            StatementField::Expiry(42),
+            StatementField::Topic1([1; 32]),
+            StatementField::Data(vec![0xde, 0xad]),
+        ])
+        .expect("valid statement payload")
+    }
+
+    fn response_payload(response: RemoteMessage) -> v1::RemoteMessage {
+        let RemoteMessageData::V1(data) = response.data;
+        data
+    }
+
+    #[test]
+    fn statement_store_product_sign_rejects_non_statement_payload() {
+        let (services, signing_host) = signing_fixture(Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            ..StubPlatform::default()
+        }));
+
+        let response = futures::executor::block_on(answer_remote_message(
+            &services,
+            &signing_host,
+            "request-1".to_string(),
+            statement_sign_request(vec![0, 0, 1, 2, 3]),
+        ))
+        .expect("response is emitted");
+
+        let v1::RemoteMessage::StatementStoreProductSignResponse(response) =
+            response_payload(response)
+        else {
+            panic!("expected statement sign response");
+        };
+        assert_eq!(response.responding_to, "request-1");
+        assert!(
+            response
+                .signature
+                .unwrap_err()
+                .contains("invalid statement signing payload")
+        );
+    }
+
+    #[test]
+    fn statement_store_product_sign_requires_confirmation() {
+        let (services, signing_host) = signing_fixture(Arc::new(StubPlatform::default()));
+
+        let response = futures::executor::block_on(answer_remote_message(
+            &services,
+            &signing_host,
+            "request-1".to_string(),
+            statement_sign_request(statement_payload()),
+        ))
+        .expect("response is emitted");
+
+        let v1::RemoteMessage::StatementStoreProductSignResponse(response) =
+            response_payload(response)
+        else {
+            panic!("expected statement sign response");
+        };
+        assert_eq!(response.signature.unwrap_err(), "Rejected");
+    }
+
+    #[test]
+    fn account_alias_requires_confirmation_for_cross_product_request() {
+        let (services, signing_host) = signing_fixture(Arc::new(StubPlatform::default()));
+
+        let response = futures::executor::block_on(answer_remote_message(
+            &services,
+            &signing_host,
+            "alias-1".to_string(),
+            v1::RemoteMessage::RingVrfAliasRequest(messages::RingVrfAliasRequest {
+                product_account_id: product_account("other.dot"),
+                product_id: "myapp.dot".to_string(),
+            }),
+        ))
+        .expect("response is emitted");
+
+        let v1::RemoteMessage::RingVrfAliasResponse(response) = response_payload(response) else {
+            panic!("expected alias response");
+        };
+        assert_eq!(response.payload.unwrap_err(), "Rejected");
+    }
+
+    #[test]
+    fn resource_allocation_requires_confirmation_before_allocation() {
+        let (services, signing_host) = signing_fixture(Arc::new(StubPlatform::default()));
+
+        let response = futures::executor::block_on(answer_remote_message(
+            &services,
+            &signing_host,
+            "alloc-1".to_string(),
+            v1::RemoteMessage::ResourceAllocationRequest(messages::ResourceAllocationRequest {
+                calling_product_id: "myapp.dot".to_string(),
+                resources: vec![SsoAllocatableResource::StatementStoreAllowance],
+                on_existing: messages::OnExistingAllowancePolicy::Ignore,
+            }),
+        ))
+        .expect("response is emitted");
+
+        let v1::RemoteMessage::ResourceAllocationResponse(response) = response_payload(response)
+        else {
+            panic!("expected resource allocation response");
+        };
+        assert_eq!(response.payload.unwrap_err(), "Rejected");
     }
 }

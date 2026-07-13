@@ -77,7 +77,7 @@ Two scripts ship under `js/scripts/`:
   create-transaction, entropy). This is `run.sh`'s default.
 - `diagnosis.ts` — runs the playground's own generated example sources
   (`runExample`) and writes a `web.md`-shape report to
-  `explorer/diagnosis-reports/headless.md`, gating on the signer-critical
+  `explorer/diagnosis-reports/headless-pairing.md`, gating on the signer-critical
   methods. The generated examples are baked to the `truapi-playground.dot`
   product, so run it with that product id:
 
@@ -110,9 +110,9 @@ signing host grants it on-chain exactly as a real client does: it proves its
 LitePeople ring membership with a bandersnatch ring-VRF and submits an unsigned
 General (v5) `Resources.set_statement_store_account` extrinsic for each account
 that submits statements — its own `//wallet//sso` account and the pairing host's
-per-pairing device key. The port lives in `src/alloc/` (metadata-driven
-signed-extension encoding, ring fetch, slot scan, ring-VRF proof, extrinsic
-assembly, submit). The signing account must be an attested LitePeople member,
+per-pairing device key. The shared native allocator in `truapi-server`
+handles metadata-driven signed-extension encoding, ring fetch, slot scan,
+ring-VRF proof, extrinsic assembly, and submit. The signing account must be an attested LitePeople member,
 and may sit in an old ring, so the signing host scans back from the current ring
 index (slow, one-time per pairing). Auto-managed accounts are stored in
 `accounts.json` under `--base-path`; mnemonics are plaintext local test secrets

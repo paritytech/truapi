@@ -14,7 +14,6 @@
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
-use blake2_rfc::blake2b::blake2b;
 use hkdf::Hkdf;
 use p256::ecdh::diffie_hellman;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
@@ -293,10 +292,7 @@ pub fn derive_p256_keypair_from_entropy(
         let mut message = Vec::with_capacity(label.len() + 1);
         message.extend_from_slice(label);
         message.push(attempt as u8);
-        let candidate: [u8; 32] = blake2b(32, entropy, &message)
-            .as_bytes()
-            .try_into()
-            .expect("BLAKE2b-256 returns 32 bytes");
+        let candidate = blake2b256_keyed(&message, entropy);
         let Ok(secret) = SecretKey::from_slice(&candidate) else {
             continue;
         };
@@ -447,13 +443,17 @@ fn create_session_id(
 }
 
 fn keyed_hash(key: [u8; 32], message: &[u8]) -> [u8; 32] {
-    let digest = blake2b_simd::Params::new()
+    blake2b256_keyed(message, &key)
+}
+
+fn blake2b256_keyed(message: &[u8], key: &[u8]) -> [u8; 32] {
+    blake2b_simd::Params::new()
         .hash_length(32)
-        .key(&key)
-        .hash(message);
-    let mut output = [0u8; 32];
-    output.copy_from_slice(digest.as_bytes());
-    output
+        .key(key)
+        .hash(message)
+        .as_bytes()
+        .try_into()
+        .expect("BLAKE2b-256 returns 32 bytes")
 }
 
 /// Create one-shot pairing bootstrap material from runtime config.

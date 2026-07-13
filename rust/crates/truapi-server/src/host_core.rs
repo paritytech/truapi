@@ -186,8 +186,8 @@ impl PairingHostAdmin for PairingHostRuntime {
 /// so pairing cancellation is not present here.
 ///
 /// Raw-bytes and extrinsic-payload signing, v4 transaction construction, and
-/// product entropy are implemented; ring-VRF aliases and resource allocation
-/// return an `Unavailable` error pending on-chain support.
+/// product entropy are implemented; native signing hosts can also serve
+/// ring-VRF aliases and on-chain resource allocation.
 pub struct SigningHostRuntime {
     services: Arc<RuntimeServices>,
     signing_host: Arc<SigningHostRole>,
@@ -255,7 +255,7 @@ impl SigningHostRuntime {
 
     /// Activate a wallet-local session from host-held secret material and
     /// attach known identity metadata.
-    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.activate_local_session"))]
+    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.activate_local_session_with_identity"))]
     pub async fn activate_local_session_with_identity(
         &self,
         secret: Vec<u8>,

@@ -10,8 +10,7 @@
 //! signing, v4 transaction construction (payload fields and extensions arrive
 //! pre-encoded, so no chain metadata is needed), RFC-0007 product entropy, and
 //! bandersnatch ring-VRF product-account aliases (native only), and
-//! product-scoped Bulletin allowance keys. Deferred (returns
-//! [`AuthorityError::Unavailable`]): on-chain resource allocation.
+//! product-scoped Statement Store and Bulletin allowance keys.
 
 mod local_activation;
 mod sso_responder;

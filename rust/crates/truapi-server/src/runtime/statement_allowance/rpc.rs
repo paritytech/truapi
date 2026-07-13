@@ -5,7 +5,7 @@ use core::time::Duration;
 use futures::{FutureExt, pin_mut};
 use serde_json::Value;
 use subxt_rpcs::RpcClient as HostRpcClient;
-use subxt_rpcs::client::{RpcParams, rpc_params};
+use subxt_rpcs::client::{RpcClient as NativeRpcClient, RpcParams, rpc_params};
 
 /// Timeout for an allowance registration extrinsic to finalize.
 const SUBMIT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -17,6 +17,14 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
+    /// Open a native JSON-RPC connection to `url`.
+    pub async fn connect(url: &str) -> Result<Self, String> {
+        let inner = NativeRpcClient::from_insecure_url(url)
+            .await
+            .map_err(|err| format!("connect {url}: {err}"))?;
+        Ok(Self { inner })
+    }
+
     /// Wrap a platform-backed Subxt RPC client.
     pub fn new(inner: HostRpcClient) -> Self {
         Self { inner }

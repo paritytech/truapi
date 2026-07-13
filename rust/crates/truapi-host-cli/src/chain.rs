@@ -16,8 +16,8 @@ use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
-use tracing::debug;
-use truapi::v01;
+use tracing::{debug, warn};
+use truapi::latest as api;
 use truapi_platform::{ChainProvider, JsonRpcConnection};
 
 use crate::network::ChainEndpoint;
@@ -70,12 +70,12 @@ impl ChainProvider for WsChainProvider {
     async fn connect(
         &self,
         genesis_hash: [u8; 32],
-    ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
+    ) -> Result<Box<dyn JsonRpcConnection>, api::GenericError> {
         let url = self.url_for(&genesis_hash);
         debug!(genesis = %hex::encode(genesis_hash), %url, "chain connect");
         let connection = WsJsonRpcConnection::connect(url)
             .await
-            .map_err(|reason| v01::GenericError { reason })?;
+            .map_err(|reason| api::GenericError { reason })?;
         Ok(Box::new(connection))
     }
 }
@@ -145,7 +145,17 @@ impl JsonRpcConnection for WsJsonRpcConnection {
 
     fn responses(&self) -> BoxStream<'static, String> {
         BroadcastStream::new(self.inbound.subscribe())
-            .filter_map(|item| async move { item.ok() })
+            .filter_map(|item| async move {
+                match item {
+                    Ok(response) => Some(response),
+                    Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(
+                        dropped,
+                    )) => {
+                        warn!(dropped, "chain response subscriber lagged");
+                        None
+                    }
+                }
+            })
             .boxed()
     }
 

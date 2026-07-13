@@ -2,7 +2,7 @@
 //! extrinsic, driven by live chain metadata.
 //!
 //! The extension **order** and per-extension type ids come from the runtime
-//! metadata (`state_getMetadata`, V14/V15); the per-extension `extra` /
+//! metadata (`state_getMetadata`, V14/V15/V16); the per-extension `extra` /
 //! `additional_signed` bytes come from a name-keyed encoder mirroring
 //! signing-bot `src/core/create-transaction.ts` `encodeSignedExtensions`, with a
 //! generic default for the personhood extensions (all `Option`/void).
@@ -15,7 +15,6 @@
 
 use std::collections::HashMap;
 
-use blake2_rfc::blake2b::blake2b;
 use frame_metadata::RuntimeMetadata;
 use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::{Compact, Decode, Encode};
@@ -63,7 +62,7 @@ pub struct Metadata {
 }
 
 /// Collect extensions, type registry, storage value types, and pallet constants
-/// from a decoded V14/V15 metadata; `$set` is the version's `StorageEntryType`.
+/// from decoded metadata; `$set` is the version's `StorageEntryType`.
 macro_rules! collect_metadata {
     ($m:expr, $set:path) => {{
         let extensions = $m
@@ -329,7 +328,9 @@ pub fn build_proof_message(
 
 /// BLAKE2b-256 of `message`.
 pub fn blake2b256(message: &[u8]) -> [u8; 32] {
-    blake2b(32, &[], message)
+    blake2b_simd::Params::new()
+        .hash_length(32)
+        .hash(message)
         .as_bytes()
         .try_into()
         .expect("BLAKE2b-256 returns 32 bytes")

@@ -46,7 +46,6 @@ unicode-normalization = "0.1"
 url = "2"
 hex = "0.4"
 nanoid = "0.4"
-blake2-rfc = { version = "0.2", default-features = false }
 blake2b_simd = { version = "1", default-features = false }
 sp-crypto-hashing = { version = "0.1", default-features = false }
 schnorrkel = { version = "0.11.5", default-features = false, features = ["alloc", "getrandom"] }
@@ -64,7 +63,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["r
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 subxt = { version = "0.50.2", default-features = false, features = ["native"] }
-subxt-rpcs = { version = "0.50.1", default-features = false, features = ["native"] }
+subxt-rpcs = { version = "0.50.1", default-features = false, features = ["jsonrpsee", "native"] }
 frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
 scale-info = { version = "2.11", default-features = false, features = ["decode"] }
 # Bandersnatch ring-VRF for signing-host account aliases. The alias path uses

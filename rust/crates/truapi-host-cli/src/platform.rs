@@ -16,7 +16,7 @@ use futures::stream::{self, BoxStream};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
-use truapi::v01;
+use truapi::latest as api;
 use truapi_platform::{
     AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features, JsonRpcConnection, Navigation,
     Notifications, Permissions, PreimageHost, ProductStorage, ThemeHost, UserConfirmation,
@@ -60,7 +60,9 @@ impl CliPlatform {
         let (product_storage_path, core_storage_path) = storage_dir
             .as_ref()
             .map(|dir| {
-                let _ = fs::create_dir_all(dir);
+                if let Err(err) = fs::create_dir_all(dir) {
+                    tracing::warn!(path = %dir.display(), %err, "could not create CLI storage dir");
+                }
                 (
                     Some(dir.join("product-storage.json")),
                     Some(dir.join("core-storage.json")),
@@ -152,7 +154,7 @@ async fn prompt_yes_no(action: &str, detail: &str) -> bool {
 
 #[async_trait]
 impl ProductStorage for CliPlatform {
-    async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
+    async fn read(&self, key: String) -> Result<Option<Vec<u8>>, api::HostLocalStorageReadError> {
         Ok(self
             .product_storage
             .lock()
@@ -165,7 +167,7 @@ impl ProductStorage for CliPlatform {
         &self,
         key: String,
         value: Vec<u8>,
-    ) -> Result<(), v01::HostLocalStorageReadError> {
+    ) -> Result<(), api::HostLocalStorageReadError> {
         {
             self.product_storage
                 .lock()
@@ -173,10 +175,10 @@ impl ProductStorage for CliPlatform {
                 .insert(key, value);
         }
         self.persist_product_storage()
-            .map_err(|reason| v01::HostLocalStorageReadError::Unknown { reason })
+            .map_err(|reason| api::HostLocalStorageReadError::Unknown { reason })
     }
 
-    async fn clear(&self, key: String) -> Result<(), v01::HostLocalStorageReadError> {
+    async fn clear(&self, key: String) -> Result<(), api::HostLocalStorageReadError> {
         {
             self.product_storage
                 .lock()
@@ -184,7 +186,7 @@ impl ProductStorage for CliPlatform {
                 .remove(&key);
         }
         self.persist_product_storage()
-            .map_err(|reason| v01::HostLocalStorageReadError::Unknown { reason })
+            .map_err(|reason| api::HostLocalStorageReadError::Unknown { reason })
     }
 }
 
@@ -193,7 +195,7 @@ impl CoreStorage for CliPlatform {
     async fn read_core_storage(
         &self,
         key: CoreStorageKey,
-    ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+    ) -> Result<Option<Vec<u8>>, api::GenericError> {
         Ok(self
             .core_storage
             .lock()
@@ -206,7 +208,7 @@ impl CoreStorage for CliPlatform {
         &self,
         key: CoreStorageKey,
         value: Vec<u8>,
-    ) -> Result<(), v01::GenericError> {
+    ) -> Result<(), api::GenericError> {
         {
             self.core_storage
                 .lock()
@@ -214,10 +216,10 @@ impl CoreStorage for CliPlatform {
                 .insert(Self::core_key(&key), value);
         }
         self.persist_core_storage()
-            .map_err(|reason| v01::GenericError { reason })
+            .map_err(|reason| api::GenericError { reason })
     }
 
-    async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), v01::GenericError> {
+    async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), api::GenericError> {
         {
             self.core_storage
                 .lock()
@@ -225,7 +227,7 @@ impl CoreStorage for CliPlatform {
                 .remove(&Self::core_key(&key));
         }
         self.persist_core_storage()
-            .map_err(|reason| v01::GenericError { reason })
+            .map_err(|reason| api::GenericError { reason })
     }
 }
 
@@ -234,14 +236,14 @@ impl ChainProvider for CliPlatform {
     async fn connect(
         &self,
         genesis_hash: [u8; 32],
-    ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
+    ) -> Result<Box<dyn JsonRpcConnection>, api::GenericError> {
         self.chain.connect(genesis_hash).await
     }
 }
 
 #[async_trait]
 impl Navigation for CliPlatform {
-    async fn navigate_to(&self, url: String) -> Result<(), v01::HostNavigateToError> {
+    async fn navigate_to(&self, url: String) -> Result<(), api::HostNavigateToError> {
         tracing::info!(%url, "navigate_to");
         Ok(())
     }
@@ -251,9 +253,11 @@ impl Navigation for CliPlatform {
 impl Notifications for CliPlatform {
     async fn push_notification(
         &self,
-        _notification: v01::HostPushNotificationRequest,
-    ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
-        Ok(v01::HostPushNotificationResponse { id: 1 })
+        notification: api::HostPushNotificationRequest,
+    ) -> Result<api::HostPushNotificationResponse, api::GenericError> {
+        Err(api::GenericError {
+            reason: format!("push notifications are unavailable in the CLI host: {notification:?}"),
+        })
     }
 }
 
@@ -261,22 +265,22 @@ impl Notifications for CliPlatform {
 impl Permissions for CliPlatform {
     async fn device_permission(
         &self,
-        request: v01::HostDevicePermissionRequest,
-    ) -> Result<v01::HostDevicePermissionResponse, v01::GenericError> {
+        request: api::HostDevicePermissionRequest,
+    ) -> Result<api::HostDevicePermissionResponse, api::GenericError> {
         let granted = self
             .decide("device permission", format!("{request:?}"))
             .await;
-        Ok(v01::HostDevicePermissionResponse { granted })
+        Ok(api::HostDevicePermissionResponse { granted })
     }
 
     async fn remote_permission(
         &self,
-        request: v01::RemotePermissionRequest,
-    ) -> Result<v01::RemotePermissionResponse, v01::GenericError> {
+        request: api::RemotePermissionRequest,
+    ) -> Result<api::RemotePermissionResponse, api::GenericError> {
         let granted = self
             .decide("remote permission", format!("{request:?}"))
             .await;
-        Ok(v01::RemotePermissionResponse { granted })
+        Ok(api::RemotePermissionResponse { granted })
     }
 }
 
@@ -284,9 +288,9 @@ impl Permissions for CliPlatform {
 impl Features for CliPlatform {
     async fn feature_supported(
         &self,
-        _request: v01::HostFeatureSupportedRequest,
-    ) -> Result<v01::HostFeatureSupportedResponse, v01::GenericError> {
-        Ok(v01::HostFeatureSupportedResponse { supported: true })
+        _request: api::HostFeatureSupportedRequest,
+    ) -> Result<api::HostFeatureSupportedResponse, api::GenericError> {
+        Ok(api::HostFeatureSupportedResponse { supported: false })
     }
 }
 
@@ -307,14 +311,14 @@ impl UserConfirmation for CliPlatform {
     async fn confirm_user_action(
         &self,
         review: UserConfirmationReview,
-    ) -> Result<bool, v01::GenericError> {
+    ) -> Result<bool, api::GenericError> {
         Ok(self.decide("sign request", format!("{review:?}")).await)
     }
 }
 
 impl ThemeHost for CliPlatform {
-    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
-        Box::pin(stream::once(async { Ok(v01::ThemeVariant::Dark) }))
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<api::ThemeVariant, api::GenericError>> {
+        Box::pin(stream::once(async { Ok(api::ThemeVariant::Dark) }))
     }
 }
 
@@ -322,7 +326,7 @@ impl PreimageHost for CliPlatform {
     fn lookup_preimage(
         &self,
         key: Vec<u8>,
-    ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
+    ) -> BoxStream<'static, Result<Option<Vec<u8>>, api::GenericError>> {
         let value = self
             .preimages
             .lock()
@@ -339,18 +343,25 @@ struct JsonMap {
 }
 
 fn load_string_map(path: &Path) -> HashMap<String, Vec<u8>> {
-    let Ok(text) = fs::read_to_string(path) else {
-        return HashMap::new();
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return HashMap::new(),
+        Err(err) => {
+            tracing::warn!(path = %path.display(), %err, "could not read CLI storage");
+            return HashMap::new();
+        }
     };
-    serde_json::from_str::<JsonMap>(&text)
-        .ok()
-        .map(|json| {
-            json.values
-                .into_iter()
-                .filter_map(|(key, value)| hex::decode(value).ok().map(|bytes| (key, bytes)))
-                .collect()
-        })
-        .unwrap_or_default()
+    match serde_json::from_str::<JsonMap>(&text) {
+        Ok(json) => json
+            .values
+            .into_iter()
+            .filter_map(|(key, value)| hex::decode(value).ok().map(|bytes| (key, bytes)))
+            .collect(),
+        Err(err) => {
+            tracing::warn!(path = %path.display(), %err, "could not decode CLI storage");
+            HashMap::new()
+        }
+    }
 }
 
 fn save_string_map(path: &Path, values: &HashMap<String, Vec<u8>>) -> Result<(), String> {

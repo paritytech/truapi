@@ -7,9 +7,8 @@
 //! convention: preimages longer than 256 bytes are BLAKE2b-256 hashed before
 //! signing.
 
-use blake2_rfc::blake2b::blake2b;
 use parity_scale_codec::{Compact, Encode};
-use truapi::v01::{HostSignPayloadData, TxPayloadExtension};
+use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
 
 /// Preimages longer than this are hashed before signing (standard Substrate
 /// signed-payload rule).
@@ -93,7 +92,11 @@ pub fn build_v4_signed_extrinsic(
 
 fn hash_large_preimage(preimage: Vec<u8>) -> Vec<u8> {
     if preimage.len() > MAX_SIGNED_PREIMAGE_LEN {
-        blake2b(32, &[], &preimage).as_bytes().to_vec()
+        blake2b_simd::Params::new()
+            .hash_length(32)
+            .hash(&preimage)
+            .as_bytes()
+            .to_vec()
     } else {
         preimage
     }
@@ -157,7 +160,14 @@ mod tests {
         assert_eq!(preimage.len(), 32);
         let mut raw = vec![0x4D; 300];
         raw.extend_from_slice(&[0xE1, 0x4E, 0x54, 0x51, 0x56, 0x61, 0x62, 0xB1, 0xB2]);
-        assert_eq!(preimage, blake2b(32, &[], &raw).as_bytes().to_vec());
+        assert_eq!(
+            preimage,
+            blake2b_simd::Params::new()
+                .hash_length(32)
+                .hash(&raw)
+                .as_bytes()
+                .to_vec()
+        );
     }
 
     #[test]

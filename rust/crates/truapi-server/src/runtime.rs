@@ -18,7 +18,7 @@ mod signing_host;
 pub(crate) mod sso_pairing;
 pub(crate) mod sso_remote;
 #[cfg(not(target_arch = "wasm32"))]
-mod statement_allowance;
+pub mod statement_allowance;
 pub(crate) mod statement_store;
 mod statement_store_rpc;
 

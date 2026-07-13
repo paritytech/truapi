@@ -17,7 +17,7 @@ use crate::host_logic::session::SessionInfo;
 
 use futures::{FutureExt, pin_mut};
 use tracing::{debug, instrument, warn};
-use truapi::v01::{
+use truapi::latest::{
     OperationStartedResult, RemoteChainHeadFollowRequest, RemoteChainHeadStorageRequest,
     StorageQueryItem, StorageQueryType,
 };
