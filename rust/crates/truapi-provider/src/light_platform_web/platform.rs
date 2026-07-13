@@ -20,12 +20,8 @@ use std::{io, net::SocketAddr, pin::Pin};
 
 const LOG_TARGET: &str = "subxt-platform-wasm";
 
-/// Subxt platform implementation for wasm.
-///
-/// This implementation is a conversion of the implementation from the smoldot:
-/// https://github.com/smol-dot/smoldot/blob/6401d4df90569e23073d646b14a8fbf9f7e6bdd3/light-base/src/platform/default.rs#L83.
-///
-/// This platform will evolve over time and we'll need to keep this code in sync.
+/// Browser [`PlatformRef`] backing the embedded light client: tasks run on the
+/// JS event loop and peers are dialed over the browser `WebSocket`.
 #[derive(Clone)]
 pub struct SubxtPlatform {}
 
@@ -81,10 +77,9 @@ impl PlatformRef for SubxtPlatform {
     }
 
     fn client_name(&self) -> std::borrow::Cow<'_, str> {
-        // Divergence from the vendored upstream (which reports
-        // "subxt-light-client"): report this crate so peer/telemetry
-        // attribution matches the client that is actually connecting, and
-        // stays consistent with the native `DefaultPlatform` identity.
+        // Report this crate so peer/telemetry attribution names the client
+        // that is actually connecting, consistent with the native
+        // `DefaultPlatform` identity.
         env!("CARGO_PKG_NAME").into()
     }
 

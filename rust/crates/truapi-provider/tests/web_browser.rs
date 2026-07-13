@@ -90,7 +90,7 @@ async fn light_client_chain_name_round_trips_in_browser() {
     let provider = EmbeddedChainProvider::builder()
         .chain(
             GENESIS,
-            ChainSource::light_client(include_str!("fixtures/paseo.json")),
+            ChainSource::light_client(include_str!("fixtures/paseo.json")).build(),
         )
         .build();
     let connection = provider

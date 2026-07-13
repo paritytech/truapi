@@ -107,12 +107,10 @@ impl WasmSocket {
         let message_callback = Closure::<dyn FnMut(_)>::new({
             let inner = inner.clone();
             move |event: web_sys::MessageEvent| {
-                // Divergence from the vendored upstream, which `panic!`s here.
-                // A compliant libp2p peer only sends binary frames, but a
-                // misbehaving endpoint or proxy can deliver a text frame; a
-                // panic inside this browser event callback would abort the
-                // whole light client. Ignore the frame instead — the libp2p
-                // handshake fails cleanly downstream on the missing bytes.
+                // A compliant libp2p peer sends only binary frames. Ignore
+                // anything else rather than panicking inside a browser callback,
+                // which would abort the whole light client; the libp2p handshake
+                // then fails cleanly downstream on the missing bytes.
                 let Ok(buffer) = event.data().dyn_into::<js_sys::ArrayBuffer>() else {
                     tracing::warn!("ignoring non-ArrayBuffer WebSocket frame from libp2p peer");
                     return;
