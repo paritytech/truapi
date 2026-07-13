@@ -23,9 +23,19 @@
 //! - `js` feature — a JavaScript-facing API ([`js`]) on `wasm32`, so web
 //!   hosts can consume the provider directly without a Rust caller.
 
+// The `uniffi` feature pulls in UniFFI's generated scaffolding, which contains
+// `unsafe` extern-"C" glue; scope the allowance to that feature so every other
+// build keeps the crate's no-unsafe guarantee (see `[lints] unsafe_code`).
+#![cfg_attr(
+    all(feature = "uniffi", not(target_arch = "wasm32")),
+    allow(unsafe_code)
+)]
+
 mod config;
 mod provider;
 
+#[cfg(all(feature = "uniffi", not(target_arch = "wasm32")))]
+mod ffi;
 #[cfg(all(feature = "js", target_arch = "wasm32"))]
 pub mod js;
 #[cfg(feature = "smoldot")]
@@ -44,3 +54,6 @@ pub use config::ChainSource;
 #[cfg(feature = "networks")]
 pub use networks::{NetworkChains, known_networks};
 pub use provider::{NativeChainProvider, NativeChainProviderBuilder};
+
+#[cfg(all(feature = "uniffi", not(target_arch = "wasm32")))]
+uniffi::setup_scaffolding!();

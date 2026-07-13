@@ -6,7 +6,12 @@ description = "Network provider backends for ChainProvider: remote WebSocket JSO
 license = "MIT"
 
 [lib]
-crate-type = ["rlib", "cdylib"]
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+# Builds the uniffi-bindgen binary used to generate the Swift bindings.
+[[bin]]
+name = "uniffi-bindgen"
+required-features = ["cli"]
 
 # wasm-pack's bundled wasm-opt rejects the bulk-memory ops modern rustc emits
 # for wasm32; skip it. The wasm-bindgen output is already valid for browsers,
@@ -45,6 +50,10 @@ smoldot = [
 ]
 js = ["ws", "dep:wasm-bindgen-futures"]
 networks = ["smoldot"]
+# Swift/UniFFI bindings for native hosts (iOS, macOS, ...).
+uniffi = ["smoldot", "networks", "dep:uniffi"]
+# Builds the uniffi-bindgen binary (implies uniffi).
+cli = ["uniffi", "uniffi/cli"]
 
 [dependencies]
 truapi = { path = "../truapi" }
@@ -60,6 +69,8 @@ jsonrpsee-core = { version = "0.24", features = ["client"], optional = true }
 tokio = { version = "1", features = ["rt", "sync"], optional = true }
 smoldot-light = { version = "1.3", default-features = false, features = ["std"], optional = true }
 rand = { version = "0.8", optional = true }
+thiserror = { version = "1", optional = true }
+uniffi = { version = "0.28", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 futures-timer = { version = "3", features = ["wasm-bindgen"], optional = true }
@@ -83,7 +94,6 @@ web-time = { version = "1", optional = true }
 
 [dev-dependencies]
 serde_json = "1"
-
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 jsonrpsee = { version = "0.24", features = ["server"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time"] }
@@ -100,5 +110,7 @@ required-features = ["ws", "smoldot"]
 name = "gateway"
 required-features = ["ws", "smoldot"]
 
+# `deny` rather than `forbid`: the `uniffi` feature scopes an `allow(unsafe_code)`
+# for UniFFI's generated FFI glue (see src/lib.rs). Every other build has no unsafe.
 [lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"

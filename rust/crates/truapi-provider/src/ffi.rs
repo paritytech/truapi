@@ -1,23 +1,22 @@
-//! Swift/UniFFI bindings for [`truapi_provider`].
+//! Swift/UniFFI bindings (the `uniffi` feature, native targets).
 //!
 //! Exposes the embedded smoldot [`ChainProvider`](truapi_platform::ChainProvider)
 //! to Swift (and other UniFFI targets): build a provider, connect to a chain by
 //! genesis hash, and drive the raw JSON-RPC string pipe. Chain specs, relay
-//! topology, and statement-store placement come from truapi-provider's bundled
-//! network catalog, so the only argument a host supplies is the genesis hash.
+//! topology, and statement-store placement come from the bundled network
+//! catalog, so the only argument a host supplies is the genesis hash.
 //!
 //! Inbound responses are delivered to a foreign [`ChainMessageListener`]; a
-//! background thread pumps the provider's response stream and invokes it until
-//! the connection closes.
+//! background thread pumps the response stream and invokes it until the
+//! connection closes.
 
 use std::sync::Arc;
 
 use futures::executor::block_on;
 use futures::stream::StreamExt;
 use truapi_platform::{ChainProvider as _, JsonRpcConnection};
-use truapi_provider::NativeChainProvider;
 
-uniffi::setup_scaffolding!();
+use crate::NativeChainProvider;
 
 /// Errors surfaced to the foreign caller.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -52,7 +51,7 @@ pub struct ChainProvider {
 
 #[uniffi::export]
 impl ChainProvider {
-    /// Create a provider backed by truapi-provider's bundled network catalog.
+    /// Create a provider backed by the bundled network catalog.
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Arc::new(Self {

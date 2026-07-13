@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Build the TruapiProviderFFI xcframework and Swift bindings for iOS.
+# Build the truapi-provider xcframework and Swift bindings for iOS from the
+# crate's `uniffi` feature.
 #
 # Produces (under the workspace target/ dir):
 #   - target/TruapiProviderFFI.xcframework   (static lib + module map)
-#   - target/ios-bindings/truapi_provider_ffi.swift
+#   - target/ios-bindings/truapi_provider.swift
 #
 # Add the xcframework and the generated .swift to an Xcode target. By default
 # only the simulator slice is built; pass `--device` to add the arm64 device
 # slice too.
 set -euo pipefail
 
-CRATE=truapi-provider-ffi
-LIB=libtruapi_provider_ffi.a
+LIB=libtruapi_provider.a
 PROFILE=${PROFILE:-debug}
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT"
 
-CARGO_FLAGS=(-p "$CRATE" --lib)
+CARGO_FLAGS=(-p truapi-provider --lib --no-default-features --features uniffi)
 [ "$PROFILE" = release ] && CARGO_FLAGS+=(--release)
 
 SLICES=(aarch64-apple-ios-sim)
@@ -31,14 +31,14 @@ done
 BINDINGS="target/ios-bindings"
 rm -rf "$BINDINGS" && mkdir -p "$BINDINGS"
 echo "==> generating Swift bindings"
-cargo run -q -p "$CRATE" --features cli --bin uniffi-bindgen -- \
+cargo run -q -p truapi-provider --features cli --bin uniffi-bindgen -- \
   generate --library "target/aarch64-apple-ios-sim/$PROFILE/$LIB" \
   --language swift --out-dir "$BINDINGS"
 
 HEADERS="target/ios-headers"
 rm -rf "$HEADERS" && mkdir -p "$HEADERS"
-cp "$BINDINGS/truapi_provider_ffiFFI.h" "$HEADERS/"
-cp "$BINDINGS/truapi_provider_ffiFFI.modulemap" "$HEADERS/module.modulemap"
+cp "$BINDINGS/truapi_providerFFI.h" "$HEADERS/"
+cp "$BINDINGS/truapi_providerFFI.modulemap" "$HEADERS/module.modulemap"
 
 OUT="target/TruapiProviderFFI.xcframework"
 rm -rf "$OUT"

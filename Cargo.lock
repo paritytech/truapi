@@ -3688,24 +3688,13 @@ dependencies = [
  "tracing",
  "truapi",
  "truapi-platform",
+ "uniffi",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
  "web-time",
-]
-
-[[package]]
-name = "truapi-provider-ffi"
-version = "0.1.0"
-dependencies = [
- "futures",
- "thiserror 1.0.69",
- "truapi",
- "truapi-platform",
- "truapi-provider",
- "uniffi",
 ]
 
 [[package]]
