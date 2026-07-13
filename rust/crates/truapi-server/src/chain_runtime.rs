@@ -28,6 +28,7 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
+use derive_more::{Display, Error};
 use futures::channel::mpsc;
 use futures::future::{AbortHandle, Abortable};
 use futures::future::{BoxFuture, Shared};
@@ -130,7 +131,12 @@ pub enum RuntimeFailureKind {
 }
 
 /// Framework-level chain failure with a diagnostic reason.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, Error)]
+#[display(
+    "{method}{}{}",
+    if reason.is_some() { ": " } else { "" },
+    reason.as_deref().unwrap_or_default()
+)]
 pub struct RuntimeFailure {
     kind: RuntimeFailureKind,
     method: &'static str,

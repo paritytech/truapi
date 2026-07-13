@@ -26,7 +26,7 @@ use crate::host_logic::statement_store::statement_public_key_from_secret;
 ///
 /// The core is the sole holder: the secret never crosses the host boundary.
 /// Zeroized on drop, and its `Debug` redacts the material.
-#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop, derive_more::Debug)]
+#[derive(Clone, zeroize::Zeroize, zeroize::ZeroizeOnDrop, derive_more::Debug)]
 pub(crate) struct BulletinAllowanceKey {
     #[debug("\"<redacted>\"")]
     secret: [u8; 64],

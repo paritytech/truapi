@@ -5,14 +5,17 @@
 //! takes raw preimage bytes plus a [`BulletinAllowanceKey`], never
 //! caller-supplied call data.
 
-use crate::host_logic::extrinsic::Sr25519Signer;
-use crate::runtime::BulletinAllowanceKey;
 use subxt::client::{ClientAtBlock, OnlineClientAtBlockT};
 use subxt::config::DefaultExtrinsicParamsBuilder;
 use subxt::config::substrate::SubstrateConfig;
-use subxt::dynamic;
 use subxt::error::ExtrinsicError;
-use subxt::tx::SubmittableTransaction;
+use subxt::ext::codec::Encode;
+use subxt::ext::scale_encode::{self, EncodeAsFields, FieldIter, TypeResolver};
+use subxt::ext::scale_type_resolver::{Primitive, visitor};
+use subxt::tx::{StaticPayload, SubmittableTransaction};
+
+use crate::host_logic::extrinsic::Sr25519Signer;
+use crate::runtime::BulletinAllowanceKey;
 
 pub(crate) const STORE_PALLET_NAME: &str = "TransactionStorage";
 pub(crate) const STORE_CALL_NAME: &str = "store";
@@ -34,7 +37,7 @@ pub(crate) async fn build_signed_store_transaction<C: OnlineClientAtBlockT<Subst
     signer: &Sr25519Signer,
     data: &[u8],
 ) -> Result<SubmittableTransaction<SubstrateConfig, C>, ExtrinsicError> {
-    let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data,));
+    let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(data));
     let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
         .mortal(MORTAL_PERIOD_BLOCKS)
         .build();
@@ -47,6 +50,58 @@ pub(crate) async fn build_signed_store_transaction<C: OnlineClientAtBlockT<Subst
 pub(crate) fn allowance_signer(allowance: &BulletinAllowanceKey) -> Result<Sr25519Signer, String> {
     Sr25519Signer::from_secret_bytes(allowance.as_secret_bytes())
         .map_err(|reason| format!("invalid bulletin allowance key: {reason}"))
+}
+
+/// `store { data: Vec<u8> }` call arguments with exact metadata validation.
+struct StoreCallData<'a>(&'a [u8]);
+
+impl EncodeAsFields for StoreCallData<'_> {
+    fn encode_as_fields_to<R: TypeResolver>(
+        &self,
+        fields: &mut dyn FieldIter<'_, R::TypeId>,
+        types: &R,
+        out: &mut Vec<u8>,
+    ) -> Result<(), scale_encode::Error> {
+        let field = fields
+            .next()
+            .ok_or_else(|| scale_encode::Error::custom_str("store call has no data field"))?;
+        if fields.next().is_some() {
+            return Err(scale_encode::Error::custom_str(
+                "store call has more than one field",
+            ));
+        }
+        require_u8_sequence(types, field.id.clone())?;
+        self.0.encode_to(out);
+        Ok(())
+    }
+}
+
+/// Hard-error unless `type_id` resolves to a sequence whose element type is
+/// the `u8` primitive.
+fn require_u8_sequence<R: TypeResolver>(
+    types: &R,
+    type_id: R::TypeId,
+) -> Result<(), scale_encode::Error> {
+    let sequence_visitor = visitor::new((), |(), _kind| None::<R::TypeId>)
+        .visit_sequence(|(), _path, inner| Some(inner));
+    let inner = types
+        .resolve_type(type_id, sequence_visitor)
+        .map_err(|err| scale_encode::Error::custom_string(err.to_string()))?
+        .ok_or_else(|| {
+            scale_encode::Error::custom_str("store data field is not a byte sequence")
+        })?;
+
+    let u8_visitor = visitor::new((), |(), _kind| false)
+        .visit_primitive(|(), primitive| matches!(primitive, Primitive::U8));
+    let is_u8 = types
+        .resolve_type(inner, u8_visitor)
+        .map_err(|err| scale_encode::Error::custom_string(err.to_string()))?;
+    if !is_u8 {
+        return Err(scale_encode::Error::custom_str(
+            "store data field is not a sequence of u8",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -95,7 +150,7 @@ mod tests {
         nonce: u64,
         data: &[u8],
     ) -> Result<SubmittableTransaction<SubstrateConfig, C>, String> {
-        let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data,));
+        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(data));
         let params = DefaultExtrinsicParamsBuilder::<SubstrateConfig>::new()
             .nonce(nonce)
             .mortal_from_unchecked(MORTAL_PERIOD_BLOCKS, anchor.number, H256(anchor.hash))
@@ -170,7 +225,7 @@ mod tests {
 
         let (account, signature, tail) = split_v4(signed.encoded());
         assert_eq!(account, signer_fixture().account_id().0);
-        let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data.as_slice(),));
+        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(&data));
         let call_data = client.tx().call_data(&payload).unwrap();
         assert!(tail.ends_with(&call_data));
 
@@ -183,7 +238,7 @@ mod tests {
                 H256(anchor_fixture().hash),
             )
             .build();
-        let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data.as_slice(),));
+        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(&data));
         let signer_payload = client
             .tx()
             .create_v4_signable_offline(&payload, params)
@@ -230,7 +285,7 @@ mod tests {
                 H256(anchor_fixture().hash),
             )
             .build();
-        let payload = dynamic::tx(STORE_PALLET_NAME, STORE_CALL_NAME, (data.as_slice(),));
+        let payload = StaticPayload::new(STORE_PALLET_NAME, STORE_CALL_NAME, StoreCallData(&data));
         let mutated_payload = client
             .tx()
             .create_v4_signable_offline(&payload, params)
@@ -292,7 +347,62 @@ mod tests {
             &[1, 2, 3],
         )
         .unwrap_err();
-        assert!(error.contains("cannot encode call data"), "{error}");
+        assert!(error.contains("not a byte sequence"), "{error}");
+    }
+
+    #[test]
+    fn rejects_integer_sequence_that_is_not_bytes() {
+        let mut metadata = bulletin_metadata_v14();
+        let u32_type = extension_by_identifier(&metadata, "CheckSpecVersion").additional_signed;
+        let calls_type_id = metadata
+            .pallets
+            .iter()
+            .find(|pallet| pallet.name == STORE_PALLET_NAME)
+            .unwrap()
+            .calls
+            .as_ref()
+            .unwrap()
+            .ty
+            .id;
+        let calls_type = metadata
+            .types
+            .types
+            .iter()
+            .find(|ty| ty.id == calls_type_id)
+            .unwrap();
+        let scale_info::TypeDef::Variant(variants) = &calls_type.ty.type_def else {
+            panic!("calls type is not a variant");
+        };
+        let data_type_id = variants
+            .variants
+            .iter()
+            .find(|variant| variant.name == STORE_CALL_NAME)
+            .unwrap()
+            .fields[0]
+            .ty
+            .id;
+        let data_type = metadata
+            .types
+            .types
+            .iter_mut()
+            .find(|ty| ty.id == data_type_id)
+            .unwrap();
+        let scale_info::TypeDef::Sequence(sequence) = &mut data_type.ty.type_def else {
+            panic!("store data type is not a sequence");
+        };
+        sequence.type_param = u32_type;
+
+        let state = state_with_metadata(metadata_from_v14(metadata));
+        let client = state.client_at(anchor_fixture().number).unwrap();
+        let error = build_signed_store_transaction_offline(
+            &client,
+            &anchor_fixture(),
+            &signer_fixture(),
+            0,
+            &[1, 2, 3],
+        )
+        .unwrap_err();
+        assert!(error.contains("not a sequence of u8"), "{error}");
     }
 
     #[test]

@@ -23,6 +23,10 @@ mod statement_store_rpc;
 use core::future::Future;
 use core::time::Duration;
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 use crate::chain_runtime::RuntimeFailure;
 use crate::host_logic::bulletin::preimage_key;
@@ -1870,8 +1874,11 @@ impl Preimage for ProductRuntimeHost {
         .await
         .map_err(|err| preimage_submit_error(err.reason()))?;
 
+        // The initial chain submission and one refreshed-allowance retry share
+        // one budget so the API remains bounded by its diagnosis watchdog.
+        let submission_deadline = Instant::now() + PREIMAGE_SUBMIT_BUDGET;
         let key = match bulletin
-            .submit_preimage(cx, PREIMAGE_SUBMIT_BUDGET, &allowance, &value)
+            .submit_preimage(cx, submission_deadline, &allowance, &value)
             .await
         {
             Ok(key) => key,
@@ -1890,11 +1897,11 @@ impl Preimage for ProductRuntimeHost {
                 .await
                 .map_err(|err| preimage_submit_error(err.reason()))?;
                 bulletin
-                    .submit_preimage(cx, PREIMAGE_SUBMIT_BUDGET, &allowance, &value)
+                    .submit_preimage(cx, submission_deadline, &allowance, &value)
                     .await
-                    .map_err(|err| preimage_submit_error(err.reason()))?
+                    .map_err(|err| preimage_submit_error(err.to_string()))?
             }
-            Err(err) => return Err(preimage_submit_error(err.reason())),
+            Err(err) => return Err(preimage_submit_error(err.to_string())),
         };
         // Move the owned body into the lookup cache (no extra copy) so an
         // immediate product lookup hits before the content backend has it.
