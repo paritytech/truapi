@@ -1,5 +1,13 @@
 # cargo-deny configuration. Run `cargo deny check licenses`.
-# Outbound licence is MIT; only permissive inbound licences are allowed.
+# Outbound licence is MIT; only permissive inbound licences are allowed,
+# with a scoped exception for the smoldot light-client crates: their
+# Classpath exception explicitly permits linking from differently-licensed
+# code.
+
+[graph]
+# Resolve the worst-case graph so optional backends (e.g. truapi-provider's
+# smoldot feature) are covered by the license gate.
+all-features = true
 
 [licenses]
 allow = [
@@ -8,8 +16,14 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
+]
+exceptions = [
+    { name = "smoldot", allow = ["GPL-3.0-or-later WITH Classpath-exception-2.0"] },
+    { name = "smoldot-light", allow = ["GPL-3.0-or-later WITH Classpath-exception-2.0"] },
 ]
 confidence-threshold = 0.8

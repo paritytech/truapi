@@ -57,6 +57,9 @@ rust/crates/
   truapi/                Rust trait and type definitions (v01, v02)
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
+  truapi-platform/       Platform capability traits for host implementations
+  truapi-provider/       Network provider backends (WebSocket RPC or smoldot light-client)
+  truapi-server/         Host-side protocol runtime and platform bridge
 js/packages/
   truapi/                @parity/truapi TypeScript client
 playground/              Interactive Next.js playground (truapi-playground.dot)

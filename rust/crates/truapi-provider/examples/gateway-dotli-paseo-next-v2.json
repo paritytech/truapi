@@ -1,0 +1,17 @@
+{
+  "listen": "127.0.0.1:9944",
+  "chains": {
+    "relay": {
+      "genesis": "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
+      "spec": "rust/crates/truapi-provider/tests/fixtures/paseo.json"
+    },
+    "asset-hub": {
+      "genesis": "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+      "url": "wss://paseo-asset-hub-next-rpc.polkadot.io"
+    },
+    "people": {
+      "genesis": "0xc5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5",
+      "url": "wss://paseo-people-next-system-rpc.polkadot.io"
+    }
+  }
+}
