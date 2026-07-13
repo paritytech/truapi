@@ -13,13 +13,13 @@ use std::time::Duration;
 use futures::stream::StreamExt;
 use serde_json::Value;
 use truapi_platform::ChainProvider;
-use truapi_provider::{ChainSource, NativeChainProvider};
+use truapi_provider::{ChainSource, EmbeddedChainProvider};
 
 const PASEO_GENESIS: [u8; 32] = [0; 32]; // Registry key only; not validated.
 const PASEO_WS_URL: &str = "wss://paseo.rpc.amforc.com";
 
 async fn follow_initializes(source: ChainSource) {
-    let provider = NativeChainProvider::builder()
+    let provider = EmbeddedChainProvider::builder()
         .chain(PASEO_GENESIS, source)
         .build();
     let connection = provider

@@ -16,7 +16,7 @@
 
 use futures::stream::StreamExt;
 use truapi_platform::ChainProvider;
-use truapi_provider::{ChainSource, NativeChainProvider};
+use truapi_provider::{ChainSource, EmbeddedChainProvider};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -26,9 +26,9 @@ const TEST_WS: Option<&str> = option_env!("TRUAPI_PROVIDER_TEST_WS");
 
 const GENESIS: [u8; 32] = [7; 32];
 
-fn provider(url: &str) -> NativeChainProvider {
+fn provider(url: &str) -> EmbeddedChainProvider {
     let url = url::Url::parse(url).expect("test URL parses");
-    NativeChainProvider::builder()
+    EmbeddedChainProvider::builder()
         .chain(GENESIS, ChainSource::rpc_node(url))
         .build()
 }
@@ -87,7 +87,7 @@ async fn round_trip_and_close_against_gateway() {
 #[cfg(feature = "smoldot")]
 #[wasm_bindgen_test]
 async fn light_client_chain_name_round_trips_in_browser() {
-    let provider = NativeChainProvider::builder()
+    let provider = EmbeddedChainProvider::builder()
         .chain(
             GENESIS,
             ChainSource::light_client(include_str!("fixtures/paseo.json")),

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use truapi::latest::GenericError;
 
 use crate::config::ChainSource;
-use crate::provider::NativeChainProviderBuilder;
+use crate::provider::EmbeddedChainProviderBuilder;
 
 /// One chain within a [`NetworkDef`].
 struct ChainDef {
@@ -35,8 +35,8 @@ struct NetworkDef {
 }
 
 /// Genesis hashes of a registered network's chains, returned by
-/// [`NativeChainProviderBuilder::add_network`] so the host knows what to
-/// [`connect`](crate::NativeChainProvider) to.
+/// [`EmbeddedChainProviderBuilder::add_network`] so the host knows what to
+/// [`connect`](crate::EmbeddedChainProvider) to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NetworkChains {
     /// Relay-chain genesis hash.
@@ -123,9 +123,9 @@ fn network_sources(network: &NetworkDef) -> Result<NetworkSources, GenericError>
 /// to the relay and enabling the statement-store protocol where the catalog
 /// specifies it. Returns the chains' genesis hashes.
 pub(crate) fn add_network(
-    builder: NativeChainProviderBuilder,
+    builder: EmbeddedChainProviderBuilder,
     name: &str,
-) -> Result<(NativeChainProviderBuilder, NetworkChains), GenericError> {
+) -> Result<(EmbeddedChainProviderBuilder, NetworkChains), GenericError> {
     let network = CATALOG
         .iter()
         .find(|network| network.name == name)
@@ -174,7 +174,7 @@ fn light_source(chain: &ChainDef, relay: Option<[u8; 32]>) -> ChainSource {
     builder.build()
 }
 
-impl NativeChainProviderBuilder {
+impl EmbeddedChainProviderBuilder {
     /// Register every chain of the bundled network `name` (see
     /// [`known_networks`]). Returns the builder and the network's genesis
     /// hashes. Errors when `name` is not bundled.
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn paseo_next_v2_registers_four_chains_with_expected_hashes() {
-        let (_, chains) = NativeChainProviderBuilder::new()
+        let (_, chains) = EmbeddedChainProviderBuilder::new()
             .add_network("paseo-next-v2")
             .expect("bundled network registers");
         assert_eq!(
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn unknown_network_lists_the_catalog() {
-        let error = NativeChainProviderBuilder::new()
+        let error = EmbeddedChainProviderBuilder::new()
             .add_network("mainnet")
             .expect_err("an unbundled network must fail");
         assert!(error.reason.contains("paseo-next-v2"));
@@ -219,7 +219,7 @@ mod tests {
         // An empty provider — no explicit registration — still connects to a
         // catalog chain from its genesis hash alone.
         let relay = genesis(&CATALOG[0].relay).expect("catalog genesis parses");
-        let provider = crate::NativeChainProvider::builder().build();
+        let provider = crate::EmbeddedChainProvider::builder().build();
         let connection = block_on(provider.connect(relay))
             .expect("catalog resolves the relay genesis without registration");
         let mut responses = connection.responses();

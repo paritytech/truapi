@@ -1,7 +1,7 @@
 //! Network provider backends for the [`truapi_platform::ChainProvider`]
 //! capability, shared across every host platform.
 //!
-//! [`NativeChainProvider`] maps chain genesis hashes to a per-chain
+//! [`EmbeddedChainProvider`] maps chain genesis hashes to a per-chain
 //! [`ChainSource`]. Backends hand the caller the raw JSON-RPC string pipe the
 //! trait demands; request correlation and subscription routing stay with the
 //! consumer (truapi-server's `HostRpcClient`).
@@ -60,7 +60,7 @@ pub use config::ChainSource;
 pub use config::LightClientBuilder;
 #[cfg(feature = "networks")]
 pub use networks::{NetworkChains, known_networks};
-pub use provider::{NativeChainProvider, NativeChainProviderBuilder};
+pub use provider::{EmbeddedChainProvider, EmbeddedChainProviderBuilder};
 
 #[cfg(all(feature = "uniffi", not(target_arch = "wasm32")))]
 uniffi::setup_scaffolding!();

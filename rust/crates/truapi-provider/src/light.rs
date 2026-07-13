@@ -311,7 +311,7 @@ mod tests {
     use futures::stream::StreamExt;
     use truapi_platform::ChainProvider;
 
-    use crate::{ChainSource, NativeChainProvider};
+    use crate::{ChainSource, EmbeddedChainProvider};
 
     /// Real relay-chain spec (checkpoint included) vendored from smoldot's
     /// demo specs: `add_chain` and spec-local JSON-RPC queries succeed without
@@ -324,15 +324,15 @@ mod tests {
     const RELAY_GENESIS: [u8; 32] = [1; 32];
     const PARACHAIN_GENESIS: [u8; 32] = [2; 32];
 
-    fn offline_provider() -> NativeChainProvider {
-        NativeChainProvider::builder()
+    fn offline_provider() -> EmbeddedChainProvider {
+        EmbeddedChainProvider::builder()
             .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
             .build()
     }
 
     #[test]
     fn garbage_chain_spec_is_an_error() {
-        let provider = NativeChainProvider::builder()
+        let provider = EmbeddedChainProvider::builder()
             .chain(
                 [1; 32],
                 ChainSource::light_client("not a chain spec").build(),
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn unknown_relay_is_an_error() {
-        let provider = NativeChainProvider::builder()
+        let provider = EmbeddedChainProvider::builder()
             .chain(
                 RELAY_GENESIS,
                 ChainSource::light_client(RELAY_SPEC).relay([9; 32]).build(),
@@ -376,7 +376,7 @@ mod tests {
 
     #[test]
     fn parachain_reuses_its_registered_relay() {
-        let provider = NativeChainProvider::builder()
+        let provider = EmbeddedChainProvider::builder()
             .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
             .chain(
                 PARACHAIN_GENESIS,

@@ -10,7 +10,7 @@ use jsonrpsee::core::SubscriptionResult;
 use jsonrpsee::server::{RpcModule, Server, ServerHandle, SubscriptionMessage};
 use serde_json::Value;
 use truapi_platform::ChainProvider;
-use truapi_provider::{ChainSource, NativeChainProvider};
+use truapi_provider::{ChainSource, EmbeddedChainProvider};
 
 const GENESIS: [u8; 32] = [7; 32];
 
@@ -47,7 +47,7 @@ async fn spawn_server() -> (SocketAddr, ServerHandle) {
 
 async fn connect(addr: SocketAddr) -> Box<dyn truapi_platform::JsonRpcConnection> {
     let url = url::Url::parse(&format!("ws://{addr}")).expect("loopback URL parses");
-    NativeChainProvider::builder()
+    EmbeddedChainProvider::builder()
         .chain(GENESIS, ChainSource::rpc_node(url))
         .build()
         .connect(GENESIS)

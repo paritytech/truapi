@@ -32,7 +32,7 @@ mod imp {
     use futures::stream::{BoxStream, StreamExt};
     use serde_json::{Value, json};
     use truapi_platform::ChainProvider;
-    use truapi_provider::{ChainSource, NativeChainProvider};
+    use truapi_provider::{ChainSource, EmbeddedChainProvider};
 
     /// Paseo relay-chain genesis hash.
     const PASEO_GENESIS_HEX: &str =
@@ -65,7 +65,7 @@ mod imp {
         };
 
         let genesis = parse_genesis(PASEO_GENESIS_HEX);
-        let provider = NativeChainProvider::builder()
+        let provider = EmbeddedChainProvider::builder()
             .chain(genesis, source)
             .build();
 

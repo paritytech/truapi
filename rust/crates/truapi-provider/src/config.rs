@@ -3,7 +3,7 @@
 /// Where a chain's JSON-RPC service comes from.
 ///
 /// Registered per genesis hash on a
-/// [`NativeChainProviderBuilder`](crate::NativeChainProviderBuilder).
+/// [`EmbeddedChainProviderBuilder`](crate::EmbeddedChainProviderBuilder).
 #[derive(Debug, Clone)]
 pub enum ChainSource {
     /// Remote JSON-RPC node reached over `ws://` or `wss://`.

@@ -26,12 +26,12 @@ use truapi_platform::{ChainProvider as _, JsonRpcConnection};
 use wasm_bindgen::prelude::*;
 
 use crate::config::ChainSource;
-use crate::provider::{NativeChainProvider, NativeChainProviderBuilder};
+use crate::provider::{EmbeddedChainProvider, EmbeddedChainProviderBuilder};
 
 /// Collects genesis-hash to chain-source registrations from JS.
 #[wasm_bindgen]
 pub struct ChainProviderBuilder {
-    inner: Option<NativeChainProviderBuilder>,
+    inner: Option<EmbeddedChainProviderBuilder>,
 }
 
 #[wasm_bindgen]
@@ -40,7 +40,7 @@ impl ChainProviderBuilder {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         ChainProviderBuilder {
-            inner: Some(NativeChainProviderBuilder::new()),
+            inner: Some(EmbeddedChainProviderBuilder::new()),
         }
     }
 
@@ -134,7 +134,7 @@ impl Default for ChainProviderBuilder {
 /// A built provider; hand out one per page/worker.
 #[wasm_bindgen]
 pub struct ChainProviderHandle {
-    inner: Arc<NativeChainProvider>,
+    inner: Arc<EmbeddedChainProvider>,
 }
 
 #[wasm_bindgen]

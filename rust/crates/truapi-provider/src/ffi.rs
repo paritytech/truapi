@@ -16,7 +16,7 @@ use futures::executor::block_on;
 use futures::stream::StreamExt;
 use truapi_platform::{ChainProvider as _, JsonRpcConnection};
 
-use crate::NativeChainProvider;
+use crate::EmbeddedChainProvider;
 
 /// Errors surfaced to the foreign caller.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -46,7 +46,7 @@ pub trait ChainMessageListener: Send + Sync {
 /// every connection runs on the single embedded light client.
 #[derive(uniffi::Object)]
 pub struct ChainProvider {
-    inner: NativeChainProvider,
+    inner: EmbeddedChainProvider,
 }
 
 #[uniffi::export]
@@ -55,7 +55,7 @@ impl ChainProvider {
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            inner: NativeChainProvider::builder().build(),
+            inner: EmbeddedChainProvider::builder().build(),
         })
     }
 

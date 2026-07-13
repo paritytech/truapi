@@ -1,4 +1,4 @@
-//! Local WebSocket gateway exposing [`NativeChainProvider`] chains to a
+//! Local WebSocket gateway exposing [`EmbeddedChainProvider`] chains to a
 //! browser host: each configured chain is served at `ws://LISTEN/<name>`, and
 //! every inbound WebSocket connection becomes one provider connection.
 //!
@@ -50,7 +50,7 @@ mod imp {
     use tokio_tungstenite::tungstenite::Message;
     use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
     use truapi_platform::ChainProvider;
-    use truapi_provider::{ChainSource, NativeChainProvider};
+    use truapi_provider::{ChainSource, EmbeddedChainProvider};
 
     pub(super) async fn run() {
         let config_path = std::env::args().nth(1).unwrap_or_else(|| usage());
@@ -67,7 +67,7 @@ mod imp {
             .as_object()
             .expect("config.chains must be an object");
 
-        let mut builder = NativeChainProvider::builder();
+        let mut builder = EmbeddedChainProvider::builder();
         let mut routes = HashMap::new();
         for (name, entry) in chains {
             let genesis = parse_genesis(
@@ -120,7 +120,7 @@ mod imp {
     async fn serve(
         stream: TcpStream,
         peer: SocketAddr,
-        provider: Arc<NativeChainProvider>,
+        provider: Arc<EmbeddedChainProvider>,
         routes: Arc<HashMap<String, [u8; 32]>>,
     ) {
         let mut path = String::new();
