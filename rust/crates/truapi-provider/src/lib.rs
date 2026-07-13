@@ -31,10 +31,12 @@
     allow(unsafe_code)
 )]
 
-mod config;
-mod provider;
+// The crate is inert without a backend: only the registry would compile, and
+// `connect` could never succeed. Fail the build loudly instead.
+#[cfg(not(any(feature = "ws", feature = "smoldot")))]
+compile_error!("truapi-provider requires at least one backend feature: `ws` or `smoldot`");
 
-#[cfg(any(feature = "ws", feature = "smoldot"))]
+mod config;
 mod error;
 #[cfg(all(feature = "uniffi", not(target_arch = "wasm32")))]
 mod ffi;
@@ -46,6 +48,7 @@ mod light;
 mod light_platform_web;
 #[cfg(feature = "networks")]
 mod networks;
+mod provider;
 #[cfg(all(feature = "ws", not(target_arch = "wasm32")))]
 mod ws;
 #[cfg(all(feature = "ws", target_arch = "wasm32"))]

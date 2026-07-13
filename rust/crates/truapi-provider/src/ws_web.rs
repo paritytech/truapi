@@ -14,9 +14,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::{BoxStream, StreamExt};
 use send_wrapper::SendWrapper;
-use truapi::latest::GenericError;
 use truapi_platform::JsonRpcConnection;
 use url::Url;
+
+use crate::error::ProviderError;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
@@ -35,19 +36,21 @@ type SocketCallbacks = (
 type StagedSocket = SendWrapper<(WebSocket, SocketCallbacks)>;
 
 /// Open a browser WebSocket connection to `url`.
-pub(crate) async fn connect(url: Url) -> Result<Box<dyn JsonRpcConnection>, GenericError> {
+pub(crate) async fn connect(url: Url) -> Result<Box<dyn JsonRpcConnection>, ProviderError> {
     let (staged, handshake_rx, responses_tx, responses_rx) = open_socket(&url)?;
 
     match handshake_rx.await {
         Ok(Ok(())) => {}
         Ok(Err(reason)) => {
-            return Err(GenericError {
-                reason: format!("WebSocket handshake with {url} failed: {reason}"),
+            return Err(ProviderError::Handshake {
+                url: url.to_string(),
+                reason,
             });
         }
         Err(_) => {
-            return Err(GenericError {
-                reason: format!("WebSocket handshake with {url} was abandoned"),
+            return Err(ProviderError::Handshake {
+                url: url.to_string(),
+                reason: "handshake abandoned".to_owned(),
             });
         }
     }
@@ -76,9 +79,9 @@ fn open_socket(
         mpsc::UnboundedSender<String>,
         mpsc::UnboundedReceiver<String>,
     ),
-    GenericError,
+    ProviderError,
 > {
-    let socket = WebSocket::new(url.as_str()).map_err(|err| GenericError {
+    let socket = WebSocket::new(url.as_str()).map_err(|err| ProviderError::Transport {
         reason: format!("WebSocket creation for {url} failed: {err:?}"),
     })?;
     socket.set_binary_type(BinaryType::Arraybuffer);

@@ -13,26 +13,26 @@ use futures::channel::mpsc;
 use futures::stream::{self, AbortHandle, BoxStream, Stream, StreamExt};
 use jsonrpsee_client_transport::ws::WsTransportClientBuilder;
 use jsonrpsee_core::client::{ReceivedMessage, TransportReceiverT, TransportSenderT};
-use truapi::latest::GenericError;
 use truapi_platform::JsonRpcConnection;
 use url::Url;
+
+use crate::error::ProviderError;
 
 /// Open a WebSocket connection to `url`.
 ///
 /// Requires an ambient tokio runtime; both the handshake and the spawned
 /// writer task run on it.
-pub(crate) async fn connect(url: Url) -> Result<Box<dyn JsonRpcConnection>, GenericError> {
+pub(crate) async fn connect(url: Url) -> Result<Box<dyn JsonRpcConnection>, ProviderError> {
     if tokio::runtime::Handle::try_current().is_err() {
-        return Err(GenericError {
-            reason: "the WebSocket backend requires an ambient tokio runtime".to_owned(),
-        });
+        return Err(ProviderError::MissingRuntime);
     }
 
     let (sender, receiver) = WsTransportClientBuilder::default()
         .build(url.clone())
         .await
-        .map_err(|err| GenericError {
-            reason: format!("WebSocket handshake with {url} failed: {err}"),
+        .map_err(|err| ProviderError::Handshake {
+            url: url.to_string(),
+            reason: err.to_string(),
         })?;
 
     Ok(Box::new(WsConnection::start(sender, receiver)))

@@ -1,17 +1,87 @@
-//! JSON-RPC error synthesis for dropped requests.
+//! Typed backend errors and JSON-RPC error synthesis for dropped requests.
 
+#[cfg(feature = "smoldot")]
 use serde_json::{Value, json};
+use truapi::latest::GenericError;
+
+/// Failure modes surfaced by the provider's backends.
+///
+/// Converts to the trait's [`GenericError`] at the
+/// [`ChainProvider`](truapi_platform::ChainProvider) boundary while letting
+/// in-crate callers match on the cause (e.g. for retry or telemetry).
+///
+/// Which variants are constructed depends on the enabled backends and target
+/// (e.g. `MissingRuntime` is native-WebSocket only), so the enum as a whole
+/// allows dead variants rather than cfg-gating each one.
+#[allow(dead_code)]
+#[derive(Debug, derive_more::Display)]
+pub(crate) enum ProviderError {
+    /// No backend is registered — and no bundled network defines — this
+    /// genesis hash.
+    #[display("no chain registered for genesis 0x{}", hex::encode(genesis))]
+    UnknownGenesis {
+        /// The queried genesis hash.
+        genesis: [u8; 32],
+    },
+    /// A parachain named a relay that is not a registered light-client chain.
+    #[display(
+        "relay 0x{} is not a registered light-client chain",
+        hex::encode(relay)
+    )]
+    UnknownRelay {
+        /// The relay genesis hash the parachain referenced.
+        relay: [u8; 32],
+    },
+    /// The WebSocket handshake with a remote node failed.
+    #[display("WebSocket handshake with {url} failed: {reason}")]
+    Handshake {
+        /// The node URL.
+        url: String,
+        /// The underlying failure.
+        reason: String,
+    },
+    /// smoldot rejected the chain spec when adding the chain.
+    #[display("failed to add a chain to the light client: {reason}")]
+    AddChain {
+        /// The underlying failure.
+        reason: String,
+    },
+    /// The native WebSocket backend was called without an ambient tokio
+    /// runtime to drive its transport.
+    #[display("the WebSocket backend requires an ambient tokio runtime")]
+    MissingRuntime,
+    /// A transport-level failure (e.g. browser WebSocket creation).
+    #[display("{reason}")]
+    Transport {
+        /// The underlying failure.
+        reason: String,
+    },
+}
+
+impl std::error::Error for ProviderError {}
+
+impl From<ProviderError> for GenericError {
+    fn from(error: ProviderError) -> Self {
+        GenericError {
+            reason: error.to_string(),
+        }
+    }
+}
 
 /// JSON-RPC internal-error code (per the spec's reserved range).
+#[cfg(feature = "smoldot")]
 const JSON_RPC_INTERNAL_ERROR: i32 = -32603;
 
 /// Build a JSON-RPC error response echoing `request`'s id, or `None` when the
 /// request carries no id (a notification, which expects no response) or is not
 /// valid JSON.
 ///
-/// A backend calls this when it has to drop a request it cannot deliver (e.g. a
-/// full send queue): the consumer correlates responses by id, so without a
-/// synthesized error for that id it would wait forever.
+/// The light backend calls this when smoldot refuses a request (a full queue):
+/// the connection stays alive, and the consumer correlates responses by id, so
+/// without a synthesized error for that id it would wait forever. (The
+/// WebSocket backends instead end the whole response stream, since a send
+/// failure there means the socket is dead.)
+#[cfg(feature = "smoldot")]
 pub(crate) fn synthetic_error_frame(request: &str, message: &str) -> Option<String> {
     let value: Value = serde_json::from_str(request).ok()?;
     let id = value.get("id").filter(|id| !id.is_null())?;
@@ -25,7 +95,7 @@ pub(crate) fn synthetic_error_frame(request: &str, message: &str) -> Option<Stri
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "smoldot"))]
 mod tests {
     use super::synthetic_error_frame;
 

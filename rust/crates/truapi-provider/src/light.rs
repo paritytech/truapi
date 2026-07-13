@@ -24,11 +24,10 @@ use smoldot_light::{
     AddChainConfig, AddChainConfigJsonRpc, ChainId, Client, HandleRpcError, JsonRpcResponses,
     network_service::StatementProtocolConfig,
 };
-use truapi::latest::GenericError;
 use truapi_platform::JsonRpcConnection;
 
 use crate::config::ChainSource;
-use crate::error::synthetic_error_frame;
+use crate::error::{ProviderError, synthetic_error_frame};
 
 /// Lock a mutex, recovering the guard if a previous holder panicked.
 ///
@@ -106,7 +105,7 @@ impl LightState {
         &self,
         chains: &HashMap<[u8; 32], ChainSource>,
         source: &ChainSource,
-    ) -> Result<Box<dyn JsonRpcConnection>, GenericError> {
+    ) -> Result<Box<dyn JsonRpcConnection>, ProviderError> {
         // `ChainSource` collapses to a single variant when only the smoldot
         // backend is enabled (e.g. the iOS build), making this match irrefutable.
         #[allow(irrefutable_let_patterns)]
@@ -117,7 +116,7 @@ impl LightState {
             statement_protocol,
         } = source
         else {
-            return Err(GenericError {
+            return Err(ProviderError::Transport {
                 reason: "light backend invoked with a non-light chain source".to_owned(),
             });
         };
@@ -144,8 +143,8 @@ impl LightState {
                 },
                 statement_protocol_config: statement_protocol.then(statement_protocol_config),
             })
-            .map_err(|err| GenericError {
-                reason: format!("failed to add chain to the light client: {err}"),
+            .map_err(|err| ProviderError::AddChain {
+                reason: err.to_string(),
             })?;
 
         let responses = success
@@ -176,12 +175,11 @@ fn add_relay(
     guard: &mut LightInner,
     chains: &HashMap<[u8; 32], ChainSource>,
     relay_genesis: [u8; 32],
-) -> Result<ChainId, GenericError> {
+) -> Result<ChainId, ProviderError> {
     if let Some(existing) = guard.relays.get(&relay_genesis) {
         return Ok(*existing);
     }
 
-    let relay_hex = hex::encode(relay_genesis);
     let Some(ChainSource::LightClient {
         chain_spec,
         database_content,
@@ -189,8 +187,8 @@ fn add_relay(
         ..
     }) = chains.get(&relay_genesis)
     else {
-        return Err(GenericError {
-            reason: format!("relay 0x{relay_hex} is not a registered light-client chain"),
+        return Err(ProviderError::UnknownRelay {
+            relay: relay_genesis,
         });
     };
 
@@ -204,8 +202,8 @@ fn add_relay(
             json_rpc: AddChainConfigJsonRpc::Disabled,
             statement_protocol_config: statement_protocol.then(statement_protocol_config),
         })
-        .map_err(|err| GenericError {
-            reason: format!("failed to add relay 0x{relay_hex} to the light client: {err}"),
+        .map_err(|err| ProviderError::AddChain {
+            reason: err.to_string(),
         })?;
 
     guard.relays.insert(relay_genesis, success.chain_id);
@@ -338,7 +336,7 @@ mod tests {
         let error = block_on(provider.connect([1; 32]))
             .err()
             .expect("a malformed chain spec must fail to connect");
-        assert!(error.reason.contains("failed to add chain"));
+        assert!(error.reason.contains("failed to add a chain"));
     }
 
     #[test]
