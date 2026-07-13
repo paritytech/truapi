@@ -77,7 +77,7 @@ impl ChainProviderBuilder {
         let genesis = parse_genesis(genesis_hash)?;
         let mut source = ChainSource::light_client(chain_spec);
         if let Some(relay) = relay_genesis_hash {
-            source = source.with_relay(parse_genesis(&relay)?);
+            source = source.relay(parse_genesis(&relay)?);
         }
         if statement_protocol == Some(false) {
             source = source.without_statement_protocol();
@@ -86,7 +86,7 @@ impl ChainProviderBuilder {
             .inner
             .take()
             .ok_or_else(|| JsError::new("builder was already consumed by build()"))?;
-        self.inner = Some(builder.chain(genesis, source));
+        self.inner = Some(builder.chain(genesis, source.build()));
         Ok(())
     }
 

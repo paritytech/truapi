@@ -1,6 +1,5 @@
 // Copyright 2019-2026 Parity Technologies (UK) Ltd.
-// This file is dual-licensed as Apache-2.0 or GPL-3.0.
-// see LICENSE for license details.
+// This file is dual-licensed as Apache-2.0 or GPL-3.0; see LICENSE-APACHE.
 // Vendored from subxt-lightclient 0.50.1 (src/platform/wasm_platform.rs), used under Apache-2.0.
 
 use super::socket::WasmSocket;

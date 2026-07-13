@@ -34,6 +34,8 @@
 mod config;
 mod provider;
 
+#[cfg(any(feature = "ws", feature = "smoldot"))]
+mod error;
 #[cfg(all(feature = "uniffi", not(target_arch = "wasm32")))]
 mod ffi;
 #[cfg(all(feature = "js", target_arch = "wasm32"))]
@@ -51,6 +53,8 @@ mod ws;
 mod ws;
 
 pub use config::ChainSource;
+#[cfg(feature = "smoldot")]
+pub use config::LightClientBuilder;
 #[cfg(feature = "networks")]
 pub use networks::{NetworkChains, known_networks};
 pub use provider::{NativeChainProvider, NativeChainProviderBuilder};

@@ -1,7 +1,8 @@
 // Copyright 2019-2026 Parity Technologies (UK) Ltd.
-// This file is dual-licensed as Apache-2.0 or GPL-3.0.
-// see LICENSE for license details.
-// Vendored from subxt-lightclient 0.50.1 (src/platform/wasm_socket.rs), used under Apache-2.0.
+// This file is dual-licensed as Apache-2.0 or GPL-3.0; see LICENSE-APACHE.
+// Vendored from subxt-lightclient 0.50.1 (src/platform/wasm_socket.rs), used
+// under Apache-2.0, with one intentional divergence: the `onmessage` handler
+// ignores non-`ArrayBuffer` (text) frames instead of panicking (see below).
 
 use futures::{io, prelude::*};
 use send_wrapper::SendWrapper;
@@ -106,8 +107,15 @@ impl WasmSocket {
         let message_callback = Closure::<dyn FnMut(_)>::new({
             let inner = inner.clone();
             move |event: web_sys::MessageEvent| {
+                // Divergence from the vendored upstream, which `panic!`s here.
+                // A compliant libp2p peer only sends binary frames, but a
+                // misbehaving endpoint or proxy can deliver a text frame; a
+                // panic inside this browser event callback would abort the
+                // whole light client. Ignore the frame instead — the libp2p
+                // handshake fails cleanly downstream on the missing bytes.
                 let Ok(buffer) = event.data().dyn_into::<js_sys::ArrayBuffer>() else {
-                    panic!("Unexpected data format {:?}", event.data());
+                    tracing::warn!("ignoring non-ArrayBuffer WebSocket frame from libp2p peer");
+                    return;
                 };
 
                 let mut inner = inner.lock().expect("Mutex is poised; qed");

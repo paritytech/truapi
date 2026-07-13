@@ -41,67 +41,75 @@ impl ChainSource {
         ChainSource::RpcNode { url }
     }
 
-    /// Embedded light-client backend for the given chain spec.
+    /// Start configuring an embedded light-client backend for `chain_spec`.
     ///
-    /// The statement-store networking protocol is enabled by default; opt out
-    /// with [`ChainSource::without_statement_protocol`].
+    /// Returns a [`LightClientBuilder`]; set relay/database/statement options
+    /// on it and finish with [`LightClientBuilder::build`]. The light-client
+    /// options live on the builder rather than as setters on [`ChainSource`]
+    /// so they cannot be called on a non-light source.
     #[cfg(feature = "smoldot")]
-    pub fn light_client(chain_spec: impl Into<std::sync::Arc<str>>) -> Self {
-        ChainSource::LightClient {
+    pub fn light_client(chain_spec: impl Into<std::sync::Arc<str>>) -> LightClientBuilder {
+        LightClientBuilder {
             chain_spec: chain_spec.into(),
             relay: None,
             database_content: None,
             statement_protocol: true,
         }
     }
+}
 
-    /// Declare the chain a parachain of the given relay-chain genesis hash.
-    ///
-    /// # Panics
-    ///
-    /// Panics when called on a non-[`ChainSource::LightClient`] source.
-    #[cfg(feature = "smoldot")]
-    pub fn with_relay(mut self, relay_genesis: [u8; 32]) -> Self {
-        match &mut self {
-            ChainSource::LightClient { relay, .. } => *relay = Some(relay_genesis),
-            #[allow(unreachable_patterns)]
-            _ => panic!("with_relay is only valid on ChainSource::LightClient"),
-        }
+/// Builder for a [`ChainSource::LightClient`].
+///
+/// The statement-store networking protocol is enabled by default; opt out with
+/// [`without_statement_protocol`](Self::without_statement_protocol).
+#[cfg(feature = "smoldot")]
+#[derive(Debug, Clone)]
+pub struct LightClientBuilder {
+    chain_spec: std::sync::Arc<str>,
+    relay: Option<[u8; 32]>,
+    database_content: Option<String>,
+    statement_protocol: bool,
+}
+
+#[cfg(feature = "smoldot")]
+impl LightClientBuilder {
+    /// Declare the chain a parachain of the relay identified by `relay_genesis`
+    /// (which must name another light-client chain registered on the same
+    /// provider).
+    pub fn relay(mut self, relay_genesis: [u8; 32]) -> Self {
+        self.relay = Some(relay_genesis);
         self
     }
 
-    /// Attach a warm-start database blob.
-    ///
-    /// # Panics
-    ///
-    /// Panics when called on a non-[`ChainSource::LightClient`] source.
-    #[cfg(feature = "smoldot")]
-    pub fn with_database(mut self, database: String) -> Self {
-        match &mut self {
-            ChainSource::LightClient {
-                database_content, ..
-            } => *database_content = Some(database),
-            #[allow(unreachable_patterns)]
-            _ => panic!("with_database is only valid on ChainSource::LightClient"),
-        }
+    /// Attach a warm-start database blob previously returned by the
+    /// `chainHead_unstable_finalizedDatabase` JSON-RPC function. Invalid blobs
+    /// are silently ignored by smoldot.
+    pub fn database(mut self, database: impl Into<String>) -> Self {
+        self.database_content = Some(database.into());
         self
     }
 
     /// Disable the statement-store networking protocol for this chain.
-    ///
-    /// # Panics
-    ///
-    /// Panics when called on a non-[`ChainSource::LightClient`] source.
-    #[cfg(feature = "smoldot")]
     pub fn without_statement_protocol(mut self) -> Self {
-        match &mut self {
-            ChainSource::LightClient {
-                statement_protocol, ..
-            } => *statement_protocol = false,
-            #[allow(unreachable_patterns)]
-            _ => panic!("without_statement_protocol is only valid on ChainSource::LightClient"),
-        }
+        self.statement_protocol = false;
         self
+    }
+
+    /// Finish, producing a [`ChainSource::LightClient`].
+    pub fn build(self) -> ChainSource {
+        ChainSource::LightClient {
+            chain_spec: self.chain_spec,
+            relay: self.relay,
+            database_content: self.database_content,
+            statement_protocol: self.statement_protocol,
+        }
+    }
+}
+
+#[cfg(feature = "smoldot")]
+impl From<LightClientBuilder> for ChainSource {
+    fn from(builder: LightClientBuilder) -> Self {
+        builder.build()
     }
 }
 
@@ -113,7 +121,7 @@ mod tests {
     fn light_client_enables_statement_protocol_by_default() {
         let ChainSource::LightClient {
             statement_protocol, ..
-        } = ChainSource::light_client("{}")
+        } = ChainSource::light_client("{}").build()
         else {
             panic!("expected a LightClient source");
         };
@@ -121,11 +129,12 @@ mod tests {
     }
 
     #[test]
-    fn chainers_set_fields() {
+    fn builder_sets_fields() {
         let source = ChainSource::light_client("{}")
-            .with_relay([7; 32])
-            .with_database("db".to_owned())
-            .without_statement_protocol();
+            .relay([7; 32])
+            .database("db")
+            .without_statement_protocol()
+            .build();
         let ChainSource::LightClient {
             relay,
             database_content,

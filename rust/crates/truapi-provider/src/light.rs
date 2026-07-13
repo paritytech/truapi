@@ -10,23 +10,35 @@
 //!
 //! Warm-start snapshots: send `chainHead_unstable_finalizedDatabase` over any
 //! live connection, persist the returned string, and feed it back through
-//! [`ChainSource::with_database`](crate::ChainSource::with_database).
+//! [`LightClientBuilder::database`](crate::LightClientBuilder::database).
 
 use std::collections::HashMap;
 use std::num::{NonZero, NonZeroUsize};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Duration;
 
+use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, StreamExt};
 use smoldot_light::{
-    AddChainConfig, AddChainConfigJsonRpc, ChainId, Client, JsonRpcResponses,
+    AddChainConfig, AddChainConfigJsonRpc, ChainId, Client, HandleRpcError, JsonRpcResponses,
     network_service::StatementProtocolConfig,
 };
 use truapi::latest::GenericError;
 use truapi_platform::JsonRpcConnection;
 
 use crate::config::ChainSource;
+use crate::error::synthetic_error_frame;
+
+/// Lock a mutex, recovering the guard if a previous holder panicked.
+///
+/// The embedded light client is a single process-wide instance shared by every
+/// connection, so one poisoning event must not brick all of them. smoldot's own
+/// calls under this lock do not panic; this is defense-in-depth for the shared
+/// singleton's blast radius.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// The smoldot platform backing this target.
 #[cfg(not(target_arch = "wasm32"))]
@@ -53,8 +65,11 @@ const STATEMENT_MAX_SEEN: usize = 65_536;
 const STATEMENT_FALSE_POSITIVE_RATE: f64 = 0.01;
 const STATEMENT_AFFINITY_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
-/// JSON-RPC queue budgets for chains added by this backend.
-const MAX_PENDING_REQUESTS: u32 = 128;
+/// JSON-RPC queue budgets for chains added by this backend. The provider is a
+/// trusted in-process client, so the pending cap is generous (smoldot's docs
+/// sanction up to `u32::MAX` for trusted callers); an overflow is still handled
+/// gracefully by synthesizing an error response rather than hanging the caller.
+const MAX_PENDING_REQUESTS: u32 = 1024;
 const MAX_SUBSCRIPTIONS: u32 = 1024;
 
 struct LightInner {
@@ -108,7 +123,7 @@ impl LightState {
         };
 
         let inner = Arc::clone(self.inner());
-        let mut guard = inner.lock().expect("light-client mutex poisoned");
+        let mut guard = lock(&inner);
 
         let relay_id = match relay {
             None => None,
@@ -138,10 +153,15 @@ impl LightState {
             .expect("JSON-RPC was enabled for this chain");
         drop(guard);
 
+        // `send` synthesizes an error onto this channel when smoldot rejects a
+        // request, so a full queue fails the caller fast instead of hanging.
+        let (errors_tx, errors_rx) = mpsc::unbounded();
+
         Ok(Box::new(LightConnection {
             inner,
             chain_id: success.chain_id,
-            responses: Mutex::new(Some(responses)),
+            errors_tx,
+            responses: Mutex::new(Some((responses, errors_rx))),
             closed: AtomicBool::new(false),
         }))
     }
@@ -219,7 +239,12 @@ fn statement_seed() -> u128 {
 struct LightConnection {
     inner: Arc<Mutex<LightInner>>,
     chain_id: ChainId,
-    responses: Mutex<Option<JsonRpcResponses<Platform>>>,
+    /// Synthetic JSON-RPC error frames for requests smoldot rejected, merged
+    /// into [`responses`](Self::responses) so the caller fails fast.
+    errors_tx: mpsc::UnboundedSender<String>,
+    /// Taken once by `responses()`: smoldot's response stream paired with the
+    /// receiver for `errors_tx`.
+    responses: Mutex<Option<(JsonRpcResponses<Platform>, mpsc::UnboundedReceiver<String>)>>,
     closed: AtomicBool,
 }
 
@@ -227,38 +252,47 @@ impl JsonRpcConnection for LightConnection {
     fn send(&self, request: String) {
         // The chain-removal check and the request must happen under the same
         // lock: json_rpc_request panics on a removed ChainId.
-        let mut guard = self.inner.lock().expect("light-client mutex poisoned");
+        let mut guard = lock(&self.inner);
         if self.closed.load(Ordering::SeqCst) {
             return;
         }
-        if let Err(err) = guard.client.json_rpc_request(request, self.chain_id) {
-            tracing::warn!("light-client JSON-RPC request rejected: {err}");
+        if let Err(HandleRpcError::TooManyPendingRequests { json_rpc_request }) =
+            guard.client.json_rpc_request(request, self.chain_id)
+        {
+            // The connection stays alive (only this request is refused), so
+            // synthesize an error for its id instead of dropping it silently.
+            drop(guard);
+            tracing::warn!("light-client request queue full; failing the request");
+            if let Some(frame) =
+                synthetic_error_frame(&json_rpc_request, "light client request queue full")
+            {
+                let _ = self.errors_tx.unbounded_send(frame);
+            }
         }
     }
 
     fn responses(&self) -> BoxStream<'static, String> {
-        match self
-            .responses
-            .lock()
-            .expect("responses mutex poisoned")
-            .take()
-        {
-            Some(responses) => stream::unfold(responses, |mut responses| async move {
-                responses.next().await.map(|item| (item, responses))
-            })
-            .boxed(),
+        match lock(&self.responses).take() {
+            Some((responses, errors)) => {
+                let responses = stream::unfold(responses, |mut responses| async move {
+                    responses.next().await.map(|item| (item, responses))
+                });
+                stream::select(responses, errors).boxed()
+            }
             None => stream::empty().boxed(),
         }
     }
 
     fn close(&self) {
-        let mut guard = self.inner.lock().expect("light-client mutex poisoned");
+        let mut guard = lock(&self.inner);
         if self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
-        // Removal also makes JsonRpcResponses::next() return None, ending an
-        // already-taken responses stream.
+        // Removal makes JsonRpcResponses::next() return None; closing the error
+        // channel ends its half of the merged stream, so `responses()`
+        // terminates cleanly.
         let _: () = guard.client.remove_chain(self.chain_id);
+        self.errors_tx.close_channel();
     }
 }
 
@@ -289,14 +323,17 @@ mod tests {
 
     fn offline_provider() -> NativeChainProvider {
         NativeChainProvider::builder()
-            .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC))
+            .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
             .build()
     }
 
     #[test]
     fn garbage_chain_spec_is_an_error() {
         let provider = NativeChainProvider::builder()
-            .chain([1; 32], ChainSource::light_client("not a chain spec"))
+            .chain(
+                [1; 32],
+                ChainSource::light_client("not a chain spec").build(),
+            )
             .build();
         let error = block_on(provider.connect([1; 32]))
             .err()
@@ -309,7 +346,7 @@ mod tests {
         let provider = NativeChainProvider::builder()
             .chain(
                 RELAY_GENESIS,
-                ChainSource::light_client(RELAY_SPEC).with_relay([9; 32]),
+                ChainSource::light_client(RELAY_SPEC).relay([9; 32]).build(),
             )
             .build();
         let error = block_on(provider.connect(RELAY_GENESIS))
@@ -337,10 +374,12 @@ mod tests {
     #[test]
     fn parachain_reuses_its_registered_relay() {
         let provider = NativeChainProvider::builder()
-            .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC))
+            .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
             .chain(
                 PARACHAIN_GENESIS,
-                ChainSource::light_client(PARACHAIN_SPEC).with_relay(RELAY_GENESIS),
+                ChainSource::light_client(PARACHAIN_SPEC)
+                    .relay(RELAY_GENESIS)
+                    .build(),
             )
             .build();
         // Two connects: the second must reuse the cached relay ChainId.

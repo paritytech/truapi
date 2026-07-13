@@ -59,7 +59,7 @@ mod imp {
             "light" => {
                 let path = args.next().unwrap_or_else(|| usage());
                 let spec = std::fs::read_to_string(&path).expect("the chain spec must be readable");
-                ChainSource::light_client(spec)
+                ChainSource::light_client(spec).build()
             }
             _ => usage(),
         };

@@ -66,5 +66,5 @@ async fn light_follow_initializes() {
     let path = std::env::var("PASEO_CHAIN_SPEC")
         .expect("set PASEO_CHAIN_SPEC to a Paseo relay chain-spec path");
     let spec = std::fs::read_to_string(path).expect("the chain spec is readable");
-    follow_initializes(ChainSource::light_client(spec)).await;
+    follow_initializes(ChainSource::light_client(spec).build()).await;
 }

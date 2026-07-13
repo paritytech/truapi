@@ -164,14 +164,14 @@ pub(crate) fn catalog_network_chains(
 }
 
 fn light_source(chain: &ChainDef, relay: Option<[u8; 32]>) -> ChainSource {
-    let mut source = ChainSource::light_client(chain.spec);
+    let mut builder = ChainSource::light_client(chain.spec);
     if let Some(relay) = relay {
-        source = source.with_relay(relay);
+        builder = builder.relay(relay);
     }
     if !chain.statement_protocol {
-        source = source.without_statement_protocol();
+        builder = builder.without_statement_protocol();
     }
-    source
+    builder.build()
 }
 
 impl NativeChainProviderBuilder {

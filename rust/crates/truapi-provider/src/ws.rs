@@ -57,8 +57,8 @@ impl WsConnection {
         R: TransportReceiverT + Send,
     {
         let (requests, request_queue) = mpsc::unbounded();
-        tokio::spawn(writer_pump(sender, request_queue));
         let (responses, stream_abort) = stream::abortable(response_stream(receiver));
+        tokio::spawn(writer_pump(sender, request_queue, stream_abort.clone()));
         WsConnection {
             requests,
             responses: Mutex::new(Some(responses.boxed())),
@@ -108,13 +108,20 @@ impl Drop for WsConnection {
 
 /// Drain queued requests into the transport; on queue close, close the
 /// transport gracefully.
+///
+/// A send failure means the socket is gone, so it also aborts the response
+/// stream: without that, in-flight requests would never be answered and the
+/// consumer — which correlates responses by id — would hang. Ending the stream
+/// is the disconnect signal it acts on.
 async fn writer_pump<S: TransportSenderT>(
     mut sender: S,
     mut request_queue: mpsc::UnboundedReceiver<String>,
+    stream_abort: AbortHandle,
 ) {
     while let Some(request) = request_queue.next().await {
         if let Err(err) = sender.send(request).await {
             tracing::warn!("WebSocket send failed: {err}");
+            stream_abort.abort();
             return;
         }
     }

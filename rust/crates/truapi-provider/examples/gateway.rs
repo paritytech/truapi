@@ -83,10 +83,10 @@ mod imp {
                     let relay_genesis = chains[relay_name]["genesis"]
                         .as_str()
                         .expect("chain.relay must name another configured chain");
-                    source = source.with_relay(parse_genesis(relay_genesis));
+                    source = source.relay(parse_genesis(relay_genesis));
                 }
                 println!("[gateway] /{name}: light client ({spec_path})");
-                source
+                source.build()
             } else {
                 let url = entry["url"]
                     .as_str()

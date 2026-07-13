@@ -163,13 +163,17 @@ struct WebWsConnection {
 
 impl JsonRpcConnection for WebWsConnection {
     fn send(&self, request: String) {
-        // Infallible by contract: after a close or socket death the request
-        // is dropped and the consumer notices via the ended responses stream.
         if self.closed.load(Ordering::SeqCst) {
             return;
         }
         if let Err(err) = self.socket.send_with_str(&request) {
+            // A send failure on a browser WebSocket means the socket is dead.
+            // End the responses stream so the consumer — which correlates by
+            // id — sees a disconnect instead of hanging on a request that will
+            // never be answered.
             tracing::warn!("WebSocket send failed: {err:?}");
+            self.closed.store(true, Ordering::SeqCst);
+            self.responses_close.close_channel();
         }
     }
 

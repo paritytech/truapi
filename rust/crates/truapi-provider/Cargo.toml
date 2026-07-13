@@ -3,7 +3,8 @@ name = "truapi-provider"
 version = "0.1.0"
 edition.workspace = true
 description = "Network provider backends for ChainProvider: remote WebSocket JSON-RPC nodes on every target, plus an embedded smoldot light client on native targets"
-license = "MIT"
+# MIT overall, except the vendored src/light_platform_web/ (Apache-2.0). See NOTICE.
+license = "MIT AND Apache-2.0"
 
 [lib]
 crate-type = ["rlib", "cdylib", "staticlib"]
@@ -60,6 +61,7 @@ truapi = { path = "../truapi" }
 truapi-platform = { path = "../truapi-platform" }
 futures = "0.3"
 hex = "0.4"
+serde_json = "1"
 tracing = "0.1"
 url = "2"
 
@@ -92,8 +94,6 @@ web-sys = { version = "0.3", features = [
 ], optional = true }
 web-time = { version = "1", optional = true }
 
-[dev-dependencies]
-serde_json = "1"
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 jsonrpsee = { version = "0.24", features = ["server"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time"] }
