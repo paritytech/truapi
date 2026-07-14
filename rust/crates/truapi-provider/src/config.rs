@@ -18,11 +18,8 @@ pub enum ChainSource {
     #[cfg(feature = "smoldot")]
     #[non_exhaustive]
     LightClient {
-        /// Chain-spec JSON of the target chain, handed to smoldot's
-        /// `AddChainConfig::specification` (a `&str`). A `Cow` so the bundled
-        /// `include_str!` catalog specs are borrowed without a copy while
-        /// host-supplied specs can be owned.
-        chain_spec: std::borrow::Cow<'static, str>,
+        /// JSON chain specification of the target chain.
+        specification: std::borrow::Cow<'static, str>,
         /// Genesis hash of the relay chain when the target is a parachain.
         ///
         /// Must name another [`ChainSource::LightClient`] entry registered on
@@ -44,16 +41,18 @@ impl ChainSource {
         ChainSource::RpcNode { url }
     }
 
-    /// Start configuring an embedded light-client backend for `chain_spec`.
+    /// Start configuring an embedded light-client backend for `specification`.
     ///
     /// Returns a [`LightClientBuilder`]; set relay/database/statement options
     /// on it and finish with [`LightClientBuilder::build`]. The light-client
     /// options live on the builder rather than as setters on [`ChainSource`]
     /// so they cannot be called on a non-light source.
     #[cfg(feature = "smoldot")]
-    pub fn light_client(chain_spec: impl Into<std::borrow::Cow<'static, str>>) -> LightClientBuilder {
+    pub fn light_client(
+        specification: impl Into<std::borrow::Cow<'static, str>>,
+    ) -> LightClientBuilder {
         LightClientBuilder {
-            chain_spec: chain_spec.into(),
+            specification: specification.into(),
             relay: None,
             database_content: None,
             statement_protocol: true,
@@ -68,7 +67,7 @@ impl ChainSource {
 #[cfg(feature = "smoldot")]
 #[derive(Debug, Clone)]
 pub struct LightClientBuilder {
-    chain_spec: std::borrow::Cow<'static, str>,
+    specification: std::borrow::Cow<'static, str>,
     relay: Option<[u8; 32]>,
     database_content: Option<String>,
     statement_protocol: bool,
@@ -101,7 +100,7 @@ impl LightClientBuilder {
     /// Finish, producing a [`ChainSource::LightClient`].
     pub fn build(self) -> ChainSource {
         ChainSource::LightClient {
-            chain_spec: self.chain_spec,
+            specification: self.specification,
             relay: self.relay,
             database_content: self.database_content,
             statement_protocol: self.statement_protocol,

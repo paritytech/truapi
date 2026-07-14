@@ -128,7 +128,7 @@ impl LightState {
         // backend is enabled (e.g. the iOS build), making this match irrefutable.
         #[allow(irrefutable_let_patterns)]
         let ChainSource::LightClient {
-            chain_spec,
+            specification,
             relay,
             database_content,
             statement_protocol,
@@ -151,7 +151,7 @@ impl LightState {
             .client
             .add_chain(AddChainConfig {
                 user_data: (),
-                specification: chain_spec,
+                specification,
                 database_content: database_content.as_deref().unwrap_or(""),
                 potential_relay_chains: relay_id.into_iter(),
                 json_rpc: AddChainConfigJsonRpc::Enabled {
@@ -202,7 +202,7 @@ fn add_relay(
     }
 
     let Some(ChainSource::LightClient {
-        chain_spec,
+        specification,
         database_content,
         statement_protocol,
         ..
@@ -217,7 +217,7 @@ fn add_relay(
         .client
         .add_chain(AddChainConfig {
             user_data: (),
-            specification: chain_spec,
+            specification,
             database_content: database_content.as_deref().unwrap_or(""),
             potential_relay_chains: core::iter::empty(),
             json_rpc: AddChainConfigJsonRpc::Disabled,

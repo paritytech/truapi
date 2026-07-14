@@ -70,12 +70,12 @@ impl ChainProviderBuilder {
     pub fn add_light_chain(
         &mut self,
         genesis_hash: &str,
-        chain_spec: String,
+        specification: String,
         relay_genesis_hash: Option<String>,
         statement_protocol: Option<bool>,
     ) -> Result<(), JsError> {
         let genesis = parse_genesis(genesis_hash)?;
-        let mut source = ChainSource::light_client(chain_spec);
+        let mut source = ChainSource::light_client(specification);
         if let Some(relay) = relay_genesis_hash {
             source = source.relay(parse_genesis(&relay)?);
         }
