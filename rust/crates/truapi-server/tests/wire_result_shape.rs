@@ -180,19 +180,18 @@ fn version_index(version: u8) -> u8 {
 }
 
 #[test]
-fn deferred_account_proof_returns_framework_unsupported() {
+fn account_proof_declined_confirmation_returns_rejected() {
     let core = make_core();
     let request = account::HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
-        product_account_id: v01::ProductAccountId {
-            dot_ns_identifier: "myapp.dot".to_string(),
-            derivation_index: 0,
+        context: v01::ProductProofContext {
+            product_id: "myapp.dot".to_string(),
+            suffix: Vec::new(),
         },
         ring_location: v01::RingLocation {
-            genesis_hash: vec![0u8; 32],
-            ring_root_hash: vec![1u8; 32],
-            hints: None,
+            chain_id: [0u8; 32],
+            junctions: vec![v01::RingLocationJunction::PalletInstance(0)],
         },
-        context: Vec::new(),
+        message: Vec::new(),
     });
 
     let ids = request_ids("account_create_account_proof").expect("known request method");
@@ -208,7 +207,12 @@ fn deferred_account_proof_returns_framework_unsupported() {
     );
     assert_eq!(response.request_id, "p:account-proof");
     assert_eq!(response.payload.id, ids.response_id);
-    assert_eq!(response.payload.value, vec![0x00u8, 0x01u8, 0x02u8]);
+    // The wire-shape platform declines the confirmation prompt, so the proof
+    // request maps to a `Rejected` domain error in the standard Result-Err envelope.
+    let expected = versioned_result_err_payload(account::HostAccountCreateProofError::V1(
+        v01::HostAccountCreateProofError::Rejected,
+    ));
+    assert_eq!(response.payload.value, expected);
 }
 
 #[test]

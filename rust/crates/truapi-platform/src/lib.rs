@@ -24,8 +24,8 @@ use truapi::latest::{
     HostRequestResourceAllocationRequest, HostSignPayloadRequest,
     HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
     HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
-    PreimageSubmitError, ProductAccountTxPayload, RemotePermissionRequest,
-    RemotePermissionResponse, ThemeVariant,
+    PreimageSubmitError, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest,
+    RemotePermissionResponse, RingLocation, ThemeVariant,
 };
 use url::Url;
 
@@ -542,13 +542,28 @@ pub enum CreateTransactionReview {
     LegacyAccount(LegacyAccountTxPayload),
 }
 
-/// Review shown before a product asks to alias another product account.
+/// Review shown before a product derives a contextual alias (RFC 0004).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct AccountAliasReview {
-    /// Product currently handling the request.
-    pub requesting_product_id: String,
-    /// Product whose account is being requested.
-    pub target_product_id: String,
+    /// Product requesting the alias.
+    pub calling_product_id: String,
+    /// Product-scoped context the alias is bound to.
+    pub context: ProductProofContext,
+    /// Ring the alias is derived against.
+    pub ring_location: RingLocation,
+}
+
+/// Review shown before a product creates a ring-VRF proof (RFC 0004).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct CreateProofReview {
+    /// Product requesting the proof.
+    pub calling_product_id: String,
+    /// Product-scoped context the proof's alias is bound to.
+    pub context: ProductProofContext,
+    /// Ring the proof is generated against.
+    pub ring_location: RingLocation,
+    /// Opaque message bound into the proof.
+    pub message: Vec<u8>,
 }
 
 /// Review shown before a product asks to access another product account.
@@ -584,8 +599,10 @@ pub enum UserConfirmationReview {
     SignRaw(SignRawReview),
     /// Create a transaction with a product or legacy account.
     CreateTransaction(CreateTransactionReview),
-    /// Allow a product to request another product account alias.
+    /// Allow a product to derive a contextual alias for a ring.
     AccountAlias(AccountAliasReview),
+    /// Allow a product to create a ring-VRF proof for a ring.
+    CreateProof(CreateProofReview),
     /// Allow a product to learn the user's primary identity.
     IdentityDisclosure(IdentityDisclosureReview),
     /// Allocate resources for the requesting product.

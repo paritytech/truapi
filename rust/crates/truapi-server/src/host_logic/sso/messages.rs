@@ -21,9 +21,9 @@
 
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
-    AccountId, AllocatableResource, HostAccountGetAliasResponse, HostSignPayloadRequest,
-    HostSignRawRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload,
-    RawPayload,
+    AccountId, AllocatableResource, HostAccountCreateProofResponse, HostAccountGetAliasResponse,
+    HostSignPayloadRequest, HostSignRawRequest, LegacyAccountTxPayload, ProductAccountId,
+    ProductAccountTxPayload, ProductProofContext, RawPayload, RingLocation,
 };
 
 use crate::host_logic::session::SsoSessionInfo;
@@ -215,22 +215,60 @@ pub struct SignRawLegacyResponse {
     pub signature: Result<Vec<u8>, String>,
 }
 
-/// Request sent when a product asks the signing host for a ring-VRF alias.
+/// Failure returned by the Account Holder for a ring-VRF proof or alias request.
 ///
-/// Used by `Account::get_account_alias`; the product account identifies the
-/// alias target, while `product_id` identifies the caller that the signing host is
-/// authorizing over the SSO channel.
+/// Mirrors the identical error sets of `Account::create_account_proof` and
+/// `Account::get_account_alias` (RFC 0004): the two operations perform the same
+/// ring resolution and member-key selection, so they share these failure modes.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct RingVrfAliasRequest {
-    pub product_account_id: ProductAccountId,
-    pub product_id: String,
+pub enum RingVrfError {
+    /// The `RingLocation` did not resolve to a known ring.
+    RingNotFound,
+    /// The selected member key is not a member of the requested ring.
+    NotMember,
+    /// User or Account Holder rejected the request.
+    Rejected,
+    /// Catch-all failure, carrying a diagnostic reason.
+    Unknown { reason: String },
 }
 
-/// Response returned by the signing host for a ring-VRF alias request.
+/// Request sent when a product asks the Account Holder for a contextual alias.
+///
+/// Used by `Account::get_account_alias`; `calling_product_id` names the caller
+/// so the Account Holder can scope context derivation, while `context` and
+/// `ring_location` select the member key and bind the derived alias (RFC 0004).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RingVrfAliasRequest {
+    pub calling_product_id: String,
+    pub context: ProductProofContext,
+    pub ring_location: RingLocation,
+}
+
+/// Response returned by the Account Holder for a ring-VRF alias request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasResponse {
     pub responding_to: String,
-    pub payload: Result<HostAccountGetAliasResponse, String>,
+    pub payload: Result<HostAccountGetAliasResponse, RingVrfError>,
+}
+
+/// Request sent when a product asks the Account Holder for a ring-VRF proof.
+///
+/// Used by `Account::create_account_proof`; carries the same `(context,
+/// ring_location)` as the alias request plus the opaque `message` bound into
+/// the proof (RFC 0004).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RingVrfProofRequest {
+    pub calling_product_id: String,
+    pub context: ProductProofContext,
+    pub ring_location: RingLocation,
+    pub message: Vec<u8>,
+}
+
+/// Response returned by the Account Holder for a ring-VRF proof request.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RingVrfProofResponse {
+    pub responding_to: String,
+    pub payload: Result<HostAccountCreateProofResponse, RingVrfError>,
 }
 
 /// Request sent when a product asks the signing host to allocate SSO-backed
@@ -354,6 +392,7 @@ pub enum SsoRemoteResponse {
     Sign(SigningResponse),
     SignRawLegacy(SignRawLegacyResponse),
     RingVrfAlias(RingVrfAliasResponse),
+    RingVrfProof(RingVrfProofResponse),
     ResourceAllocation(ResourceAllocationResponse),
     CreateTransaction(CreateTransactionResponse),
 }
@@ -447,6 +486,11 @@ fn remote_response_for_message(
         {
             Some(SsoRemoteResponse::RingVrfAlias(response))
         }
+        v1::RemoteMessage::RingVrfProofResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::RingVrfProof(response))
+        }
         v1::RemoteMessage::SignRawLegacyResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
@@ -503,18 +547,41 @@ pub fn sign_raw_legacy_message(
     }
 }
 
-/// Build a signing-host account-alias request message.
+/// Build an Account Holder contextual-alias request message.
 pub fn alias_request_message(
     message_id: String,
-    product_account_id: ProductAccountId,
-    product_id: String,
+    calling_product_id: String,
+    context: ProductProofContext,
+    ring_location: RingLocation,
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasRequest(
             RingVrfAliasRequest {
-                product_account_id,
-                product_id,
+                calling_product_id,
+                context,
+                ring_location,
+            },
+        )),
+    }
+}
+
+/// Build an Account Holder ring-VRF proof request message.
+pub fn proof_request_message(
+    message_id: String,
+    calling_product_id: String,
+    context: ProductProofContext,
+    ring_location: RingLocation,
+    message: Vec<u8>,
+) -> RemoteMessage {
+    RemoteMessage {
+        message_id,
+        data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofRequest(
+            RingVrfProofRequest {
+                calling_product_id,
+                context,
+                ring_location,
+                message,
             },
         )),
     }

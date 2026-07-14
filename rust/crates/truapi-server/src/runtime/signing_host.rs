@@ -13,9 +13,10 @@ use std::sync::{Arc, Mutex};
 pub(crate) use local_activation::LocalActivation;
 
 use super::authority::{
-    AuthorityError, AuthoritySession, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
-    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
-    StatementStoreAllowanceKey, authority_session, require_current_session,
+    AccountAliasAuthorityRequest, AuthorityError, AuthoritySession, BulletinAllowanceKey,
+    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest, ProductAuthority,
+    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
+    authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use crate::host_logic::entropy::derive_product_entropy;
@@ -24,6 +25,7 @@ use crate::host_logic::product_account::{
     derive_root_keypair_from_entropy,
 };
 use crate::host_logic::session::SessionState;
+use crate::host_logic::sso::messages::RingVrfError;
 use crate::runtime::auth_state::AuthStateMachine;
 
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
@@ -180,11 +182,21 @@ impl ProductAuthority for SigningHost {
         &self,
         _cx: &CallContext,
         _session: &AuthoritySession,
-        _product_account_id: v01::ProductAccountId,
-        _requesting_product_id: String,
-    ) -> Result<v01::HostAccountGetAliasResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
+        _request: AccountAliasAuthorityRequest,
+    ) -> Result<v01::ContextualAlias, RingVrfError> {
+        Err(RingVrfError::Unknown {
             reason: "signing host: ring-VRF alias derivation not yet implemented".to_string(),
+        })
+    }
+
+    async fn create_proof(
+        &self,
+        _cx: &CallContext,
+        _session: &AuthoritySession,
+        _request: CreateProofAuthorityRequest,
+    ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
+        Err(RingVrfError::Unknown {
+            reason: "signing host: ring-VRF proof generation not yet implemented".to_string(),
         })
     }
 
@@ -625,18 +637,6 @@ mod tests {
             .expect("activation");
         let session = authority.current_session().expect("connected");
         let cx = CallContext::new();
-
-        let alias = futures::executor::block_on(authority.account_alias(
-            &cx,
-            &session,
-            v01::ProductAccountId {
-                dot_ns_identifier: "other.dot".to_string(),
-                derivation_index: 0,
-            },
-            "myapp.dot".to_string(),
-        ))
-        .expect_err("alias deferred");
-        assert!(matches!(alias, AuthorityError::Unavailable { .. }));
 
         let alloc = futures::executor::block_on(authority.allocate_resources(
             &cx,

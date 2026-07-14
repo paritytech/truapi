@@ -9,11 +9,11 @@ use core::fmt;
 use core::time::Duration;
 use std::sync::Arc;
 use truapi::latest::{
-    HostAccountGetAliasResponse, HostCreateTransactionResponse,
+    HostAccountCreateProofResponse, HostAccountGetAliasResponse, HostCreateTransactionResponse,
     HostRequestResourceAllocationRequest, HostRequestResourceAllocationResponse,
     HostSignPayloadRequest, HostSignPayloadResponse, HostSignPayloadWithLegacyAccountRequest,
     HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload,
-    ProductAccountId, ProductAccountTxPayload,
+    ProductAccountId, ProductAccountTxPayload, ProductProofContext, RingLocation,
 };
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, CancellationReason};
@@ -22,6 +22,7 @@ use truapi_platform::{BulletinAllowanceKeyError, ProductContext};
 pub(crate) use truapi_platform::BulletinAllowanceKey;
 
 use crate::host_logic::session::{SessionInfo, SessionState};
+use crate::host_logic::sso::messages::RingVrfError;
 use crate::host_logic::statement_store::statement_public_key_from_secret;
 
 /// Snapshot of an account-authority session selected by the authority.
@@ -85,6 +86,17 @@ impl From<BulletinAllowanceKeyError> for AuthorityError {
     fn from(err: BulletinAllowanceKeyError) -> Self {
         AuthorityError::Unavailable {
             reason: err.to_string(),
+        }
+    }
+}
+
+impl From<AuthorityError> for RingVrfError {
+    fn from(err: AuthorityError) -> Self {
+        match err {
+            AuthorityError::Rejected => RingVrfError::Rejected,
+            other => RingVrfError::Unknown {
+                reason: other.reason(),
+            },
         }
     }
 }
@@ -175,6 +187,30 @@ pub(crate) enum CreateTransactionAuthorityRequest {
     },
 }
 
+/// Contextual-alias request forwarded to the account authority (RFC 0004).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AccountAliasAuthorityRequest {
+    /// Calling product, so the Account Holder can scope context derivation.
+    pub calling_product_id: String,
+    /// Product-scoped context the derived alias is bound to.
+    pub context: ProductProofContext,
+    /// Ring whose member key the Account Holder selects.
+    pub ring_location: RingLocation,
+}
+
+/// Ring-VRF proof request forwarded to the account authority (RFC 0004).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CreateProofAuthorityRequest {
+    /// Calling product, so the Account Holder can scope context derivation.
+    pub calling_product_id: String,
+    /// Product-scoped context the derived alias is bound to.
+    pub context: ProductProofContext,
+    /// Ring whose member key the Account Holder selects.
+    pub ring_location: RingLocation,
+    /// Opaque message bound into the proof.
+    pub message: Vec<u8>,
+}
+
 /// Statement-store allowance signing material held by the authority layer.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct StatementStoreAllowanceKey {
@@ -248,14 +284,27 @@ pub(crate) trait ProductAuthority: Send + Sync {
         request: CreateTransactionAuthorityRequest,
     ) -> Result<HostCreateTransactionResponse, AuthorityError>;
 
-    /// Request an alias proof for a product account in another product context.
+    /// Derive a product-scoped contextual alias for a ring (RFC 0004).
+    ///
+    /// The Account Holder selects the member key for `ring_location` and derives
+    /// the alias bound to `context`; `create_proof` derives the same alias.
     async fn account_alias(
         &self,
         cx: &CallContext,
         session: &AuthoritySession,
-        product_account_id: ProductAccountId,
-        requesting_product_id: String,
-    ) -> Result<HostAccountGetAliasResponse, AuthorityError>;
+        request: AccountAliasAuthorityRequest,
+    ) -> Result<HostAccountGetAliasResponse, RingVrfError>;
+
+    /// Create a ring-VRF proof bound to a context and message (RFC 0004).
+    ///
+    /// Uses the same ring resolution and member-key selection as `account_alias`,
+    /// so the returned `contextual_alias` matches that method's output.
+    async fn create_proof(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: CreateProofAuthorityRequest,
+    ) -> Result<HostAccountCreateProofResponse, RingVrfError>;
 
     /// Ask the account authority to allocate product-scoped resources.
     async fn allocate_resources(

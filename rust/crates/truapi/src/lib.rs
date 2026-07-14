@@ -27,14 +27,17 @@ pub mod latest {
     use crate::versioned::{self, Versioned};
 
     pub use crate::v01::{
-        AccountId, AllocatableResource, AllocationOutcome, GenericError, HostSignPayloadData,
-        NotificationId, OperationStartedResult, ProductAccountId, RawPayload, RemotePermission,
-        RuntimeApi, RuntimeSpec, RuntimeType, StorageQueryItem, StorageQueryType,
-        StorageResultItem, ThemeVariant, TxPayloadExtension,
+        AccountId, AllocatableResource, AllocationOutcome, ContextualAlias, GenericError,
+        HostSignPayloadData, NotificationId, OperationStartedResult, ProductAccountId,
+        ProductProofContext, RawPayload, RemotePermission, RingLocation, RuntimeApi, RuntimeSpec,
+        RuntimeType, StorageQueryItem, StorageQueryType, StorageResultItem, ThemeVariant,
+        TxPayloadExtension,
     };
 
     pub type LatestOf<T> = <T as Versioned>::Latest;
 
+    pub type HostAccountCreateProofResponse =
+        LatestOf<versioned::account::HostAccountCreateProofResponse>;
     pub type HostAccountGetAliasResponse =
         LatestOf<versioned::account::HostAccountGetAliasResponse>;
     pub type HostCreateTransactionResponse =

@@ -15,9 +15,10 @@ use sso_channel::SsoDisconnectMonitor;
 use super::allowances::{self, AllowanceCacheKey, AllowanceResource};
 use super::auth_state::AuthStateMachine;
 use super::authority::{
-    AuthorityError, AuthoritySession, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
-    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
-    StatementStoreAllowanceKey, authority_session, require_current_session,
+    AccountAliasAuthorityRequest, AuthorityError, AuthoritySession, BulletinAllowanceKey,
+    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest, ProductAuthority,
+    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
+    authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use super::identity::resolve_session_identity_with_chain;
@@ -29,6 +30,7 @@ use crate::chain_runtime::ChainRuntime;
 use crate::host_logic::entropy::derive_product_entropy_from_source;
 use crate::host_logic::session::{SessionInfo, SessionState, encode_persisted_session};
 use crate::host_logic::session_store::SessionStoreChangeNotifier;
+use crate::host_logic::sso::messages::RingVrfError;
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
@@ -655,12 +657,20 @@ impl PairingHost {
         &self,
         cx: &CallContext,
         session: &AuthoritySession,
-        product_account_id: v01::ProductAccountId,
-        requesting_product_id: String,
-    ) -> Result<v01::HostAccountGetAliasResponse, AuthorityError> {
+        request: AccountAliasAuthorityRequest,
+    ) -> Result<v01::ContextualAlias, RingVrfError> {
         let session = self.current_private_session(session)?;
-        self.remote_account_alias(cx, &session, product_account_id, requesting_product_id)
-            .await
+        self.remote_account_alias(cx, &session, request).await
+    }
+
+    async fn create_proof(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: CreateProofAuthorityRequest,
+    ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
+        let session = self.current_private_session(session)?;
+        self.remote_create_proof(cx, &session, request).await
     }
 
     async fn allocate_resources(
@@ -800,11 +810,18 @@ impl ProductAuthority for PairingHost {
         &self,
         cx: &CallContext,
         session: &AuthoritySession,
-        product_account_id: v01::ProductAccountId,
-        requesting_product_id: String,
-    ) -> Result<v01::HostAccountGetAliasResponse, AuthorityError> {
-        PairingHost::account_alias(self, cx, session, product_account_id, requesting_product_id)
-            .await
+        request: AccountAliasAuthorityRequest,
+    ) -> Result<v01::ContextualAlias, RingVrfError> {
+        PairingHost::account_alias(self, cx, session, request).await
+    }
+
+    async fn create_proof(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: CreateProofAuthorityRequest,
+    ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
+        PairingHost::create_proof(self, cx, session, request).await
     }
 
     async fn allocate_resources(
