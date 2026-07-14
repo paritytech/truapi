@@ -51,10 +51,17 @@ alongside the host runtime.
 
 ## Publishing
 
-`npm run publish:dev` builds the bundle, stamps a prerelease version
-(`<base>-dev.t<utc>.<sha>`), and publishes it under the `dev` dist-tag so
-`latest` is never moved. It requires npm auth with publish access to the
-`@parity` scope. Consumers pin the exact stamped version it prints.
+Publishing goes through `paritytech/npm_publish_automation`, so no local npm
+token is needed:
+
+- **Stable release** — a `release:`-prefixed commit on `main` triggers
+  [`release.yml`](../../../.github/workflows/release.yml), which publishes the
+  committed version to `latest`.
+- **Dev snapshot** — run the [`Dev publish`](../../../.github/workflows/dev-publish.yml)
+  workflow (`workflow_dispatch`, optional `npm_tag_suffix`). It stamps a unique
+  `<next-patch>-dev-<YYYYMMDD>[-suffix].<N>` version and publishes it under a
+  `dev-<YYYYMMDD>[-suffix]` dist-tag, so `latest` is never moved. Consumers pin
+  the exact version it prints.
 
 ## License
 

@@ -35,7 +35,6 @@
   ],
   "scripts": {
     "build": "node scripts/build-wasm.mjs",
-    "build:wasm": "node scripts/build-wasm.mjs",
-    "publish:dev": "bash scripts/publish-dev.sh"
+    "build:wasm": "node scripts/build-wasm.mjs"
   }
 }

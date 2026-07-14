@@ -1,0 +1,115 @@
+name: Dev publish
+
+# Manually publish a dev snapshot of @parity/truapi-provider, for iterating in a
+# consumer (e.g. dotli) ahead of a formal release. Mirrors smoldot's deploy.yml
+# dev-build path: it computes a unique prerelease version, builds and packs the
+# package, then hands the tarball to paritytech/npm_publish_automation, which
+# publishes it under a `dev-<YYYYMMDD>[-suffix]` dist-tag so `latest` is never
+# moved. A formal release to `latest` still goes through release.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      npm_tag_suffix:
+        description: 'Optional dev dist-tag suffix. Empty -> "dev-<YYYYMMDD>"; else "dev-<YYYYMMDD>-<suffix>". Charset: [A-Za-z0-9-].'
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-publish-truapi-provider
+  cancel-in-progress: false
+
+jobs:
+  dev-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.14.0 --locked
+
+      # Compute a unique dev version and a safe dist-tag, then rewrite the
+      # version in-place into the package.json (never committed). Semver-safe:
+      # <next-patch>-dev-<date>[.suffix].N sorts below any future stable release.
+      - name: Compute dev version and dist-tag
+        id: devver
+        shell: bash
+        env:
+          NPM_TAG_SUFFIX: ${{ inputs.npm_tag_suffix }}
+        run: |
+          set -euo pipefail
+          suffix="$NPM_TAG_SUFFIX"
+          if [[ -n "$suffix" && ! "$suffix" =~ ^[A-Za-z0-9-]+$ ]]; then
+            echo "::error::npm_tag_suffix must match [A-Za-z0-9-]+ or be empty"
+            exit 1
+          fi
+          pkg=js/packages/truapi-provider
+          base="$(jq -r .version "$pkg/package.json")"
+          stable="${base%%-*}"
+          IFS='.' read -r major minor patch <<< "$stable"
+          next="$major.$minor.$((patch + 1))"
+          date="$(date -u +%Y%m%d)"
+          if [[ -z "$suffix" ]]; then
+            tag="dev-${date}"
+          else
+            tag="dev-${date}-${suffix}"
+          fi
+          prefix="${next}-${tag}"
+          # On the first dev release matching this prefix nothing matches; grep
+          # exits 1, which `|| true` swallows so the pipeline stays alive.
+          max_n="$(
+            npm view --json @parity/truapi-provider versions 2>/dev/null \
+              | jq -r '.[]?' \
+              | { grep -E "^${prefix}\.[0-9]+$" || true; } \
+              | sed -E "s|^${prefix}\.||" \
+              | sort -n | tail -1
+          )"
+          n=$(( ${max_n:--1} + 1 ))
+          version="${prefix}.${n}"
+          jq --arg v "$version" '.version = $v' "$pkg/package.json" > "$pkg/package.json.tmp"
+          mv "$pkg/package.json.tmp" "$pkg/package.json"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Computed @parity/truapi-provider@${version} -> dist-tag ${tag}"
+
+      - name: Build wasm
+        run: npm run build:wasm --prefix js/packages/truapi-provider
+
+      - name: Pack
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          (cd js/packages/truapi-provider && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/")
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: truapi-provider-dev-${{ github.sha }}
+          path: artifacts/*.tgz
+
+      - name: Publish via npm_publish_automation
+        uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae # v3.0.0
+        with:
+          route: POST /repos/paritytech/npm_publish_automation/actions/workflows/publish.yml/dispatches
+          ref: main
+          inputs: '${{ format(''{{ "repo": "{0}", "run_id": "{1}", "artifact_name": "truapi-provider-dev-{2}", "npm_tag": "{3}" }}'', github.repository, github.run_id, github.sha, steps.devver.outputs.tag) }}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.NPM_PUBLISH_AUTOMATION_TOKEN }}

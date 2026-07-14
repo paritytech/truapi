@@ -1,5 +1,3 @@
 node_modules/
 # Generated wasm-pack bundle; rebuilt with `npm run build:wasm`.
 dist/
-# Transient auth written by scripts/publish-dev.sh.
-.npmrc
