@@ -15,6 +15,11 @@ on:
         type: string
         required: false
         default: ""
+  # Push a `truapi-provider-dev` or `truapi-provider-dev-<suffix>` tag to publish
+  # a dev snapshot; the part after `truapi-provider-dev-` becomes the dist-tag suffix.
+  push:
+    tags:
+      - "truapi-provider-dev*"
 
 permissions:
   contents: read
@@ -56,9 +61,15 @@ jobs:
           NPM_TAG_SUFFIX: ${{ inputs.npm_tag_suffix }}
         run: |
           set -euo pipefail
-          suffix="$NPM_TAG_SUFFIX"
+          suffix="${NPM_TAG_SUFFIX:-}"
+          # On a tag push, derive the suffix from the tag name
+          # (truapi-provider-dev[-<suffix>]); workflow_dispatch supplies it directly.
+          if [[ -z "$suffix" && "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            suffix="${GITHUB_REF_NAME#truapi-provider-dev}"
+            suffix="${suffix#-}"
+          fi
           if [[ -n "$suffix" && ! "$suffix" =~ ^[A-Za-z0-9-]+$ ]]; then
-            echo "::error::npm_tag_suffix must match [A-Za-z0-9-]+ or be empty"
+            echo "::error::dev suffix must match [A-Za-z0-9-]+ or be empty"
             exit 1
           fi
           pkg=js/packages/truapi-provider
