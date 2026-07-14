@@ -33,10 +33,6 @@
     "LICENSE-APACHE",
     "NOTICE"
   ],
-  "publishConfig": {
-    "access": "public",
-    "tag": "dev"
-  },
   "scripts": {
     "build": "node scripts/build-wasm.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
