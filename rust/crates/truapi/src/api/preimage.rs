@@ -15,7 +15,7 @@ pub trait Preimage: Send + Sync {
     /// import { firstValueFrom, from } from "rxjs";
     ///
     /// // Submit a preimage first so the lookup resolves to a value.
-    /// const submitted = await truapi.preimage.submit("0xdeadbeef");
+    /// const submitted = await truapi.preimage.submit("0xcafebabe");
     /// assert(submitted.isOk(), "submit failed:", submitted);
     ///
     /// const item = await firstValueFrom(
