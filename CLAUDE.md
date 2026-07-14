@@ -38,8 +38,10 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
 - `truapi-server` WASM artifacts live under
   `js/packages/truapi-host/dist/wasm/web/` and are gitignored.
   Build them locally with `make wasm` (rerun whenever
-  `rust/crates/truapi-server/` changes); CI builds the bundle fresh from the
-  Rust source on every run.
+  `rust/crates/truapi-server/` changes). CI compiles the crate for
+  `wasm32-unknown-unknown` to guard the wasm bridge and its offline subxt
+  surface, but does not build or publish the packaged bundle; run `make wasm`
+  locally before relying on the browser host.
 
 ## Code style
 

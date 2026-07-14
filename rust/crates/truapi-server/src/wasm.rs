@@ -18,13 +18,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, Stream, StreamExt};
-use js_sys::{Array, Function, Object, Reflect, Uint8Array};
+use js_sys::{Array, Function, Reflect, Uint8Array};
 use parity_scale_codec::Decode;
 use send_wrapper::SendWrapper;
 use truapi::v01;
 use truapi_platform::{
-    BulletinAllowanceSigner, ChainProvider, HostInfo, JsonRpcConnection, PairingHostConfig,
-    PlatformInfo, ProductContext, RuntimeConfigValidationError,
+    ChainProvider, HostInfo, JsonRpcConnection, PairingHostConfig, PlatformInfo, ProductContext,
+    RuntimeConfigValidationError,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -371,32 +371,6 @@ fn invoke_optional_bytes_return(
     })
 }
 
-fn bulletin_allowance_signer_to_js(signer: BulletinAllowanceSigner) -> JsValue {
-    let object = Object::new();
-    let public_key = signer.public_key();
-    let public_key = Uint8Array::from(public_key.as_slice());
-    Reflect::set(&object, &JsValue::from_str("publicKey"), &public_key)
-        .expect("setting publicKey on a new object should not fail");
-
-    let sign = Closure::wrap(Box::new(move |input: JsValue| -> js_sys::Promise {
-        let signer = signer.clone();
-        wasm_bindgen_futures::future_to_promise(async move {
-            let input = input.dyn_into::<Uint8Array>().map_err(|_| {
-                JsValue::from_str("BulletinAllowanceSigner.sign expects Uint8Array")
-            })?;
-            let signature = signer
-                .sign(&input.to_vec())
-                .map_err(|err| JsValue::from_str(&err.reason))?;
-            Ok(Uint8Array::from(signature.as_slice()).into())
-        })
-    }) as Box<dyn FnMut(JsValue) -> js_sys::Promise>);
-    let sign = sign.into_js_value();
-    Reflect::set(&object, &JsValue::from_str("sign"), &sign)
-        .expect("setting sign on a new object should not fail");
-
-    object.into()
-}
-
 fn decode_bytes<T: Decode>(bytes: Vec<u8>, message: &str) -> Result<T, String> {
     T::decode(&mut bytes.as_slice()).map_err(|_| message.to_string())
 }
@@ -466,6 +440,7 @@ fn pairing_host_config_from_js(value: &JsValue) -> Result<PairingHostConfig, JsV
     let host = get_required_object(value, "host", "runtimeConfig.host")?;
     let platform = get_optional_object(value, "platform", "runtimeConfig.platform")?;
     let people = get_required_object(value, "people", "runtimeConfig.people")?;
+    let bulletin = get_required_object(value, "bulletin", "runtimeConfig.bulletin")?;
     let pairing = get_required_object(value, "pairing", "runtimeConfig.pairing")?;
 
     PairingHostConfig::new(
@@ -487,6 +462,11 @@ fn pairing_host_config_from_js(value: &JsValue) -> Result<PairingHostConfig, JsV
                 .flatten(),
         },
         get_required_bytes32_at(&people, "genesisHash", "runtimeConfig.people.genesisHash")?,
+        get_required_bytes32_at(
+            &bulletin,
+            "genesisHash",
+            "runtimeConfig.bulletin.genesisHash",
+        )?,
         get_required_string_at(
             &pairing,
             "deeplinkScheme",
@@ -514,6 +494,7 @@ fn runtime_config_field_to_js(field: &str) -> &str {
         "host_info.name" => "host.name",
         "pairing_deeplink_scheme" => "pairing.deeplinkScheme",
         "people_chain_genesis_hash" => "people.genesisHash",
+        "bulletin_chain_genesis_hash" => "bulletin.genesisHash",
         other => other,
     }
 }

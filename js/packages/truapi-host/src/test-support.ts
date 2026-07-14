@@ -35,7 +35,6 @@ export function makeHostCallbacks(
     auth: { authStateChanged: () => {} },
     userConfirmation: { confirmUserAction: async () => false },
     preimage: {
-      submitPreimage: async () => new Uint8Array(),
       async *lookupPreimage() {},
     },
     theme: { async *subscribeTheme() {} },

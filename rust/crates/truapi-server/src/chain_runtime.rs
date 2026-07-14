@@ -7,6 +7,11 @@
 //! This module keeps the TrUAPI-facing local follow ids and maps subxt DTOs to
 //! public v01 [`RemoteChainHeadFollowItem`] values.
 //!
+//! Each connection also lazily caches one genesis-pinned Subxt
+//! [`OnlineClient`], its backend driver, and Subxt's per-client metadata cache.
+//! Internal services use that client instead of hand-rolling chainHead
+//! orchestration where Subxt fits the boundary.
+//!
 //! The chain-side traits return [`RuntimeFailure`], a local classification
 //! that the [`crate::runtime`] layer maps to [`truapi::CallError`] variants
 //! (`Unsupported`, `HostFailure`, ...). This avoids leaking json-rpc plumbing
@@ -17,22 +22,26 @@ use core::task::{Context, Poll};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
-use futures::FutureExt;
+use derive_more::{Display, Error};
 use futures::channel::mpsc;
 use futures::future::{AbortHandle, Abortable};
 use futures::future::{BoxFuture, Shared};
 use futures::stream::BoxStream;
-use futures::{Stream, StreamExt, pin_mut};
+use futures::{FutureExt, pin_mut};
+use futures::{Stream, StreamExt};
 use parity_scale_codec::{Decode, Error as ScaleError, Input};
-use primitive_types::H256;
 use serde::de::{Deserializer, Error as DeError};
 use serde_json::Value;
+use subxt::OnlineClient;
+use subxt::backend::ChainHeadBackend;
+use subxt::config::substrate::{SubstrateConfig, SubstrateConfigBuilder};
+use subxt::utils::H256;
 use subxt_rpcs::client::RpcClient;
 use subxt_rpcs::methods::chain_head as subxt_chain;
 use subxt_rpcs::{ChainHeadRpcMethods, Error as SubxtRpcError, RpcConfig};
@@ -97,6 +106,19 @@ type FollowSetup = Shared<BoxFuture<'static, Result<String, RuntimeFailure>>>;
 /// than each opening a connection and orphaning all but the last insert.
 type ConnectionSetup = Shared<BoxFuture<'static, Result<Arc<ChainConnection>, RuntimeFailure>>>;
 
+/// Shared, single-flight setup of the connection's cached Subxt client.
+/// Concurrent first users await one in-flight build rather than each starting
+/// (and leaking) a separate backend driver and follow subscription.
+type SubxtConnectionSetup = Shared<BoxFuture<'static, Result<SubxtConnection, RuntimeFailure>>>;
+
+/// Cached Subxt client built over one connection's transport.
+/// The backend driver is owned by the setup task that created this value.
+#[derive(Clone)]
+pub(crate) struct SubxtConnection {
+    /// Client whose chain config pins the host-configured genesis hash.
+    pub(crate) client: OnlineClient<SubstrateConfig>,
+}
+
 /// Classification of framework-level chain failures separate from JSON-RPC
 /// domain errors. Maps cleanly to [`truapi::CallError`] variants at the
 /// `ProductRuntimeHost` boundary.
@@ -109,7 +131,12 @@ pub enum RuntimeFailureKind {
 }
 
 /// Framework-level chain failure with a diagnostic reason.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, Error)]
+#[display(
+    "{method}{}{}",
+    if reason.is_some() { ": " } else { "" },
+    reason.as_deref().unwrap_or_default()
+)]
 pub struct RuntimeFailure {
     kind: RuntimeFailureKind,
     method: &'static str,
@@ -137,8 +164,19 @@ impl RuntimeFailure {
         }
     }
 
+    /// [`Self::unavailable`] carrying the underlying failure text for
+    /// diagnostics.
+    pub fn unavailable_with_reason(method: &'static str, reason: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeFailureKind::Unavailable,
+            method,
+            reason: Some(reason.into()),
+        }
+    }
+
     /// Failure classification.
-    pub fn kind(&self) -> RuntimeFailureKind {
+    #[cfg(test)]
+    fn kind(&self) -> RuntimeFailureKind {
         self.kind
     }
 
@@ -156,11 +194,13 @@ impl RuntimeFailure {
         }
     }
 
-    /// Re-tag this failure under `method`, preserving its kind and reason.
+    /// Re-tag this failure under `method`, preserving its kind and nesting
+    /// the original reason (when one exists) for diagnostics.
     fn reclassify(&self, method: &'static str) -> RuntimeFailure {
-        match self.kind() {
-            RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(method),
-            RuntimeFailureKind::HostFailure => RuntimeFailure::host_failure(method, self.reason()),
+        RuntimeFailure {
+            kind: self.kind,
+            method,
+            reason: self.reason.as_ref().map(|_| self.reason()),
         }
     }
 }
@@ -221,19 +261,13 @@ impl ChainRuntime {
         let setup_cancelled = cancelled.clone();
         let cleanup_cancelled = cancelled.clone();
 
+        // Every `start_follow` failure path tears the follow state down,
+        // dropping the stored sender; with this task's clone gone too, the
+        // local stream ends. Sender drop is the single termination mechanism.
         let fut = async move {
-            if runtime
-                .start_follow(
-                    follow_subscription_id,
-                    request,
-                    Some(tx.clone()),
-                    setup_cancelled,
-                )
-                .await
-                .is_err()
-            {
-                let _ = tx.unbounded_send(FollowSignal::Interrupt);
-            }
+            let _ = runtime
+                .start_follow(follow_subscription_id, request, tx, setup_cancelled)
+                .await;
         };
         (self.spawner)(fut.boxed());
 
@@ -244,12 +278,6 @@ impl ChainRuntime {
                 cleanup_runtime.cleanup_follow(&cleanup_genesis_hash, &cleanup_follow_id);
             })),
         )
-        .filter_map(|signal| async move {
-            match signal {
-                FollowSignal::Item(item) => Some(item),
-                FollowSignal::Interrupt => None,
-            }
-        })
         .boxed()
     }
 
@@ -365,10 +393,15 @@ impl ChainRuntime {
         let remote_follow_id = self
             .ensure_follow_context(method, &connection, request.follow_subscription_id, false)
             .await?;
-        for hash in request.hashes {
+        let hashes = request
+            .hashes
+            .iter()
+            .map(|hash| hash_from_bytes(method, hash))
+            .collect::<Result<Vec<_>, _>>()?;
+        for hash in hashes {
             connection
                 .methods
-                .chainhead_v1_unpin(&remote_follow_id, hash_from_bytes(method, &hash)?)
+                .chainhead_v1_unpin(&remote_follow_id, hash)
                 .await
                 .map_err(|err| rpc_failure(method, err))?;
         }
@@ -493,6 +526,27 @@ impl ChainRuntime {
             .map_err(|err| rpc_failure(method, err))
     }
 
+    /// Genesis-pinned Subxt client for the chain identified by `genesis_hash`.
+    /// The cached unit is the underlying Subxt connection bundle, not just
+    /// the cheap client handle.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.online_client"))]
+    pub(crate) async fn online_client(
+        &self,
+        genesis_hash: &[u8],
+    ) -> Result<OnlineClient<SubstrateConfig>, RuntimeFailure> {
+        Ok(self.subxt_connection(genesis_hash).await?.client)
+    }
+
+    async fn subxt_connection(
+        &self,
+        genesis_hash: &[u8],
+    ) -> Result<SubxtConnection, RuntimeFailure> {
+        let connection = self
+            .connection_for("subxt_connection", genesis_hash)
+            .await?;
+        connection.subxt_connection().await
+    }
+
     #[instrument(skip_all, fields(runtime.method = "chain_runtime.connection_for", method = method))]
     async fn connection_for(
         &self,
@@ -524,8 +578,8 @@ impl ChainRuntime {
                 let setup_key = key.clone();
                 let genesis_hash = genesis_hash.to_owned();
                 let setup: ConnectionSetup = async move {
-                    let result = provider.connect(genesis_hash).await.map(|rpc| {
-                        let connection = ChainConnection::new(rpc, spawner);
+                    let result = provider.connect(genesis_hash.clone()).await.map(|rpc| {
+                        let connection = ChainConnection::new(rpc, spawner, genesis_hash);
                         connections
                             .lock()
                             .unwrap()
@@ -550,7 +604,7 @@ impl ChainRuntime {
         &self,
         local_follow_id: String,
         request: RemoteChainHeadFollowRequest,
-        sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+        sender: mpsc::UnboundedSender<RemoteChainHeadFollowItem>,
         cancelled: Arc<AtomicBool>,
     ) -> Result<(), RuntimeFailure> {
         if cancelled.load(Ordering::SeqCst) {
@@ -611,37 +665,132 @@ impl ChainRuntime {
     }
 }
 
-/// One delivery on the local follow stream. `Interrupt` signals an
-/// abnormal close (connection dropped, follow setup failed); it produces no
-/// item but ends the stream.
-enum FollowSignal {
-    Item(RemoteChainHeadFollowItem),
-    Interrupt,
-}
-
 struct ChainConnection {
     rpc_client: HostRpcClient,
     methods: ChainHeadRpcMethods<TruapiRpcConfig>,
     spawner: Spawner,
+    /// Host-configured genesis hash this connection was opened for; pins the
+    /// cached Subxt bundle's chain config.
+    genesis_hash: Vec<u8>,
     follows: Mutex<HashMap<String, FollowState>>,
     follow_setups: Mutex<HashMap<String, FollowSetup>>,
+    /// Cached Subxt bundle setup tagged with its generation, so invalidation
+    /// (on setup failure or backend-driver exit) can never evict a newer
+    /// rebuild.
+    subxt_connection_setup: Mutex<Option<(u64, SubxtConnectionSetup)>>,
+    subxt_connection_generation: AtomicU64,
 }
 
 impl ChainConnection {
-    fn new(rpc: Arc<dyn JsonRpcConnection>, spawner: Spawner) -> Arc<Self> {
+    fn new(rpc: Arc<dyn JsonRpcConnection>, spawner: Spawner, genesis_hash: Vec<u8>) -> Arc<Self> {
         let rpc_client = HostRpcClient::new(rpc, spawner.clone());
         let methods = ChainHeadRpcMethods::new(RpcClient::new(rpc_client.clone()));
         Arc::new(Self {
             rpc_client,
             methods,
             spawner,
+            genesis_hash,
             follows: Mutex::new(HashMap::new()),
             follow_setups: Mutex::new(HashMap::new()),
+            subxt_connection_setup: Mutex::new(None),
+            subxt_connection_generation: AtomicU64::new(0),
         })
     }
 
     fn is_closed(&self) -> bool {
         self.rpc_client.is_closed()
+    }
+
+    /// Lazily build (single-flight) and cache the Subxt bundle over this
+    /// connection's transport. The chain config pins the host-configured
+    /// genesis hash, so Subxt never reads a provider-echoed one, and the
+    /// backend follow started here is shared by every user of this connection.
+    async fn subxt_connection(self: &Arc<Self>) -> Result<SubxtConnection, RuntimeFailure> {
+        let (generation, setup) = {
+            let mut slot = self.subxt_connection_setup.lock().unwrap();
+            if let Some(existing) = slot.clone() {
+                existing
+            } else {
+                let generation = self
+                    .subxt_connection_generation
+                    .fetch_add(1, Ordering::Relaxed)
+                    + 1;
+                let connection = self.clone();
+                let setup: SubxtConnectionSetup =
+                    async move { connection.build_subxt_connection(generation).await }
+                        .boxed()
+                        .shared();
+                *slot = Some((generation, setup.clone()));
+                (generation, setup)
+            }
+        };
+        let result = setup.await;
+        // On failure, drop the cached setup so a later call can retry.
+        if result.is_err() {
+            self.invalidate_subxt_connection(generation);
+        }
+        result
+    }
+
+    /// Drop the cached Subxt setup if it still belongs to `generation`;
+    /// stale invalidations (an old driver exiting after a rebuild) are
+    /// ignored.
+    fn invalidate_subxt_connection(&self, generation: u64) {
+        let mut slot = self.subxt_connection_setup.lock().unwrap();
+        if slot
+            .as_ref()
+            .is_some_and(|(cached, _)| *cached == generation)
+        {
+            *slot = None;
+        }
+    }
+
+    /// Body of the single-flight Subxt setup: start the chainHead backend,
+    /// drive it on the connection's spawner, and build the client with the
+    /// config-pinned genesis hash.
+    async fn build_subxt_connection(
+        self: Arc<Self>,
+        generation: u64,
+    ) -> Result<SubxtConnection, RuntimeFailure> {
+        const METHOD: &str = "subxt_connection";
+        let genesis_hash: [u8; 32] = self.genesis_hash.as_slice().try_into().map_err(|_| {
+            RuntimeFailure::host_failure(
+                METHOD,
+                format!(
+                    "expected 32-byte genesis hash, got {}",
+                    self.genesis_hash.len()
+                ),
+            )
+        })?;
+        let (backend, mut driver) = ChainHeadBackend::<SubstrateConfig>::builder()
+            .build(RpcClient::new(self.rpc_client.clone()));
+        // The pump holds only a weak handle so a torn-down connection is not
+        // kept alive by its own driver task.
+        let pump_connection = Arc::downgrade(&self);
+        (self.spawner)(
+            async move {
+                while let Some(result) = driver.next().await {
+                    if let Err(error) = result {
+                        tracing::debug!(target: "subxt", "chainHead backend error={error}");
+                    }
+                }
+                // The backend can make no further progress; drop the cached
+                // Subxt bundle so the next caller rebuilds instead of hitting
+                // a permanently dead backend.
+                if let Some(connection) = pump_connection.upgrade() {
+                    connection.invalidate_subxt_connection(generation);
+                }
+            }
+            .boxed(),
+        );
+        let backend = Arc::new(backend);
+        let config = SubstrateConfigBuilder::new()
+            .set_genesis_hash(H256(genesis_hash))
+            .build();
+        let client = OnlineClient::from_backend_with_config(config, backend.clone())
+            .await
+            .map_err(|error| RuntimeFailure::host_failure(METHOD, error.to_string()))?;
+        Ok(SubxtConnection { client })
     }
 
     fn follow_with_runtime(&self, local_follow_id: &str) -> bool {
@@ -667,16 +816,14 @@ impl ChainConnection {
         &self,
         local_follow_id: &str,
         with_runtime: bool,
-        sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+        sender: mpsc::UnboundedSender<RemoteChainHeadFollowItem>,
         cancelled: Arc<AtomicBool>,
     ) {
         let mut follows = self.follows.lock().unwrap();
         match follows.get_mut(local_follow_id) {
             Some(follow) => {
-                if sender.is_some() {
-                    follow.sender = sender;
-                    follow.cancelled = cancelled;
-                }
+                follow.sender = sender;
+                follow.cancelled = cancelled;
             }
             None => {
                 follows.insert(
@@ -805,6 +952,7 @@ impl ChainConnection {
         let remote_follow_id = follow
             .subscription_id()
             .ok_or_else(|| {
+                self.remove_follow(&local_follow_id);
                 RuntimeFailure::host_failure(FOLLOW_METHOD, "missing follow subscription id")
             })?
             .to_string();
@@ -823,18 +971,18 @@ impl ChainConnection {
                     Ok(event) => match map_follow_event(event) {
                         Ok(item) => {
                             let is_stop = matches!(item, RemoteChainHeadFollowItem::Stop);
-                            connection.deliver_follow_event(&pump_follow_id, item, false);
+                            connection.deliver_follow_event(&pump_follow_id, item);
                             if is_stop {
                                 break;
                             }
                         }
                         Err(_) => {
-                            connection.interrupt_follow(&pump_follow_id, false);
+                            connection.interrupt_follow(&pump_follow_id);
                             break;
                         }
                     },
                     Err(_) => {
-                        connection.interrupt_follow(&pump_follow_id, false);
+                        connection.interrupt_follow(&pump_follow_id);
                         break;
                     }
                 }
@@ -883,46 +1031,31 @@ impl ChainConnection {
         self.remove_follow(local_follow_id);
     }
 
-    fn deliver_follow_event(
-        &self,
-        local_follow_id: &str,
-        event: RemoteChainHeadFollowItem,
-        abort_on_stop: bool,
-    ) {
+    /// Deliver one follow event to the local subscriber; a `Stop` event also
+    /// tears the follow down, ending the local stream via sender drop.
+    /// Cleanup never aborts: the only caller is the pump itself, which the
+    /// stored abort handle targets.
+    fn deliver_follow_event(&self, local_follow_id: &str, event: RemoteChainHeadFollowItem) {
         let sender = self
             .follows
             .lock()
             .unwrap()
             .get(local_follow_id)
-            .and_then(|follow| follow.sender.clone());
+            .map(|follow| follow.sender.clone());
         let is_stop = matches!(event, RemoteChainHeadFollowItem::Stop);
         if let Some(sender) = sender {
-            let _ = sender.unbounded_send(FollowSignal::Item(event));
+            let _ = sender.unbounded_send(event);
         }
         if is_stop {
-            if abort_on_stop {
-                self.remove_follow(local_follow_id);
-            } else {
-                self.remove_follow_without_abort(local_follow_id);
-            }
+            self.remove_follow_without_abort(local_follow_id);
         }
     }
 
-    fn interrupt_follow(&self, local_follow_id: &str, abort: bool) {
-        let sender = self
-            .follows
-            .lock()
-            .unwrap()
-            .get(local_follow_id)
-            .and_then(|follow| follow.sender.clone());
-        if let Some(sender) = sender {
-            let _ = sender.unbounded_send(FollowSignal::Interrupt);
-        }
-        if abort {
-            self.remove_follow(local_follow_id);
-        } else {
-            self.remove_follow_without_abort(local_follow_id);
-        }
+    /// End the local follow stream on an abnormal close by tearing the follow
+    /// down (sender drop). Cleanup never aborts, same as
+    /// [`Self::deliver_follow_event`].
+    fn interrupt_follow(&self, local_follow_id: &str) {
+        self.remove_follow_without_abort(local_follow_id);
     }
 }
 
@@ -930,7 +1063,9 @@ struct FollowState {
     with_runtime: bool,
     remote_subscription_id: Option<String>,
     abort: Option<AbortHandle>,
-    sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+    /// Local subscriber; dropping it (with the follow state) is what ends the
+    /// local follow stream.
+    sender: mpsc::UnboundedSender<RemoteChainHeadFollowItem>,
     cancelled: Arc<AtomicBool>,
 }
 
@@ -1194,7 +1329,6 @@ async fn wait_for_chain_head_best_hash_after_initialization(
 ) -> Result<Vec<u8>, String> {
     let timeout = futures_timer::Delay::new(timeout).fuse();
     pin_mut!(timeout);
-    let mut candidate = fallback;
     loop {
         let next = follow.next().fuse();
         pin_mut!(next);
@@ -1203,16 +1337,13 @@ async fn wait_for_chain_head_best_hash_after_initialization(
                 Some(RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
                     return Ok(best_block_hash);
                 }
-                Some(RemoteChainHeadFollowItem::NewBlock { block_hash, .. }) => {
-                    candidate = Some(block_hash);
-                }
                 Some(RemoteChainHeadFollowItem::Stop) | None => {
                     return Err(format!("{label} follow stopped before best block"));
                 }
                 _ => {}
             },
             () = timeout => {
-                return candidate.ok_or_else(|| {
+                return fallback.clone().ok_or_else(|| {
                     format!("{label} follow best block timed out")
                 });
             },
@@ -1220,15 +1351,30 @@ async fn wait_for_chain_head_best_hash_after_initialization(
     }
 }
 
+/// Context for one storage operation observed on a `chainHead_v1_follow` stream.
+pub(crate) struct ChainHeadStorageValueLookup<'a> {
+    pub(crate) chain: &'a ChainRuntime,
+    pub(crate) genesis_hash: &'a [u8],
+    pub(crate) follow_subscription_id: &'a str,
+    pub(crate) operation_id: &'a str,
+    pub(crate) key: &'a [u8],
+    pub(crate) label: &'static str,
+    pub(crate) timeout: Duration,
+}
+
+/// Result of one value query observed on a `chainHead_v1_follow` stream.
+pub(crate) enum ChainHeadStorageValue {
+    Found(Vec<u8>),
+    Missing,
+    Inaccessible,
+}
+
 /// Wait for one storage operation's value from a `chainHead_v1_follow` stream.
 pub(crate) async fn wait_for_chain_head_storage_value(
     follow: &mut BoxStream<'static, RemoteChainHeadFollowItem>,
-    operation_id: &str,
-    key: &[u8],
-    label: &'static str,
-    timeout: Duration,
-) -> Result<Option<Vec<u8>>, String> {
-    let timeout = futures_timer::Delay::new(timeout).fuse();
+    lookup: ChainHeadStorageValueLookup<'_>,
+) -> Result<ChainHeadStorageValue, String> {
+    let timeout = futures_timer::Delay::new(lookup.timeout).fuse();
     pin_mut!(timeout);
     let mut value = None;
     loop {
@@ -1237,35 +1383,51 @@ pub(crate) async fn wait_for_chain_head_storage_value(
         futures::select! {
             item = next => match item {
                 Some(RemoteChainHeadFollowItem::OperationStorageItems { operation_id: item_operation_id, items })
-                    if item_operation_id == operation_id =>
+                    if item_operation_id == lookup.operation_id =>
                 {
                     for item in items {
-                        if item.key == key {
+                        if item.key == lookup.key {
                             value = item.value;
                         }
                     }
                 }
                 Some(RemoteChainHeadFollowItem::OperationStorageDone { operation_id: item_operation_id })
-                    if item_operation_id == operation_id =>
+                    if item_operation_id == lookup.operation_id =>
                 {
-                    return Ok(value);
+                    return Ok(match value {
+                        Some(value) => ChainHeadStorageValue::Found(value),
+                        None => ChainHeadStorageValue::Missing,
+                    });
+                }
+                Some(RemoteChainHeadFollowItem::OperationWaitingForContinue { operation_id: item_operation_id })
+                    if item_operation_id == lookup.operation_id =>
+                {
+                    lookup
+                        .chain
+                        .remote_chain_head_continue(RemoteChainHeadContinueRequest {
+                            genesis_hash: lookup.genesis_hash.to_vec(),
+                            follow_subscription_id: lookup.follow_subscription_id.to_string(),
+                            operation_id: lookup.operation_id.to_string(),
+                        })
+                        .await
+                        .map_err(|failure| failure.reason())?;
                 }
                 Some(RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
-                    if item_operation_id == operation_id =>
+                    if item_operation_id == lookup.operation_id =>
                 {
-                    return Ok(None);
+                    return Ok(ChainHeadStorageValue::Inaccessible);
                 }
                 Some(RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
-                    if item_operation_id == operation_id =>
+                    if item_operation_id == lookup.operation_id =>
                 {
                     return Err(error);
                 }
                 Some(RemoteChainHeadFollowItem::Stop) | None => {
-                    return Err(format!("{label} follow stopped during storage lookup"));
+                    return Err(format!("{} follow stopped during storage lookup", lookup.label));
                 }
                 _ => {}
             },
-            () = timeout => return Err(format!("{label} storage lookup timed out")),
+            () = timeout => return Err(format!("{} storage lookup timed out", lookup.label)),
         }
     }
 }
@@ -1316,6 +1478,33 @@ mod tests {
         .expect("best hash should resolve");
 
         assert_eq!(hash, vec![0x02]);
+    }
+
+    #[test]
+    fn chain_head_best_hash_timeout_falls_back_to_finalized_not_new_block() {
+        let mut follow = stream::iter(vec![
+            RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: vec![vec![0x01]],
+                finalized_block_runtime: None,
+            },
+            RemoteChainHeadFollowItem::NewBlock {
+                block_hash: vec![0x03],
+                parent_block_hash: vec![0x01],
+                new_runtime: None,
+            },
+        ])
+        .chain(stream::pending())
+        .boxed();
+
+        let hash = futures::executor::block_on(wait_for_chain_head_best_hash(
+            &mut follow,
+            "test chain",
+            Duration::from_secs(10),
+            Duration::from_millis(1),
+        ))
+        .expect("best hash should fall back to finalized hash");
+
+        assert_eq!(hash, vec![0x01]);
     }
 
     #[test]
@@ -1534,6 +1723,84 @@ mod tests {
     }
 
     #[test]
+    fn unpin_uses_typed_subxt_method_for_each_hash() {
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            if request.contains("chainHead_v1_follow") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-FOLLOW"}}"#
+                ))
+            } else if request.contains("chainHead_v1_unpin") {
+                Some(format!(r#"{{"jsonrpc":"2.0","id":"{id}","result":null}}"#))
+            } else {
+                None
+            }
+        }));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let _follow_stream = runtime.remote_chain_head_follow(
+            "local-follow".to_string(),
+            RemoteChainHeadFollowRequest {
+                genesis_hash: vec![0u8; 32],
+                with_runtime: false,
+            },
+        );
+        let sent = wait_for_sent(&provider, |sent| {
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow"))
+        });
+        assert!(
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow")),
+            "follow setup did not start; sent: {sent:?}",
+        );
+
+        futures::executor::block_on(
+            runtime.remote_chain_head_unpin(RemoteChainHeadUnpinRequest {
+                genesis_hash: vec![0u8; 32],
+                follow_subscription_id: "local-follow".to_string(),
+                hashes: vec![vec![0x11; 32], vec![0x22; 32]],
+            }),
+        )
+        .expect("unpin succeeds");
+
+        let sent = provider.sent.lock().unwrap().clone();
+        let unpin_requests: Vec<_> = sent
+            .iter()
+            .filter(|request| request.contains("chainHead_v1_unpin"))
+            .collect();
+        assert_eq!(
+            unpin_requests.len(),
+            2,
+            "unpin should send each hash through Subxt; sent: {sent:?}",
+        );
+        let params = unpin_requests
+            .iter()
+            .map(|request| {
+                let request: Value = serde_json::from_str(request).expect("json request");
+                assert_eq!(
+                    request.get("method").and_then(Value::as_str),
+                    Some("chainHead_v1_unpin"),
+                );
+                request
+                    .get("params")
+                    .and_then(Value::as_array)
+                    .expect("params array")
+                    .clone()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(params[0][0].as_str(), Some("REMOTE-FOLLOW"));
+        assert_eq!(params[1][0].as_str(), Some("REMOTE-FOLLOW"));
+        assert_eq!(
+            params[0][1][0].as_str(),
+            Some("0x1111111111111111111111111111111111111111111111111111111111111111"),
+        );
+        assert_eq!(
+            params[1][1][0].as_str(),
+            Some("0x2222222222222222222222222222222222222222222222222222222222222222"),
+        );
+    }
+
+    #[test]
     fn header_request_rejects_unknown_follow_id_without_opening_follow() {
         let provider = Arc::new(ScriptedProvider::new(|request| {
             let id = extract_id(request).unwrap();
@@ -1611,6 +1878,88 @@ mod tests {
         assert_eq!(first.unwrap().chain_name, "Polkadot");
         assert_eq!(second.unwrap().chain_name, "Polkadot");
         assert_eq!(provider.inner.connect_calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// The cached Subxt bundle must pin the host-configured genesis hash
+    /// (never fetch it from the provider) and be built once per connection.
+    #[cfg_attr(target_arch = "wasm32", ignore)]
+    #[test]
+    fn subxt_connection_pins_configured_genesis_and_is_cached() {
+        let provider = Arc::new(ScriptedProvider::new(|_| None));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let genesis = vec![0xab; 32];
+
+        let connection =
+            futures::executor::block_on(runtime.connection_for("subxt_connection_test", &genesis))
+                .expect("connection");
+        let first = futures::executor::block_on(connection.subxt_connection()).expect("client");
+        let second = futures::executor::block_on(connection.subxt_connection()).expect("client");
+
+        // With the config pin, construction never asks the provider for the
+        // genesis hash. The scripted provider answers nothing, so a fetch
+        // would have hung instead of returning.
+        assert_eq!(first.client.genesis_hash(), H256([0xab; 32]));
+        assert_eq!(second.client.genesis_hash(), H256([0xab; 32]));
+        let sent = provider.sent.lock().unwrap().clone();
+        assert!(
+            !sent
+                .iter()
+                .any(|request| request.contains("chainSpec_v1_genesisHash")),
+            "genesis hash must come from config, not the provider; sent: {sent:?}",
+        );
+
+        // One backend driver total: its follow subscription shows up once.
+        let sent = wait_for_sent(&provider, |sent| {
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow"))
+        });
+        assert!(
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow")),
+            "backend follow did not start; sent: {sent:?}",
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let follows = provider
+            .sent
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request.contains("chainHead_v1_follow"))
+            .count();
+        assert_eq!(
+            follows, 1,
+            "cached Subxt bundle must reuse one backend follow"
+        );
+    }
+
+    /// When the backend driver exits (transport gone quiet for good), the
+    /// cached Subxt bundle must be dropped so the next caller rebuilds it.
+    #[cfg_attr(target_arch = "wasm32", ignore)]
+    #[test]
+    fn subxt_connection_invalidated_when_backend_driver_exits() {
+        let provider = Arc::new(ScriptedProvider::new(|_| None));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let genesis = vec![0xab; 32];
+
+        let connection =
+            futures::executor::block_on(runtime.connection_for("subxt_connection_test", &genesis))
+                .expect("connection");
+        let _client = futures::executor::block_on(connection.subxt_connection()).expect("client");
+        assert!(connection.subxt_connection_setup.lock().unwrap().is_some());
+
+        // End the response stream: the backend driver's follow stream ends,
+        // the pump exits, and the exit hook must clear the cached setup.
+        provider.sender.lock().unwrap().take();
+        for _ in 0..500 {
+            if connection.subxt_connection_setup.lock().unwrap().is_none() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(
+            connection.subxt_connection_setup.lock().unwrap().is_none(),
+            "driver exit must invalidate the cached Subxt bundle",
+        );
     }
 
     #[test]

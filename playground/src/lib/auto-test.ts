@@ -39,8 +39,8 @@ const LONG_TIMEOUT_METHODS = new Set([
 const METHOD_TIMEOUT_MS = new Map<string, number>([
   ["Account/get_account_alias", SSO_TIMEOUT_MS],
   ["Resource Allocation/request", LIVE_ALLOCATION_TIMEOUT_MS],
-  ["Preimage/lookup_subscribe", SSO_TIMEOUT_MS],
-  ["Preimage/submit", SSO_TIMEOUT_MS],
+  ["Preimage/lookup_subscribe", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Preimage/submit", LIVE_ALLOCATION_TIMEOUT_MS],
   ["Signing/create_transaction", SSO_TIMEOUT_MS],
   ["Statement Store/create_proof_authorized", LIVE_ALLOCATION_TIMEOUT_MS],
   ["Statement Store/submit", LIVE_ALLOCATION_TIMEOUT_MS],

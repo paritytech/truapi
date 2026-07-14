@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use futures::channel::{mpsc, oneshot};
 use futures::{FutureExt, pin_mut};
 use futures::{Stream, StreamExt};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use serde_json::value::RawValue;
 use subxt_rpcs::client::{RawRpcFuture, RawRpcSubscription, RpcClientT};
 use subxt_rpcs::{Error as RpcError, UserError};
@@ -65,8 +65,21 @@ struct JsonRpcRequest<'a> {
     jsonrpc: &'static str,
     id: &'a str,
     method: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(serialize_with = "serialize_json_rpc_params")]
     params: Option<&'a RawValue>,
+}
+
+fn serialize_json_rpc_params<S>(
+    params: &Option<&RawValue>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match params {
+        Some(params) => params.serialize(serializer),
+        None => <[(); 0]>::default().serialize(serializer),
+    }
 }
 
 impl HostRpcClient {
@@ -186,11 +199,12 @@ impl HostRpcClientInner {
         method: &str,
         params: Option<&RawValue>,
     ) -> Result<(), RpcError> {
+        let normalized_params = normalize_outbound_params(method, params)?;
         let request = JsonRpcRequest {
             jsonrpc: "2.0",
             id,
             method,
-            params,
+            params: normalized_params.as_deref().or(params),
         };
         let encoded = serde_json::to_string(&request).map_err(RpcError::Serialization)?;
         self.connection.send(encoded);
@@ -449,6 +463,31 @@ fn raw_value_from_json(value: &serde_json::Value) -> Result<Box<RawValue>, RpcEr
     RawValue::from_string(value.to_string()).map_err(RpcError::Deserialization)
 }
 
+/// PAPI's modern middleware requires the array variant even though Subxt emits
+/// the protocol's valid single-hash unpin form.
+fn normalize_outbound_params(
+    method: &str,
+    params: Option<&RawValue>,
+) -> Result<Option<Box<RawValue>>, RpcError> {
+    if method != "chainHead_v1_unpin" {
+        return Ok(None);
+    }
+    let Some(params) = params else {
+        return Ok(None);
+    };
+    let mut params: Vec<serde_json::Value> =
+        serde_json::from_str(params.get()).map_err(RpcError::Serialization)?;
+    let Some(hash_slot @ serde_json::Value::String(_)) = params.get_mut(1) else {
+        return Ok(None);
+    };
+    let hash = mem::take(hash_slot);
+    *hash_slot = serde_json::Value::Array(vec![hash]);
+    let encoded = serde_json::to_string(&params).map_err(RpcError::Serialization)?;
+    RawValue::from_string(encoded)
+        .map(Some)
+        .map_err(RpcError::Serialization)
+}
+
 fn subscription_id_from_raw(raw: &RawValue) -> Result<String, RpcError> {
     let value: serde_json::Value =
         serde_json::from_str(raw.get()).map_err(RpcError::Deserialization)?;
@@ -490,6 +529,7 @@ mod tests {
     struct TrackingConnection {
         sender: Mutex<Option<mpsc::UnboundedSender<String>>>,
         receiver: Mutex<Option<mpsc::UnboundedReceiver<String>>>,
+        sent: Mutex<Vec<Value>>,
         close_count: AtomicUsize,
     }
 
@@ -499,12 +539,17 @@ mod tests {
             Arc::new(Self {
                 sender: Mutex::new(Some(tx)),
                 receiver: Mutex::new(Some(rx)),
+                sent: Mutex::new(Vec::new()),
                 close_count: AtomicUsize::new(0),
             })
         }
 
         fn close_count(&self) -> usize {
             self.close_count.load(Ordering::SeqCst)
+        }
+
+        fn sent(&self) -> Vec<Value> {
+            self.sent.lock().unwrap().clone()
         }
     }
 
@@ -513,6 +558,7 @@ mod tests {
             let Ok(value) = serde_json::from_str::<Value>(&request) else {
                 return;
             };
+            self.sent.lock().unwrap().push(value.clone());
             let Some(id) = value.get("id").cloned() else {
                 return;
             };
@@ -556,6 +602,36 @@ mod tests {
         }
 
         assert_eq!(connection.close_count(), 1);
+    }
+
+    #[test]
+    fn requests_without_arguments_serialize_empty_params() {
+        let connection = TrackingConnection::new();
+        let spawner: Spawner = Arc::new(|_| {});
+        let client = HostRpcClient::new(connection.clone(), spawner);
+
+        client
+            .send_fire_and_forget("chainSpec_v1_chainName", None)
+            .unwrap();
+
+        assert_eq!(connection.sent()[0]["params"], json!([]));
+    }
+
+    #[test]
+    fn subxt_single_hash_unpin_is_normalized_for_host_providers() {
+        let connection = TrackingConnection::new();
+        let spawner: Spawner = Arc::new(|_| {});
+        let client = HostRpcClient::new(connection.clone(), spawner);
+        let params = RawValue::from_string(r#"["follow-id","0x1234"]"#.to_string()).unwrap();
+
+        client
+            .send_fire_and_forget("chainHead_v1_unpin", Some(params))
+            .unwrap();
+
+        assert_eq!(
+            connection.sent()[0]["params"],
+            json!(["follow-id", ["0x1234"]]),
+        );
     }
 
     #[test]

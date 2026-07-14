@@ -90,6 +90,10 @@ function runtimeConfig(
       genesisHash:
         "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
     },
+    bulletin: {
+      genesisHash:
+        "0xbbcccc1cbe333151b8ed63b17e9e0dec61ee53b57296f1fbe2d161ae3e6fb4dc",
+    },
     pairing: {
       deeplinkScheme: "polkadotapp",
     },
@@ -516,76 +520,6 @@ describe("createWebWorkerPairingHostRuntime", () => {
       requestId: 3,
       ok: true,
       value: undefined,
-    });
-
-    provider.dispose();
-  });
-
-  it("revives Bulletin allowance signer handles for submitPreimage", async () => {
-    const worker = new FakeWorker();
-    const publicKey = new Uint8Array(32);
-    publicKey.set([1, 2, 3]);
-    const value = new Uint8Array([10, 11, 12]);
-    const signingPayload = new Uint8Array([4, 5, 6]);
-    const signature = new Uint8Array(64);
-    signature.set([9, 8, 7]);
-    const result = new Uint8Array([30, 31, 32]);
-    const seen: {
-      publicKey?: Uint8Array;
-      signature?: Uint8Array;
-      value?: Uint8Array;
-    } = {};
-
-    const submitPreimage: PreimageHost["submitPreimage"] = async (
-      submittedValue,
-      signer,
-    ) => {
-      seen.value = submittedValue;
-      seen.publicKey = signer.publicKey;
-      seen.signature = await signer.sign(signingPayload);
-      return result;
-    };
-    const providerPromise = createProviderFromRuntime(
-      asWorker(worker),
-      makeHostCallbacks({ preimage: { submitPreimage } }),
-      { runtimeConfig: runtimeConfig() },
-    );
-    worker.emit({ kind: "loaded" });
-    worker.emit({ kind: "ready" });
-    const provider = await finishProviderReady(worker, providerPromise);
-
-    worker.emit({
-      kind: "callbackRequest",
-      requestId: 21,
-      name: "submitPreimage",
-      args: [value, { publicKey, signerId: 7 }],
-    });
-    await settle();
-
-    const signRequest = lastMessageOfKind(worker, "signBulletinAllowance");
-    expect(signRequest.kind).toBe("signBulletinAllowance");
-    expect(signRequest.signerId).toBe(7);
-    expect(signRequest.input).toEqual(signingPayload);
-    expect(typeof signRequest.requestId).toBe("number");
-
-    worker.emit({
-      kind: "signBulletinAllowanceResponse",
-      requestId: signRequest.requestId,
-      ok: true,
-      signature,
-    });
-    await settle();
-
-    expect(seen).toEqual({
-      value,
-      publicKey,
-      signature,
-    });
-    expect(worker.messages.at(-1)).toEqual({
-      kind: "callbackResponse",
-      requestId: 21,
-      ok: true,
-      value: result,
     });
 
     provider.dispose();

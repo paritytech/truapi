@@ -22,10 +22,7 @@ import {
   CoreStorageKey,
   UserConfirmationReview,
 } from "./host-callbacks.js";
-import type {
-  BulletinAllowanceSigner,
-  RequiredHostCallbacks,
-} from "./host-callbacks.js";
+import type { RequiredHostCallbacks } from "./host-callbacks.js";
 
 import type { ChainConnect } from "../runtime.js";
 import { chainConnectAdapter, driveResultStream } from "../adapter-support.js";
@@ -42,10 +39,6 @@ export interface RawCallbacks {
   cancelNotification(id: NotificationId): Promise<void>;
   devicePermission(request: Uint8Array): Promise<Uint8Array>;
   remotePermission(request: Uint8Array): Promise<Uint8Array>;
-  submitPreimage(
-    value: Uint8Array,
-    bulletinAllowanceSigner: BulletinAllowanceSigner,
-  ): Promise<Uint8Array>;
   lookupPreimage(
     key: Uint8Array,
     sendItem: (item?: Uint8Array) => void,
@@ -105,8 +98,6 @@ export function createWasmRawCallbacks(
           RemotePermissionRequest.dec(request),
         ),
       ),
-    submitPreimage: async (value, bulletinAllowanceSigner) =>
-      await callbacks.preimage.submitPreimage(value, bulletinAllowanceSigner),
     lookupPreimage: (key, sendItem, sendError) =>
       driveResultStream(
         callbacks.preimage.lookupPreimage(key),

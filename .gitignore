@@ -55,6 +55,4 @@ js/packages/truapi/src/generated/
 js/packages/truapi/dist/generated/
 js/packages/truapi-host/src/generated/
 js/packages/truapi-host/dist/generated/
-js/packages/truapi-host-wasm/src/generated/
-js/packages/truapi-host-wasm/dist/generated/
-js/packages/truapi-host-wasm/dist/wasm/
+js/packages/truapi-host/dist/wasm/
