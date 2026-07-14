@@ -46,21 +46,19 @@ impl ChainSource {
         LightClientBuilder {
             specification: specification.into(),
             database_content: None,
-            statement_protocol: true,
         }
     }
 }
 
 /// Builder for a [`ChainSource::LightClient`].
 ///
-/// The statement-store networking protocol is always on; the catalog disables
-/// it internally on chains that don't host a statement store.
+/// A chain built here runs the statement-store protocol; whether a bundled
+/// chain runs it is set by the catalog, which owns statement-store placement.
 #[cfg(feature = "smoldot")]
 #[derive(Debug, Clone)]
 pub struct LightClientBuilder {
     specification: std::borrow::Cow<'static, str>,
     database_content: Option<String>,
-    statement_protocol: bool,
 }
 
 #[cfg(feature = "smoldot")]
@@ -73,20 +71,12 @@ impl LightClientBuilder {
         self
     }
 
-    /// Disable the statement-store networking protocol. Internal: the catalog
-    /// disables it on chains that don't host a statement store; a light-client
-    /// chain otherwise always runs it.
-    pub(crate) fn without_statement_protocol(mut self) -> Self {
-        self.statement_protocol = false;
-        self
-    }
-
     /// Finish, producing a [`ChainSource::LightClient`].
     pub fn build(self) -> ChainSource {
         ChainSource::LightClient {
             specification: self.specification,
             database_content: self.database_content,
-            statement_protocol: self.statement_protocol,
+            statement_protocol: true,
         }
     }
 }
@@ -114,20 +104,14 @@ mod tests {
     }
 
     #[test]
-    fn builder_sets_fields() {
-        let source = ChainSource::light_client("{}")
-            .database("db")
-            .without_statement_protocol()
-            .build();
+    fn builder_sets_database() {
+        let source = ChainSource::light_client("{}").database("db").build();
         let ChainSource::LightClient {
-            database_content,
-            statement_protocol,
-            ..
+            database_content, ..
         } = source
         else {
             panic!("expected a LightClient source");
         };
         assert_eq!(database_content.as_deref(), Some("db"));
-        assert!(!statement_protocol);
     }
 }

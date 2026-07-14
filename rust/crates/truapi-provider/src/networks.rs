@@ -162,11 +162,11 @@ pub(crate) fn catalog_network_chains(genesis_hash: [u8; 32]) -> Option<ResolvedN
 }
 
 fn light_source(chain: &ChainDef) -> ChainSource {
-    let mut builder = ChainSource::light_client(chain.spec);
-    if !chain.statement_protocol {
-        builder = builder.without_statement_protocol();
+    ChainSource::LightClient {
+        specification: chain.spec.into(),
+        database_content: None,
+        statement_protocol: chain.statement_protocol,
     }
-    builder.build()
 }
 
 impl EmbeddedChainProviderBuilder {
