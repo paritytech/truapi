@@ -643,6 +643,7 @@ impl ChainRuntime {
         local_follow_id: String,
         with_runtime: bool,
     ) -> Result<String, RuntimeFailure> {
+        let local_follow_id = connection.resolve_legacy_follow_alias(local_follow_id);
         let remote_follow_id = connection
             .require_remote_follow(method, local_follow_id.clone())
             .await?;
@@ -807,6 +808,39 @@ impl ChainConnection {
             .unwrap()
             .get(local_follow_id)
             .and_then(|follow| follow.remote_subscription_id.clone())
+    }
+
+    /// Legacy Nova PAPI adapters expose synthetic `follow_N` ids instead of
+    /// the transport request id that owns the subscription. Resolve that
+    /// alias only when this product core has exactly one live follow, keeping
+    /// ordinary unknown ids and ambiguous multi-follow cases fail-closed.
+    fn resolve_legacy_follow_alias(&self, local_follow_id: String) -> String {
+        let Some((scope, alias)) = local_follow_id.split_once(':') else {
+            return local_follow_id;
+        };
+        let is_core_scope = scope.strip_prefix('c').is_some_and(|value| {
+            !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+        });
+        let is_legacy_alias = alias.strip_prefix("follow_").is_some_and(|value| {
+            !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+        });
+        if !is_core_scope || !is_legacy_alias {
+            return local_follow_id;
+        }
+
+        let follows = self.follows.lock().unwrap();
+        if follows.contains_key(&local_follow_id) {
+            return local_follow_id;
+        }
+        let prefix = format!("{scope}:");
+        let mut candidates = follows.keys().filter(|id| id.starts_with(&prefix));
+        let Some(candidate) = candidates.next() else {
+            return local_follow_id;
+        };
+        if candidates.next().is_some() {
+            return local_follow_id;
+        }
+        candidate.clone()
     }
 
     /// Record intent to follow `local_follow_id`, attaching `sender` for a
@@ -1719,6 +1753,55 @@ mod tests {
         let sent = provider.sent.lock().unwrap().clone();
         assert_eq!(sent.len(), 2);
         assert!(sent[0].contains("chainHead_v1_follow"));
+        assert!(sent[1].contains("chainHead_v1_header"));
+    }
+
+    #[test]
+    fn header_request_resolves_single_legacy_follow_alias() {
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            if request.contains("chainHead_v1_follow") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-FOLLOW"}}"#
+                ))
+            } else if request.contains("chainHead_v1_header") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"0xdeadbeef"}}"#
+                ))
+            } else {
+                None
+            }
+        }));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let _follow_stream = runtime.remote_chain_head_follow(
+            "c7:transport-id".to_string(),
+            RemoteChainHeadFollowRequest {
+                genesis_hash: vec![0u8; 32],
+                with_runtime: false,
+            },
+        );
+        let sent = wait_for_sent(&provider, |sent| {
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow"))
+        });
+        assert!(
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow")),
+            "follow setup did not start; sent: {sent:?}",
+        );
+
+        let response = futures::executor::block_on(runtime.remote_chain_head_header(
+            RemoteChainHeadHeaderRequest {
+                genesis_hash: vec![0u8; 32],
+                follow_subscription_id: "c7:follow_0".to_string(),
+                hash: vec![1u8; 32],
+            },
+        ))
+        .expect("legacy follow alias should resolve");
+
+        assert_eq!(response.header, Some(vec![0xde, 0xad, 0xbe, 0xef]));
+        let sent = provider.sent.lock().unwrap().clone();
+        assert_eq!(sent.len(), 2);
         assert!(sent[1].contains("chainHead_v1_header"));
     }
 
