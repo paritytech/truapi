@@ -53,8 +53,8 @@ impl ChainSource {
 
 /// Builder for a [`ChainSource::LightClient`].
 ///
-/// The statement-store networking protocol is enabled by default; opt out with
-/// [`without_statement_protocol`](Self::without_statement_protocol).
+/// The statement-store networking protocol is always on; the catalog disables
+/// it internally on chains that don't host a statement store.
 #[cfg(feature = "smoldot")]
 #[derive(Debug, Clone)]
 pub struct LightClientBuilder {
@@ -73,8 +73,10 @@ impl LightClientBuilder {
         self
     }
 
-    /// Disable the statement-store networking protocol for this chain.
-    pub fn without_statement_protocol(mut self) -> Self {
+    /// Disable the statement-store networking protocol. Internal: the catalog
+    /// disables it on chains that don't host a statement store; a light-client
+    /// chain otherwise always runs it.
+    pub(crate) fn without_statement_protocol(mut self) -> Self {
         self.statement_protocol = false;
         self
     }
