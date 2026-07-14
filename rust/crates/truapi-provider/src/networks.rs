@@ -49,29 +49,54 @@ pub struct NetworkChains {
     pub people: [u8; 32],
 }
 
-const CATALOG: &[NetworkDef] = &[NetworkDef {
-    name: "paseo-next-v2",
-    relay: ChainDef {
-        genesis_hex: "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
-        spec: include_str!("../networks/paseo.json"),
-        statement_protocol: false,
+const CATALOG: &[NetworkDef] = &[
+    NetworkDef {
+        name: "paseo-next-v2",
+        relay: ChainDef {
+            genesis_hex: "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f",
+            spec: include_str!("../networks/paseo.json"),
+            statement_protocol: false,
+        },
+        assethub: ChainDef {
+            genesis_hex: "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+            spec: include_str!("../networks/paseo-next-v2-asset-hub.json"),
+            statement_protocol: false,
+        },
+        bulletin: ChainDef {
+            genesis_hex: "0x8cfe6717dc4becfda2e13c488a1e2061ff2dfee96e7d031157f72d36716c0a22",
+            spec: include_str!("../networks/paseo-next-v2-bulletin.json"),
+            statement_protocol: false,
+        },
+        people: ChainDef {
+            genesis_hex: "0xc5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5",
+            spec: include_str!("../networks/paseo-next-v2-people.json"),
+            statement_protocol: true,
+        },
     },
-    assethub: ChainDef {
-        genesis_hex: "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-        spec: include_str!("../networks/paseo-next-v2-asset-hub.json"),
-        statement_protocol: false,
+    NetworkDef {
+        name: "previewnet",
+        relay: ChainDef {
+            genesis_hex: "0x946053e2be0d883a5ae3de0394a683c63e3b1b3b98848feb721b1b127bd4aaf4",
+            spec: include_str!("../networks/previewnet.json"),
+            statement_protocol: false,
+        },
+        assethub: ChainDef {
+            genesis_hex: "0x29f7b15e6227f86b90bf5199b5c872c28649a30e5f15fae6dd8fa9d5d48d6fbb",
+            spec: include_str!("../networks/previewnet-asset-hub.json"),
+            statement_protocol: false,
+        },
+        bulletin: ChainDef {
+            genesis_hex: "0xf37fa1f1450ea120edbf64c3fc447f671a00e1f1095a698f42eeec073c7ee487",
+            spec: include_str!("../networks/previewnet-bulletin.json"),
+            statement_protocol: false,
+        },
+        people: ChainDef {
+            genesis_hex: "0x3389bc9179d3be32568c67278bd080d05631ac71982d28a3fe545421147b311e",
+            spec: include_str!("../networks/previewnet-people.json"),
+            statement_protocol: true,
+        },
     },
-    bulletin: ChainDef {
-        genesis_hex: "0x8cfe6717dc4becfda2e13c488a1e2061ff2dfee96e7d031157f72d36716c0a22",
-        spec: include_str!("../networks/paseo-next-v2-bulletin.json"),
-        statement_protocol: false,
-    },
-    people: ChainDef {
-        genesis_hex: "0xc5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5",
-        spec: include_str!("../networks/paseo-next-v2-people.json"),
-        statement_protocol: true,
-    },
-}];
+];
 
 /// Names of the bundled networks.
 pub fn known_networks() -> impl Iterator<Item = &'static str> {
