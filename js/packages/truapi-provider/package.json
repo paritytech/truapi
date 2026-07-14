@@ -1,0 +1,45 @@
+{
+  "name": "@parity/truapi-provider",
+  "version": "0.1.0",
+  "description": "Network provider backends for the TrUAPI ChainProvider: an embedded smoldot light client and remote WebSocket JSON-RPC nodes, compiled to WebAssembly for browser hosts",
+  "license": "MIT AND Apache-2.0",
+  "author": "Parity Technologies <admin@parity.io>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paritytech/truapi.git",
+    "directory": "js/packages/truapi-provider"
+  },
+  "homepage": "https://github.com/paritytech/truapi#readme",
+  "bugs": {
+    "url": "https://github.com/paritytech/truapi/issues"
+  },
+  "type": "module",
+  "main": "dist/truapi_provider.js",
+  "types": "dist/truapi_provider.d.ts",
+  "sideEffects": [
+    "./dist/truapi_provider.js"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/truapi_provider.d.ts",
+      "import": "./dist/truapi_provider.js"
+    },
+    "./truapi_provider_bg.wasm": "./dist/truapi_provider_bg.wasm"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "LICENSE-APACHE",
+    "NOTICE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "dev"
+  },
+  "scripts": {
+    "build": "node scripts/build-wasm.mjs",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "publish:dev": "bash scripts/publish-dev.sh"
+  }
+}

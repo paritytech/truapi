@@ -65,6 +65,8 @@ js/packages/
   truapi-host/            @parity/truapi-host: WASM-backed host runtime; entries `.`
                           (shared host types), `/web` (iframe + Web Worker),
                           `/worker-runtime`
+  truapi-provider/         @parity/truapi-provider: WASM ChainProvider backends
+                          (embedded smoldot light client + remote WebSocket RPC)
 playground/                Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/               dotli host, vendored as a submodule
 docs/                      Design docs, RFCs, feature proposals
@@ -81,6 +83,12 @@ a single package with tree-shakeable subpath entries:
   MessageChannel handshake (`createIframeHost`) plus `createWebWorkerProvider`.
 - `@parity/truapi-host/worker-runtime` is the Web Worker entrypoint so the WASM core can
   run off the page main thread.
+
+A browser host that wants an in-page light client can supply chain RPC transport with
+[`@parity/truapi-provider`](js/packages/truapi-provider), which compiles the
+`truapi-provider` crate (embedded smoldot plus a bundled chain-spec catalog) to WASM and
+exposes the same `ChainProvider` contract the native hosts use over UniFFI. Both WASM
+bundles are rebuilt by `make wasm`.
 
 ## How it works
 

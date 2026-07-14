@@ -11,6 +11,7 @@ JS_PACKAGES := js/packages
 EXPLORER := explorer
 DOTLI := hosts/dotli
 HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host
+PROVIDER_WASM_PKG := $(JS_PACKAGES)/truapi-provider
 HOST_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
 HOST_WASM_ADAPTER_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks-adapter.ts
 HOST_WASM_WORKER_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/worker-callbacks.ts
@@ -52,8 +53,9 @@ codegen: ## Regenerate generated TS/Rust artifacts from the Rust crates.
 	./scripts/codegen.sh
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 
-wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host/dist/wasm/.
+wasm: ## Rebuild the truapi-server and truapi-provider WASM bundles under js/packages/*/dist/.
 	cd $(HOST_WASM_PKG) && npm run build:wasm
+	cd $(PROVIDER_WASM_PKG) && npm run build:wasm
 
 wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
 	wasm-pack test --node rust/crates/truapi-server --test wasm_crypto_vectors --no-default-features
