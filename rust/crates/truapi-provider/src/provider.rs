@@ -1,4 +1,7 @@
-//! Genesis-hash registry dispatching to the configured backend.
+//! Genesis-hash registry dispatching each connection to its backend.
+//!
+//! A parachain's relay is provider topology (see `relays`), not part of
+//! [`ChainSource`]; the light backend brings the relay up behind the parachain.
 
 use std::collections::HashMap;
 
@@ -12,6 +15,10 @@ use crate::error::ProviderError;
 #[derive(Debug, Default)]
 pub struct EmbeddedChainProviderBuilder {
     chains: HashMap<[u8; 32], ChainSource>,
+    /// The relay each parachain syncs through, keyed by parachain genesis hash
+    /// (exactly one per parachain).
+    #[cfg(feature = "smoldot")]
+    relays: HashMap<[u8; 32], [u8; 32]>,
     /// Warm-start database blobs keyed by genesis hash, applied to a
     /// light-client chain at connect time if it has no explicit blob.
     #[cfg(feature = "smoldot")]
@@ -32,6 +39,20 @@ impl EmbeddedChainProviderBuilder {
         self
     }
 
+    /// Register `source` as a parachain syncing through the relay registered
+    /// under `relay_genesis`. A later registration for `genesis_hash` wins.
+    #[cfg(feature = "smoldot")]
+    pub(crate) fn parachain(
+        mut self,
+        genesis_hash: [u8; 32],
+        source: ChainSource,
+        relay_genesis: [u8; 32],
+    ) -> Self {
+        self.chains.insert(genesis_hash, source);
+        self.relays.insert(genesis_hash, relay_genesis);
+        self
+    }
+
     /// Seed a warm-start database blob (previously produced by
     /// [`EmbeddedChainProvider::snapshot`]) for `genesis_hash`, so its light
     /// client resumes from that finalized state instead of syncing from the
@@ -48,6 +69,8 @@ impl EmbeddedChainProviderBuilder {
     pub fn build(self) -> EmbeddedChainProvider {
         EmbeddedChainProvider {
             chains: self.chains,
+            #[cfg(feature = "smoldot")]
+            relays: self.relays,
             #[cfg(feature = "smoldot")]
             databases: self.databases,
             #[cfg(feature = "smoldot")]
@@ -70,6 +93,10 @@ impl EmbeddedChainProviderBuilder {
 /// call yields the live stream, later calls yield an ended stream.
 pub struct EmbeddedChainProvider {
     chains: HashMap<[u8; 32], ChainSource>,
+    /// The relay each explicitly-registered parachain syncs through; catalog
+    /// parachains carry theirs in the catalog entry.
+    #[cfg(feature = "smoldot")]
+    relays: HashMap<[u8; 32], [u8; 32]>,
     #[cfg(feature = "smoldot")]
     databases: HashMap<[u8; 32], String>,
     #[cfg(feature = "smoldot")]
@@ -82,19 +109,20 @@ impl EmbeddedChainProvider {
         EmbeddedChainProviderBuilder::new()
     }
 
-    /// Open a connection for `source`, using `chains` to resolve a parachain's
-    /// relay entry (only the light backend consults `chains`).
+    /// Open a connection for `source`; for a parachain, `relay`/`chains` give
+    /// the light backend the relay to sync it through.
     #[cfg_attr(not(feature = "smoldot"), allow(unused_variables))]
     async fn connect_source(
         &self,
         source: &ChainSource,
         chains: &HashMap<[u8; 32], ChainSource>,
+        relay: Option<[u8; 32]>,
     ) -> Result<Box<dyn JsonRpcConnection>, ProviderError> {
         match source {
             #[cfg(feature = "ws")]
             ChainSource::RpcNode { url } => crate::ws::connect(url.clone()).await,
             #[cfg(feature = "smoldot")]
-            ChainSource::LightClient { .. } => self.light.connect(chains, source).await,
+            ChainSource::LightClient { .. } => self.light.connect(chains, source, relay).await,
         }
     }
 
@@ -175,21 +203,24 @@ impl ChainProvider for EmbeddedChainProvider {
         &self,
         genesis_hash: [u8; 32],
     ) -> Result<Box<dyn JsonRpcConnection>, GenericError> {
-        // Explicit registrations win; otherwise the bundled catalog resolves
-        // the whole network — relay wiring and statement placement included —
-        // from the genesis hash alone.
+        // Explicit registrations win; otherwise the catalog resolves the whole
+        // network from the genesis hash alone.
         if let Some(source) = self.chains.get(&genesis_hash) {
             let source = self.with_seeded_database(genesis_hash, source.clone());
-            return Ok(self.connect_source(&source, &self.chains).await?);
+            #[cfg(feature = "smoldot")]
+            let relay = self.relays.get(&genesis_hash).copied();
+            #[cfg(not(feature = "smoldot"))]
+            let relay = None;
+            return Ok(self.connect_source(&source, &self.chains, relay).await?);
         }
         #[cfg(feature = "networks")]
-        if let Some(catalog) = crate::networks::catalog_network_chains(genesis_hash) {
+        if let Some((catalog, relay)) = crate::networks::catalog_network_chains(genesis_hash) {
             let source = catalog
                 .get(&genesis_hash)
                 .expect("catalog_network_chains includes the queried genesis")
                 .clone();
             let source = self.with_seeded_database(genesis_hash, source);
-            return Ok(self.connect_source(&source, &catalog).await?);
+            return Ok(self.connect_source(&source, &catalog, relay).await?);
         }
         Err(ProviderError::UnknownGenesis {
             genesis: genesis_hash,

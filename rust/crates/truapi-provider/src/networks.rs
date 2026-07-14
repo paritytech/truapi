@@ -91,9 +91,12 @@ fn genesis(chain: &ChainDef) -> Result<[u8; 32], GenericError> {
 /// [`ChainSource`].
 type NetworkSources = (NetworkChains, Vec<([u8; 32], ChainSource)>);
 
-/// Genesis hashes and per-chain [`ChainSource`]s of one network, with the
-/// parachains wired to the relay and the statement-store protocol set per the
-/// catalog.
+/// A resolved catalog network: chains keyed by genesis hash, plus the relay the
+/// queried chain syncs through (`None` when it is itself the relay).
+type ResolvedNetwork = (HashMap<[u8; 32], ChainSource>, Option<[u8; 32]>);
+
+/// Genesis hashes and standalone per-chain [`ChainSource`]s of one network; the
+/// caller pairs each parachain with the network's relay genesis.
 fn network_sources(network: &NetworkDef) -> Result<NetworkSources, GenericError> {
     let chains = NetworkChains {
         relay: genesis(&network.relay)?,
@@ -102,19 +105,10 @@ fn network_sources(network: &NetworkDef) -> Result<NetworkSources, GenericError>
         people: genesis(&network.people)?,
     };
     let sources = vec![
-        (chains.relay, light_source(&network.relay, None)),
-        (
-            chains.asset_hub,
-            light_source(&network.asset_hub, Some(chains.relay)),
-        ),
-        (
-            chains.bulletin,
-            light_source(&network.bulletin, Some(chains.relay)),
-        ),
-        (
-            chains.people,
-            light_source(&network.people, Some(chains.relay)),
-        ),
+        (chains.relay, light_source(&network.relay)),
+        (chains.asset_hub, light_source(&network.asset_hub)),
+        (chains.bulletin, light_source(&network.bulletin)),
+        (chains.people, light_source(&network.people)),
     ];
     Ok((chains, sources))
 }
@@ -137,37 +131,38 @@ pub(crate) fn add_network(
         })?;
 
     let (chains, sources) = network_sources(network)?;
+    let relay_genesis = chains.relay;
     let builder = sources
         .into_iter()
         .fold(builder, |builder, (genesis_hash, source)| {
-            builder.chain(genesis_hash, source)
+            if genesis_hash == relay_genesis {
+                builder.chain(genesis_hash, source)
+            } else {
+                builder.parachain(genesis_hash, source, relay_genesis)
+            }
         });
     Ok((builder, chains))
 }
 
-/// Per-chain [`ChainSource`]s of the bundled network that contains
-/// `genesis_hash`, keyed by genesis hash, or `None` when no bundled network
-/// defines it. Lets a provider resolve a whole network — relay wiring and
-/// statement-store placement included — from a single genesis hash.
-pub(crate) fn catalog_network_chains(
-    genesis_hash: [u8; 32],
-) -> Option<HashMap<[u8; 32], ChainSource>> {
+/// Resolve the bundled network containing `genesis_hash` from that hash alone:
+/// its chains and the relay `genesis_hash` syncs through. `None` if no bundled
+/// network defines it.
+pub(crate) fn catalog_network_chains(genesis_hash: [u8; 32]) -> Option<ResolvedNetwork> {
     for network in CATALOG {
-        let Ok((_, sources)) = network_sources(network) else {
+        let Ok((chains, sources)) = network_sources(network) else {
             continue;
         };
         if sources.iter().any(|(hash, _)| *hash == genesis_hash) {
-            return Some(sources.into_iter().collect());
+            // The relay syncs on its own; a parachain syncs through the relay.
+            let relay = (genesis_hash != chains.relay).then_some(chains.relay);
+            return Some((sources.into_iter().collect(), relay));
         }
     }
     None
 }
 
-fn light_source(chain: &ChainDef, relay: Option<[u8; 32]>) -> ChainSource {
+fn light_source(chain: &ChainDef) -> ChainSource {
     let mut builder = ChainSource::light_client(chain.spec);
-    if let Some(relay) = relay {
-        builder = builder.relay(relay);
-    }
     if !chain.statement_protocol {
         builder = builder.without_statement_protocol();
     }

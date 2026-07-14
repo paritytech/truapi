@@ -20,13 +20,6 @@ pub enum ChainSource {
     LightClient {
         /// JSON chain specification of the target chain.
         specification: std::borrow::Cow<'static, str>,
-        /// Genesis hash of the relay chain when the target is a parachain.
-        ///
-        /// A parachain always syncs through its relay. This link is not a
-        /// caller-supplied option: it is resolved from the bundled network
-        /// catalog by [`connect`](truapi_platform::ChainProvider::connect),
-        /// which takes only the target's genesis hash.
-        relay: Option<[u8; 32]>,
         /// Warm-start database blob previously returned by the
         /// `chainHead_unstable_finalizedDatabase` JSON-RPC function. Invalid
         /// blobs are silently ignored by smoldot.
@@ -43,19 +36,15 @@ impl ChainSource {
         ChainSource::RpcNode { url }
     }
 
-    /// Start configuring an embedded light-client backend for `specification`.
-    ///
-    /// Returns a [`LightClientBuilder`]; set relay/database/statement options
-    /// on it and finish with [`LightClientBuilder::build`]. The light-client
-    /// options live on the builder rather than as setters on [`ChainSource`]
-    /// so they cannot be called on a non-light source.
+    /// Start configuring an embedded light-client backend for `specification`;
+    /// finish with [`LightClientBuilder::build`]. A `ChainSource` is per-chain
+    /// transport config — a parachain's relay is provider topology, kept apart.
     #[cfg(feature = "smoldot")]
     pub fn light_client(
         specification: impl Into<std::borrow::Cow<'static, str>>,
     ) -> LightClientBuilder {
         LightClientBuilder {
             specification: specification.into(),
-            relay: None,
             database_content: None,
             statement_protocol: true,
         }
@@ -70,21 +59,12 @@ impl ChainSource {
 #[derive(Debug, Clone)]
 pub struct LightClientBuilder {
     specification: std::borrow::Cow<'static, str>,
-    relay: Option<[u8; 32]>,
     database_content: Option<String>,
     statement_protocol: bool,
 }
 
 #[cfg(feature = "smoldot")]
 impl LightClientBuilder {
-    /// Declare the chain a parachain of `relay_genesis`. Internal only: the
-    /// network catalog sets this when it flattens a network for the light
-    /// backend, so a parachain's relay is never a caller-supplied option.
-    pub(crate) fn relay(mut self, relay_genesis: [u8; 32]) -> Self {
-        self.relay = Some(relay_genesis);
-        self
-    }
-
     /// Attach a warm-start database blob previously returned by the
     /// `chainHead_unstable_finalizedDatabase` JSON-RPC function. Invalid blobs
     /// are silently ignored by smoldot.
@@ -103,7 +83,6 @@ impl LightClientBuilder {
     pub fn build(self) -> ChainSource {
         ChainSource::LightClient {
             specification: self.specification,
-            relay: self.relay,
             database_content: self.database_content,
             statement_protocol: self.statement_protocol,
         }
@@ -135,12 +114,10 @@ mod tests {
     #[test]
     fn builder_sets_fields() {
         let source = ChainSource::light_client("{}")
-            .relay([7; 32])
             .database("db")
             .without_statement_protocol()
             .build();
         let ChainSource::LightClient {
-            relay,
             database_content,
             statement_protocol,
             ..
@@ -148,7 +125,6 @@ mod tests {
         else {
             panic!("expected a LightClient source");
         };
-        assert_eq!(relay, Some([7; 32]));
         assert_eq!(database_content.as_deref(), Some("db"));
         assert!(!statement_protocol);
     }

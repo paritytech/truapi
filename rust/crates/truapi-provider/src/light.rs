@@ -117,19 +117,19 @@ impl LightState {
         lock(self.inner()).relays.len()
     }
 
-    /// Add `source` (a [`ChainSource::LightClient`] entry) to the shared
-    /// client and wrap it as a [`JsonRpcConnection`].
+    /// Add `source` to the shared client as a [`JsonRpcConnection`]. For a
+    /// parachain, `relay` names its relay and `chains` supplies the relay's spec.
     pub(crate) async fn connect(
         &self,
         chains: &HashMap<[u8; 32], ChainSource>,
         source: &ChainSource,
+        relay: Option<[u8; 32]>,
     ) -> Result<Box<dyn JsonRpcConnection>, ProviderError> {
         // `ChainSource` collapses to a single variant when only the smoldot
         // backend is enabled (e.g. the iOS build), making this match irrefutable.
         #[allow(irrefutable_let_patterns)]
         let ChainSource::LightClient {
             specification,
-            relay,
             database_content,
             statement_protocol,
         } = source
@@ -144,7 +144,7 @@ impl LightState {
 
         let relay_id = match relay {
             None => None,
-            Some(relay_genesis) => Some(add_relay(&mut guard, chains, *relay_genesis)?),
+            Some(relay_genesis) => Some(add_relay(&mut guard, chains, relay_genesis)?),
         };
 
         let success = guard
@@ -177,7 +177,7 @@ impl LightState {
         Ok(Box::new(LightConnection {
             inner,
             chain_id: success.chain_id,
-            relay: *relay,
+            relay,
             errors_tx,
             responses: Mutex::new(Some((responses, errors_rx))),
             closed: AtomicBool::new(false),
@@ -392,9 +392,10 @@ mod tests {
     #[test]
     fn unknown_relay_is_an_error() {
         let provider = EmbeddedChainProvider::builder()
-            .chain(
+            .parachain(
                 RELAY_GENESIS,
-                ChainSource::light_client(RELAY_SPEC).relay([9; 32]).build(),
+                ChainSource::light_client(RELAY_SPEC).build(),
+                [9; 32],
             )
             .build();
         let error = block_on(provider.connect(RELAY_GENESIS))
@@ -423,11 +424,10 @@ mod tests {
     fn parachain_reuses_its_registered_relay() {
         let provider = EmbeddedChainProvider::builder()
             .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
-            .chain(
+            .parachain(
                 PARACHAIN_GENESIS,
-                ChainSource::light_client(PARACHAIN_SPEC)
-                    .relay(RELAY_GENESIS)
-                    .build(),
+                ChainSource::light_client(PARACHAIN_SPEC).build(),
+                RELAY_GENESIS,
             )
             .build();
         // Two connects: the second must reuse the cached relay ChainId.
@@ -451,11 +451,10 @@ mod tests {
     fn relay_is_reclaimed_when_the_last_parachain_closes() {
         let provider = EmbeddedChainProvider::builder()
             .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
-            .chain(
+            .parachain(
                 PARACHAIN_GENESIS,
-                ChainSource::light_client(PARACHAIN_SPEC)
-                    .relay(RELAY_GENESIS)
-                    .build(),
+                ChainSource::light_client(PARACHAIN_SPEC).build(),
+                RELAY_GENESIS,
             )
             .build();
         let first = block_on(provider.connect(PARACHAIN_GENESIS)).expect("parachain connects");
@@ -502,11 +501,10 @@ mod tests {
         let provider = Arc::new(
             EmbeddedChainProvider::builder()
                 .chain(RELAY_GENESIS, ChainSource::light_client(RELAY_SPEC).build())
-                .chain(
+                .parachain(
                     PARACHAIN_GENESIS,
-                    ChainSource::light_client(PARACHAIN_SPEC)
-                        .relay(RELAY_GENESIS)
-                        .build(),
+                    ChainSource::light_client(PARACHAIN_SPEC).build(),
+                    RELAY_GENESIS,
                 )
                 .build(),
         );
