@@ -29,7 +29,7 @@ struct ChainDef {
 struct NetworkDef {
     name: &'static str,
     relay: ChainDef,
-    asset_hub: ChainDef,
+    assethub: ChainDef,
     bulletin: ChainDef,
     people: ChainDef,
 }
@@ -42,7 +42,7 @@ pub struct NetworkChains {
     /// Relay-chain genesis hash.
     pub relay: [u8; 32],
     /// Asset Hub genesis hash.
-    pub asset_hub: [u8; 32],
+    pub assethub: [u8; 32],
     /// Bulletin-chain genesis hash.
     pub bulletin: [u8; 32],
     /// People-chain genesis hash.
@@ -56,7 +56,7 @@ const CATALOG: &[NetworkDef] = &[NetworkDef {
         spec: include_str!("../networks/paseo.json"),
         statement_protocol: false,
     },
-    asset_hub: ChainDef {
+    assethub: ChainDef {
         genesis_hex: "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
         spec: include_str!("../networks/paseo-next-v2-asset-hub.json"),
         statement_protocol: false,
@@ -100,13 +100,13 @@ type ResolvedNetwork = (HashMap<[u8; 32], ChainSource>, Option<[u8; 32]>);
 fn network_sources(network: &NetworkDef) -> Result<NetworkSources, GenericError> {
     let chains = NetworkChains {
         relay: genesis(&network.relay)?,
-        asset_hub: genesis(&network.asset_hub)?,
+        assethub: genesis(&network.assethub)?,
         bulletin: genesis(&network.bulletin)?,
         people: genesis(&network.people)?,
     };
     let sources = vec![
         (chains.relay, light_source(&network.relay)),
-        (chains.asset_hub, light_source(&network.asset_hub)),
+        (chains.assethub, light_source(&network.assethub)),
         (chains.bulletin, light_source(&network.bulletin)),
         (chains.people, light_source(&network.people)),
     ];

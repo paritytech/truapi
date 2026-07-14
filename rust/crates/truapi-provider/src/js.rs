@@ -113,7 +113,7 @@ impl ChainProviderBuilder {
         self.inner = Some(builder);
         Ok(NetworkChains {
             relay: hex0x(&chains.relay),
-            asset_hub: hex0x(&chains.asset_hub),
+            assethub: hex0x(&chains.assethub),
             bulletin: hex0x(&chains.bulletin),
             people: hex0x(&chains.people),
         })
@@ -211,7 +211,7 @@ impl Connection {
 #[wasm_bindgen]
 pub struct NetworkChains {
     relay: String,
-    asset_hub: String,
+    assethub: String,
     bulletin: String,
     people: String,
 }
@@ -226,9 +226,9 @@ impl NetworkChains {
     }
 
     /// Asset Hub genesis hash.
-    #[wasm_bindgen(getter, js_name = assetHub)]
-    pub fn asset_hub(&self) -> String {
-        self.asset_hub.clone()
+    #[wasm_bindgen(getter)]
+    pub fn assethub(&self) -> String {
+        self.assethub.clone()
     }
 
     /// Bulletin-chain genesis hash.
