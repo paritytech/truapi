@@ -84,10 +84,11 @@ jobs:
             tag="dev-${date}-${suffix}"
           fi
           prefix="${next}-${tag}"
-          # On the first dev release matching this prefix nothing matches; grep
-          # exits 1, which `|| true` swallows so the pipeline stays alive.
+          # `|| echo '[]'`: before the package's first publish `npm view` 404s
+          # and exits non-zero, which pipefail would treat as failure. `|| true`
+          # on grep: no version matches the prefix on the first same-day build.
           max_n="$(
-            npm view --json @parity/truapi-provider versions 2>/dev/null \
+            { npm view --json @parity/truapi-provider versions 2>/dev/null || echo '[]'; } \
               | jq -r '.[]?' \
               | { grep -E "^${prefix}\.[0-9]+$" || true; } \
               | sed -E "s|^${prefix}\.||" \
