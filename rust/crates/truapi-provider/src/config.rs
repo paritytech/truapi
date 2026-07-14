@@ -18,8 +18,11 @@ pub enum ChainSource {
     #[cfg(feature = "smoldot")]
     #[non_exhaustive]
     LightClient {
-        /// Chain-spec JSON of the target chain.
-        chain_spec: std::sync::Arc<str>,
+        /// Chain-spec JSON of the target chain, handed to smoldot's
+        /// `AddChainConfig::specification` (a `&str`). A `Cow` so the bundled
+        /// `include_str!` catalog specs are borrowed without a copy while
+        /// host-supplied specs can be owned.
+        chain_spec: std::borrow::Cow<'static, str>,
         /// Genesis hash of the relay chain when the target is a parachain.
         ///
         /// Must name another [`ChainSource::LightClient`] entry registered on
@@ -48,7 +51,7 @@ impl ChainSource {
     /// options live on the builder rather than as setters on [`ChainSource`]
     /// so they cannot be called on a non-light source.
     #[cfg(feature = "smoldot")]
-    pub fn light_client(chain_spec: impl Into<std::sync::Arc<str>>) -> LightClientBuilder {
+    pub fn light_client(chain_spec: impl Into<std::borrow::Cow<'static, str>>) -> LightClientBuilder {
         LightClientBuilder {
             chain_spec: chain_spec.into(),
             relay: None,
@@ -65,7 +68,7 @@ impl ChainSource {
 #[cfg(feature = "smoldot")]
 #[derive(Debug, Clone)]
 pub struct LightClientBuilder {
-    chain_spec: std::sync::Arc<str>,
+    chain_spec: std::borrow::Cow<'static, str>,
     relay: Option<[u8; 32]>,
     database_content: Option<String>,
     statement_protocol: bool,
