@@ -1,11 +1,7 @@
 name: Dev publish
 
-# Manually publish a dev snapshot of @parity/truapi-provider, for iterating in a
-# consumer (e.g. dotli) ahead of a formal release. Mirrors smoldot's deploy.yml
-# dev-build path: it computes a unique prerelease version, builds and packs the
-# package, then hands the tarball to paritytech/npm_publish_automation, which
-# publishes it under a `dev-<YYYYMMDD>[-suffix]` dist-tag so `latest` is never
-# moved. A formal release to `latest` still goes through release.yml.
+# Publish a dev-tagged snapshot of @parity/truapi-provider without moving
+# `latest`. Stable releases go through release.yml.
 
 on:
   workflow_dispatch:
@@ -51,9 +47,8 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.14.0 --locked
 
-      # Compute a unique dev version and a safe dist-tag, then rewrite the
-      # version in-place into the package.json (never committed). Semver-safe:
-      # <next-patch>-dev-<date>[.suffix].N sorts below any future stable release.
+      # Stamp <next-patch>-dev-<date>[-suffix].N (sorts below any future stable)
+      # into package.json; never committed.
       - name: Compute dev version and dist-tag
         id: devver
         shell: bash
@@ -84,9 +79,8 @@ jobs:
             tag="dev-${date}-${suffix}"
           fi
           prefix="${next}-${tag}"
-          # `|| echo '[]'`: before the package's first publish `npm view` 404s
-          # and exits non-zero, which pipefail would treat as failure. `|| true`
-          # on grep: no version matches the prefix on the first same-day build.
+          # `|| echo '[]'`: npm view 404s before the first publish; `|| true`:
+          # no version matches the prefix on the first same-day build.
           max_n="$(
             { npm view --json @parity/truapi-provider versions 2>/dev/null || echo '[]'; } \
               | jq -r '.[]?' \
