@@ -140,6 +140,24 @@ impl SessionState {
         }
     }
 
+    /// Replace the active session only when it still matches `expected`.
+    pub fn replace_session_if_current(&self, expected: &SessionInfo, info: SessionInfo) -> bool {
+        let mut inner = self.inner.lock().expect("session-state mutex poisoned");
+        if inner.current.as_ref() != Some(expected) {
+            return false;
+        }
+
+        let should_broadcast = inner.current.as_ref() != Some(&info);
+        inner.current = Some(info);
+        if should_broadcast {
+            broadcast(
+                &mut inner.subscribers,
+                HostAccountConnectionStatusSubscribeItem::Connected,
+            );
+        }
+        true
+    }
+
     /// Drop the active session. Emits a `Disconnected` event to every live
     /// subscriber if there was a session to clear.
     pub fn clear_session(&self) {
@@ -238,6 +256,30 @@ mod tests {
         let got = state.current().expect("session should be present");
         assert_eq!(got.public_key, [0x42; 32]);
         assert_eq!(got.lite_username.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn replace_session_if_current_rejects_stale_expected_session() {
+        let state = SessionState::new();
+        let original = info(0x01);
+        let replacement = info(0x02);
+        state.set_session(original.clone());
+        state.set_session(replacement.clone());
+
+        assert!(!state.replace_session_if_current(&original, info(0x03)));
+        assert_eq!(state.current(), Some(replacement));
+    }
+
+    #[test]
+    fn replace_session_if_current_updates_matching_session() {
+        let state = SessionState::new();
+        let original = info(0x01);
+        let replacement = info(0x02);
+        state.set_session(original.clone());
+
+        assert!(state.replace_session_if_current(&original, replacement.clone()));
+
+        assert_eq!(state.current(), Some(replacement));
     }
 
     #[test]

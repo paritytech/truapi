@@ -19,16 +19,30 @@ fn quoted_strings_in_const_array(src: &str, const_name: &str) -> Vec<String> {
     let end = rest
         .find("] as const")
         .unwrap_or_else(|| panic!("unterminated {const_name}"));
-    rest[..end]
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim().trim_end_matches(',');
-            trimmed
-                .strip_prefix('"')
-                .and_then(|s| s.strip_suffix('"'))
-                .map(str::to_string)
-        })
-        .collect()
+    let body = &rest[..end];
+    let mut strings = Vec::new();
+    let mut chars = body.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '"' {
+            continue;
+        }
+        let mut value = String::new();
+        let mut escaped = false;
+        for ch in chars.by_ref() {
+            if escaped {
+                value.push(ch);
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                break;
+            } else {
+                value.push(ch);
+            }
+        }
+        strings.push(value);
+    }
+    strings
 }
 
 /// Run `cargo +nightly rustdoc -p truapi --output-format json` into the
@@ -77,6 +91,61 @@ fn workspace_root() -> PathBuf {
         .nth(3)
         .expect("workspace root above rust/crates/truapi-codegen")
         .to_path_buf()
+}
+
+fn rustfmt_generated(files: &[PathBuf]) {
+    if files.is_empty() {
+        return;
+    }
+
+    let mut command = Command::new("rustfmt");
+    command.args(["+nightly", "--edition", "2024"]);
+    for file in files {
+        command.arg(file);
+    }
+    let output = command
+        .output()
+        .expect("failed to spawn rustfmt; install nightly rustfmt via rustup");
+    assert!(
+        output.status.success(),
+        "rustfmt failed (status {}).\nstdout:\n{}\nstderr:\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+fn prettier_generated(workspace_root: &Path, files: &[PathBuf]) {
+    if files.is_empty() {
+        return;
+    }
+
+    let mut command = Command::new("npm");
+    command
+        .args([
+            "exec",
+            "--yes",
+            "--package=prettier@3.8.3",
+            "--",
+            "prettier",
+            "--write",
+            "--config",
+        ])
+        .arg(workspace_root.join(".prettierrc"));
+    for file in files {
+        command.arg(file);
+    }
+    let output = command
+        .current_dir(workspace_root)
+        .output()
+        .expect("failed to spawn `npm exec -- prettier`; run `npm ci` first");
+    assert!(
+        output.status.success(),
+        "prettier failed (status {}).\nstdout:\n{}\nstderr:\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
 }
 
 #[test]
@@ -204,6 +273,15 @@ fn golden_host_callbacks_ts() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );
+    prettier_generated(
+        &workspace,
+        &[
+            tempdir.path().join("host/host-callbacks.ts"),
+            tempdir.path().join("wasm/host-callbacks-adapter.ts"),
+            tempdir.path().join("wasm/worker-callbacks.ts"),
+        ],
+    );
+    rustfmt_generated(&[tempdir.path().join("rust-wasm/generated_bridge.rs")]);
 
     let golden_path = manifest_dir.join("tests/golden/host-callbacks.ts");
     let golden =

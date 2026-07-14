@@ -34,7 +34,7 @@ use crate::host_logic::sso::messages::RingVrfError;
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
-use tracing::instrument;
+use tracing::{instrument, warn};
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, v01};
 use truapi_platform::{CoreStorageKey, PairingHostConfig, Platform, ProductContext};
@@ -463,6 +463,70 @@ impl PairingHost {
         require_current_session(&self.session_state, session)
     }
 
+    async fn refresh_current_session_identity(&self) -> Option<AuthoritySession> {
+        let current = self.session_state.current()?;
+        if current.has_username() || self.host_config.people_chain_genesis_hash == [0; 32] {
+            return Some(authority_session(&current));
+        }
+
+        let resolved = resolve_session_identity_with_chain(
+            &self.chain,
+            self.host_config.people_chain_genesis_hash,
+            current.clone(),
+        )
+        .await;
+        if !resolved.has_username() || resolved == current {
+            return self.current_session();
+        }
+
+        if !self
+            .session_state
+            .replace_session_if_current(&current, resolved.clone())
+        {
+            return self.current_session();
+        }
+        self.auth_state
+            .connected(&connected_session_ui_info(&resolved));
+
+        if let Err(err) = self
+            .platform
+            .write_core_storage(
+                CoreStorageKey::AuthSession,
+                encode_persisted_session(&resolved),
+            )
+            .await
+        {
+            warn!(reason = %err.reason, "refreshed session identity persist failed");
+        }
+
+        match self.session_state.current() {
+            Some(live) if live != resolved => {
+                if let Err(err) = self
+                    .platform
+                    .write_core_storage(
+                        CoreStorageKey::AuthSession,
+                        encode_persisted_session(&live),
+                    )
+                    .await
+                {
+                    warn!(reason = %err.reason, "live session identity persist repair failed");
+                }
+                Some(authority_session(&live))
+            }
+            None => {
+                if let Err(err) = self
+                    .platform
+                    .clear_core_storage(CoreStorageKey::AuthSession)
+                    .await
+                {
+                    warn!(reason = %err.reason, "cleared session identity persist repair failed");
+                }
+                None
+            }
+            _ => Some(authority_session(&resolved)),
+        }
+    }
+
     pub(super) async fn cache_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
@@ -591,6 +655,26 @@ impl PairingHost {
         Ok(Some(allowance))
     }
 
+    /// Drop the cached and persisted Bulletin allowance key for one product.
+    pub(super) async fn evict_bulletin_allowance_key(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<(), AuthorityError> {
+        let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        self.bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned")
+            .remove(&cache_key);
+        allowances::remove_allowance_key(
+            &*self.platform,
+            session,
+            product_id,
+            AllowanceResource::Bulletin,
+        )
+        .await
+    }
+
     pub(super) fn clear_statement_store_allowance_keys(&self, session: Option<&SessionInfo>) {
         let mut allowances = self
             .statement_store_allowances
@@ -707,6 +791,17 @@ impl PairingHost {
             .await
     }
 
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_refresh_bulletin_allowance_key(cx, &session, product_id)
+            .await
+    }
+
     async fn sign_statement_store_product_payload(
         &self,
         _cx: &CallContext,
@@ -777,6 +872,10 @@ impl ProductAuthority for PairingHost {
 
     async fn disconnect(&self) {
         PairingHost::disconnect(self).await;
+    }
+
+    async fn refresh_session_identity(&self) -> Option<AuthoritySession> {
+        self.refresh_current_session_identity().await
     }
 
     async fn sign_payload(
@@ -850,6 +949,15 @@ impl ProductAuthority for PairingHost {
         product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         PairingHost::bulletin_allowance_key(self, cx, session, product_id).await
+    }
+
+    async fn refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        PairingHost::refresh_bulletin_allowance_key(self, cx, session, product_id).await
     }
 
     async fn sign_statement_store_product_payload(

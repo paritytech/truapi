@@ -10,6 +10,7 @@
 mod allowances;
 pub(crate) mod auth_state;
 mod authority;
+pub(crate) mod bulletin_rpc;
 mod identity;
 mod pairing_host;
 pub(crate) mod services;
@@ -22,9 +23,13 @@ mod statement_store_rpc;
 use core::future::Future;
 use core::time::Duration;
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 use crate::chain_runtime::RuntimeFailure;
-use crate::host_logic::allowance_signer::bulletin_allowance_signer_from_key;
+use crate::host_logic::bulletin::preimage_key;
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::PermissionsService;
@@ -35,9 +40,10 @@ use crate::host_logic::session::SessionInfo;
 #[cfg(test)]
 use crate::host_logic::session::SessionState;
 use crate::host_logic::sso::messages::RingVrfError;
+use crate::runtime::bulletin_rpc::BulletinSubmitError;
 #[cfg(test)]
 use crate::subscription::Spawner;
-pub(crate) use authority::ProductAuthority;
+pub(crate) use authority::{BulletinAllowanceKey, ProductAuthority};
 #[cfg(test)]
 use pairing_host::PairingHost;
 pub(crate) use pairing_host::PairingHost as PairingHostRole;
@@ -147,9 +153,12 @@ pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
 /// after 180 seconds:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L303-L307>
 const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
-/// Preimage submission is exercised by host diagnosis with a 60s method
-/// watchdog. Keep the allowance request below that so products receive a
-/// TrUAPI error instead of an outer harness timeout.
+/// End-to-end timeout for an in-core Bulletin preimage submit, starting after
+/// user confirmation and covering allowance allocation, chain submission, and
+/// one optional allowance refresh and retry.
+const PREIMAGE_SUBMIT_TIMEOUT: Duration = Duration::from_secs(60);
+/// Per-request cap for obtaining or refreshing the Bulletin allowance. The
+/// end-to-end submit deadline may reduce it further.
 const PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(45);
 
 fn remote_authority_context(cx: &CallContext) -> CallContext {
@@ -164,6 +173,20 @@ fn remote_authority_context_with_default(
     if cx.timeout().is_none() {
         cx.set_timeout(default_timeout);
     }
+    cx
+}
+
+fn remote_authority_context_until(
+    cx: &CallContext,
+    default_timeout: Duration,
+    deadline: Instant,
+) -> CallContext {
+    let mut cx = cx.clone();
+    let timeout = cx
+        .timeout()
+        .unwrap_or(default_timeout)
+        .min(deadline.saturating_duration_since(Instant::now()));
+    cx.set_timeout(timeout);
     cx
 }
 
@@ -261,11 +284,8 @@ impl ProductRuntimeHost {
     }
 
     #[cfg(test)]
-    fn new_compat_with_pairing(
-        platform: Arc<dyn Platform>,
-        spawner: Spawner,
-    ) -> (Self, Arc<PairingHost>) {
-        let host_config = truapi_platform::PairingHostConfig::new(
+    fn compat_host_config() -> truapi_platform::PairingHostConfig {
+        truapi_platform::PairingHostConfig::new(
             truapi_platform::HostInfo {
                 name: "Polkadot Web".to_string(),
                 icon: Some("https://example.invalid/dotli.png".to_string()),
@@ -273,9 +293,31 @@ impl ProductRuntimeHost {
             },
             truapi_platform::PlatformInfo::default(),
             [0; 32],
+            [0xbb; 32],
             "polkadotapp".to_string(),
         )
-        .expect("compat runtime config is valid");
+        .expect("compat runtime config is valid")
+    }
+
+    /// Compat host used by preimage tests.
+    #[cfg(test)]
+    fn new_compat_with_bulletin(platform: Arc<dyn Platform>, spawner: Spawner) -> Self {
+        Self::new_pairing_for_tests(
+            platform,
+            Self::compat_host_config(),
+            ProductContext::new("unknown.dot".to_string())
+                .expect("compat product context is valid"),
+            spawner,
+        )
+        .0
+    }
+
+    #[cfg(test)]
+    fn new_compat_with_pairing(
+        platform: Arc<dyn Platform>,
+        spawner: Spawner,
+    ) -> (Self, Arc<PairingHost>) {
+        let host_config = Self::compat_host_config();
         Self::new_pairing_for_tests(
             platform,
             host_config,
@@ -295,6 +337,7 @@ impl ProductRuntimeHost {
         let services = RuntimeServices::new(
             platform.clone(),
             host_config.people_chain_genesis_hash,
+            host_config.bulletin_chain_genesis_hash,
             spawner.clone(),
         );
         let pairing_host = PairingHost::new(services.clone(), host_config);
@@ -956,24 +999,22 @@ impl Account for ProductRuntimeHost {
             Err(reason) => return Err(CallError::HostFailure { reason }),
         }
 
-        let primary_username = session
-            .full_username
-            .clone()
-            .filter(|value| !value.is_empty())
-            .or_else(|| {
-                session
-                    .lite_username
-                    .clone()
-                    .filter(|value| !value.is_empty())
-            })
-            .ok_or_else(|| {
-                CallError::Domain(HostGetUserIdError::V1(v01::HostGetUserIdError::Unknown {
-                    reason: "No primary username for this session".to_string(),
-                }))
-            })?;
+        let session = if session.primary_username().is_some() {
+            session
+        } else {
+            self.authority
+                .refresh_session_identity()
+                .await
+                .unwrap_or(session)
+        };
+        let primary_username = session.primary_username().ok_or_else(|| {
+            CallError::Domain(HostGetUserIdError::V1(v01::HostGetUserIdError::Unknown {
+                reason: "No primary username for this session".to_string(),
+            }))
+        })?;
 
         Ok(HostGetUserIdResponse::V1(v01::HostGetUserIdResponse {
-            primary_username,
+            primary_username: primary_username.to_string(),
         }))
     }
 
@@ -1034,9 +1075,9 @@ fn signing_call_error<E>(
         AuthorityError::Cancelled(err) => v01::HostSignPayloadError::Unknown {
             reason: err.to_string(),
         },
-        AuthorityError::Unavailable { reason } | AuthorityError::Unknown { reason } => {
-            v01::HostSignPayloadError::Unknown { reason }
-        }
+        AuthorityError::Unavailable { reason }
+        | AuthorityError::NotSupported { reason }
+        | AuthorityError::Unknown { reason } => v01::HostSignPayloadError::Unknown { reason },
     }))
 }
 
@@ -1051,6 +1092,9 @@ fn transaction_call_error<E>(
         AuthorityError::Cancelled(err) => v01::HostCreateTransactionError::Unknown {
             reason: err.to_string(),
         },
+        AuthorityError::NotSupported { reason } => {
+            v01::HostCreateTransactionError::NotSupported { reason }
+        }
         AuthorityError::Unavailable { reason } | AuthorityError::Unknown { reason } => {
             v01::HostCreateTransactionError::Unknown { reason }
         }
@@ -1802,22 +1846,58 @@ impl Preimage for ProductRuntimeHost {
         let RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
             key,
         }) = request;
+
+        // A cache hit is final: preimages are content-addressed and immutable.
+        // Emit the value once, then keep the subscription open (never complete,
+        // which would emit a product-visible interrupt frame) until the caller
+        // unsubscribes.
+        if let Ok(key_bytes) = <[u8; 32]>::try_from(key.as_slice())
+            && let Some(value) = self.services.cached_preimage(&key_bytes)
+        {
+            let item =
+                RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
+                    value: Some(value),
+                });
+            let stream =
+                futures::stream::once(async move { item }).chain(futures::stream::pending());
+            return Subscription::new(Box::pin(stream));
+        }
+
+        // Otherwise delegate to the host content backend, verifying that any
+        // returned value hashes to the requested key so a compromised backend
+        // cannot feed products forged content. A mismatch is downgraded to a
+        // miss (the wire item has no error channel and the product still needs
+        // its initial current-value/miss emission).
         let stream = self
             .services
             .platform
-            .lookup_preimage(key)
-            .filter_map(|item| async move {
-                match item {
-                    Ok(value) => Some(RemotePreimageLookupSubscribeItem::V1(
+            .lookup_preimage(key.clone())
+            .filter_map(move |item| {
+                let key = key.clone();
+                async move {
+                    let value = match item {
+                        Ok(value) => value,
+                        Err(error) => {
+                            warn!(
+                                reason = %error.reason,
+                                "preimage lookup platform stream failed"
+                            );
+                            return None;
+                        }
+                    };
+                    let value = value.filter(|value| {
+                        let matches = preimage_key(value)[..] == key[..];
+                        if !matches {
+                            warn!(
+                                "preimage lookup returned a value whose hash does not match the \
+                                 requested key; downgrading to a miss"
+                            );
+                        }
+                        matches
+                    });
+                    Some(RemotePreimageLookupSubscribeItem::V1(
                         v01::RemotePreimageLookupSubscribeItem { value },
-                    )),
-                    Err(error) => {
-                        warn!(
-                            reason = %error.reason,
-                            "preimage lookup platform stream failed"
-                        );
-                        None
-                    }
+                    ))
                 }
             });
         Subscription::new(Box::pin(stream))
@@ -1831,12 +1911,9 @@ impl Preimage for ProductRuntimeHost {
     ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
         let RemotePreimageSubmitRequest::V1(value) = request;
         let Some(session) = self.authority.current_session() else {
-            return Err(CallError::Domain(RemotePreimageSubmitError::V1(
-                v01::PreimageSubmitError::Unknown {
-                    reason: "No active session".to_string(),
-                },
-            )));
+            return Err(preimage_submit_error("No active session".to_string()));
         };
+        let bulletin = &self.services.bulletin;
         self.require_remote_permission(
             v01::RemotePermission::PreimageSubmit,
             RemotePreimageSubmitError::V1(v01::PreimageSubmitError::Unknown {
@@ -1853,45 +1930,79 @@ impl Preimage for ProductRuntimeHost {
                 },
             ))
             .await
-            .map_err(|err| {
-                CallError::Domain(RemotePreimageSubmitError::V1(
-                    v01::PreimageSubmitError::Unknown { reason: err.reason },
-                ))
-            })?;
+            .map_err(|err| preimage_submit_error(err.reason))?;
         if !confirmed {
-            return Err(CallError::Domain(RemotePreimageSubmitError::V1(
-                v01::PreimageSubmitError::Unknown {
-                    reason: "User rejected preimage submission".to_string(),
-                },
-            )));
+            return Err(preimage_submit_error(
+                "User rejected preimage submission".to_string(),
+            ));
         }
-        let cx =
-            remote_authority_context_with_default(cx, PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT);
+        let submission_deadline = Instant::now() + PREIMAGE_SUBMIT_TIMEOUT;
+        let authority_cx = remote_authority_context_until(
+            cx,
+            PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT,
+            submission_deadline,
+        );
         let allowance = remote_authority_call(
-            &cx,
+            &authority_cx,
             self.authority
-                .bulletin_allowance_key(&cx, &session, self.product_id()),
+                .bulletin_allowance_key(&authority_cx, &session, self.product_id()),
         )
         .await
-        .map_err(|err| {
-            CallError::Domain(RemotePreimageSubmitError::V1(
-                v01::PreimageSubmitError::Unknown {
-                    reason: err.reason(),
-                },
-            ))
-        })?;
-        let signer = bulletin_allowance_signer_from_key(allowance).map_err(|reason| {
-            CallError::Domain(RemotePreimageSubmitError::V1(
-                v01::PreimageSubmitError::Unknown { reason },
-            ))
-        })?;
-        self.services
-            .platform
-            .submit_preimage(value, signer)
+        .map_err(|err| preimage_submit_error(err.reason()))?;
+
+        let key = match bulletin
+            .submit_preimage(cx, submission_deadline, &allowance, &value)
             .await
-            .map(RemotePreimageSubmitResponse::V1)
-            .map_err(|err| CallError::Domain(RemotePreimageSubmitError::V1(err)))
+        {
+            Ok(key) => key,
+            // A rejected allowance is the one case a refresh-and-retry can fix:
+            // evict the exhausted key, allocate a fresh (increased) allowance,
+            // and try exactly once more.
+            Err(BulletinSubmitError::AllowanceRejected { .. }) => {
+                let authority_cx = remote_authority_context_until(
+                    cx,
+                    PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT,
+                    submission_deadline,
+                );
+                let allowance = remote_authority_call(
+                    &authority_cx,
+                    self.authority.refresh_bulletin_allowance_key(
+                        &authority_cx,
+                        &session,
+                        self.product_id(),
+                    ),
+                )
+                .await
+                .map_err(|err| preimage_submit_error(err.reason()))?;
+                bulletin
+                    .submit_preimage(cx, submission_deadline, &allowance, &value)
+                    .await
+                    .map_err(|err| preimage_submit_error(err.to_string()))?
+            }
+            Err(err) => return Err(preimage_submit_error(err.to_string())),
+        };
+        // Move the owned body into the lookup cache (no extra copy) so an
+        // immediate product lookup hits before the content backend has it.
+        self.prime_preimage_cache(&key, value);
+        Ok(RemotePreimageSubmitResponse::V1(key))
     }
+}
+
+impl ProductRuntimeHost {
+    /// Cache a just-submitted preimage under its key for immediate lookups.
+    fn prime_preimage_cache(&self, key: &[u8], value: Vec<u8>) {
+        if let Ok(key_bytes) = <[u8; 32]>::try_from(key) {
+            debug_assert_eq!(key_bytes, preimage_key(&value));
+            self.services.cache_preimage(key_bytes, value);
+        }
+    }
+}
+
+/// Build the product-facing `Unknown` wire error carrying `reason`.
+fn preimage_submit_error(reason: String) -> CallError<RemotePreimageSubmitError> {
+    CallError::Domain(RemotePreimageSubmitError::V1(
+        v01::PreimageSubmitError::Unknown { reason },
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1968,9 +2079,7 @@ impl Notifications for ProductRuntimeHost {
 mod tests {
     use super::*;
     use crate::host_logic::sso::messages::{
-        OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, ResourceAllocationResponse,
-        RingVrfAliasResponse, RingVrfProofResponse, SsoAllocatableResource, SsoAllocatedResource,
-        SsoAllocationOutcome, v1,
+        RemoteMessage, RemoteMessageData, RingVrfAliasResponse, RingVrfProofResponse, v1,
     };
     use crate::test_support::*;
     use std::sync::Mutex;
@@ -2026,6 +2135,7 @@ mod tests {
         let services = RuntimeServices::new(
             platform.clone(),
             host_config.people_chain_genesis_hash,
+            host_config.bulletin_chain_genesis_hash,
             spawner.clone(),
         );
         let pairing_host = PairingHost::new(services.clone(), host_config);
@@ -2799,137 +2909,9 @@ mod tests {
         }
     }
 
-    fn bulletin_slot_account_key_fixture() -> Vec<u8> {
-        hex::decode(
-            "0eef5183411d40c32446bb1cbaabd70004a17af6012a577c735d054f04059208\
-             573dfc9b6ffeb1c786a16349e70f9836876a743c31c0a7a2a70727a852eec372",
-        )
-        .unwrap()
-    }
-
-    fn expected_bulletin_slot_account_public_key() -> Vec<u8> {
-        hex::decode("10c68432943c68a6e1be650818b5e08db79e57823de9f34df7ba36d404d91e1d").unwrap()
-    }
-
     #[test]
-    fn preimage_submit_confirms_and_delegates_to_platform() {
-        let session = sso_session_info();
-        let slot_account_key = bulletin_slot_account_key_fixture();
-        let preimage_submit_allowance_public_keys = Arc::new(Mutex::new(Vec::new()));
-        let preimage_submit_signatures = Arc::new(Mutex::new(Vec::new()));
-        let platform = Arc::new(StubPlatform {
-            preimage_submit_allowance_public_keys: preimage_submit_allowance_public_keys.clone(),
-            preimage_submit_signatures: preimage_submit_signatures.clone(),
-            sso_response_script: Some(sso_success_response_script(
-                &session,
-                RemoteMessage {
-                    message_id: "wallet-preimage-allowance".to_string(),
-                    data: RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(
-                        ResourceAllocationResponse {
-                            responding_to: "preimage-submit".to_string(),
-                            payload: Ok(vec![SsoAllocationOutcome::Allocated(
-                                SsoAllocatedResource::BulletinAllowance {
-                                    slot_account_key: slot_account_key.clone(),
-                                },
-                            )]),
-                        },
-                    )),
-                },
-            )),
-            ..Default::default()
-        });
-        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
-        host.test_session_state().set_session(session.clone());
-        let cx = CallContext::new();
-        let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
-        let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
-        assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
-        assert_eq!(
-            preimage_submit_allowance_public_keys
-                .lock()
-                .expect("preimage allowance public key list mutex poisoned")
-                .as_slice(),
-            &[expected_bulletin_slot_account_public_key()]
-        );
-        assert_eq!(
-            preimage_submit_signatures
-                .lock()
-                .expect("preimage allowance signature list mutex poisoned")[0]
-                .len(),
-            64
-        );
-        let message = submitted_remote_message(&platform, &session);
-        match message.data {
-            RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationRequest(request)) => {
-                assert_eq!(
-                    request.resources,
-                    vec![SsoAllocatableResource::BulletinAllowance]
-                );
-                assert_eq!(request.on_existing, OnExistingAllowancePolicy::Ignore);
-            }
-            other => panic!("expected bulletin allowance request, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn preimage_submit_uses_persisted_bulletin_allowance_key() {
-        let session = sso_session_info();
-        let slot_account_key = bulletin_slot_account_key_fixture();
-        let preimage_submit_allowance_public_keys = Arc::new(Mutex::new(Vec::new()));
-        let preimage_submit_signatures = Arc::new(Mutex::new(Vec::new()));
-        let platform = Arc::new(StubPlatform {
-            preimage_submit_allowance_public_keys: preimage_submit_allowance_public_keys.clone(),
-            preimage_submit_signatures: preimage_submit_signatures.clone(),
-            ..Default::default()
-        });
-        futures::executor::block_on(allowances::write_allowance_key(
-            &*platform,
-            &session,
-            "unknown.dot",
-            allowances::AllowanceResource::Bulletin,
-            slot_account_key.clone(),
-        ))
-        .unwrap();
-        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
-        host.test_session_state().set_session(session);
-        let cx = CallContext::new();
-        let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
-        let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
-        assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
-        assert_eq!(
-            preimage_submit_allowance_public_keys
-                .lock()
-                .expect("preimage allowance public key list mutex poisoned")
-                .as_slice(),
-            &[expected_bulletin_slot_account_public_key()]
-        );
-        assert_eq!(
-            preimage_submit_signatures
-                .lock()
-                .expect("preimage allowance signature list mutex poisoned")[0]
-                .len(),
-            64
-        );
-        assert!(
-            platform
-                .sent_rpc
-                .lock()
-                .expect("rpc list mutex poisoned")
-                .is_empty(),
-            "persisted allowance should not send an SSO resource-allocation request"
-        );
-    }
-
-    #[test]
-    fn preimage_submit_requires_session_before_backend_call() {
-        let preimage_submits = Arc::new(Mutex::new(Vec::new()));
-        let host = ProductRuntimeHost::new_compat(
-            Arc::new(StubPlatform {
-                preimage_submits: preimage_submits.clone(),
-                ..Default::default()
-            }),
-            test_spawner(),
-        );
+    fn preimage_submit_requires_session_first() {
+        let host = ProductRuntimeHost::new_compat_with_bulletin(stub_platform(), test_spawner());
         let cx = CallContext::new();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
 
@@ -2941,25 +2923,15 @@ mod tests {
             )) => assert_eq!(reason, "No active session"),
             other => panic!("expected preimage session error, got {other:?}"),
         }
-        assert!(
-            preimage_submits
-                .lock()
-                .expect("preimage submit list mutex poisoned")
-                .is_empty()
-        );
     }
 
     #[test]
     fn preimage_submit_requires_remote_permission_before_backend_call() {
-        let preimage_submits = Arc::new(Mutex::new(Vec::new()));
-        let host = ProductRuntimeHost::new_compat(
-            Arc::new(StubPlatform {
-                remote_permission_denied: true,
-                preimage_submits: preimage_submits.clone(),
-                ..Default::default()
-            }),
-            test_spawner(),
-        );
+        let platform = Arc::new(StubPlatform {
+            remote_permission_denied: true,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat_with_bulletin(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
@@ -2971,9 +2943,10 @@ mod tests {
             other => panic!("expected preimage permission denial, got {other:?}"),
         }
         assert!(
-            preimage_submits
+            platform
+                .sent_rpc
                 .lock()
-                .expect("preimage submit list mutex poisoned")
+                .expect("rpc list mutex poisoned")
                 .is_empty()
         );
     }
@@ -3008,19 +2981,76 @@ mod tests {
     }
 
     #[test]
-    fn preimage_lookup_subscribe_maps_platform_values() {
+    fn preimage_lookup_cache_hit_emits_once_and_stays_open() {
+        use crate::host_logic::bulletin::preimage_key;
+        use futures::FutureExt;
+
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let value = vec![4, 5, 6, 7];
+        let key = preimage_key(&value);
+        host.services.cache_preimage(key, value.clone());
+
         let cx = CallContext::new();
         let request =
             RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
-                key: vec![0; 32],
+                key: key.to_vec(),
             });
         let mut subscription = futures::executor::block_on(host.lookup_subscribe(&cx, request));
         let item = futures::executor::block_on(subscription.next()).expect("preimage item");
         assert_eq!(
             item,
             RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
-                value: Some(vec![9, 8, 7])
+                value: Some(value)
+            })
+        );
+        // The subscription stays open (no completion/interrupt frame) after the
+        // single cache-hit emission.
+        assert!(subscription.next().now_or_never().is_none());
+    }
+
+    #[test]
+    fn preimage_lookup_forged_host_bytes_downgraded_to_miss() {
+        use crate::host_logic::bulletin::preimage_key;
+
+        let value = vec![1, 1, 2, 3, 5, 8];
+        let key = preimage_key(&value);
+
+        // Host returns bytes that do not hash to the requested key.
+        let forged = Arc::new(StubPlatform {
+            preimage_lookup_value: Some(vec![9, 9, 9]),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(forged, test_spawner());
+        let cx = CallContext::new();
+        let request =
+            RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
+                key: key.to_vec(),
+            });
+        let mut subscription = futures::executor::block_on(host.lookup_subscribe(&cx, request));
+        let item = futures::executor::block_on(subscription.next()).expect("preimage item");
+        assert_eq!(
+            item,
+            RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
+                value: None
+            })
+        );
+
+        // Correct bytes pass the integrity check through.
+        let genuine = Arc::new(StubPlatform {
+            preimage_lookup_value: Some(value.clone()),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(genuine, test_spawner());
+        let request =
+            RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
+                key: key.to_vec(),
+            });
+        let mut subscription = futures::executor::block_on(host.lookup_subscribe(&cx, request));
+        let item = futures::executor::block_on(subscription.next()).expect("preimage item");
+        assert_eq!(
+            item,
+            RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
+                value: Some(value)
             })
         );
     }

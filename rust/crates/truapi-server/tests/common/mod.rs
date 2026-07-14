@@ -6,9 +6,9 @@ use std::sync::Mutex;
 use futures::stream::{self, BoxStream};
 use truapi::v01;
 use truapi_platform::{
-    AuthPresenter, BulletinAllowanceSigner, ChainProvider, CoreStorage, CoreStorageKey, Features,
-    HostInfo, JsonRpcConnection, Navigation, Notifications, PairingHostConfig, Permissions,
-    PlatformInfo, PreimageHost, ProductContext, ProductStorage, ThemeHost, UserConfirmation,
+    AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, HostInfo,
+    JsonRpcConnection, Navigation, Notifications, PairingHostConfig, Permissions, PlatformInfo,
+    PreimageHost, ProductContext, ProductStorage, ThemeHost, UserConfirmation,
     UserConfirmationReview,
 };
 use truapi_server::frame::ProtocolMessage;
@@ -57,6 +57,7 @@ pub fn test_runtime_config() -> (PairingHostConfig, ProductContext) {
             },
             PlatformInfo::default(),
             [0xa2; 32],
+            [0xbb; 32],
             "polkadotapp".to_string(),
         )
         .expect("test host runtime config is valid"),
@@ -188,15 +189,7 @@ impl ThemeHost for WireShapePlatform {
     }
 }
 
-#[truapi_platform::async_trait]
 impl PreimageHost for WireShapePlatform {
-    async fn submit_preimage(
-        &self,
-        value: Vec<u8>,
-        _bulletin_allowance_signer: BulletinAllowanceSigner,
-    ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        Ok(value)
-    }
     fn lookup_preimage(
         &self,
         _key: Vec<u8>,

@@ -58,6 +58,7 @@ impl TrUApiCore {
         let services = RuntimeServices::new(
             platform,
             host_config.people_chain_genesis_hash,
+            host_config.bulletin_chain_genesis_hash,
             spawner.clone(),
         );
         let pairing_host = PairingHostRole::new(services.clone(), host_config);

@@ -92,7 +92,6 @@ interface RuntimeState {
     number,
     { resolve: () => void; reject: (error: Error) => void }
   >;
-  pendingBulletinAllowanceSigns: Map<number, PendingEntry<Uint8Array>>;
   closedError: Error | null;
   logLevel: LogLevel;
   disposed: boolean;
@@ -105,13 +104,6 @@ function debugLoggingEnabled(state: RuntimeState): boolean {
 
 let nextDisconnectRequestId = 0;
 let nextPermissionAuthorizationRequestId = 0;
-let nextBulletinAllowanceSignRequestId = 0;
-
-interface WorkerBulletinAllowanceSigner {
-  publicKey: Uint8Array;
-  signerId: number;
-}
-
 function encodePermissionAuthorizationRequest(
   request: PermissionAuthorizationRequest,
 ): Uint8Array {
@@ -160,9 +152,8 @@ function handleCallbackRequest(
     } satisfies MainToWorker);
     return;
   }
-  const args = reviveCallbackArgs(state, msg.name, msg.args);
   Promise.resolve()
-    .then(() => fn(...args))
+    .then(() => fn(...msg.args))
     .then(
       (value) => {
         state.worker.postMessage({
@@ -181,60 +172,6 @@ function handleCallbackRequest(
         } satisfies MainToWorker);
       },
     );
-}
-
-function reviveCallbackArgs(
-  state: RuntimeState,
-  name: CallbackName,
-  args: readonly unknown[],
-): readonly unknown[] {
-  if (name !== "submitPreimage") return args;
-  return args.map((arg, index) => {
-    if (index !== 1 || !isWorkerBulletinAllowanceSigner(arg)) return arg;
-    return {
-      publicKey: arg.publicKey,
-      sign: (input: Uint8Array) =>
-        signBulletinAllowance(state, arg.signerId, input),
-    };
-  });
-}
-
-function isWorkerBulletinAllowanceSigner(
-  value: unknown,
-): value is WorkerBulletinAllowanceSigner {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "publicKey" in value &&
-    value.publicKey instanceof Uint8Array &&
-    "signerId" in value &&
-    typeof value.signerId === "number"
-  );
-}
-
-function signBulletinAllowance(
-  state: RuntimeState,
-  signerId: number,
-  input: Uint8Array,
-): Promise<Uint8Array> {
-  if (state.disposed) {
-    return Promise.reject(state.closedError ?? new Error("runtime disposed"));
-  }
-  return new Promise((resolve, reject) => {
-    const requestId = ++nextBulletinAllowanceSignRequestId;
-    state.pendingBulletinAllowanceSigns.set(requestId, { resolve, reject });
-    try {
-      state.worker.postMessage({
-        kind: "signBulletinAllowance",
-        requestId,
-        signerId,
-        input,
-      } satisfies MainToWorker);
-    } catch (err) {
-      state.pendingBulletinAllowanceSigns.delete(requestId);
-      reject(err instanceof Error ? err : new Error(String(err)));
-    }
-  });
 }
 
 function handleSubscriptionStart(
@@ -451,7 +388,6 @@ function rejectPendingRuntimeRequests(state: RuntimeState, error: Error): void {
   rejectAll(state.pendingPermissionAuthorizationStatuses, error);
   rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
   rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
-  rejectAll(state.pendingBulletinAllowanceSigns, error);
   for (const pending of state.pendingCores.values()) {
     pending.reject(error);
   }
@@ -551,7 +487,6 @@ export function createWebWorkerPairingHostRuntime(
       pendingPermissionAuthorizationStatuses: new Map(),
       pendingPermissionAuthorizationStatusBatches: new Map(),
       pendingSetPermissionAuthorizationStatuses: new Map(),
-      pendingBulletinAllowanceSigns: new Map(),
       closedError: null,
       logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
       disposed: false,
@@ -612,15 +547,6 @@ export function createWebWorkerPairingHostRuntime(
             console.debug("[truapi worker] callbackRequest", msg.name);
           }
           handleCallbackRequest(state, msg);
-          break;
-        case "signBulletinAllowanceResponse":
-          settlePending(
-            state.pendingBulletinAllowanceSigns,
-            msg.requestId,
-            msg.ok
-              ? { ok: true, value: msg.signature }
-              : { ok: false, error: msg.error },
-          );
           break;
         case "subscriptionStart":
           handleSubscriptionStart(state, msg);

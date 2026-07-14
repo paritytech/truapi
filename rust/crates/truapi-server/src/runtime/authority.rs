@@ -17,13 +17,40 @@ use truapi::latest::{
 };
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, CancellationReason};
-use truapi_platform::{BulletinAllowanceKeyError, ProductContext};
-
-pub(crate) use truapi_platform::BulletinAllowanceKey;
+use truapi_platform::ProductContext;
 
 use crate::host_logic::session::{SessionInfo, SessionState};
 use crate::host_logic::sso::messages::RingVrfError;
 use crate::host_logic::statement_store::statement_public_key_from_secret;
+
+/// Secret key allocated for Bulletin preimage submission.
+///
+/// The core is the sole holder: the secret never crosses the host boundary.
+/// Zeroized on drop, and its `Debug` redacts the material.
+#[derive(Clone, zeroize::Zeroize, zeroize::ZeroizeOnDrop, derive_more::Debug)]
+pub(crate) struct BulletinAllowanceKey {
+    #[debug("\"<redacted>\"")]
+    secret: [u8; 64],
+}
+
+impl BulletinAllowanceKey {
+    pub(crate) fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, AuthorityError> {
+        let secret: [u8; 64] =
+            secret
+                .try_into()
+                .map_err(|secret: Vec<u8>| AuthorityError::Unavailable {
+                    reason: format!(
+                        "bulletin allowance key must be 64 bytes, got {}",
+                        secret.len()
+                    ),
+                })?;
+        Ok(Self { secret })
+    }
+
+    pub(crate) fn as_secret_bytes(&self) -> &[u8; 64] {
+        &self.secret
+    }
+}
 
 /// Snapshot of an account-authority session selected by the authority.
 ///
@@ -54,6 +81,17 @@ impl AuthoritySession {
             validation_id,
         }
     }
+
+    pub(crate) fn primary_username(&self) -> Option<&str> {
+        self.full_username
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                self.lite_username
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+            })
+    }
 }
 
 /// Typed account-authority failure before it is mapped to an API-specific error.
@@ -71,6 +109,10 @@ pub(crate) enum AuthorityError {
     /// The authority cannot service the request.
     #[display("{reason}")]
     Unavailable { reason: String },
+    /// The authority cannot service this request shape (e.g. an unsupported
+    /// transaction-extension version).
+    #[display("{reason}")]
+    NotSupported { reason: String },
     /// Catch-all authority failure.
     #[display("{reason}")]
     Unknown { reason: String },
@@ -79,14 +121,6 @@ pub(crate) enum AuthorityError {
 impl AuthorityError {
     pub(crate) fn reason(self) -> String {
         self.to_string()
-    }
-}
-
-impl From<BulletinAllowanceKeyError> for AuthorityError {
-    fn from(err: BulletinAllowanceKeyError) -> Self {
-        AuthorityError::Unavailable {
-            reason: err.to_string(),
-        }
     }
 }
 
@@ -260,6 +294,12 @@ pub(crate) trait ProductAuthority: Send + Sync {
     /// Disconnect the current account-authority session.
     async fn disconnect(&self);
 
+    /// Refresh identity fields for the current session if the authority can do
+    /// so without user interaction.
+    async fn refresh_session_identity(&self) -> Option<AuthoritySession> {
+        self.current_session()
+    }
+
     /// Sign a SCALE transaction payload for a product account.
     async fn sign_payload(
         &self,
@@ -325,6 +365,18 @@ pub(crate) trait ProductAuthority: Send + Sync {
 
     /// Return Bulletin allowance key material for the calling product.
     async fn bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError>;
+
+    /// Evict any cached Bulletin allowance key for the product and allocate a
+    /// fresh one, increasing the existing allowance.
+    ///
+    /// Called after a submission is rejected for an exhausted/missing
+    /// allowance, where reusing the cached key would loop forever.
+    async fn refresh_bulletin_allowance_key(
         &self,
         cx: &CallContext,
         session: &AuthoritySession,

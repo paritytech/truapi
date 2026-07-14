@@ -43,6 +43,15 @@ pub trait Account: Send + Sync {
     /// });
     /// assert(result.isOk(), "getAccount failed:", result);
     /// console.log("account retrieved:", result.value);
+    ///
+    /// const otherProduct = await truapi.account.getAccount({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "other-product.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    /// });
+    /// assert(otherProduct.isOk(), "cross-product getAccount was denied or failed:", otherProduct);
+    /// console.log("other product account retrieved after approval:", otherProduct.value);
     /// ```
     #[wire(request_id = 22)]
     async fn get_account(

@@ -96,6 +96,7 @@ fn pairing_config_validation_cases() {
             },
             PlatformInfo::default(),
             [0xa2; 32],
+            [0xbb; 32],
             case.pairing_deeplink_scheme.to_string(),
         )
         .map(|_| ());

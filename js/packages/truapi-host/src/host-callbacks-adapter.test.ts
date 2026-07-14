@@ -12,7 +12,7 @@ import {
   RemotePermissionResponse,
   ThemeVariant,
 } from "@parity/truapi";
-import type { HostSignPayloadData } from "@parity/truapi";
+import type { GenericError, HostSignPayloadData } from "@parity/truapi";
 
 import { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
 import {
@@ -208,10 +208,6 @@ describe("createWasmRawCallbacks", () => {
           },
         },
         preimage: {
-          submitPreimage: async (value) => {
-            calls.push(["submitPreimage", [...value]]);
-            return new Uint8Array([7, 8, 9]);
-          },
           lookupPreimage: (key) => {
             calls.push(["lookupPreimage", [...key]]);
             return preimages();
@@ -325,9 +321,6 @@ describe("createWasmRawCallbacks", () => {
         }),
       ),
     ).toBe(true);
-    expect(await raw.submitPreimage!(new Uint8Array([6]))).toEqual(
-      new Uint8Array([7, 8, 9]),
-    );
 
     await settle();
 
@@ -341,7 +334,6 @@ describe("createWasmRawCallbacks", () => {
       ["writeCoreStorage", { tag: "AuthSession", value: undefined }, [3, 2, 1]],
       ["clearCoreStorage", { tag: "AuthSession", value: undefined }],
       ["confirmUserAction:PreimageSubmit", 42n],
-      ["submitPreimage", [6]],
     ]);
 
     disposePreimages?.();
@@ -386,22 +378,14 @@ describe("createWasmRawCallbacks", () => {
     );
     const seen: ThemeVariant[] = [];
     const errors: GenericError[] = [];
-    let resolveError!: (error: GenericError) => void;
-    const errorSeen = new Promise<GenericError>((resolve) => {
-      resolveError = resolve;
-    });
     const dispose = raw.subscribeTheme?.(
       (theme) => seen.push(ThemeVariant.dec(theme!)),
-      (error) => {
-        errors.push(error);
-        resolveError(error);
-      },
+      (error) => errors.push(error),
     );
 
     await settle();
 
     expect(seen).toEqual(["Dark"]);
-    expect(await errorSeen).toEqual({ reason: "theme stream failed" });
     expect(errors).toEqual([{ reason: "theme stream failed" }]);
     dispose?.();
   });
@@ -421,22 +405,14 @@ describe("createWasmRawCallbacks", () => {
     );
     const seen: ThemeVariant[] = [];
     const errors: GenericError[] = [];
-    let resolveError!: (error: GenericError) => void;
-    const errorSeen = new Promise<GenericError>((resolve) => {
-      resolveError = resolve;
-    });
     const dispose = raw.subscribeTheme?.(
       (theme) => seen.push(ThemeVariant.dec(theme!)),
-      (error) => {
-        errors.push(error);
-        resolveError(error);
-      },
+      (error) => errors.push(error),
     );
 
     await settle();
 
     expect(seen).toEqual(["Dark"]);
-    expect(await errorSeen).toEqual({ reason: "theme iterator failed" });
     expect(errors).toEqual([{ reason: "theme iterator failed" }]);
     dispose?.();
   });

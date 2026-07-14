@@ -87,6 +87,24 @@ pub(super) async fn write_allowance_key(
         .map_err(storage_error)
 }
 
+pub(super) async fn remove_allowance_key(
+    storage: &(impl CoreStorage + ?Sized),
+    session: &SessionInfo,
+    product_id: &str,
+    resource: AllowanceResource,
+) -> Result<(), AuthorityError> {
+    let mut entries = read_entries(storage, session).await?;
+    let before = entries.len();
+    entries.retain(|entry| !(entry.product_id == product_id && entry.resource == resource));
+    if entries.len() == before {
+        return Ok(());
+    }
+    storage
+        .write_core_storage(storage_key(session)?, encode_entries(entries))
+        .await
+        .map_err(storage_error)
+}
+
 pub(super) async fn clear_session_allowance_keys(
     storage: &(impl CoreStorage + ?Sized),
     session: &SessionInfo,

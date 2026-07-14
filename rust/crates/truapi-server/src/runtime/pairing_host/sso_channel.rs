@@ -548,6 +548,58 @@ impl PairingHost {
         }
     }
 
+    pub(super) async fn remote_refresh_bulletin_allowance_key(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        product_id: String,
+    ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        // Drop the cached (and persisted) key so a stale/exhausted slot is not
+        // reused, then request a fresh allocation with `Increase` so the
+        // wallet grants a new allowance rather than echoing the old slot.
+        self.evict_bulletin_allowance_key(session, &product_id)
+            .await?;
+
+        let message_id = sso_message_id();
+        let message = resource_allocation_message(
+            message_id,
+            product_id.clone(),
+            vec![latest::AllocatableResource::BulletinAllowance],
+            OnExistingAllowancePolicy::Increase,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::ResourceAllocation(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for bulletin allowance refresh".to_string(),
+            });
+        };
+        let mut outcomes = response
+            .payload
+            .map_err(remote_authority_error)?
+            .into_iter();
+        let outcome = outcomes.next().ok_or_else(|| AuthorityError::Unknown {
+            reason: "Empty bulletin allowance refresh response".to_string(),
+        })?;
+        match outcome {
+            SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
+                slot_account_key,
+            }) => {
+                self.cache_bulletin_allowance_key(session, &product_id, slot_account_key)
+                    .await
+            }
+            SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
+                reason: format!("Unexpected bulletin allowance refresh resource: {other:?}"),
+            }),
+            SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
+            SsoAllocationOutcome::NotAvailable => Err(AuthorityError::Unavailable {
+                reason: "bulletin allowance is not available".to_string(),
+            }),
+        }
+    }
+
     async fn cache_allowance_outcomes(
         &self,
         session: &SessionInfo,
