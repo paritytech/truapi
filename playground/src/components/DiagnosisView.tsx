@@ -44,10 +44,11 @@ export function DiagnosisView({
   const [copied, setCopied] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { rows, hasResults, passCount, failCount } = useMemo(() => {
+  const { rows, hasResults, passCount, failCount, skipCount } = useMemo(() => {
     const out: Row[] = [];
     let pass = 0;
     let fail = 0;
+    let skip = 0;
     for (const svc of services) {
       for (const m of svc.methods) {
         const id = `${svc.name}/${m.name}`;
@@ -55,6 +56,7 @@ export function DiagnosisView({
         const status = entry?.status ?? "idle";
         if (status === "pass") pass++;
         else if (status === "fail") fail++;
+        else if (status === "skipped") skip++;
         out.push({
           id,
           service: svc.name,
@@ -69,6 +71,7 @@ export function DiagnosisView({
       hasResults: Object.keys(testResults).length > 0,
       passCount: pass,
       failCount: fail,
+      skipCount: skip,
     };
   }, [services, testResults]);
 
@@ -93,12 +96,17 @@ export function DiagnosisView({
   // Open a pre-filled GitHub issue carrying the report; the diagnosis-report
   // workflow writes it to diagnosis-reports/<host>.md and opens a PR. The host
   // opens the link via `navigate_to` (a sandboxed app can't `window.open`).
-  // Copy the report to the clipboard first as a fallback if the body is
-  // truncated.
+  // The full report goes to the clipboard (lossless fallback); the URL carries
+  // a compact variant with success-row details dropped, so it stays under
+  // GitHub's URL-length limit while keeping failure/skip details.
   const handleSubmitReport = () => {
-    const report = reportMarkdown;
-    void navigator.clipboard?.writeText(report).catch(() => {});
-    const url = reportIssueUrl(report, detectHostMode());
+    void navigator.clipboard?.writeText(reportMarkdown).catch(() => {});
+    const mode = detectHostMode();
+    const compact = renderReportMarkdown(services, testResults, {
+      mode,
+      dropSuccessDetails: true,
+    });
+    const url = reportIssueUrl(compact, mode);
     // No-op outside a host container; navigation is best-effort.
     void getClientSync()?.system.navigateTo({ url });
   };
@@ -164,6 +172,7 @@ export function DiagnosisView({
             data-has-fail={!isRunning && failCount > 0}
           >
             {passCount} success · {failCount} failed
+            {skipCount > 0 ? ` · ${skipCount} skipped` : ""}
           </span>
         )}
         {hasResults && !isRunning && (

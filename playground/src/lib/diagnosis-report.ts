@@ -44,25 +44,42 @@ export function detectHostMode(): HostMode {
 export function renderReportMarkdown(
   services: ServiceInfo[],
   results: Record<string, TestEntry>,
-  meta: { mode?: HostMode } = {},
+  meta: { mode?: HostMode; dropSuccessDetails?: boolean } = {},
 ): string {
   const mode = meta.mode ?? detectHostMode();
-  const lines: string[] = [];
-  lines.push(`## Truapi ${mode} Diagnosis`);
-  lines.push("");
-  lines.push("| Method | Status | Details |");
-  lines.push("| --- | --- | --- |");
+  let pass = 0;
+  let fail = 0;
+  let skip = 0;
+  const rows: string[] = [];
   for (const svc of services) {
     for (const m of svc.methods) {
       const id = `${svc.name}/${m.name}`;
       const entry = results[id];
       const status = entry?.status ?? "idle";
-      // Skipped methods (e.g. services the host hasn't wired up) are omitted
-      // from the report entirely so they never reach the compatibility matrix.
-      if (status === "skipped") continue;
-      lines.push(`| \`${id}\` | ${ICON[status]} | ${detailCell(entry)} |`);
+      if (status === "pass") pass++;
+      else if (status === "fail") fail++;
+      else if (status === "skipped") skip++;
+      // Skipped rows carry the ⏭ marker; the compatibility-matrix aggregator
+      // maps any non-✅/❌ cell to "not measured", so they stay out of the matrix.
+      // The issue-URL variant drops success-row details (bulky response
+      // payloads) to keep the URL under GitHub's length limit; failures and
+      // skips keep their (short) details.
+      const detail =
+        meta.dropSuccessDetails && status === "pass" ? "" : detailCell(entry);
+      rows.push(`| \`${id}\` | ${ICON[status]} | ${detail} |`);
     }
   }
+
+  const lines: string[] = [];
+  lines.push(`## Truapi ${mode} Diagnosis`);
+  lines.push("");
+  lines.push(
+    `**${pass} success · ${fail} failed${skip > 0 ? ` · ${skip} skipped` : ""}**`,
+  );
+  lines.push("");
+  lines.push("| Method | Status | Details |");
+  lines.push("| --- | --- | --- |");
+  lines.push(...rows);
   return lines.join("\n");
 }
 
@@ -76,16 +93,34 @@ function detailCell(entry: TestEntry | undefined): string {
 // diagnosis-report workflow turns each into a PR under diagnosis-reports/.
 const REPORT_ISSUE_URL = "https://github.com/paritytech/truapi/issues/new";
 
+// GitHub / browsers reject issue URLs beyond ~8 KB. Cap the whole URL below
+// that; a report with many verbose failures can still exceed it even after
+// success-row details are dropped.
+const MAX_ISSUE_URL_LENGTH = 7000;
+
 /**
  * Pre-filled GitHub issue URL carrying `report` for a given host `mode`. The
  * title format and the report's `## Truapi <mode> Diagnosis` heading are what
  * the workflow parses, so they live here next to `renderReportMarkdown`.
+ *
+ * If the report is still too large to fit in the URL, fall back to a short
+ * placeholder body — the caller copies the full report to the clipboard, so
+ * the user pastes it into the issue instead.
  */
 export function reportIssueUrl(report: string, mode: HostMode): string {
-  const params = new URLSearchParams({
-    labels: "diagnosis-report",
-    title: `Diagnosis report: ${mode}`,
-    body: report,
-  });
-  return `${REPORT_ISSUE_URL}?${params.toString()}`;
+  const buildUrl = (body: string): string => {
+    const params = new URLSearchParams({
+      labels: "diagnosis-report",
+      title: `Diagnosis report: ${mode}`,
+      body,
+    });
+    return `${REPORT_ISSUE_URL}?${params.toString()}`;
+  };
+
+  const full = buildUrl(report);
+  if (full.length <= MAX_ISSUE_URL_LENGTH) return full;
+  return buildUrl(
+    `_Diagnosis report was too large to prefill (${report.length} chars) — ` +
+      `it has been copied to your clipboard, please paste it here._`,
+  );
 }
