@@ -11,17 +11,18 @@
 //! Usage:
 //!
 //! ```text
-//! cargo run -p truapi-provider --features smoldot --example gateway -- CONFIG.json
+//! cargo run -p truapi-provider --features networks --example gateway -- CONFIG.json
 //! ```
 //!
-//! Config shape (each chain is either a light client via `spec`, optionally
-//! with a `relay` naming another light-client entry, or a proxy via `url`):
+//! Config shape: each chain is a light client resolved from the bundled network
+//! catalog by its genesis hash (relay wiring included), or a proxy to a remote
+//! node via `url`:
 //!
 //! ```json
 //! {
 //!   "listen": "127.0.0.1:9944",
 //!   "chains": {
-//!     "relay": { "genesis": "0x…", "spec": "path/to/spec.json" },
+//!     "relay": { "genesis": "0x…" },
 //!     "asset-hub": { "genesis": "0x…", "url": "wss://node.example" }
 //!   }
 //! }
@@ -75,26 +76,18 @@ mod imp {
                     .as_str()
                     .expect("chain.genesis is required"),
             );
-            let source = if let Some(spec_path) = entry["spec"].as_str() {
-                let spec =
-                    std::fs::read_to_string(spec_path).expect("the chain spec must be readable");
-                let mut source = ChainSource::light_client(spec);
-                if let Some(relay_name) = entry["relay"].as_str() {
-                    let relay_genesis = chains[relay_name]["genesis"]
-                        .as_str()
-                        .expect("chain.relay must name another configured chain");
-                    source = source.relay(parse_genesis(relay_genesis));
-                }
-                println!("[gateway] /{name}: light client ({spec_path})");
-                source.build()
-            } else {
-                let url = entry["url"]
-                    .as_str()
-                    .expect("each chain needs either a spec or a url");
+            // A `url` entry is proxied to a remote node; every other entry is a
+            // light client the catalog resolves from its genesis hash — relay
+            // wiring for parachains comes from the catalog, not this config.
+            if let Some(url) = entry["url"].as_str() {
                 println!("[gateway] /{name}: proxy to {url}");
-                ChainSource::rpc_node(url::Url::parse(url).expect("chain.url must parse"))
-            };
-            builder = builder.chain(genesis, source);
+                builder = builder.chain(
+                    genesis,
+                    ChainSource::rpc_node(url::Url::parse(url).expect("chain.url must parse")),
+                );
+            } else {
+                println!("[gateway] /{name}: catalog light client");
+            }
             routes.insert(format!("/{name}"), genesis);
         }
 

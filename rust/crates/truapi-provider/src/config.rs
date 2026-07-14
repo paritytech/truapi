@@ -22,8 +22,10 @@ pub enum ChainSource {
         specification: std::borrow::Cow<'static, str>,
         /// Genesis hash of the relay chain when the target is a parachain.
         ///
-        /// Must name another [`ChainSource::LightClient`] entry registered on
-        /// the same provider.
+        /// A parachain always syncs through its relay. This link is not a
+        /// caller-supplied option: it is resolved from the bundled network
+        /// catalog by [`connect`](truapi_platform::ChainProvider::connect),
+        /// which takes only the target's genesis hash.
         relay: Option<[u8; 32]>,
         /// Warm-start database blob previously returned by the
         /// `chainHead_unstable_finalizedDatabase` JSON-RPC function. Invalid
@@ -75,10 +77,10 @@ pub struct LightClientBuilder {
 
 #[cfg(feature = "smoldot")]
 impl LightClientBuilder {
-    /// Declare the chain a parachain of the relay identified by `relay_genesis`
-    /// (which must name another light-client chain registered on the same
-    /// provider).
-    pub fn relay(mut self, relay_genesis: [u8; 32]) -> Self {
+    /// Declare the chain a parachain of `relay_genesis`. Internal only: the
+    /// network catalog sets this when it flattens a network for the light
+    /// backend, so a parachain's relay is never a caller-supplied option.
+    pub(crate) fn relay(mut self, relay_genesis: [u8; 32]) -> Self {
         self.relay = Some(relay_genesis);
         self
     }

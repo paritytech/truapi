@@ -108,7 +108,7 @@ required-features = ["ws", "smoldot"]
 
 [[example]]
 name = "gateway"
-required-features = ["ws", "smoldot"]
+required-features = ["ws", "networks"]
 
 # `deny` rather than `forbid`: the `uniffi` feature scopes an `allow(unsafe_code)`
 # for UniFFI's generated FFI glue (see src/lib.rs). Every other build has no unsafe.

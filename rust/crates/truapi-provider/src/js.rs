@@ -61,24 +61,21 @@ impl ChainProviderBuilder {
     }
 
     /// Register an embedded light-client chain identified by the
-    /// `0x`-prefixed genesis hash. `relay_genesis_hash` names another
-    /// registered light-client chain when the target is a parachain. The
-    /// statement-store networking protocol is enabled unless
-    /// `statement_protocol` is `false`.
+    /// `0x`-prefixed genesis hash. Use this for a relay or standalone chain;
+    /// parachains are served through the bundled catalog (`addNetwork`), which
+    /// supplies their relay wiring, since a parachain's relay is never a
+    /// caller-supplied option. The statement-store networking protocol is
+    /// enabled unless `statement_protocol` is `false`.
     #[cfg(feature = "smoldot")]
     #[wasm_bindgen(js_name = addLightChain)]
     pub fn add_light_chain(
         &mut self,
         genesis_hash: &str,
         specification: String,
-        relay_genesis_hash: Option<String>,
         statement_protocol: Option<bool>,
     ) -> Result<(), JsError> {
         let genesis = parse_genesis(genesis_hash)?;
         let mut source = ChainSource::light_client(specification);
-        if let Some(relay) = relay_genesis_hash {
-            source = source.relay(parse_genesis(&relay)?);
-        }
         if statement_protocol == Some(false) {
             source = source.without_statement_protocol();
         }
