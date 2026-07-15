@@ -171,25 +171,20 @@ jobs:
       - name: Create release tags
         if: steps.version.outputs.proceed == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
           STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
         run: |
           set -euo pipefail
-          auth_header="AUTHORIZATION: bearer ${GITHUB_TOKEN}"
-          push_refs=()
           while IFS='|' read -r name path version tag; do
-            if git -c http.extraheader="${auth_header}" ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
               echo "Tag ${tag} already exists; skipping create."
               continue
             fi
-            git tag --force "${tag}" "${RELEASE_SHA}"
-            push_refs+=("refs/tags/${tag}:refs/tags/${tag}")
+            gh api --method POST "repos/${{ github.repository }}/git/refs" \
+              -f ref="refs/tags/${tag}" \
+              -f sha="${RELEASE_SHA}"
           done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
-
-          if [ "${#push_refs[@]}" -gt 0 ]; then
-            git -c http.extraheader="${auth_header}" push origin "${push_refs[@]}"
-          fi
 
       - name: Create GitHub Release
         if: steps.version.outputs.proceed == 'true'
