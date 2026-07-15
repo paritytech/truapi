@@ -33,11 +33,13 @@ npm run version-packages     # consumes the changeset, bumps package.json + writ
 The first command writes a markdown file under `.changeset/`; the second
 consumes it, bumps the selected package `package.json`, appends the package
 `CHANGELOG.md`, deletes the changeset file, and then runs
-`scripts/sync-cargo-version.mjs` to keep `rust/crates/truapi/Cargo.toml`
-aligned with `js/packages/truapi/package.json`. A protocol release should
-therefore include the `@parity/truapi` package, its changelog, and the Cargo
-version. A host-runtime-only release can bump `@parity/truapi-host` without
-changing the Rust crate version.
+`scripts/sync-release-versions.mjs`. That script keeps
+`rust/crates/truapi/Cargo.toml` and the host package's `@parity/truapi`
+dependency aligned with `js/packages/truapi/package.json`; the command then
+refreshes `package-lock.json`. A protocol release should therefore include the
+`@parity/truapi` package, its changelog, the Cargo version, the host dependency,
+and the lockfile. A host-runtime-only release can bump
+`@parity/truapi-host` without changing the Rust crate version.
 
 ### 3. Open a release PR
 

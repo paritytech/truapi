@@ -90,7 +90,7 @@ jobs:
         if: steps.version.outputs.proceed == 'true'
         run: |
           set -euo pipefail
-          npm run check-internal-dependencies
+          npm run check-release-versions
           remaining_changesets="$(find .changeset -maxdepth 1 -type f -name '*.md' -print)"
           if [ -n "${remaining_changesets}" ]; then
             echo "::error::Release commit still contains unconsumed changesets. Run npm run version-packages."
