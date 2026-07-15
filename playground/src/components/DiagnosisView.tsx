@@ -21,6 +21,9 @@ interface Row {
   service: string;
   method: string;
   status: TestStatus;
+  // A skipped method is displayed as failed; this flags it so the e2e gate can
+  // tell an intentional skip apart from a genuine failure.
+  skipped: boolean;
   output?: string;
 }
 
@@ -44,24 +47,27 @@ export function DiagnosisView({
   const [copied, setCopied] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const { rows, hasResults, passCount, failCount, skipCount } = useMemo(() => {
+  const { rows, hasResults, passCount, failCount } = useMemo(() => {
     const out: Row[] = [];
     let pass = 0;
     let fail = 0;
-    let skip = 0;
     for (const svc of services) {
       for (const m of svc.methods) {
         const id = `${svc.name}/${m.name}`;
         const entry = testResults[id];
-        const status = entry?.status ?? "idle";
+        const rawStatus = entry?.status ?? "idle";
+        // Skipped methods are shown as failed (their skip reason is the detail)
+        // so the view stays a pass/fail summary and every method is accounted
+        // for — matching the compatibility matrix.
+        const status = rawStatus === "skipped" ? "fail" : rawStatus;
         if (status === "pass") pass++;
         else if (status === "fail") fail++;
-        else if (status === "skipped") skip++;
         out.push({
           id,
           service: svc.name,
           method: m.name,
           status,
+          skipped: rawStatus === "skipped",
           output: entry?.output,
         });
       }
@@ -71,7 +77,6 @@ export function DiagnosisView({
       hasResults: Object.keys(testResults).length > 0,
       passCount: pass,
       failCount: fail,
-      skipCount: skip,
     };
   }, [services, testResults]);
 
@@ -98,7 +103,7 @@ export function DiagnosisView({
   // opens the link via `navigate_to` (a sandboxed app can't `window.open`).
   // The full report goes to the clipboard (lossless fallback); the URL carries
   // a compact variant with success-row details dropped, so it stays under
-  // GitHub's URL-length limit while keeping failure/skip details.
+  // GitHub's URL-length limit while keeping failure details.
   const handleSubmitReport = () => {
     void navigator.clipboard?.writeText(reportMarkdown).catch(() => {});
     const mode = detectHostMode();
@@ -172,7 +177,6 @@ export function DiagnosisView({
             data-has-fail={!isRunning && failCount > 0}
           >
             {passCount} success · {failCount} failed
-            {skipCount > 0 ? ` · ${skipCount} skipped` : ""}
           </span>
         )}
         {hasResults && !isRunning && (
@@ -215,6 +219,7 @@ export function DiagnosisView({
                   className="diag__row"
                   data-testid="diagnosis-row"
                   data-status={r.status}
+                  data-skipped={r.skipped ? "true" : undefined}
                   data-expandable={expandable}
                   onClick={
                     expandable
