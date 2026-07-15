@@ -45,38 +45,57 @@ jobs:
 
       - name: Resolve target packages
         id: version
+        env:
+          RELEASE_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
         run: |
           set -euo pipefail
-          packages=(
-            "@parity/truapi js/packages/truapi"
-            "@parity/truapi-host js/packages/truapi-host"
-          )
-          pending="$(mktemp)"
-          for entry in "${packages[@]}"; do
-            name="${entry%% *}"
-            path="${entry#* }"
-            version="$(jq -r '.version' "${path}/package.json")"
-            tag="${name}@${version}"
-            if npm_status="$(npm view "${tag}" version --registry=https://registry.npmjs.org 2>&1)"; then
-              echo "Package ${tag} already exists on npm; skipping ${name}."
-            elif grep -Eq 'E404|404 Not Found' <<< "${npm_status}"; then
-              echo "Publishing ${tag}."
-              echo "${name}|${path}|${version}|${tag}" >> "${pending}"
-            else
-              echo "${npm_status}" >&2
+          subject="${RELEASE_COMMIT_MESSAGE%%$'\n'*}"
+          release="${subject#release: }"
+          name="${release% *}"
+          declared_version="${release##* }"
+
+          case "${name}" in
+            @parity/truapi) path="js/packages/truapi" ;;
+            @parity/truapi-host) path="js/packages/truapi-host" ;;
+            *)
+              echo "::error::Unsupported release commit subject: ${subject}"
               exit 1
-            fi
-          done
-          if [ -s "${pending}" ]; then
+              ;;
+          esac
+
+          version="$(jq -r '.version' "${path}/package.json")"
+          if [ "${declared_version}" != "${version}" ]; then
+            echo "::error::Release subject declares ${declared_version}, but ${path}/package.json is ${version}."
+            exit 1
+          fi
+
+          tag="${name}@${version}"
+          if npm_status="$(npm view "${tag}" version --registry=https://registry.npmjs.org 2>&1)"; then
+            echo "Package ${tag} already exists on npm; nothing to publish."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          elif grep -Eq 'E404|404 Not Found' <<< "${npm_status}"; then
+            echo "Publishing ${tag}."
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             {
               echo "packages<<EOF"
-              cat "${pending}"
+              echo "${name}|${path}|${version}|${tag}"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
           else
-            echo "No unpublished package tags found."
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "${npm_status}" >&2
+            exit 1
+          fi
+
+      - name: Verify release manifests
+        if: steps.version.outputs.proceed == 'true'
+        run: |
+          set -euo pipefail
+          npm run check-internal-dependencies
+          remaining_changesets="$(find .changeset -maxdepth 1 -type f -name '*.md' -print)"
+          if [ -n "${remaining_changesets}" ]; then
+            echo "::error::Release commit still contains unconsumed changesets. Run npm run version-packages."
+            echo "${remaining_changesets}"
+            exit 1
           fi
 
       - if: steps.version.outputs.proceed == 'true'

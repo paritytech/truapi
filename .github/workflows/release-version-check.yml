@@ -27,3 +27,16 @@ jobs:
             echo "::error::Version mismatch — js/packages/truapi/package.json (${pkg_version}) and rust/crates/truapi/Cargo.toml (${cargo_version}) must match on a release: PR. Run \`npm run version-packages\` from the repo root to sync."
             exit 1
           fi
+
+      - name: Verify internal package dependencies
+        run: npm run check-internal-dependencies
+
+      - name: Verify changesets were consumed
+        run: |
+          set -euo pipefail
+          remaining_changesets="$(find .changeset -maxdepth 1 -type f -name '*.md' -print)"
+          if [ -n "${remaining_changesets}" ]; then
+            echo "::error::Release PR still contains unconsumed changesets. Run npm run version-packages."
+            echo "${remaining_changesets}"
+            exit 1
+          fi
