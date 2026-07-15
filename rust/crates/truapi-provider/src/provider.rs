@@ -215,6 +215,9 @@ impl ChainProvider for EmbeddedChainProvider {
         }
         #[cfg(feature = "networks")]
         if let Some((catalog, relay)) = crate::networks::catalog_network_chains(genesis_hash) {
+            if let Some((network, service)) = crate::networks::catalog_service(genesis_hash) {
+                tracing::info!(network, service, "connecting via light client");
+            }
             let source = catalog
                 .get(&genesis_hash)
                 .expect("catalog_network_chains includes the queried genesis")

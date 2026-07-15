@@ -203,6 +203,21 @@ impl PlatformRef for SubxtPlatform {
         message: &'a str,
         key_values: impl Iterator<Item = (&'a str, &'a dyn fmt::Display)>,
     ) {
+        // Gate smoldot's lines on the same tracing level as the provider's own
+        // logs — the identical check tracing's macros make — so a level set via
+        // `setLogLevel` suppresses smoldot output at the source (before
+        // formatting), not merely at the subscriber.
+        let level = match log_level {
+            LogLevel::Error => tracing::Level::ERROR,
+            LogLevel::Warn => tracing::Level::WARN,
+            LogLevel::Info => tracing::Level::INFO,
+            LogLevel::Debug => tracing::Level::DEBUG,
+            LogLevel::Trace => tracing::Level::TRACE,
+        };
+        if level > tracing::level_filters::LevelFilter::current() {
+            return;
+        }
+
         let mut message_build = String::with_capacity(128);
         message_build.push_str(message);
         let mut first = true;

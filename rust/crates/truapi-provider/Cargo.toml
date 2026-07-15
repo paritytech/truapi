@@ -48,7 +48,7 @@ smoldot = [
     "dep:web-sys",
     "dep:web-time",
 ]
-js = ["ws", "dep:wasm-bindgen-futures"]
+js = ["ws", "dep:wasm-bindgen-futures", "dep:tracing-subscriber"]
 networks = ["smoldot"]
 # Swift/UniFFI bindings for native hosts (iOS, macOS, ...).
 uniffi = ["smoldot", "networks", "dep:uniffi"]
@@ -63,6 +63,7 @@ futures = "0.3"
 hex = "0.4"
 serde_json = "1"
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"], optional = true }
 url = "2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -88,6 +89,7 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 web-sys = { version = "0.3", features = [
     "BinaryType",
     "CloseEvent",
+    "console",
     "Event",
     "MessageEvent",
     "WebSocket",

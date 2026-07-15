@@ -28,6 +28,15 @@ use wasm_bindgen::prelude::*;
 use crate::config::ChainSource;
 use crate::provider::{EmbeddedChainProvider, EmbeddedChainProviderBuilder};
 
+/// Route the embedded provider's (and smoldot's) `tracing` output to the
+/// browser console at `level` (`error`|`warn`|`info`|`debug`|`trace`; anything
+/// else disables it). Installs the console subscriber on the first call and is
+/// safe to call again at any time to retune verbosity.
+#[wasm_bindgen(js_name = setLogLevel)]
+pub fn set_log_level(level: &str) {
+    crate::logging::set_level_from_str(level);
+}
+
 /// Collects genesis-hash to chain-source registrations from JS.
 #[wasm_bindgen]
 pub struct ChainProviderBuilder {

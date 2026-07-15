@@ -46,6 +46,8 @@ pub mod js;
 mod light;
 #[cfg(all(feature = "smoldot", target_arch = "wasm32"))]
 mod light_platform_web;
+#[cfg(all(feature = "js", target_arch = "wasm32"))]
+mod logging;
 #[cfg(feature = "networks")]
 mod networks;
 mod provider;

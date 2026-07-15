@@ -169,6 +169,25 @@ pub(crate) fn add_network(
     Ok((builder, chains))
 }
 
+/// The network name and service (`relay`/`asset-hub`/`bulletin`/`people`) that
+/// `genesis_hash` maps to in the catalog, for log attribution. `None` if no
+/// bundled network defines it.
+pub(crate) fn catalog_service(genesis_hash: [u8; 32]) -> Option<(&'static str, &'static str)> {
+    for network in CATALOG {
+        for (service, chain) in [
+            ("relay", &network.relay),
+            ("asset-hub", &network.assethub),
+            ("bulletin", &network.bulletin),
+            ("people", &network.people),
+        ] {
+            if genesis(chain).ok() == Some(genesis_hash) {
+                return Some((network.name, service));
+            }
+        }
+    }
+    None
+}
+
 /// Resolve the bundled network containing `genesis_hash` from that hash alone:
 /// its chains and the relay `genesis_hash` syncs through. `None` if no bundled
 /// network defines it.

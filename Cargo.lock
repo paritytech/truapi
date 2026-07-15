@@ -3687,6 +3687,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tracing",
+ "tracing-subscriber",
  "truapi",
  "truapi-platform",
  "uniffi",
