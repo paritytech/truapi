@@ -11,7 +11,13 @@ export type {
   TrUApiTransport,
   WireProvider,
 } from "./transport.js";
-export type { CreateTransportOptions } from "./client.js";
+export type {
+  CreateTransportOptions,
+  FrameDirection,
+  FrameRole,
+  ObservedFrame,
+  TransportObserver,
+} from "./client.js";
 export {
   SubscriptionError,
   createIframeProvider,
@@ -20,6 +26,15 @@ export {
   encodeWireMessage,
 } from "./transport.js";
 export { createTransport } from "./client.js";
+export { createMethodNameMap, createWireDebugger } from "./debug.js";
+export type {
+  WireDebugger,
+  WireDebuggerOptions,
+  WireDebugSink,
+  WireFrameKind,
+  WireMethodInfo,
+  WireTrace,
+} from "./debug.js";
 export * as scale from "./scale.js";
 export type { Codec, HexString } from "./scale.js";
 export * from "./generated/index.js";

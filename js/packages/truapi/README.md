@@ -70,6 +70,8 @@ sub.unsubscribe();
 - **SCALE codec helpers** used by the generated code, also re-exported for direct use.
 - **Sandbox bootstrap** (`@parity/truapi/sandbox`) that detects the host environment, builds the
   matching provider, and exposes a cached client — see below.
+- **Observability surface** — an optional `observe` hook on the transport and a `createWireDebugger`
+  relay for inspecting/forwarding wire frames (see below).
 
 ## Sandbox bootstrap
 
@@ -100,6 +102,32 @@ const unsubscribe = subscribeConnectionStatus((status) => {
 | `isCorrectEnvironment(): boolean`           | Synchronous host-environment detection.         |
 | `getClientSync(): TrUApiClient \| null`     | Cached client; `null` outside a host container. |
 | `subscribeConnectionStatus(cb): () => void` | Connected / disconnected status listener.       |
+
+## Observability / debugging
+
+`createTransport` accepts an optional `observe` callback that fires for every outbound and inbound
+frame. It surfaces only the frame's `requestId`, inferred lifecycle `role`
+(`request`/`response`/`start`/`stop`/`receive`/`interrupt`/`handshake`), `direction`, and `byteLength`
+— **never the decoded payload** — so it is host-agnostic and leaks nothing. A throwing observer is
+swallowed, and the hook is zero-cost when unset.
+
+```ts
+import { createTransport, createWireDebugger } from "@parity/truapi";
+import { createWireDebugger as _ } from "@parity/truapi/debug"; // also on the ./debug subpath
+
+const dbg = createWireDebugger(); // groups frames into per-requestId traces; forward/sink optional
+const transport = createTransport(provider, { observe: dbg.observe });
+// later: dbg.trace(requestId) → the WireTrace for one op (its outbound + inbound frames)
+```
+
+Because every frame carries its `requestId`, a product-side telemetry span (e.g.
+`@parity/product-sdk-logger`'s `withSpan`) can adopt that id and the product → wire → host path becomes
+one correlated trace. `createWireDebugger({ forward })` relays frames to a host debug panel.
+
+`createMethodNameMap(wireTable, services)` builds a reverse map from a bare wire `frameId` to its
+dotted method name (`22` → `account.getAccount`), derived from the generated wire-table plus the
+client's service names (`Object.keys(createClient(transport))`). Pass it as
+`createWireDebugger({ methodNames })` and the formatted frame lines carry real method names.
 
 ## Wire format
 
