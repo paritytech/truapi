@@ -15,6 +15,7 @@
 - [ ] Ran `npm run changeset` and selected the package + bump type (patch / minor / major)
 - [ ] Ran `npm run version-packages` to consume the changeset
 - [ ] `js/packages/truapi/package.json` version is bumped
+- [ ] `@parity/truapi-host` depends on `^<current @parity/truapi version>`
 - [ ] `js/packages/truapi/CHANGELOG.md` has the new entry
 - [ ] `rust/crates/truapi/Cargo.toml` version matches `js/packages/truapi/package.json`
 - [ ] No leftover files under `.changeset/` (other than `config.json`)
