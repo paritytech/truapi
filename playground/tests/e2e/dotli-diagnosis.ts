@@ -534,8 +534,13 @@ async function runDiagnosisOnce(page: Page): Promise<{
   if (report.trim().length === 0) {
     throw new Error("diagnosis report markdown is empty");
   }
+  // Skipped methods render as failed (and appear failed in the matrix), but they
+  // are intentional gaps — exclude them from the CI hard-fail gate so only
+  // genuine failures fail the run.
   const failedMethods = await frame
-    .locator('[data-testid="diagnosis-row"][data-status="fail"] .diag__name')
+    .locator(
+      '[data-testid="diagnosis-row"][data-status="fail"]:not([data-skipped="true"]) .diag__name',
+    )
     .allInnerTexts();
 
   await frame.locator('[data-testid="diagnosis-copy-report"]').click();

@@ -21,6 +21,9 @@ interface Row {
   service: string;
   method: string;
   status: TestStatus;
+  // A skipped method is displayed as failed; this flags it so the e2e gate can
+  // tell an intentional skip apart from a genuine failure.
+  skipped: boolean;
   output?: string;
 }
 
@@ -52,7 +55,11 @@ export function DiagnosisView({
       for (const m of svc.methods) {
         const id = `${svc.name}/${m.name}`;
         const entry = testResults[id];
-        const status = entry?.status ?? "idle";
+        const rawStatus = entry?.status ?? "idle";
+        // Skipped methods are shown as failed (their skip reason is the detail)
+        // so the view stays a pass/fail summary and every method is accounted
+        // for — matching the compatibility matrix.
+        const status = rawStatus === "skipped" ? "fail" : rawStatus;
         if (status === "pass") pass++;
         else if (status === "fail") fail++;
         out.push({
@@ -60,6 +67,7 @@ export function DiagnosisView({
           service: svc.name,
           method: m.name,
           status,
+          skipped: rawStatus === "skipped",
           output: entry?.output,
         });
       }
@@ -93,12 +101,17 @@ export function DiagnosisView({
   // Open a pre-filled GitHub issue carrying the report; the diagnosis-report
   // workflow writes it to diagnosis-reports/<host>.md and opens a PR. The host
   // opens the link via `navigate_to` (a sandboxed app can't `window.open`).
-  // Copy the report to the clipboard first as a fallback if the body is
-  // truncated.
+  // The full report goes to the clipboard (lossless fallback); the URL carries
+  // a compact variant with success-row details dropped, so it stays under
+  // GitHub's URL-length limit while keeping failure details.
   const handleSubmitReport = () => {
-    const report = reportMarkdown;
-    void navigator.clipboard?.writeText(report).catch(() => {});
-    const url = reportIssueUrl(report, detectHostMode());
+    void navigator.clipboard?.writeText(reportMarkdown).catch(() => {});
+    const mode = detectHostMode();
+    const compact = renderReportMarkdown(services, testResults, {
+      mode,
+      dropSuccessDetails: true,
+    });
+    const url = reportIssueUrl(compact, mode);
     // No-op outside a host container; navigation is best-effort.
     void getClientSync()?.system.navigateTo({ url });
   };
@@ -206,6 +219,7 @@ export function DiagnosisView({
                   className="diag__row"
                   data-testid="diagnosis-row"
                   data-status={r.status}
+                  data-skipped={r.skipped ? "true" : undefined}
                   data-expandable={expandable}
                   onClick={
                     expandable
