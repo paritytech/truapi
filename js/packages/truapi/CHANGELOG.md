@@ -1,5 +1,11 @@
 # @parity/truapi
 
+## 0.4.1
+
+### Patch Changes
+
+- Treat Firefox's masked `"null"` `location.ancestorOrigins` entries as an unknown host origin in the sandbox bootstrap. The ready ping falls back to the source-checked wildcard instead of throwing `SyntaxError: An invalid or illegal string was specified`, which left iframe-hosted products permanently offline in Firefox.
+
 ## 0.4.0
 
 ### Minor Changes
