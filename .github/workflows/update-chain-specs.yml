@@ -1,0 +1,62 @@
+name: Refresh Chain Specs
+
+# Refresh the smoldot chain specs bundled in truapi-provider (fresh relay
+# lightSyncState checkpoints and genesis stateRootHash). The refresh only
+# reaches consumers after a new @parity/truapi-provider is published, so this
+# runs weekly rather than hourly.
+on:
+  schedule:
+    # Mondays at 00:00 UTC.
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+    inputs:
+      skip_bootnode_check:
+        description: "Skip bootnode health check (keep existing bootnodes)"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Update Chain Specs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.0.0
+        with:
+          node-version: "22"
+
+      - name: Refresh chain specs
+        run: bash scripts/update-chain-specs.sh
+        env:
+          SKIP_BOOTNODE_CHECK: ${{ inputs.skip_bootnode_check == '' && 'true' || inputs.skip_bootnode_check }}
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet rust/crates/truapi-provider/networks/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          title: "chore(truapi-provider): refresh bundled chain specs"
+          body: |
+            Automated refresh of the smoldot chain specs bundled in truapi-provider.
+
+            Publish a new `@parity/truapi-provider` for consumers to pick up the refresh.
+          branch: auto/chain-spec-update
+          commit-message: "chore(truapi-provider): refresh bundled chain specs"
+          delete-branch: true
+          labels: dependencies
