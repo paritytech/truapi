@@ -150,6 +150,10 @@ struct MethodEmission {
     request_payload: Option<WirePayload>,
     response_wrapper: Option<String>,
     error_payload: WirePayload,
+    /// `|reason| <domain catch-all>` closure literal folding framework
+    /// `CallError` variants onto the flat wire error encoding. Present iff
+    /// `error_payload` is versioned.
+    error_fallback: Option<String>,
     item_wrapper: Option<String>,
 }
 
@@ -231,6 +235,14 @@ impl MethodEmission {
             ),
         };
 
+        let error_fallback = match &error_payload {
+            WirePayload::Versioned(wrapper) => Some(
+                error_fallback_expr(api, wrapper)
+                    .with_context(|| format!("Method `{}`", method.name))?,
+            ),
+            WirePayload::Raw(_) => None,
+        };
+
         Ok(MethodEmission {
             name: method.name.clone(),
             wire_name: wire_method.to_string(),
@@ -238,6 +250,7 @@ impl MethodEmission {
             kind: method.kind,
             request_payload,
             response_wrapper,
+            error_fallback,
             error_payload,
             item_wrapper,
         })
@@ -254,6 +267,13 @@ impl MethodEmission {
 
     fn uses_raw_err_payload(&self) -> bool {
         matches!(self.request_payload, Some(WirePayload::Raw(_))) || self.uses_raw_unit_ok_payload()
+    }
+
+    /// The catch-all closure literal for this method's versioned error type.
+    fn fallback_expr(&self, method: &str) -> Result<&str> {
+        self.error_fallback.as_deref().with_context(|| {
+            format!("Method `{method}`: versioned error emission requires a domain catch-all")
+        })
     }
 
     fn uses_raw_unit_ok_payload(&self) -> bool {
@@ -285,6 +305,7 @@ impl MethodEmission {
                 let Some(error) = self.error_payload.versioned_name() else {
                     bail!("Method `{method}`: versioned request methods must use versioned errors");
                 };
+                let fallback = self.fallback_expr(method)?;
                 write_indented(
                     out,
                     16,
@@ -298,6 +319,7 @@ impl MethodEmission {
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::{module}::{error} as Versioned>::LATEST,
+                                    {fallback},
                                 ));
                             }}
                         }};
@@ -357,6 +379,7 @@ impl MethodEmission {
                 let Some(target_version_expr) = target_version_expr.as_deref() else {
                     bail!("Method `{method}`: versioned responses require a target version");
                 };
+                let fallback = self.fallback_expr(method)?;
                 write_indented(
                     out,
                     16,
@@ -365,7 +388,7 @@ impl MethodEmission {
                         let response: versioned::{module}::{response} = match host.{method}({call_args}).await {{
                             Ok(value) => value,
                             Err(err) => {{
-                                return Ok(encode_versioned_err_payload(err, {target_version_expr}));
+                                return Ok(encode_versioned_err_payload(err, {target_version_expr}, {fallback}));
                             }}
                         }};
                         Ok(encode_versioned_ok_payload(response))
@@ -375,6 +398,7 @@ impl MethodEmission {
             }
             None => match (&self.error_payload, target_version_expr.as_deref()) {
                 (WirePayload::Versioned(_), Some(target_version_expr)) => {
+                    let fallback = self.fallback_expr(method)?;
                     write_indented(
                         out,
                         16,
@@ -383,7 +407,7 @@ impl MethodEmission {
                             match host.{method}({call_args}).await {{
                                 Ok(()) => Ok(encode_versioned_unit_ok_payload({target_version_expr})),
                                 Err(err) => {{
-                                    Ok(encode_versioned_err_payload(err, {target_version_expr}))
+                                    Ok(encode_versioned_err_payload(err, {target_version_expr}, {fallback}))
                                 }}
                             }}
                             "#
@@ -452,6 +476,7 @@ impl MethodEmission {
         {
             let decode_error = match error {
                 Some(error) => {
+                    let fallback = self.fallback_expr(method)?;
                     let block = formatdoc! {
                         r#"
                         Err(err) => {{
@@ -462,6 +487,7 @@ impl MethodEmission {
                             return Err(encode_versioned_interrupt_payload(
                                 error,
                                 <versioned::{module}::{error} as Versioned>::LATEST,
+                                {fallback},
                             ));
                         }}
                         "#
@@ -510,6 +536,7 @@ impl MethodEmission {
             if error.is_none() {
                 bail!("Method `{method}`: result subscription methods must have an error wrapper");
             }
+            let fallback = self.fallback_expr(method)?;
             write_indented(
                 out,
                 16,
@@ -518,7 +545,7 @@ impl MethodEmission {
                     let stream = match host.{method}({call_args}).await {{
                         Ok(sub) => sub,
                         Err(err) => {{
-                            return Err(encode_versioned_interrupt_payload(err, {target_version_expr}));
+                            return Err(encode_versioned_interrupt_payload(err, {target_version_expr}, {fallback}));
                         }}
                     }};
                     "#
@@ -599,6 +626,104 @@ fn versioned_wrapper_root<'a>(
         bail!("Method `{method}`: {role} is not a versioned wrapper")
     }
     Ok(name)
+}
+
+/// Build the `|reason| <catch-all>` closure literal for a versioned error
+/// wrapper. The closure constructs the latest domain enum's catch-all variant
+/// (`Unknown`, or `Internal` where no `Unknown` exists) so framework
+/// `CallError` variants can fold onto the flat wire error encoding.
+fn error_fallback_expr(api: &ApiDefinition, wrapper_name: &str) -> Result<String> {
+    let is_version_variant = |v: &VariantDef| {
+        v.name
+            .strip_prefix('V')
+            .is_some_and(|n| n.parse::<u32>().is_ok())
+    };
+    let wrapper_variants = api
+        .types
+        .iter()
+        .find_map(|ty| match &ty.kind {
+            TypeDefKind::Enum(variants)
+                if ty.name == wrapper_name && variants.iter().all(is_version_variant) =>
+            {
+                Some(variants)
+            }
+            _ => None,
+        })
+        .with_context(|| format!("versioned error wrapper `{wrapper_name}` not extracted"))?;
+    let latest = wrapper_variants
+        .iter()
+        .max_by_key(|v| v.name[1..].parse::<u32>().unwrap_or(0))
+        .with_context(|| format!("versioned error wrapper `{wrapper_name}` has no variants"))?;
+    let VariantFields::Unnamed(inner) = &latest.fields else {
+        bail!(
+            "versioned error wrapper `{wrapper_name}`: latest variant `{}` must carry \
+             exactly one domain payload",
+            latest.name
+        );
+    };
+    let [inner_ty] = inner.as_slice() else {
+        bail!(
+            "versioned error wrapper `{wrapper_name}`: latest variant `{}` must carry \
+             exactly one domain payload",
+            latest.name
+        );
+    };
+    let inner_path = rust_type_ref(inner_ty)?;
+    let TypeRef::Named { name, .. } = inner_ty else {
+        bail!("versioned error wrapper `{wrapper_name}`: domain payload must be a named enum");
+    };
+    let bare_name = version_prefixed_type(name).map_or(name.as_str(), |(_, base)| base);
+    // Wrappers over the `GenericError` struct carry the reason directly.
+    if bare_name == "GenericError" {
+        return Ok(format!("|reason| {inner_path} {{ reason }}"));
+    }
+    let domain_variants = api
+        .types
+        .iter()
+        .find_map(|ty| match &ty.kind {
+            TypeDefKind::Enum(variants)
+                if ty.name == *name && !variants.iter().all(is_version_variant) =>
+            {
+                Some(variants)
+            }
+            _ => None,
+        })
+        .with_context(|| format!("domain error enum `{name}` not extracted"))?;
+    let catch_all = domain_variants
+        .iter()
+        .find(|v| v.name == "Unknown")
+        .or_else(|| domain_variants.iter().find(|v| v.name == "Internal"))
+        .with_context(|| {
+            format!(
+                "domain error enum `{bare_name}` has no `Unknown`/`Internal` catch-all; \
+                 the flat wire error encoding requires one"
+            )
+        })?;
+    let variant = &catch_all.name;
+    match &catch_all.fields {
+        VariantFields::Unit => Ok(format!("|_reason| {inner_path}::{variant}")),
+        VariantFields::Named(fields)
+            if fields.len() == 1
+                && fields[0].name == "reason"
+                && matches!(&fields[0].type_ref, TypeRef::Primitive(p) if p == "str") =>
+        {
+            Ok(format!("|reason| {inner_path}::{variant} {{ reason }}"))
+        }
+        VariantFields::Unnamed(types)
+            if matches!(
+                types.as_slice(),
+                [TypeRef::Named { name, args }] if name == "GenericError" && args.is_empty()
+            ) =>
+        {
+            Ok(format!(
+                "|reason| {inner_path}::{variant}(truapi::v01::GenericError {{ reason }})"
+            ))
+        }
+        _ => bail!(
+            "domain error enum `{bare_name}`: catch-all variant `{variant}` has an \
+             unsupported payload shape for reason folding"
+        ),
+    }
 }
 
 fn versioned_wrapper_names(api: &ApiDefinition) -> BTreeSet<String> {

@@ -11,8 +11,8 @@
 //!   `HostFeatureSupportedResponse`.
 //! - A `local_storage_read_request` whose stub returns
 //!   `Err(HostLocalStorageReadError::Full)` produces a response whose
-//!   payload begins with `0x00` (V1), then `0x01` (Err), followed by the encoded
-//!   `HostLocalStorageReadError::Full`.
+//!   payload begins with `0x00` (V1), then `0x01` (Err), followed by the flat
+//!   encoded `HostLocalStorageReadError::Full` (no framework error tier).
 //!
 //! Both halves prove the wire layout stays in lockstep with the TS
 //! `S.indexedTaggedUnion({ V1: S.Result(ok, err) })` codec.
@@ -23,7 +23,7 @@ use parity_scale_codec::{Decode, Encode};
 
 use truapi::versioned::system::HostFeatureSupportedRequest;
 use truapi::versioned::{Versioned, account, payment, statement_store};
-use truapi::{CallError, v01};
+use truapi::v01;
 
 use truapi_server::core::TrUApiCore;
 use truapi_server::frame::{Payload, ProtocolMessage, request_ids, subscription_ids};
@@ -86,15 +86,9 @@ fn local_storage_read_err_response_uses_err_discriminant() {
     assert_eq!(response.request_id, "p:2");
     assert_eq!(response.payload.id, ids.response_id);
 
-    // Wire payload:
-    // [V1 disc=0x00][Err disc=0x01][CallError::Domain][V1 error][encoded error body].
+    // Wire payload: [V1 disc=0x00][Err disc=0x01][encoded flat error body].
     let mut expected = vec![0x00u8, 0x01u8];
-    CallError::Domain(
-        truapi::versioned::local_storage::HostLocalStorageReadError::V1(
-            v01::HostLocalStorageReadError::Full,
-        ),
-    )
-    .encode_to(&mut expected);
+    v01::HostLocalStorageReadError::Full.encode_to(&mut expected);
     assert_eq!(response.payload.value, expected);
     assert_eq!(response.payload.value.first(), Some(&0x00));
     assert_eq!(response.payload.value.get(1), Some(&0x01));
@@ -104,8 +98,11 @@ fn versioned_result_err_payload<E>(error: E) -> Vec<u8>
 where
     E: Clone + Encode + Versioned,
 {
-    let mut expected = vec![version_index(error.version()), 0x01u8];
-    CallError::Domain(error).encode_to(&mut expected);
+    // [version][Err][flat domain bytes]: the envelope's own version tag is
+    // hoisted in front of the result discriminant.
+    let encoded = error.encode();
+    let mut expected = vec![encoded[0], 0x01u8];
+    expected.extend_from_slice(&encoded[1..]);
     expected
 }
 
@@ -113,9 +110,8 @@ fn versioned_interrupt_err_payload<E>(error: E) -> Vec<u8>
 where
     E: Clone + Encode + Versioned,
 {
-    let mut expected = vec![version_index(error.version())];
-    CallError::Domain(error).encode_to(&mut expected);
-    expected
+    // Interrupts carry the versioned domain envelope directly.
+    error.encode()
 }
 
 fn assert_request_returns_domain_error<E>(
@@ -180,7 +176,7 @@ fn version_index(version: u8) -> u8 {
 }
 
 #[test]
-fn deferred_account_proof_returns_framework_unsupported() {
+fn deferred_account_proof_folds_unsupported_into_domain_catch_all() {
     let core = make_core();
     let request = account::HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
         product_account_id: v01::ProductAccountId {
@@ -208,7 +204,15 @@ fn deferred_account_proof_returns_framework_unsupported() {
     );
     assert_eq!(response.request_id, "p:account-proof");
     assert_eq!(response.payload.id, ids.response_id);
-    assert_eq!(response.payload.value, vec![0x00u8, 0x01u8, 0x02u8]);
+    // `CallError::Unsupported` folds into the domain catch-all on the wire.
+    assert_eq!(
+        response.payload.value,
+        versioned_result_err_payload(account::HostAccountCreateProofError::V1(
+            v01::HostAccountCreateProofError::Unknown {
+                reason: "unsupported".to_string(),
+            },
+        )),
+    );
 }
 
 #[test]
@@ -322,15 +326,16 @@ fn malformed_result_subscription_start_interrupts_with_malformed_frame() {
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].request_id, "p:malformed-sub");
     assert_eq!(sent[0].payload.id, ids.interrupt_id);
-    assert_eq!(sent[0].payload.value.first(), Some(&0x00));
 
-    let mut payload = &sent[0].payload.value[1..];
-    let error = CallError::<payment::HostPaymentBalanceSubscribeError>::decode(&mut payload)
+    let mut payload = &sent[0].payload.value[..];
+    let error = payment::HostPaymentBalanceSubscribeError::decode(&mut payload)
         .expect("decode malformed interrupt error");
     assert!(payload.is_empty());
     match error {
-        CallError::MalformedFrame { reason } => assert!(!reason.is_empty()),
-        other => panic!("expected MalformedFrame interrupt, got {other:?}"),
+        payment::HostPaymentBalanceSubscribeError::V1(
+            v01::HostPaymentBalanceSubscribeError::Unknown { reason },
+        ) => assert!(!reason.is_empty()),
+        other => panic!("expected domain catch-all interrupt, got {other:?}"),
     }
 }
 

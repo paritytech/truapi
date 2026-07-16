@@ -36,7 +36,6 @@ struct CodecContext {
 enum NameMode<'a> {
     #[default]
     Public,
-    PreserveQualified,
     Generated {
         aliases: &'a BTreeMap<String, String>,
     },
@@ -45,7 +44,6 @@ enum NameMode<'a> {
 fn resolve_named(name: &str, mode: NameMode<'_>) -> String {
     match mode {
         NameMode::Public => public_versioned_type_name(name),
-        NameMode::PreserveQualified => name.to_string(),
         NameMode::Generated { aliases } => aliases
             .get(name)
             .cloned()
@@ -58,7 +56,6 @@ fn resolve_named(name: &str, mode: NameMode<'_>) -> String {
 fn qualify_named(resolved: &str, mode: NameMode<'_>) -> String {
     match mode {
         NameMode::Public => format!("T.{resolved}"),
-        NameMode::PreserveQualified => format!("T.{resolved}"),
         NameMode::Generated { .. } => resolved.to_string(),
     }
 }
@@ -1326,46 +1323,16 @@ fn emit_response(
     })
 }
 
+/// Error payloads share the response emission: the wire carries the flat
+/// domain enum, with any `CallError` layer in the trait signature confined to
+/// the Rust host side.
 fn emit_error_response(
     ty: &TypeRef,
     wrappers: &HashMap<String, VersionedWrapper>,
     ctx: &CodecContext,
     wire_version: Option<u32>,
 ) -> Result<ResponseEmission> {
-    let Some(error_wrapper_ty) = call_error_inner(ty) else {
-        return emit_response(ty, wrappers, ctx, wire_version);
-    };
-
-    if let Some((wrapper_name, _wrapper)) = versioned_wrapper_for(error_wrapper_ty, wrappers) {
-        let version = wire_version.ok_or_else(|| {
-            anyhow::anyhow!("versioned error wrapper `{wrapper_name}` has no selected wire version")
-        })?;
-        let versioned_name = versioned_wrapper_ts_name(wrapper_name);
-        let inner_type_ts = format!("S.CallErrorValue<T.{versioned_name}>");
-        let inner_codec_expr = format!("S.CallError(T.{versioned_name})");
-        let wire_codec_expr = indexed_versioned_codec_expr([(version, inner_codec_expr.clone())])?;
-        return Ok(ResponseEmission {
-            inner_type_ts: inner_type_ts.clone(),
-            wire_type_ts: format!("{{ tag: \"V{version}\"; value: {inner_type_ts} }}"),
-            wire_codec_expr,
-            inner_codec_expr,
-        });
-    }
-
-    let inner_type_ts = format!(
-        "S.CallErrorValue<{}>",
-        ts_type_qualified_preserve(error_wrapper_ty)?
-    );
-    let inner_codec_expr = format!(
-        "S.CallError({})",
-        codec_expr_mode(error_wrapper_ty, true, ctx, NameMode::PreserveQualified)?
-    );
-    Ok(ResponseEmission {
-        inner_type_ts: inner_type_ts.clone(),
-        wire_type_ts: inner_type_ts,
-        wire_codec_expr: inner_codec_expr.clone(),
-        inner_codec_expr,
-    })
+    emit_response(call_error_inner(ty).unwrap_or(ty), wrappers, ctx, wire_version)
 }
 
 fn versioned_kind_codec_expr_mode(
@@ -2254,10 +2221,6 @@ fn ts_inner_option_with_named(ty: &TypeRef, qualified: bool, mode: NameMode<'_>)
 
 fn ts_type_qualified(ty: &TypeRef) -> Result<String> {
     ts_type_with_named(ty, true, NameMode::Public)
-}
-
-fn ts_type_qualified_preserve(ty: &TypeRef) -> Result<String> {
-    ts_type_with_named(ty, true, NameMode::PreserveQualified)
 }
 
 fn ts_field_name(name: &str, ty: &TypeRef) -> (String, bool) {

@@ -200,10 +200,30 @@ mod tests {
         }
     }
 
+    /// Domain payload enum backing a versioned test wrapper, carrying the
+    /// `Unknown { reason }` catch-all the error emission folds into.
+    fn domain_test_type(name: &str) -> TypeDef {
+        TypeDef {
+            name: format!("V01{name}"),
+            module_path: Vec::new(),
+            generic_params: Vec::new(),
+            kind: TypeDefKind::Enum(vec![VariantDef {
+                name: "Unknown".to_string(),
+                fields: VariantFields::Named(vec![FieldDef {
+                    name: "reason".to_string(),
+                    type_ref: TypeRef::Primitive("str".to_string()),
+                    docs: None,
+                }]),
+                docs: None,
+            }]),
+            docs: None,
+        }
+    }
+
     fn versioned_request_test_types() -> Vec<TypeDef> {
         ["ReqWrapper", "RespWrapper", "ErrWrapper"]
             .into_iter()
-            .map(versioned_test_type)
+            .flat_map(|name| [versioned_test_type(name), domain_test_type(name)])
             .collect()
     }
 
@@ -672,10 +692,7 @@ mod tests {
                 docs: None,
             }],
             public_trait_order: vec!["Permissions".to_string()],
-            types: vec![
-                versioned_test_type("RespWrapper"),
-                versioned_test_type("ErrWrapper"),
-            ],
+            types: versioned_request_test_types(),
         };
 
         let err = generate_dispatcher(&api).expect_err("missing target version must error");

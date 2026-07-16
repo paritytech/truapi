@@ -84,6 +84,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::account::HostAccountGetError as Versioned>::LATEST,
+                                    |reason| truapi::v01::HostAccountGetError::Unknown { reason },
                                 ));
                             }
                         };
@@ -93,7 +94,11 @@ where
                         match host.get_account(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostAccountGetError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -120,6 +125,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::account::HostAccountGetAliasError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostAccountGetError::Unknown { reason },
                         ));
                             }
                         };
@@ -129,7 +135,11 @@ where
                         match host.get_account_alias(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostAccountGetError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -156,6 +166,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::account::HostAccountCreateProofError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostAccountCreateProofError::Unknown { reason },
                         ));
                             }
                         };
@@ -165,7 +176,13 @@ where
                         match host.create_account_proof(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostAccountCreateProofError::Unknown {
+                                        reason,
+                                    },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -192,6 +209,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::account::HostGetLegacyAccountsError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostAccountGetError::Unknown { reason },
                         ));
                             }
                         };
@@ -201,7 +219,11 @@ where
                         match host.get_legacy_accounts(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostAccountGetError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -228,6 +250,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::account::HostGetUserIdError as Versioned>::LATEST,
+                                    |reason| truapi::v01::HostGetUserIdError::Unknown { reason },
                                 ));
                             }
                         };
@@ -237,7 +260,11 @@ where
                         match host.get_user_id(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostGetUserIdError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -264,6 +291,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::account::HostRequestLoginError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostRequestLoginError::Unknown { reason },
                         ));
                             }
                         };
@@ -273,7 +301,11 @@ where
                         match host.request_login(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostRequestLoginError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -328,6 +360,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainHeadHeaderError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -337,7 +370,11 @@ where
                         match host.get_head_header(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -364,6 +401,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainHeadBodyError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -373,7 +411,11 @@ where
                         match host.get_head_body(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -400,6 +442,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainHeadStorageError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -409,7 +452,11 @@ where
                         match host.get_head_storage(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -436,6 +483,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainHeadCallError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -445,7 +493,11 @@ where
                         match host.call_head(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -472,6 +524,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainHeadUnpinError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -481,7 +534,11 @@ where
                         match host.unpin_head(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -508,6 +565,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainHeadContinueError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -517,7 +575,11 @@ where
                         match host.continue_head(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -538,6 +600,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainHeadStopOperationError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                     }
                 };
@@ -546,7 +609,7 @@ where
                 let response: versioned::chain::RemoteChainHeadStopOperationResponse = match host.stop_head_operation(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::GenericError { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -566,6 +629,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainSpecGenesisHashError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                     }
                 };
@@ -574,7 +638,7 @@ where
                 let response: versioned::chain::RemoteChainSpecGenesisHashResponse = match host.get_spec_genesis_hash(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::GenericError { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -600,6 +664,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainSpecChainNameError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -609,7 +674,11 @@ where
                         match host.get_spec_chain_name(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -636,6 +705,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainSpecPropertiesError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -645,7 +715,11 @@ where
                         match host.get_spec_properties(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -666,6 +740,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainTransactionBroadcastError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                     }
                 };
@@ -674,7 +749,7 @@ where
                 let response: versioned::chain::RemoteChainTransactionBroadcastResponse = match host.broadcast_transaction(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::GenericError { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -694,6 +769,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chain::RemoteChainTransactionStopError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                     }
                 };
@@ -702,7 +778,7 @@ where
                 let response: versioned::chain::RemoteChainTransactionStopResponse = match host.stop_transaction(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::GenericError { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -734,18 +810,27 @@ where
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::chat::HostChatCreateRoomError as Versioned>::LATEST,
+                                    |reason| truapi::v01::HostChatCreateRoomError::Unknown {
+                                        reason,
+                                    },
                                 ));
                             }
                         };
                     let target_version = request.version();
                     let cx = CallContext::with_request_id(request_id.clone());
-                    let response: versioned::chat::HostChatCreateRoomResponse =
-                        match host.create_room(&cx, request).await {
-                            Ok(value) => value,
-                            Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
-                            }
-                        };
+                    let response: versioned::chat::HostChatCreateRoomResponse = match host
+                        .create_room(&cx, request)
+                        .await
+                    {
+                        Ok(value) => value,
+                        Err(err) => {
+                            return Ok(encode_versioned_err_payload(
+                                err,
+                                target_version,
+                                |reason| truapi::v01::HostChatCreateRoomError::Unknown { reason },
+                            ));
+                        }
+                    };
                     Ok(encode_versioned_ok_payload(response))
                 })
             },
@@ -770,18 +855,25 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chat::HostChatRegisterBotError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostChatRegisterBotError::Unknown { reason },
                         ));
                             }
                         };
                     let target_version = request.version();
                     let cx = CallContext::with_request_id(request_id.clone());
-                    let response: versioned::chat::HostChatRegisterBotResponse =
-                        match host.register_bot(&cx, request).await {
-                            Ok(value) => value,
-                            Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
-                            }
-                        };
+                    let response: versioned::chat::HostChatRegisterBotResponse = match host
+                        .register_bot(&cx, request)
+                        .await
+                    {
+                        Ok(value) => value,
+                        Err(err) => {
+                            return Ok(encode_versioned_err_payload(
+                                err,
+                                target_version,
+                                |reason| truapi::v01::HostChatRegisterBotError::Unknown { reason },
+                            ));
+                        }
+                    };
                     Ok(encode_versioned_ok_payload(response))
                 })
             },
@@ -824,18 +916,25 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::chat::HostChatPostMessageError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostChatPostMessageError::Unknown { reason },
                         ));
                             }
                         };
                     let target_version = request.version();
                     let cx = CallContext::with_request_id(request_id.clone());
-                    let response: versioned::chat::HostChatPostMessageResponse =
-                        match host.post_message(&cx, request).await {
-                            Ok(value) => value,
-                            Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
-                            }
-                        };
+                    let response: versioned::chat::HostChatPostMessageResponse = match host
+                        .post_message(&cx, request)
+                        .await
+                    {
+                        Ok(value) => value,
+                        Err(err) => {
+                            return Ok(encode_versioned_err_payload(
+                                err,
+                                target_version,
+                                |reason| truapi::v01::HostChatPostMessageError::Unknown { reason },
+                            ));
+                        }
+                    };
                     Ok(encode_versioned_ok_payload(response))
                 })
             },
@@ -900,6 +999,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentCreatePurseError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -908,7 +1008,7 @@ where
                 let response: versioned::coin_payment::HostCoinPaymentCreatePurseResponse = match host.create_purse(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -928,6 +1028,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentQueryPurseError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -936,7 +1037,7 @@ where
                 let response: versioned::coin_payment::HostCoinPaymentQueryPurseResponse = match host.query_purse(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -958,6 +1059,7 @@ where
                         return Err(encode_versioned_interrupt_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentRebalancePurseError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -966,7 +1068,7 @@ where
                 let stream = match host.rebalance_purse(&cx, request).await {
                     Ok(sub) => sub,
                     Err(err) => {
-                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                        return Err(encode_versioned_interrupt_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentRebalancePurseItem, _>(stream))
@@ -988,6 +1090,7 @@ where
                         return Err(encode_versioned_interrupt_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentDeletePurseError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -996,7 +1099,7 @@ where
                 let stream = match host.delete_purse(&cx, request).await {
                     Ok(sub) => sub,
                     Err(err) => {
-                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                        return Err(encode_versioned_interrupt_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentDeletePurseItem, _>(stream))
@@ -1016,6 +1119,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentCreateReceivableError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -1024,7 +1128,7 @@ where
                 let response: versioned::coin_payment::HostCoinPaymentCreateReceivableResponse = match host.create_receivable(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1044,6 +1148,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentCreateChequeError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -1052,7 +1157,7 @@ where
                 let response: versioned::coin_payment::HostCoinPaymentCreateChequeResponse = match host.create_cheque(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1074,6 +1179,7 @@ where
                         return Err(encode_versioned_interrupt_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentDepositError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -1082,7 +1188,7 @@ where
                 let stream = match host.deposit(&cx, request).await {
                     Ok(sub) => sub,
                     Err(err) => {
-                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                        return Err(encode_versioned_interrupt_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentDepositItem, _>(stream))
@@ -1104,6 +1210,7 @@ where
                         return Err(encode_versioned_interrupt_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentRefundError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -1112,7 +1219,7 @@ where
                 let stream = match host.refund(&cx, request).await {
                     Ok(sub) => sub,
                     Err(err) => {
-                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                        return Err(encode_versioned_interrupt_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentRefundItem, _>(stream))
@@ -1134,6 +1241,7 @@ where
                         return Err(encode_versioned_interrupt_payload(
                             error,
                             <versioned::coin_payment::HostCoinPaymentListenForError as Versioned>::LATEST,
+                            |_reason| truapi::v01::CoinPaymentError::Internal,
                         ));
                     }
                 };
@@ -1142,7 +1250,7 @@ where
                 let stream = match host.listen_for_payment(&cx, request).await {
                     Ok(sub) => sub,
                     Err(err) => {
-                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                        return Err(encode_versioned_interrupt_payload(err, target_version, |_reason| truapi::v01::CoinPaymentError::Internal));
                     }
                 };
                 Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentListenForItem, _>(stream))
@@ -1174,18 +1282,25 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::entropy::HostDeriveEntropyError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostDeriveEntropyError::Unknown { reason },
                         ));
                             }
                         };
                     let target_version = request.version();
                     let cx = CallContext::with_request_id(request_id.clone());
-                    let response: versioned::entropy::HostDeriveEntropyResponse =
-                        match host.derive(&cx, request).await {
-                            Ok(value) => value,
-                            Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
-                            }
-                        };
+                    let response: versioned::entropy::HostDeriveEntropyResponse = match host
+                        .derive(&cx, request)
+                        .await
+                    {
+                        Ok(value) => value,
+                        Err(err) => {
+                            return Ok(encode_versioned_err_payload(
+                                err,
+                                target_version,
+                                |reason| truapi::v01::HostDeriveEntropyError::Unknown { reason },
+                            ));
+                        }
+                    };
                     Ok(encode_versioned_ok_payload(response))
                 })
             },
@@ -1210,6 +1325,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::local_storage::HostLocalStorageReadError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostLocalStorageReadError::Unknown { reason },
                         ));
                     }
                 };
@@ -1218,7 +1334,7 @@ where
                 let response: versioned::local_storage::HostLocalStorageReadResponse = match host.read(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::HostLocalStorageReadError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1238,6 +1354,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::local_storage::HostLocalStorageWriteError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostLocalStorageReadError::Unknown { reason },
                         ));
                     }
                 };
@@ -1246,7 +1363,7 @@ where
                 let response: versioned::local_storage::HostLocalStorageWriteResponse = match host.write(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::HostLocalStorageReadError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1266,6 +1383,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::local_storage::HostLocalStorageClearError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostLocalStorageReadError::Unknown { reason },
                         ));
                     }
                 };
@@ -1274,7 +1392,7 @@ where
                 let response: versioned::local_storage::HostLocalStorageClearResponse = match host.clear(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::HostLocalStorageReadError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1300,6 +1418,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::notifications::HostPushNotificationError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostPushNotificationError::Unknown { reason },
                         ));
                     }
                 };
@@ -1308,7 +1427,7 @@ where
                 let response: versioned::notifications::HostPushNotificationResponse = match host.send_push_notification(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::HostPushNotificationError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1328,6 +1447,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::notifications::HostPushNotificationCancelError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                     }
                 };
@@ -1336,7 +1456,7 @@ where
                 let response: versioned::notifications::HostPushNotificationCancelResponse = match host.cancel_push_notification(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::GenericError { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1364,6 +1484,7 @@ where
                         return Err(encode_versioned_interrupt_payload(
                             error,
                             <versioned::payment::HostPaymentBalanceSubscribeError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostPaymentBalanceSubscribeError::Unknown { reason },
                         ));
                     }
                 };
@@ -1372,7 +1493,7 @@ where
                 let stream = match host.balance_subscribe(&cx, request).await {
                     Ok(sub) => sub,
                     Err(err) => {
-                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                        return Err(encode_versioned_interrupt_payload(err, target_version, |reason| truapi::v01::HostPaymentBalanceSubscribeError::Unknown { reason }));
                     }
                 };
                 Ok(subscription_stream::<versioned::payment::HostPaymentBalanceSubscribeItem, _>(stream))
@@ -1397,6 +1518,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::payment::HostPaymentError as Versioned>::LATEST,
+                                    |reason| truapi::v01::HostPaymentError::Unknown { reason },
                                 ));
                             }
                         };
@@ -1406,7 +1528,11 @@ where
                         match host.request(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostPaymentError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -1429,6 +1555,7 @@ where
                         return Err(encode_versioned_interrupt_payload(
                             error,
                             <versioned::payment::HostPaymentStatusSubscribeError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostPaymentStatusSubscribeError::Unknown { reason },
                         ));
                     }
                 };
@@ -1437,7 +1564,7 @@ where
                 let stream = match host.status_subscribe(&cx, request).await {
                     Ok(sub) => sub,
                     Err(err) => {
-                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                        return Err(encode_versioned_interrupt_payload(err, target_version, |reason| truapi::v01::HostPaymentStatusSubscribeError::Unknown { reason }));
                     }
                 };
                 Ok(subscription_stream::<versioned::payment::HostPaymentStatusSubscribeItem, _>(stream))
@@ -1463,6 +1590,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::payment::HostPaymentTopUpError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostPaymentTopUpError::Unknown { reason },
                         ));
                             }
                         };
@@ -1472,7 +1600,11 @@ where
                         match host.top_up(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostPaymentTopUpError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -1499,6 +1631,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::permissions::HostDevicePermissionError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                     }
                 };
@@ -1507,7 +1640,7 @@ where
                 let response: versioned::permissions::HostDevicePermissionResponse = match host.request_device_permission(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::GenericError { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1533,6 +1666,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::permissions::RemotePermissionError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -1542,7 +1676,11 @@ where
                         match host.request_remote_permission(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -1597,6 +1735,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::preimage::RemotePreimageSubmitError as Versioned>::LATEST,
+                            |reason| truapi::v01::PreimageSubmitError::Unknown { reason },
                         ));
                             }
                         };
@@ -1606,7 +1745,11 @@ where
                         match host.submit(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::PreimageSubmitError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -1633,6 +1776,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::resource_allocation::HostRequestResourceAllocationError as Versioned>::LATEST,
+                            |reason| truapi::v01::ResourceAllocationError::Unknown { reason },
                         ));
                     }
                 };
@@ -1641,7 +1785,7 @@ where
                 let response: versioned::resource_allocation::HostRequestResourceAllocationResponse = match host.request(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::ResourceAllocationError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1673,6 +1817,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::signing::HostCreateTransactionError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostCreateTransactionError::Unknown { reason },
                         ));
                             }
                         };
@@ -1682,7 +1827,13 @@ where
                         match host.create_transaction(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostCreateTransactionError::Unknown {
+                                        reason,
+                                    },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -1703,6 +1854,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::signing::HostCreateTransactionWithLegacyAccountError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostCreateTransactionError::Unknown { reason },
                         ));
                     }
                 };
@@ -1711,7 +1863,7 @@ where
                 let response: versioned::signing::HostCreateTransactionWithLegacyAccountResponse = match host.create_transaction_with_legacy_account(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::HostCreateTransactionError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1731,6 +1883,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::signing::HostSignRawWithLegacyAccountError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostSignPayloadError::Unknown { reason },
                         ));
                     }
                 };
@@ -1739,7 +1892,7 @@ where
                 let response: versioned::signing::HostSignRawWithLegacyAccountResponse = match host.sign_raw_with_legacy_account(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::HostSignPayloadError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1759,6 +1912,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::signing::HostSignPayloadWithLegacyAccountError as Versioned>::LATEST,
+                            |reason| truapi::v01::HostSignPayloadError::Unknown { reason },
                         ));
                     }
                 };
@@ -1767,7 +1921,7 @@ where
                 let response: versioned::signing::HostSignPayloadWithLegacyAccountResponse = match host.sign_payload_with_legacy_account(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::HostSignPayloadError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1792,6 +1946,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::signing::HostSignRawError as Versioned>::LATEST,
+                                    |reason| truapi::v01::HostSignPayloadError::Unknown { reason },
                                 ));
                             }
                         };
@@ -1801,7 +1956,11 @@ where
                         match host.sign_raw(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostSignPayloadError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -1828,6 +1987,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::signing::HostSignPayloadError as Versioned>::LATEST,
+                                    |reason| truapi::v01::HostSignPayloadError::Unknown { reason },
                                 ));
                             }
                         };
@@ -1837,7 +1997,11 @@ where
                         match host.sign_payload(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostSignPayloadError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -1866,6 +2030,7 @@ where
                         return Err(encode_versioned_interrupt_payload(
                             error,
                             <versioned::statement_store::RemoteStatementStoreSubscribeError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                     }
                 };
@@ -1874,7 +2039,7 @@ where
                 let stream = match host.subscribe(&cx, request).await {
                     Ok(sub) => sub,
                     Err(err) => {
-                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                        return Err(encode_versioned_interrupt_payload(err, target_version, |reason| truapi::v01::GenericError { reason }));
                     }
                 };
                 Ok(subscription_stream::<versioned::statement_store::RemoteStatementStoreSubscribeItem, _>(stream))
@@ -1894,6 +2059,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::statement_store::RemoteStatementStoreCreateProofError as Versioned>::LATEST,
+                            |reason| truapi::v01::RemoteStatementStoreCreateProofError::Unknown { reason },
                         ));
                     }
                 };
@@ -1902,7 +2068,7 @@ where
                 let response: versioned::statement_store::RemoteStatementStoreCreateProofResponse = match host.create_proof(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::RemoteStatementStoreCreateProofError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1922,6 +2088,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::statement_store::RemoteStatementStoreCreateProofAuthorizedError as Versioned>::LATEST,
+                            |reason| truapi::v01::RemoteStatementStoreCreateProofError::Unknown { reason },
                         ));
                     }
                 };
@@ -1930,7 +2097,7 @@ where
                 let response: versioned::statement_store::RemoteStatementStoreCreateProofAuthorizedResponse = match host.create_proof_authorized(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
-                        return Ok(encode_versioned_err_payload(err, target_version));
+                        return Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::RemoteStatementStoreCreateProofError::Unknown { reason }));
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
@@ -1950,6 +2117,7 @@ where
                         return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::statement_store::RemoteStatementStoreSubmitError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                     }
                 };
@@ -1958,7 +2126,7 @@ where
                 match host.submit(&cx, request).await {
                     Ok(()) => Ok(encode_versioned_unit_ok_payload(target_version)),
                     Err(err) => {
-                        Ok(encode_versioned_err_payload(err, target_version))
+                        Ok(encode_versioned_err_payload(err, target_version, |reason| truapi::v01::GenericError { reason }))
                     }
                 }
             })
@@ -1989,6 +2157,11 @@ where
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::system::HostHandshakeError as Versioned>::LATEST,
+                                    |reason| {
+                                        truapi::v01::HostHandshakeError::Unknown(
+                                            truapi::v01::GenericError { reason },
+                                        )
+                                    },
                                 ));
                             }
                         };
@@ -1998,7 +2171,15 @@ where
                         match host.handshake(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| {
+                                        truapi::v01::HostHandshakeError::Unknown(
+                                            truapi::v01::GenericError { reason },
+                                        )
+                                    },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -2025,6 +2206,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                             error,
                             <versioned::system::HostFeatureSupportedError as Versioned>::LATEST,
+                            |reason| truapi::v01::GenericError { reason },
                         ));
                             }
                         };
@@ -2034,7 +2216,11 @@ where
                         match host.feature_supported(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::GenericError { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))
@@ -2061,6 +2247,7 @@ where
                                 return Ok(encode_versioned_err_payload(
                                     error,
                                     <versioned::system::HostNavigateToError as Versioned>::LATEST,
+                                    |reason| truapi::v01::HostNavigateToError::Unknown { reason },
                                 ));
                             }
                         };
@@ -2070,7 +2257,11 @@ where
                         match host.navigate_to(&cx, request).await {
                             Ok(value) => value,
                             Err(err) => {
-                                return Ok(encode_versioned_err_payload(err, target_version));
+                                return Ok(encode_versioned_err_payload(
+                                    err,
+                                    target_version,
+                                    |reason| truapi::v01::HostNavigateToError::Unknown { reason },
+                                ));
                             }
                         };
                     Ok(encode_versioned_ok_payload(response))

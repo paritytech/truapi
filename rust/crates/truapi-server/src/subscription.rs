@@ -156,7 +156,7 @@ impl SubscriptionManager {
             generation,
         } = token;
         let rid = request_id.clone();
-        let stream_transport = transport.clone();
+        let stream_transport = transport;
 
         // Cancellation channel.
         let (cancel_tx, cancel_rx) = futures::channel::oneshot::channel::<()>();
@@ -191,11 +191,11 @@ impl SubscriptionManager {
         let active = self.active.clone();
 
         let future: BoxFuture<'static, ()> = Box::pin(async move {
-            let completed = {
+            {
                 let mut cancel_rx = cancel_rx;
                 loop {
                     match select(cancel_rx, stream.next()).await {
-                        Either::Left((_cancelled, _next)) => break false,
+                        Either::Left((_cancelled, _next)) => break,
                         Either::Right((item, next_cancel_rx)) => {
                             cancel_rx = next_cancel_rx;
                             match item {
@@ -216,37 +216,27 @@ impl SubscriptionManager {
                                             value,
                                         },
                                     });
-                                    break false;
+                                    break;
                                 }
-                                None => break true,
+                                // Natural end of stream is not signalled on the
+                                // wire; only an explicit interrupt carries a
+                                // terminal frame.
+                                None => break,
                             }
                         }
                     }
                 }
-            };
+            }
 
             // Only remove the slot if it still holds THIS generation; a
             // superseding reservation owns its own cleanup.
-            let removed = {
-                let mut active = active.lock().unwrap();
-                let owned = matches!(
-                    active.get(&request_id),
-                    Some(Slot::Live { generation: g, .. }) if *g == generation
-                );
-                if owned {
-                    active.remove(&request_id);
-                }
-                owned
-            };
-
-            if completed && removed {
-                transport.send(ProtocolMessage {
-                    request_id,
-                    payload: Payload {
-                        id: interrupt_id,
-                        value: Vec::new(),
-                    },
-                });
+            let mut active = active.lock().unwrap();
+            let owned = matches!(
+                active.get(&request_id),
+                Some(Slot::Live { generation: g, .. }) if *g == generation
+            );
+            if owned {
+                active.remove(&request_id);
             }
         });
 
@@ -408,23 +398,25 @@ mod tests {
     }
 
     /// A stream that yields 2 items then ends naturally must produce 2
-    /// `_receive` frames followed by one `_interrupt` frame.
+    /// `_receive` frames and nothing else: natural end of stream is not
+    /// signalled on the wire.
     #[test]
-    fn register_completion_emits_interrupt() {
+    fn register_completion_emits_no_terminal_frame() {
         let transport_typed = Arc::new(RecordingTransport::new());
         let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
         let manager = SubscriptionManager::new(thread_per_subscription_spawner());
         let items = dummy_stream(vec![vec![0xaa], vec![0xbb]]);
         manager.register("p:1".to_string(), 99, 98, items, transport_dyn);
-        let observed = transport_typed.wait_for(3, std::time::Duration::from_secs(2));
-        assert_eq!(observed, 3, "expected 2 receive frames + 1 interrupt");
+        let observed = transport_typed.wait_for(2, std::time::Duration::from_secs(2));
+        assert_eq!(observed, 2, "expected exactly 2 receive frames");
+        // Give a stray interrupt a chance to arrive before asserting.
+        std::thread::sleep(std::time::Duration::from_millis(50));
         let frames = transport_typed.sent();
+        assert_eq!(frames.len(), 2, "natural completion must not emit a frame");
         assert_eq!(frames[0].payload.id, 99);
         assert_eq!(frames[0].payload.value, vec![0xaa]);
         assert_eq!(frames[1].payload.id, 99);
         assert_eq!(frames[1].payload.value, vec![0xbb]);
-        assert_eq!(frames[2].payload.id, 98);
-        assert_eq!(frames[2].payload.value, Vec::<u8>::new());
     }
 
     /// Calling `handle_stop` twice on the same request id must be a
@@ -513,23 +505,19 @@ mod tests {
         let items = dummy_stream(vec![vec![0xaa]]);
         manager.register("p:1".to_string(), 99, 98, items, transport_dyn);
 
-        // Exactly the second stream's frames appear: one receive + one
-        // completion interrupt. The first (pending) stream contributes none.
-        let observed = transport_typed.wait_for(2, std::time::Duration::from_secs(2));
-        assert_eq!(
-            observed, 2,
-            "expected the second stream's receive + interrupt only"
-        );
+        // Exactly the second stream's frame appears; the first (pending)
+        // stream contributes none, and natural completion emits nothing.
+        let observed = transport_typed.wait_for(1, std::time::Duration::from_secs(2));
+        assert_eq!(observed, 1, "expected the second stream's receive only");
         let frames = transport_typed.sent();
         assert_eq!(frames[0].payload.id, 99);
         assert_eq!(frames[0].payload.value, vec![0xaa]);
-        assert_eq!(frames[1].payload.id, 98);
 
         manager.handle_stop("p:1");
         std::thread::sleep(std::time::Duration::from_millis(50));
         assert_eq!(
             transport_typed.sent().len(),
-            2,
+            1,
             "no leaked frames from the superseded stream"
         );
     }

@@ -2,7 +2,7 @@ import type { Result } from "neverthrow";
 import { describe, expect, it } from "bun:test";
 
 import { createTransport } from "./client.js";
-import { CallError, indexedTaggedUnion, Result as ScaleResult, str, _void } from "./scale.js";
+import { indexedTaggedUnion, Result as ScaleResult, str, _void } from "./scale.js";
 import type { Codec } from "./scale.js";
 import { createClient, SubscriptionError } from "./generated/client.js";
 import * as T from "./generated/types.js";
@@ -60,7 +60,7 @@ function providerFixture() {
 
 /** Encode a V1 host-handshake response result payload. */
 function handshakeResponsePayload(value: { success: true; value: undefined }): Uint8Array {
-    return versionedV1(ScaleResult(_void, CallError(T.VersionedHostHandshakeError))).enc({
+    return versionedV1(ScaleResult(_void, T.HostHandshakeError)).enc({
         tag: "V1",
         value,
     });
@@ -74,11 +74,11 @@ function accountGetResponsePayload(
           }
         | {
               success: false;
-              value: { tag: "Domain"; value: T.VersionedHostAccountGetError };
+              value: T.HostAccountGetError;
           },
 ): Uint8Array {
     return versionedV1(
-        ScaleResult(T.HostAccountGetResponse, CallError(T.VersionedHostAccountGetError)),
+        ScaleResult(T.HostAccountGetResponse, T.HostAccountGetError),
     ).enc({ tag: "V1", value });
 }
 
@@ -158,7 +158,7 @@ describe("generated client transport", () => {
         const response = client.account.getAccount({
             productAccountId: { dotNsIdentifier: "foo", derivationIndex: 0 },
         });
-        const reason = { tag: "V1", value: { tag: "NotConnected", value: undefined } } as const;
+        const reason = { tag: "NotConnected", value: undefined } as const;
         const frame = unwrap(
             encodeWireMessage({
                 requestId: "p:1",
@@ -166,7 +166,7 @@ describe("generated client transport", () => {
                     id: W.ACCOUNT_GET_ACCOUNT.response,
                     value: accountGetResponsePayload({
                         success: false,
-                        value: { tag: "Domain", value: reason },
+                        value: reason,
                     }),
                 },
             }),
@@ -176,7 +176,7 @@ describe("generated client transport", () => {
 
         const result = await response;
         expect(result.isErr()).toBe(true);
-        expect(result._unsafeUnwrapErr()).toEqual({ tag: "Domain", value: reason });
+        expect(result._unsafeUnwrapErr()).toEqual(reason);
     });
 
     it("auto-responds to an inbound handshake with the versioned-result shape", () => {
@@ -275,18 +275,14 @@ describe("generated client transport", () => {
         });
 
         const reason = { tag: "PermissionDenied", value: undefined } as const;
-        const callError = {
-            tag: "Domain",
-            value: { tag: "V1", value: reason },
-        } as const;
         const frame = unwrap(
             encodeWireMessage({
                 requestId: sub.subscriptionId,
                 payload: {
                     id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
-                    value: versionedV1(CallError(T.VersionedHostPaymentBalanceSubscribeError)).enc({
+                    value: T.VersionedHostPaymentBalanceSubscribeError.enc({
                         tag: "V1",
-                        value: callError,
+                        value: reason,
                     }),
                 },
             }),
@@ -297,7 +293,7 @@ describe("generated client transport", () => {
         expect(completions).toEqual([]);
         expect(errors).toHaveLength(1);
         expect(errors[0]).toBeInstanceOf(SubscriptionError);
-        expect((errors[0] as SubscriptionError).reason).toEqual(callError);
+        expect((errors[0] as SubscriptionError).reason).toEqual(reason);
         expect(fixture.sent).toHaveLength(1);
     });
 
@@ -312,18 +308,15 @@ describe("generated client transport", () => {
             .subscribe({ error: (error) => errors.push(error) });
 
         const reason = "Denied";
-        const callError = {
-            tag: "Domain",
-            value: { tag: "V1", value: reason },
-        } as const;
         const frame = unwrap(
             encodeWireMessage({
                 requestId: sub.subscriptionId,
                 payload: {
                     id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
-                    value: versionedV1(
-                        CallError(T.VersionedHostCoinPaymentRebalancePurseError),
-                    ).enc({ tag: "V1", value: callError }),
+                    value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
+                        tag: "V1",
+                        value: reason,
+                    }),
                 },
             }),
             "encode typed coin payment interrupt",
@@ -332,7 +325,7 @@ describe("generated client transport", () => {
 
         expect(errors).toHaveLength(1);
         expect(errors[0]).toBeInstanceOf(SubscriptionError);
-        expect((errors[0] as SubscriptionError).reason).toEqual(callError);
+        expect((errors[0] as SubscriptionError).reason).toEqual(reason);
     });
 
     it("treats a malformed receive payload as terminal and sends _stop", () => {

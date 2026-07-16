@@ -16,6 +16,8 @@
 //! reconstruct string action tags on every frame.
 
 use parity_scale_codec::{Decode, Encode, Error as CodecError, Input, Output};
+use truapi::CallError;
+use truapi::versioned::{FromLatest, Versioned};
 
 use crate::generated::wire_table::{RequestFrameIds, SubscriptionFrameIds, WIRE_TABLE, WireKind};
 
@@ -42,14 +44,21 @@ pub fn encode_versioned_unit_ok_payload(version: u8) -> Vec<u8> {
     vec![version_index(version), 0]
 }
 
-/// Encode `Versioned<Result<_, Err>>` from an ordinary error value.
-pub fn encode_versioned_err_payload<T: Encode>(value: T, version: u8) -> Vec<u8> {
-    let encoded = value.encode();
-    let mut out = Vec::with_capacity(encoded.len() + 2);
-    out.push(version_index(version));
-    out.push(1);
-    out.extend_from_slice(&encoded);
-    out
+/// Encode `Versioned<Result<_, Err>>` from a handler error.
+///
+/// The wire carries the flat domain enum: `[version][Err][domain bytes]`.
+/// Framework-level [`CallError`] variants have no slot in that shape, so they
+/// fold into the method's domain catch-all via `fallback` (reason preserved
+/// where the variant carries one).
+pub fn encode_versioned_err_payload<E>(
+    error: CallError<E>,
+    target_version: u8,
+    fallback: impl FnOnce(String) -> E::Latest,
+) -> Vec<u8>
+where
+    E: Versioned + FromLatest + Encode,
+{
+    encode_versioned_result_payload(flatten_call_error(error, target_version, fallback), 1)
 }
 
 /// Encode `Result<(), _>` for unversioned methods whose success type is unit.
@@ -62,13 +71,38 @@ pub fn encode_raw_err_payload<T: Encode>(value: T) -> Vec<u8> {
     Err::<(), T>(value).encode()
 }
 
-/// Encode a versioned subscription interrupt payload from an ordinary error.
-pub fn encode_versioned_interrupt_payload<T: Encode>(value: T, version: u8) -> Vec<u8> {
-    let encoded = value.encode();
-    let mut out = Vec::with_capacity(encoded.len() + 1);
-    out.push(version_index(version));
-    out.extend_from_slice(&encoded);
-    out
+/// Encode a versioned subscription interrupt payload from a handler error.
+///
+/// The wire carries the domain envelope directly: `[version][domain bytes]`.
+/// Framework-level [`CallError`] variants fold into the method's domain
+/// catch-all via `fallback`, as on the request error path.
+pub fn encode_versioned_interrupt_payload<E>(
+    error: CallError<E>,
+    target_version: u8,
+    fallback: impl FnOnce(String) -> E::Latest,
+) -> Vec<u8>
+where
+    E: Versioned + FromLatest + Encode,
+{
+    flatten_call_error(error, target_version, fallback).encode()
+}
+
+/// Resolve a handler error to the domain envelope that goes on the wire.
+fn flatten_call_error<E>(
+    error: CallError<E>,
+    target_version: u8,
+    fallback: impl FnOnce(String) -> E::Latest,
+) -> E
+where
+    E: Versioned + FromLatest,
+{
+    let reason = match error {
+        CallError::Domain(envelope) => return envelope,
+        CallError::Denied => "denied".to_string(),
+        CallError::Unsupported => "unsupported".to_string(),
+        CallError::MalformedFrame { reason } | CallError::HostFailure { reason } => reason,
+    };
+    E::from_latest(fallback(reason), target_version)
 }
 
 impl Encode for ProtocolMessage {
@@ -395,18 +429,82 @@ mod tests {
         );
     }
 
+    /// Domain errors encode flat: `[version][Err][domain bytes]`, with no
+    /// framework tier between the result index and the domain enum.
     #[test]
-    fn encode_versioned_err_payload_wraps_error_values() {
+    fn encode_versioned_err_payload_encodes_flat_domain_errors() {
+        let error: truapi::CallError<truapi::versioned::payment::HostPaymentTopUpError> =
+            truapi::CallError::Domain(truapi::versioned::payment::HostPaymentTopUpError::V1(
+                truapi::v01::HostPaymentTopUpError::PartialPayment { credited: 5u128 },
+            ));
         let mut expected = vec![0u8, 1u8];
-        9u32.encode_to(&mut expected);
-        assert_eq!(encode_versioned_err_payload(9u32, 1), expected);
+        truapi::v01::HostPaymentTopUpError::PartialPayment { credited: 5u128 }
+            .encode_to(&mut expected);
+        assert_eq!(
+            encode_versioned_err_payload(error, 1, |reason| {
+                truapi::v01::HostPaymentTopUpError::Unknown { reason }
+            }),
+            expected
+        );
     }
 
+    /// Framework variants fold into the domain catch-all so the wire never
+    /// carries a `CallError` discriminant.
     #[test]
-    fn encode_versioned_interrupt_payload_wraps_error_values() {
-        let mut expected = vec![1u8];
-        9u32.encode_to(&mut expected);
-        assert_eq!(encode_versioned_interrupt_payload(9u32, 2), expected);
+    fn encode_versioned_err_payload_folds_framework_errors_into_catch_all() {
+        let error: truapi::CallError<truapi::versioned::payment::HostPaymentTopUpError> =
+            truapi::CallError::Denied;
+        let mut expected = vec![0u8, 1u8];
+        truapi::v01::HostPaymentTopUpError::Unknown {
+            reason: "denied".into(),
+        }
+        .encode_to(&mut expected);
+        assert_eq!(
+            encode_versioned_err_payload(error, 1, |reason| {
+                truapi::v01::HostPaymentTopUpError::Unknown { reason }
+            }),
+            expected
+        );
+    }
+
+    /// Interrupt payloads carry the domain envelope directly:
+    /// `[version][domain bytes]`.
+    #[test]
+    fn encode_versioned_interrupt_payload_encodes_flat_domain_errors() {
+        let error: truapi::CallError<
+            truapi::versioned::payment::HostPaymentBalanceSubscribeError,
+        > = truapi::CallError::Domain(
+            truapi::versioned::payment::HostPaymentBalanceSubscribeError::V1(
+                truapi::v01::HostPaymentBalanceSubscribeError::PermissionDenied,
+            ),
+        );
+        assert_eq!(
+            encode_versioned_interrupt_payload(error, 1, |reason| {
+                truapi::v01::HostPaymentBalanceSubscribeError::Unknown { reason }
+            }),
+            vec![0u8, 0u8]
+        );
+    }
+
+    /// Framework variants fold into the catch-all on the interrupt path too.
+    #[test]
+    fn encode_versioned_interrupt_payload_folds_framework_errors() {
+        let error: truapi::CallError<
+            truapi::versioned::payment::HostPaymentBalanceSubscribeError,
+        > = truapi::CallError::HostFailure {
+            reason: "unavailable".into(),
+        };
+        let mut expected = vec![0u8];
+        truapi::v01::HostPaymentBalanceSubscribeError::Unknown {
+            reason: "unavailable".into(),
+        }
+        .encode_to(&mut expected);
+        assert_eq!(
+            encode_versioned_interrupt_payload(error, 1, |reason| {
+                truapi::v01::HostPaymentBalanceSubscribeError::Unknown { reason }
+            }),
+            expected
+        );
     }
 
     /// IdFactory mints monotonically increasing ids prefixed with the

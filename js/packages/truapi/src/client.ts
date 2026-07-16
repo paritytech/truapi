@@ -13,11 +13,9 @@ import {
   type WireProvider,
 } from "./transport.js";
 import {
-  CallError,
   indexedTaggedUnion,
   Result,
   _void,
-  type CallErrorValue,
   type Codec,
   type ResultPayload,
 } from "./scale.js";
@@ -52,10 +50,7 @@ function protocolVersionTag(version: number): `V${number}` {
   return `V${version}` as `V${number}`;
 }
 
-type HandshakeResponse = ResultPayload<
-  undefined,
-  CallErrorValue<T.VersionedHostHandshakeError>
->;
+type HandshakeResponse = ResultPayload<undefined, T.HostHandshakeError>;
 const HANDSHAKE_WIRE_VERSION = 1;
 
 /**
@@ -67,7 +62,7 @@ function handshakeResponseCodec(
   return indexedTaggedUnion({
     [protocolVersionTag(version)]: [
       version - 1,
-      Result(_void, CallError(T.VersionedHostHandshakeError)),
+      Result(_void, T.HostHandshakeError),
     ] as const,
   }) as Codec<{ tag: `V${number}`; value: HandshakeResponse }>;
 }
@@ -94,14 +89,8 @@ function encodeUnsupportedHandshakeResponse(version: number): Uint8Array {
     value: {
       success: false,
       value: {
-        tag: "Domain",
-        value: {
-          tag: "V1",
-          value: {
-            tag: "UnsupportedProtocolVersion",
-            value: undefined,
-          },
-        },
+        tag: "UnsupportedProtocolVersion",
+        value: undefined,
       },
     },
   });

@@ -8,11 +8,9 @@
 import {
   Bytes,
   Enum,
-  Struct,
   createCodec,
   createDecoder,
   enhanceCodec,
-  str,
   u8,
   _void,
   type Codec,
@@ -121,25 +119,6 @@ export function TaggedUnion<O extends TaggedUnionCodecs>(
   inner: O,
 ): Codec<TaggedUnionValue<O>> {
   return Enum(inner) as unknown as Codec<TaggedUnionValue<O>>;
-}
-
-/** Public TS value for Rust's derived `CallError<D>` enum. */
-export type CallErrorValue<D> =
-  | { tag: "Domain"; value: D }
-  | { tag: "Denied"; value?: undefined }
-  | { tag: "Unsupported"; value?: undefined }
-  | { tag: "MalformedFrame"; value: { reason: string } }
-  | { tag: "HostFailure"; value: { reason: string } };
-
-/** SCALE codec for Rust's derived `CallError<D>` enum. */
-export function CallError<D>(domain: Codec<D>): Codec<CallErrorValue<D>> {
-  return TaggedUnion({
-    Domain: domain,
-    Denied: _void,
-    Unsupported: _void,
-    MalformedFrame: Struct({ reason: str }),
-    HostFailure: Struct({ reason: str }),
-  }) as Codec<CallErrorValue<D>>;
 }
 
 type TaggedUnionCodecs = {
