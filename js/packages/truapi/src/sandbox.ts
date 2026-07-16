@@ -68,8 +68,10 @@ function resolveHostOrigin(): string | null {
       // Fall through to ancestorOrigins.
     }
   }
-  const ancestors = window.location?.ancestorOrigins;
-  if (ancestors && ancestors.length > 0) return ancestors[0] ?? null;
+  // Firefox serializes cross-origin ancestors as "null", which is not a
+  // valid postMessage targetOrigin; treat it as an unknown host origin.
+  const ancestor = window.location?.ancestorOrigins?.[0];
+  if (ancestor && ancestor !== "null") return ancestor;
   return null;
 }
 
