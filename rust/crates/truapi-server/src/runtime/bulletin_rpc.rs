@@ -31,10 +31,9 @@ use subxt::tx::{
 use tracing::{instrument, warn};
 use truapi::CallContext;
 
-/// Retry once when a broadcast cannot be verified after a successful dry-run.
-/// This covers the post-allocation propagation window where dry-run can
-/// succeed against one node while the authoring path rejects or drops the
-/// broadcast.
+/// Retry once when a broadcast or its reported inclusion cannot be verified
+/// after a successful dry-run. This covers the post-allocation propagation
+/// window where RPC views can briefly disagree about the transaction.
 const SUBMIT_ATTEMPTS: usize = 2;
 /// Number of newer best blocks to try before treating a dry-run allowance
 /// rejection as real. Three blocks are about 18 seconds on Bulletin and leave
@@ -143,7 +142,16 @@ pub(crate) enum AllowanceRejectionPhase {
 
 impl BulletinSubmitError {
     fn is_retryable_submission_uncertain(&self, phase: SubmissionPhase) -> bool {
-        phase == SubmissionPhase::Watch && matches!(self, Self::Subxt(_))
+        match self {
+            Self::Subxt(_) if phase == SubmissionPhase::Watch => true,
+            Self::Subxt(error) if phase == SubmissionPhase::Events => matches!(
+                error.as_ref(),
+                subxt::Error::TransactionEventsError(
+                    TransactionEventsError::CannotFindTransactionInBlock { .. }
+                )
+            ),
+            _ => false,
+        }
     }
 }
 
@@ -537,6 +545,16 @@ mod tests {
             }
             .is_retryable_submission_uncertain(SubmissionPhase::DryRun)
         );
+
+        let inconsistent_inclusion = BulletinSubmitError::Subxt(Box::new(
+            TransactionEventsError::CannotFindTransactionInBlock {
+                block_hash: [1_u8; 32].into(),
+                transaction_hash: [2_u8; 32].into(),
+            }
+            .into(),
+        ));
+        assert!(inconsistent_inclusion.is_retryable_submission_uncertain(SubmissionPhase::Events));
+        assert!(!inconsistent_inclusion.is_retryable_submission_uncertain(SubmissionPhase::DryRun));
     }
 
     /// Decode a `DispatchError::Module` for the named error variant out of
@@ -653,6 +671,7 @@ mod tests {
         #[derive(Clone, Copy)]
         enum TransactionOutcome {
             Included,
+            IncludedWithMissingBody,
             Invalid,
             Dropped,
         }
@@ -673,6 +692,7 @@ mod tests {
             advance_best_block_after_rejection: bool,
             stall_headers: bool,
             last_transaction: Option<String>,
+            omit_transaction_from_next_body: bool,
         }
 
         struct BulletinScriptedProvider {
@@ -704,6 +724,7 @@ mod tests {
                         advance_best_block_after_rejection: false,
                         stall_headers,
                         last_transaction: None,
+                        omit_transaction_from_next_body: false,
                     })),
                     sent: Arc::new(Mutex::new(Vec::new())),
                     sender: Arc::new(Mutex::new(Some(sender))),
@@ -904,6 +925,13 @@ mod tests {
                             "event": "bestChainBlockIncluded",
                             "block": {"hash": INCLUDED_HASH, "index": "0"}
                         }),
+                        TransactionOutcome::IncludedWithMissingBody => {
+                            state.omit_transaction_from_next_body = true;
+                            json!({
+                                "event": "bestChainBlockIncluded",
+                                "block": {"hash": INCLUDED_HASH, "index": "0"}
+                            })
+                        }
                         TransactionOutcome::Invalid => {
                             json!({"event": "invalid", "error": "scripted invalid"})
                         }
@@ -928,12 +956,18 @@ mod tests {
                         .last_transaction
                         .clone()
                         .expect("submitted transaction available");
+                    let transactions = if std::mem::take(&mut state.omit_transaction_from_next_body)
+                    {
+                        vec![]
+                    } else {
+                        vec![transaction]
+                    };
                     vec![
                         response(json!({"result": "started", "operationId": operation_id})),
                         follow_event(json!({
                             "event": "operationBodyDone",
                             "operationId": operation_id,
-                            "value": [transaction]
+                            "value": transactions
                         })),
                     ]
                 }
@@ -1172,6 +1206,29 @@ mod tests {
                 provider.method_count("transactionWatch_v1_submitAndWatch"),
                 2
             );
+        }
+
+        #[test]
+        fn submit_preimage_retries_inconsistent_inclusion_once() {
+            let provider = Arc::new(BulletinScriptedProvider::new([
+                TransactionOutcome::IncludedWithMissingBody,
+                TransactionOutcome::Included,
+            ]));
+            let value = b"scripted bulletin inconsistent inclusion";
+            let result = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
+                &CallContext::new(),
+                Instant::now() + Duration::from_secs(2),
+                &allowance_fixture(),
+                value,
+            ))
+            .unwrap();
+
+            assert_eq!(result, preimage_key(value));
+            assert_eq!(
+                provider.method_count("transactionWatch_v1_submitAndWatch"),
+                2
+            );
+            assert_eq!(provider.method_count("chainHead_v1_body"), 2);
         }
 
         #[test]
