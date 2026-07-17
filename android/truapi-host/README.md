@@ -2,7 +2,9 @@
 
 *Kotlin wrapper around the TrUAPI Rust core (UniFFI). Wire decoding, request routing, and subscription lifecycle stay in the Rust core; products connect through the localhost WebSocket bridge.*
 
-Distributed as a Maven artifact built on demand from git tags by [JitPack](https://jitpack.io/), no Maven Central account required on either side.
+> **Status:** the JitPack distribution described below is the intended packaging but is **not yet wired up** — there is no `jitpack.yml` at the repo root, so the "add the JitPack repo and depend on the tag" flow does not work today. Until it is added, integrate locally with `make android-publish-local` + `mavenLocal()`, or build the module directly. The rest of this doc describes the target design.
+
+Intended distribution: a Maven artifact built on demand from git tags by [JitPack](https://jitpack.io/), no Maven Central account required on either side.
 
 ## Consume
 
@@ -29,6 +31,8 @@ dependencies {
 JitPack fetches the tag `0.1.0` from `paritytech/truapi`, runs `make android-publish-local` against it (driven by `jitpack.yml` at the repo root, including UniFFI binding generation), and serves the resulting AAR + POM + sources jar. First fetch takes ~1 minute while JitPack builds; subsequent consumers hit the cache.
 
 The artifact bundles the Kotlin host adapter (`io.parity.truapi.*`) and the generated UniFFI bindings (`uniffi.truapi_server.*`). It does **not** bundle the native `libtruapi_server.so` cdylib, integrators build that per Android ABI and drop it into their app's `src/main/jniLibs/<abi>/` (see "Linking the cdylib" below).
+
+The consuming app must declare `android.permission.INTERNET` — the localhost WebSocket bridge binds a `127.0.0.1` TCP socket, which requires it even for loopback.
 
 ### Compatibility
 

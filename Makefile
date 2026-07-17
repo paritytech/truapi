@@ -116,7 +116,7 @@ android-jni: ## Cross-compile libtruapi_server.so for Android ABIs into jniLibs 
 		-o $(ANDROID_JNILIBS) \
 		build --release -p truapi-server --features ws-bridge
 
-android-publish-local: uniffi-kotlin android-jni ## Build bindings + cdylib, then publish the AAR to ~/.m2 (needs Gradle + JDK 17).
+android-publish-local: uniffi-kotlin ## Generate Kotlin bindings, then publish the AAR to ~/.m2 (needs Gradle + JDK 17). The AAR does not bundle the cdylib; consumers build it per ABI (see android-jni).
 	gradle :truapi-host:publishReleasePublicationToMavenLocal
 
 test: ## Run Rust + TypeScript client tests.
