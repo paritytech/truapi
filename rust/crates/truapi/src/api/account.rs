@@ -67,11 +67,17 @@ pub trait Account: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
+    /// const PEOPLE_COLLECTION_ID =
+    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652020202020";
+    ///
     /// const result = await truapi.account.getAccountAlias({
     ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///     junctions: [{ tag: "PalletInstance", value: 42 }],
+    ///     junctions: [
+    ///       { tag: "PalletInstance", value: 97 },
+    ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
+    ///     ],
     ///   },
     /// });
     /// assert(result.isOk(), "getAccountAlias failed:", result);
@@ -91,11 +97,17 @@ pub trait Account: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
+    /// const PEOPLE_COLLECTION_ID =
+    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652020202020";
+    ///
     /// const result = await truapi.account.createAccountProof({
     ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///     junctions: [{ tag: "PalletInstance", value: 42 }],
+    ///     junctions: [
+    ///       { tag: "PalletInstance", value: 97 },
+    ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
+    ///     ],
     ///   },
     ///   message: "0x48656c6c6f",
     /// });

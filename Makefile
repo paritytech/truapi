@@ -111,8 +111,7 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 	# --ignore-scripts: the workspace `prepare` builds need generated sources
 	# that only exist after codegen.sh, which also builds the packages.
 	if [ ! -d node_modules ]; then npm ci --ignore-scripts; fi
-	if [ ! -f "$(HOST_CALLBACKS_GENERATED)" ] || [ ! -f "$(HOST_WASM_ADAPTER_GENERATED)" ] || [ ! -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" ]; then ./scripts/codegen.sh; fi
-	cd $(TRUAPI_PKG) && npm run build
+	./scripts/codegen.sh
 	cd $(HOST_WASM_PKG) && npm run build
 	TRUAPI_WASM_PROFILE=dev $(MAKE) wasm
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
