@@ -186,8 +186,9 @@ describe("createWasmRawCallbacks", () => {
                 );
               case "AccountAlias":
                 return (
-                  review.value.requestingProductId === "playground.dot" &&
-                  review.value.targetProductId === "wallet.dot"
+                  review.value.callingProductId === "playground.dot" &&
+                  review.value.context.productId === "playground.dot" &&
+                  review.value.ringLocation.chainId === GENESIS
                 );
               case "AccountAccess":
                 return (
@@ -286,8 +287,9 @@ describe("createWasmRawCallbacks", () => {
         UserConfirmationReview.enc({
           tag: "AccountAlias",
           value: {
-            requestingProductId: "playground.dot",
-            targetProductId: "wallet.dot",
+            callingProductId: "playground.dot",
+            context: { productId: "playground.dot", suffix: "0x00" },
+            ringLocation: { chainId: GENESIS, junctions: [] },
           },
         }),
       ),

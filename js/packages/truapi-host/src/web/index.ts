@@ -7,3 +7,9 @@ export type {
   WorkerPairingHostRuntime,
 } from "./create-worker-host-runtime.js";
 export { createWebWorkerPairingHostRuntime } from "./create-worker-host-runtime.js";
+export { createMockHost, mockRuntimeConfig } from "./create-mock-host.js";
+export type {
+  MockHost,
+  MockHostConfig,
+  PermissionPolicy,
+} from "./create-mock-host.js";

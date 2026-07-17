@@ -27,7 +27,9 @@ exposed through the trait signatures below.
 - `UserConfirmation`: confirm signing, transaction, resource, alias, and
   preimage actions before the core asks the paired wallet.
 - `ThemeHost`: stream the host theme into the runtime.
-- `PreimageHost`: submit and look up preimages through the host-selected backend.
+- `PreimageHost`: look up preimage content through the host-selected backend.
+  The core builds, signs, and submits the Bulletin `TransactionStorage.store`
+  transaction itself; the host only owns content retrieval.
 
 `Platform` is a blanket-implemented supertrait that combines the capability
 traits above.
@@ -37,3 +39,19 @@ traits above.
 `CoreAdmin` is not part of the host-provided `Platform` callback surface. It is
 the core-owned control API exposed to host UI for logout, pairing cancellation,
 session-store refresh, and permission administration.
+
+## Mock platform (`mock` feature)
+
+The `mock` feature — excluded from the default and production builds — provides
+`MockPlatform`, a config-driven, in-memory implementation of all the capability
+traits above. It is the canonical seam mock: plug it into the real
+`truapi-server` core to exercise the production dispatcher without a device or a
+paired wallet.
+
+`MockConfig` drives its behavior — `PermissionPolicy` (`AllowAll`/`DenyAll`, device
+and remote separately), `ChainBehavior` (`Silent` | `Scripted` | `Closed` |
+`ConnectError`), `MockFaults` for fault injection, and confirmation control — and it
+records what the core asked the device to do (navigations, notifications,
+confirmations, auth-state transitions, sent RPC) for assertions. Storage is
+namespaced in-memory (`product:` / `core:`); seed retrievable preimage content with
+`MockPlatform::insert_preimage`, then read it back through `lookup_preimage`.
