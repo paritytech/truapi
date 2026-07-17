@@ -70,7 +70,7 @@ pub enum CoinPaymentError {
     UnsupportedChannel,
     /// Required host/user-agent capability is unavailable.
     UserAgentCapabilityUnavailable,
-    /// Unexpected runtime failure.
+    /// Unexpected runtime failure, and the reason-less catch-all.
     Internal,
 }
 

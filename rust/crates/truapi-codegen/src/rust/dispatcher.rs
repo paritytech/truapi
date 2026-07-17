@@ -632,6 +632,11 @@ fn versioned_wrapper_root<'a>(
 /// wrapper. The closure constructs the latest domain enum's catch-all variant
 /// (`Unknown`, or `Internal` where no `Unknown` exists) so framework
 /// `CallError` variants can fold onto the flat wire error encoding.
+///
+/// A reason-carrying catch-all (`Unknown { reason }` / `Unknown(GenericError)`)
+/// preserves the framework reason; a unit catch-all (a bare `Internal`) has
+/// nowhere to carry it, so the reason is dropped and the folded framework
+/// variants collapse onto one discriminant.
 fn error_fallback_expr(api: &ApiDefinition, wrapper_name: &str) -> Result<String> {
     let is_version_variant = |v: &VariantDef| {
         v.name
@@ -701,6 +706,7 @@ fn error_fallback_expr(api: &ApiDefinition, wrapper_name: &str) -> Result<String
         })?;
     let variant = &catch_all.name;
     match &catch_all.fields {
+        // Unit catch-all: no field for the folded reason, so it is dropped.
         VariantFields::Unit => Ok(format!("|_reason| {inner_path}::{variant}")),
         VariantFields::Named(fields)
             if fields.len() == 1
