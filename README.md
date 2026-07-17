@@ -121,6 +121,7 @@ make playground   # rebuild the playground against the refreshed snapshot
 ```
 
 This repopulates the ignored generated TS under `js/packages/truapi/`, including the playground metadata.
+`make dev` and `make e2e-dotli` run this generation step unconditionally before starting their local stacks.
 
 ## Protocol versions
 

@@ -23,7 +23,8 @@ for path in "${codegen_required[@]}"; do
   fi
 done
 
-if [ "$missing" -eq 1 ] || ! find playground/test/generated/examples -name '*.ts' -print -quit >/dev/null 2>&1; then
+example_file="$(find playground/test/generated/examples -type f -name '*.ts' -print -quit 2>/dev/null || true)"
+if [ "$missing" -eq 1 ] || [ -z "$example_file" ]; then
   if [ "${TRUAPI_REQUIRE_GENERATED:-0}" = "1" ]; then
     echo "ensure-generated: generated files are missing and TRUAPI_REQUIRE_GENERATED=1, so codegen will not run." >&2
     echo "These files are expected to be restored from the 'codegen-output' CI artifact." >&2
