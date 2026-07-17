@@ -15,7 +15,9 @@ import {
   HostSignRawWithLegacyAccountRequest,
   LegacyAccountTxPayload,
   ProductAccountTxPayload,
+  ProductProofContext,
   RemotePermissionRequest,
+  RingLocation,
 } from "@parity/truapi";
 
 import type {
@@ -47,18 +49,23 @@ export interface AccountAccessReview {
 }
 
 /**
- * Review shown before a product asks to alias another product account.
+ * Review shown before a product derives a contextual alias (RFC 0004).
  */
 export interface AccountAliasReview {
   /**
-   * Product currently handling the request.
+   * Product requesting the alias.
    */
-  requestingProductId: string;
+  callingProductId: string;
 
   /**
-   * Product whose account is being requested.
+   * Product-scoped context the alias is bound to.
    */
-  targetProductId: string;
+  context: ProductProofContext;
+
+  /**
+   * Ring the alias is derived against.
+   */
+  ringLocation: RingLocation;
 }
 
 /**
@@ -117,6 +124,31 @@ export type CoreStorageKey =
    * Last processed SSO pairing response statement for the pairing device.
    */
   | { tag: "LastProcessedPairingStatement"; value?: undefined };
+
+/**
+ * Review shown before a product creates a ring-VRF proof (RFC 0004).
+ */
+export interface CreateProofReview {
+  /**
+   * Product requesting the proof.
+   */
+  callingProductId: string;
+
+  /**
+   * Product-scoped context the proof's alias is bound to.
+   */
+  context: ProductProofContext;
+
+  /**
+   * Ring the proof is generated against.
+   */
+  ringLocation: RingLocation;
+
+  /**
+   * Opaque message bound into the proof.
+   */
+  message: Uint8Array;
+}
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -249,9 +281,13 @@ export type UserConfirmationReview =
    */
   | { tag: "CreateTransaction"; value: CreateTransactionReview }
   /**
-   * Allow a product to request another product account alias.
+   * Allow a product to derive a contextual alias for a ring.
    */
   | { tag: "AccountAlias"; value: AccountAliasReview }
+  /**
+   * Allow a product to create a ring-VRF proof for a ring.
+   */
+  | { tag: "CreateProof"; value: CreateProofReview }
   /**
    * Allow a product to learn the user's primary identity.
    */
@@ -281,13 +317,14 @@ export const AccountAccessReview: S.Codec<AccountAccessReview> = S.lazy(
 );
 
 /**
- * Review shown before a product asks to alias another product account.
+ * Review shown before a product derives a contextual alias (RFC 0004).
  */
 export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy(
   (): S.Codec<AccountAliasReview> =>
     S.Struct({
-      requestingProductId: S.str,
-      targetProductId: S.str,
+      callingProductId: S.str,
+      context: ProductProofContext,
+      ringLocation: RingLocation,
     }) as S.Codec<AccountAliasReview>,
 );
 
@@ -330,6 +367,19 @@ export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy(
       }>,
       LastProcessedPairingStatement: S._void,
     }),
+);
+
+/**
+ * Review shown before a product creates a ring-VRF proof (RFC 0004).
+ */
+export const CreateProofReview: S.Codec<CreateProofReview> = S.lazy(
+  (): S.Codec<CreateProofReview> =>
+    S.Struct({
+      callingProductId: S.str,
+      context: ProductProofContext,
+      ringLocation: RingLocation,
+      message: S.Bytes(),
+    }) as S.Codec<CreateProofReview>,
 );
 
 /**
@@ -432,6 +482,7 @@ export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy(
       SignRaw: SignRawReview,
       CreateTransaction: CreateTransactionReview,
       AccountAlias: AccountAliasReview,
+      CreateProof: CreateProofReview,
       IdentityDisclosure: IdentityDisclosureReview,
       ResourceAllocation: HostRequestResourceAllocationRequest,
       PreimageSubmit: PreimageSubmitReview,

@@ -30,7 +30,7 @@ use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
 use truapi::v01;
-use truapi::versioned::account::HostAccountGetAliasRequest;
+use truapi::versioned::account::{HostAccountCreateProofRequest, HostAccountGetAliasRequest};
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi_platform::{
     AccountAccessReview, AuthPresenter, AuthState, ChainProvider,
@@ -72,6 +72,8 @@ pub(crate) struct StubPlatform {
     pub(crate) remote_permission_denied: bool,
     pub(crate) account_alias_confirmed: bool,
     pub(crate) account_alias_error: Option<&'static str>,
+    pub(crate) create_proof_confirmed: bool,
+    pub(crate) create_proof_error: Option<&'static str>,
     pub(crate) account_access_confirmed: bool,
     pub(crate) account_access_error: Option<&'static str>,
     pub(crate) account_access_reviews: Arc<Mutex<Vec<AccountAccessReview>>>,
@@ -588,18 +590,44 @@ pub(crate) fn account_id(identifier: &str, derivation_index: u32) -> v01::Produc
     }
 }
 
-/// Account-alias request fixture for a product identifier.
-pub(crate) fn account_alias_request(identifier: &str) -> HostAccountGetAliasRequest {
-    HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
-        product_account_id: account_id(identifier, 0),
-    })
-}
-
 /// Raw signing payload fixture.
 pub(crate) fn raw_payload() -> v01::RawPayload {
     v01::RawPayload::Bytes {
         bytes: b"hello".to_vec(),
     }
+}
+
+/// Product-scoped proof context fixture for `product_id`.
+pub(crate) fn product_proof_context(product_id: &str) -> v01::ProductProofContext {
+    v01::ProductProofContext {
+        product_id: product_id.to_string(),
+        suffix: vec![7],
+    }
+}
+
+/// Ring-location fixture addressing a single pallet-instance ring.
+pub(crate) fn ring_location_fixture() -> v01::RingLocation {
+    v01::RingLocation {
+        chain_id: [1; 32],
+        junctions: vec![v01::RingLocationJunction::PalletInstance(42)],
+    }
+}
+
+/// Contextual-alias request fixture for `product_id`.
+pub(crate) fn account_alias_request(product_id: &str) -> HostAccountGetAliasRequest {
+    HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
+        context: product_proof_context(product_id),
+        ring_location: ring_location_fixture(),
+    })
+}
+
+/// Ring-VRF proof request fixture for `product_id`.
+pub(crate) fn create_proof_request(product_id: &str) -> HostAccountCreateProofRequest {
+    HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
+        context: product_proof_context(product_id),
+        ring_location: ring_location_fixture(),
+        message: vec![4, 5, 6],
+    })
 }
 
 /// Structured signing payload fixture.
@@ -906,6 +934,9 @@ fn retarget_sso_response(mut response: RemoteMessage, message_id: &str) -> Remot
             response.responding_to = message_id.to_string();
         }
         RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofResponse(response)) => {
             response.responding_to = message_id.to_string();
         }
         RemoteMessageData::V1(v1::RemoteMessage::SignRawLegacyResponse(response)) => {
@@ -1251,6 +1282,9 @@ impl UserConfirmation for StubPlatform {
             ),
             UserConfirmationReview::AccountAlias(_) => {
                 (self.account_alias_error, self.account_alias_confirmed)
+            }
+            UserConfirmationReview::CreateProof(_) => {
+                (self.create_proof_error, self.create_proof_confirmed)
             }
             UserConfirmationReview::AccountAccess(review) => {
                 self.account_access_reviews

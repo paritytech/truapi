@@ -39,6 +39,7 @@ use crate::host_logic::product_account::{
 use crate::host_logic::session::SessionInfo;
 #[cfg(test)]
 use crate::host_logic::session::SessionState;
+use crate::host_logic::sso::messages::RingVrfError;
 use crate::runtime::bulletin_rpc::BulletinSubmitError;
 #[cfg(test)]
 use crate::subscription::Spawner;
@@ -50,8 +51,9 @@ pub(crate) use services::RuntimeServices;
 pub(crate) use signing_host::{LocalActivation, SigningHost as SigningHostRole};
 
 use authority::{
-    AuthorityCancelError, AuthorityError, AuthoritySession, CreateTransactionAuthorityRequest,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest,
+    AccountAliasAuthorityRequest, AuthorityCancelError, AuthorityError, AuthoritySession,
+    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest, SignPayloadAuthorityRequest,
+    SignRawAuthorityRequest,
 };
 
 use futures::{FutureExt, StreamExt, pin_mut};
@@ -140,10 +142,10 @@ use truapi::{CallContext, CallError, CancellationReason, Subscription};
 #[cfg(test)]
 use truapi_platform::Platform;
 use truapi_platform::{
-    AccountAccessReview, AccountAliasReview, CreateTransactionReview, IdentityDisclosureReview,
-    PermissionAuthorizationRequest, PermissionAuthorizationStatus, PreimageSubmitReview,
-    ProductContext, SessionUiInfo, SignPayloadReview, SignRawReview, UserConfirmationReview,
-    normalize_product_identifier,
+    AccountAccessReview, AccountAliasReview, CreateProofReview, CreateTransactionReview,
+    IdentityDisclosureReview, PermissionAuthorizationRequest, PermissionAuthorizationStatus,
+    PreimageSubmitReview, ProductContext, SessionUiInfo, SignPayloadReview, SignRawReview,
+    UserConfirmationReview, normalize_product_identifier,
 };
 
 pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
@@ -188,9 +190,10 @@ fn remote_authority_context_until(
     cx
 }
 
-async fn remote_authority_call<T, F>(cx: &CallContext, call: F) -> Result<T, AuthorityError>
+async fn remote_authority_call<T, E, F>(cx: &CallContext, call: F) -> Result<T, E>
 where
-    F: Future<Output = Result<T, AuthorityError>>,
+    F: Future<Output = Result<T, E>>,
+    E: From<AuthorityError>,
 {
     let call = call.fuse();
     let cancelled = cx.cancel().cancelled().fuse();
@@ -204,7 +207,7 @@ where
             reason = cancelled => {
                 let error = authority_cancellation_error(cx, reason);
                 let _ = call.await;
-                Err(error)
+                Err(error.into())
             },
             () = timeout => {
                 let reason = CancellationReason::TimedOut {
@@ -213,7 +216,7 @@ where
                 cx.cancel().cancel_with_reason(reason.clone());
                 let error = authority_cancellation_error(cx, reason);
                 let _ = call.await;
-                Err(error)
+                Err(error.into())
             }
         }
     } else {
@@ -222,7 +225,7 @@ where
             reason = cancelled => {
                 let error = authority_cancellation_error(cx, reason);
                 let _ = call.await;
-                Err(error)
+                Err(error.into())
             },
         }
     }
@@ -828,60 +831,111 @@ impl Account for ProductRuntimeHost {
         cx: &CallContext,
         request: HostAccountGetAliasRequest,
     ) -> Result<HostAccountGetAliasResponse, CallError<HostAccountGetAliasError>> {
-        let HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest { product_account_id }) =
-            request;
-        let product_account_id = Self::normalize_product_account_id(product_account_id);
+        let HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
+            context,
+            ring_location,
+        }) = request;
 
         let Some(session) = self.authority.current_session() else {
             return Err(CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetError::NotConnected,
+                v01::HostAccountGetAliasError::Rejected,
             )));
         };
 
-        let product_account_id = product_account_id.map_err(|()| {
-            CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetError::DomainNotValid,
-            ))
-        })?;
-
-        let product_id = self.product_id();
-        if product_account_id.dot_ns_identifier != product_id {
-            let confirmed = self
-                .services
-                .platform
-                .confirm_user_action(UserConfirmationReview::AccountAlias(AccountAliasReview {
-                    requesting_product_id: product_id.clone(),
-                    target_product_id: product_account_id.dot_ns_identifier.clone(),
-                }))
-                .await
-                .map_err(|err| CallError::HostFailure {
-                    reason: format!("account alias confirmation failed: {err:?}"),
-                })?;
-            if !confirmed {
-                return Err(CallError::Domain(HostAccountGetAliasError::V1(
-                    v01::HostAccountGetError::Rejected,
-                )));
-            }
+        let calling_product_id = self.product_id();
+        let confirmed = self
+            .services
+            .platform
+            .confirm_user_action(UserConfirmationReview::AccountAlias(AccountAliasReview {
+                calling_product_id: calling_product_id.clone(),
+                context: context.clone(),
+                ring_location: ring_location.clone(),
+            }))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("account alias confirmation failed: {err:?}"),
+            })?;
+        if !confirmed {
+            return Err(CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetAliasError::Rejected,
+            )));
         }
 
-        self.authority
-            .account_alias(cx, &session, product_account_id, product_id)
-            .await
-            .map(HostAccountGetAliasResponse::V1)
-            .map_err(|err| {
-                CallError::Domain(HostAccountGetAliasError::V1(
-                    account_get_error_from_authority(err),
-                ))
-            })
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.account_alias(
+                &cx,
+                &session,
+                AccountAliasAuthorityRequest {
+                    calling_product_id,
+                    context,
+                    ring_location,
+                },
+            ),
+        )
+        .await
+        .map(HostAccountGetAliasResponse::V1)
+        .map_err(|err| CallError::Domain(HostAccountGetAliasError::V1(ring_vrf_alias_error(err))))
     }
 
     #[instrument(skip_all, fields(runtime.method = "account.create_account_proof"))]
     async fn create_account_proof(
         &self,
-        _cx: &CallContext,
-        _request: HostAccountCreateProofRequest,
+        cx: &CallContext,
+        request: HostAccountCreateProofRequest,
     ) -> Result<HostAccountCreateProofResponse, CallError<HostAccountCreateProofError>> {
-        Err(CallError::Unsupported)
+        let HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
+            context,
+            ring_location,
+            message,
+        }) = request;
+
+        let Some(session) = self.authority.current_session() else {
+            return Err(CallError::Domain(HostAccountCreateProofError::V1(
+                v01::HostAccountCreateProofError::Rejected,
+            )));
+        };
+
+        let calling_product_id = self.product_id();
+        let confirmed = self
+            .services
+            .platform
+            .confirm_user_action(UserConfirmationReview::CreateProof(CreateProofReview {
+                calling_product_id: calling_product_id.clone(),
+                context: context.clone(),
+                ring_location: ring_location.clone(),
+                message: message.clone(),
+            }))
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("ring-VRF proof confirmation failed: {err:?}"),
+            })?;
+        if !confirmed {
+            return Err(CallError::Domain(HostAccountCreateProofError::V1(
+                v01::HostAccountCreateProofError::Rejected,
+            )));
+        }
+
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.create_proof(
+                &cx,
+                &session,
+                CreateProofAuthorityRequest {
+                    calling_product_id,
+                    context,
+                    ring_location,
+                    message,
+                },
+            ),
+        )
+        .await
+        .map(HostAccountCreateProofResponse::V1)
+        .map_err(|err| {
+            CallError::Domain(HostAccountCreateProofError::V1(ring_vrf_proof_error(err)))
+        })
     }
 
     #[instrument(skip_all, fields(runtime.method = "account.get_legacy_accounts"))]
@@ -992,16 +1046,21 @@ fn connected_session_ui_info(session: &SessionInfo) -> SessionUiInfo {
     }
 }
 
-fn account_get_error_from_authority(err: AuthorityError) -> v01::HostAccountGetError {
+fn ring_vrf_alias_error(err: RingVrfError) -> v01::HostAccountGetAliasError {
     match err {
-        AuthorityError::Rejected => v01::HostAccountGetError::Rejected,
-        AuthorityError::Disconnected => v01::HostAccountGetError::NotConnected,
-        AuthorityError::Cancelled(err) => v01::HostAccountGetError::Unknown {
-            reason: err.to_string(),
-        },
-        AuthorityError::Unavailable { reason }
-        | AuthorityError::NotSupported { reason }
-        | AuthorityError::Unknown { reason } => v01::HostAccountGetError::Unknown { reason },
+        RingVrfError::RingNotFound => v01::HostAccountGetAliasError::RingNotFound,
+        RingVrfError::NotMember => v01::HostAccountGetAliasError::NotMember,
+        RingVrfError::Rejected => v01::HostAccountGetAliasError::Rejected,
+        RingVrfError::Unknown { reason } => v01::HostAccountGetAliasError::Unknown { reason },
+    }
+}
+
+fn ring_vrf_proof_error(err: RingVrfError) -> v01::HostAccountCreateProofError {
+    match err {
+        RingVrfError::RingNotFound => v01::HostAccountCreateProofError::RingNotFound,
+        RingVrfError::NotMember => v01::HostAccountCreateProofError::NotMember,
+        RingVrfError::Rejected => v01::HostAccountCreateProofError::Rejected,
+        RingVrfError::Unknown { reason } => v01::HostAccountCreateProofError::Unknown { reason },
     }
 }
 
@@ -2019,7 +2078,9 @@ impl Notifications for ProductRuntimeHost {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_logic::sso::messages::{RemoteMessageData, v1};
+    use crate::host_logic::sso::messages::{
+        RemoteMessage, RemoteMessageData, RingVrfAliasResponse, RingVrfProofResponse, v1,
+    };
     use crate::test_support::*;
     use std::sync::Mutex;
     use std::sync::atomic::Ordering;
@@ -2393,50 +2454,47 @@ mod tests {
         assert!(matches!(
             err,
             CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetError::NotConnected
+                v01::HostAccountGetAliasError::Rejected
             ))
         ));
     }
 
     #[test]
-    fn get_account_alias_rejects_invalid_product_identifier() {
+    fn get_account_alias_rejected_when_user_declines() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        let mut session = sso_session_info();
-        session.root_entropy_source = session_info().root_entropy_source;
-        host.test_session_state().set_session(session);
+        host.test_session_state().set_session(sso_session_info());
         let cx = CallContext::new();
         let err = futures::executor::block_on(
-            host.get_account_alias(&cx, account_alias_request("example.com")),
+            host.get_account_alias(&cx, account_alias_request("myapp.dot")),
         )
         .unwrap_err();
         assert!(matches!(
             err,
             CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetError::DomainNotValid
+                v01::HostAccountGetAliasError::Rejected
             ))
         ));
     }
 
     #[test]
-    fn get_account_alias_same_domain_returns_sso_response() {
+    fn get_account_alias_returns_sso_alias() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
+            account_alias_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
                 &session,
-                crate::host_logic::sso::messages::RemoteMessage {
+                RemoteMessage {
                     message_id: "wallet-alias-1".to_string(),
-                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasResponse(
-                            crate::host_logic::sso::messages::RingVrfAliasResponse {
-                                responding_to: "alias-1".to_string(),
-                                payload: Ok(v01::HostAccountGetAliasResponse {
-                                    context: [9; 32],
-                                    alias: vec![1, 2, 3],
-                                }),
-                            },
-                        ),
-                    ),
+                    data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasResponse(
+                        RingVrfAliasResponse {
+                            responding_to: "alias-1".to_string(),
+                            payload: Ok(v01::ContextualAlias {
+                                context: [9; 32],
+                                alias: vec![1, 2, 3],
+                            }),
+                        },
+                    )),
                 },
             )),
             ..Default::default()
@@ -2456,120 +2514,55 @@ mod tests {
         assert_eq!(inner.context, [9; 32]);
         assert_eq!(inner.alias, vec![1, 2, 3]);
         let message = submitted_remote_message(&platform, &session);
-        let crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasRequest(request),
-        ) = message.data
+        let RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasRequest(request)) = message.data
         else {
             panic!("expected ring VRF alias request");
         };
-        assert_eq!(request.product_account_id.dot_ns_identifier, "myapp.dot");
-        assert_eq!(request.product_id, "myapp.dot");
+        assert_eq!(request.calling_product_id, "myapp.dot");
+        assert_eq!(request.context.product_id, "myapp.dot");
+        assert_eq!(request.ring_location.chain_id, [1; 32]);
     }
 
     #[test]
-    fn get_account_alias_normalizes_remote_request_identifier() {
-        let session = sso_session_info();
-        let platform = Arc::new(StubPlatform {
-            sso_response_script: Some(sso_success_response_script(
-                &session,
-                crate::host_logic::sso::messages::RemoteMessage {
-                    message_id: "wallet-alias-1".to_string(),
-                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasResponse(
-                            crate::host_logic::sso::messages::RingVrfAliasResponse {
-                                responding_to: "alias-1".to_string(),
-                                payload: Ok(v01::HostAccountGetAliasResponse {
-                                    context: [9; 32],
-                                    alias: vec![1, 2, 3],
-                                }),
-                            },
-                        ),
-                    ),
-                },
-            )),
-            ..Default::default()
-        });
-        let host = ProductRuntimeHost::new(
-            platform.clone(),
-            runtime_config("MyApp.DOT"),
-            test_spawner(),
-        );
-        host.test_session_state().set_session(session.clone());
-        let cx = CallContext::with_request_id("alias-1".to_string());
-        futures::executor::block_on(
-            host.get_account_alias(&cx, account_alias_request("MyApp.DOT")),
-        )
-        .unwrap();
-        let message = submitted_remote_message(&platform, &session);
-        let crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasRequest(request),
-        ) = message.data
-        else {
-            panic!("expected ring VRF alias request");
-        };
-        assert_eq!(request.product_account_id.dot_ns_identifier, "myapp.dot");
-        assert_eq!(request.product_id, "myapp.dot");
-    }
-
-    #[test]
-    fn get_account_alias_cross_domain_rejects_when_user_declines() {
+    fn create_account_proof_requires_session() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        host.test_session_state().set_session(session_info());
         let cx = CallContext::new();
         let err = futures::executor::block_on(
-            host.get_account_alias(&cx, account_alias_request("other.dot")),
+            host.create_account_proof(&cx, create_proof_request("myapp.dot")),
         )
         .unwrap_err();
         assert!(matches!(
             err,
-            CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetError::Rejected
+            CallError::Domain(HostAccountCreateProofError::V1(
+                v01::HostAccountCreateProofError::Rejected
             ))
         ));
     }
 
     #[test]
-    fn get_account_alias_cross_domain_maps_confirmation_failure_to_host_failure() {
-        let host = ProductRuntimeHost::new(
-            Arc::new(StubPlatform {
-                account_alias_error: Some("modal failed"),
-                ..Default::default()
-            }),
-            runtime_config("myapp.dot"),
-            test_spawner(),
-        );
-        host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
-        let err = futures::executor::block_on(
-            host.get_account_alias(&cx, account_alias_request("other.dot")),
-        )
-        .unwrap_err();
-        assert!(
-            matches!(err, CallError::HostFailure { reason } if reason.contains("modal failed"))
-        );
-    }
-
-    #[test]
-    fn get_account_alias_cross_domain_accepts_confirmation_then_returns_sso_response() {
+    fn create_account_proof_returns_sso_proof() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
-            account_alias_confirmed: true,
+            create_proof_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
                 &session,
-                crate::host_logic::sso::messages::RemoteMessage {
-                    message_id: "wallet-alias-2".to_string(),
-                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasResponse(
-                            crate::host_logic::sso::messages::RingVrfAliasResponse {
-                                responding_to: "alias-2".to_string(),
-                                payload: Ok(v01::HostAccountGetAliasResponse {
-                                    context: [8; 32],
-                                    alias: vec![4, 5, 6],
-                                }),
-                            },
-                        ),
-                    ),
+                RemoteMessage {
+                    message_id: "wallet-proof-1".to_string(),
+                    data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofResponse(
+                        RingVrfProofResponse {
+                            responding_to: "proof-1".to_string(),
+                            payload: Ok(v01::HostAccountCreateProofResponse {
+                                proof: vec![0xaa, 0xbb],
+                                contextual_alias: v01::ContextualAlias {
+                                    context: [9; 32],
+                                    alias: vec![1, 2, 3],
+                                },
+                                ring_index: 5,
+                                ring_revision: 7,
+                            }),
+                        },
+                    )),
                 },
             )),
             ..Default::default()
@@ -2580,20 +2573,60 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session.clone());
-        let cx = CallContext::with_request_id("alias-2".to_string());
+        let cx = CallContext::with_request_id("proof-1".to_string());
         let response = futures::executor::block_on(
-            host.get_account_alias(&cx, account_alias_request("other.dot")),
+            host.create_account_proof(&cx, create_proof_request("myapp.dot")),
         )
         .unwrap();
-        let HostAccountGetAliasResponse::V1(inner) = response;
-        assert_eq!(inner.context, [8; 32]);
-        assert_eq!(inner.alias, vec![4, 5, 6]);
+        let HostAccountCreateProofResponse::V1(inner) = response;
+        assert_eq!(inner.proof, vec![0xaa, 0xbb]);
+        assert_eq!(inner.ring_index, 5);
+        assert_eq!(inner.ring_revision, 7);
         let message = submitted_remote_message(&platform, &session);
+        let RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofRequest(request)) = message.data
+        else {
+            panic!("expected ring VRF proof request");
+        };
+        assert_eq!(request.calling_product_id, "myapp.dot");
+        assert_eq!(request.context.product_id, "myapp.dot");
+        assert_eq!(request.message, vec![4, 5, 6]);
+    }
+
+    #[test]
+    fn create_account_proof_maps_not_member_error() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            create_proof_confirmed: true,
+            sso_response_script: Some(sso_success_response_script(
+                &session,
+                RemoteMessage {
+                    message_id: "wallet-proof-1".to_string(),
+                    data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofResponse(
+                        RingVrfProofResponse {
+                            responding_to: "proof-1".to_string(),
+                            payload: Err(RingVrfError::NotMember),
+                        },
+                    )),
+                },
+            )),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session);
+        let cx = CallContext::with_request_id("proof-1".to_string());
+        let err = futures::executor::block_on(
+            host.create_account_proof(&cx, create_proof_request("myapp.dot")),
+        )
+        .unwrap_err();
         assert!(matches!(
-            message.data,
-            crate::host_logic::sso::messages::RemoteMessageData::V1(
-                crate::host_logic::sso::messages::v1::RemoteMessage::RingVrfAliasRequest(_)
-            )
+            err,
+            CallError::Domain(HostAccountCreateProofError::V1(
+                v01::HostAccountCreateProofError::NotMember
+            ))
         ));
     }
 
