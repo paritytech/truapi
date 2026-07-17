@@ -130,7 +130,7 @@ pub trait Signing: Send + Sync {
     ///     blockNumber: "0x00000000",
     ///     era: "0x00",
     ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///     method: "0x0000",
+    ///     method: "0x00003448656c6c6f2c20776f726c6421",
     ///     nonce: "0x00000000",
     ///     signedExtensions: [],
     ///     specVersion: "0x00000000",

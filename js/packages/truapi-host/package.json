@@ -49,7 +49,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@parity/truapi": "file:../truapi"
+    "@parity/truapi": "^0.4.1"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",

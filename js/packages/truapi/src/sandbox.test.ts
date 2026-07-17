@@ -135,6 +135,29 @@ describe("sandbox iframe MessagePort handshake", () => {
     expect(currentWindow.listeners.size).toBe(0);
   });
 
+  it('treats a masked "null" ancestor origin as hidden and pings with the wildcard', async () => {
+    // Firefox implements location.ancestorOrigins but serializes cross-origin
+    // ancestors as "null", which is not a valid postMessage targetOrigin.
+    currentWindow = installFakeIframeWindow({ ancestorOrigins: ["null"] });
+    const sandbox = await importSandbox();
+
+    expect(sandbox.getClientSync()).not.toBeNull();
+    expect(currentWindow.parentPostMessage.mock.calls).toEqual([
+      [{ type: "truapi-ready" }, "*"],
+    ]);
+
+    const accepted = trackChannel();
+    currentWindow.dispatch({
+      source: currentWindow.parent,
+      origin: "https://host.example",
+      data: { type: "truapi-init" },
+      ports: [accepted.port1],
+    });
+    await Promise.resolve();
+    expect(currentWindow.win.__HOST_API_PORT__).toBe(accepted.port1);
+    expect(currentWindow.listeners.size).toBe(0);
+  });
+
   it("uses a data-free wildcard ready ping only when the host origin is hidden", async () => {
     currentWindow = installFakeIframeWindow({});
     const sandbox = await importSandbox();

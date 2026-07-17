@@ -61,11 +61,17 @@ async function runOne({
   const id = `${serviceName}/${method.name}`;
 
   if (SKIPPED_SERVICES.has(serviceName)) {
-    onUpdate(id, { status: "skipped" });
+    onUpdate(id, {
+      status: "skipped",
+      output: `${serviceName} service not yet wired up by hosts`,
+    });
     return;
   }
   if (SKIPPED_METHODS.has(id)) {
-    onUpdate(id, { status: "skipped" });
+    onUpdate(id, {
+      status: "skipped",
+      output: "host surface intentionally deferred",
+    });
     return;
   }
   if (!method.exampleSource) {
