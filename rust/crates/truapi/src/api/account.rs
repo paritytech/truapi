@@ -68,7 +68,7 @@ pub trait Account: Send + Sync {
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
     /// const result = await truapi.account.getAccountAlias({
-    ///   context: ["truapi-playground.dot", "0x00"],
+    ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     junctions: [{ tag: "PalletInstance", value: 42 }],
@@ -92,7 +92,7 @@ pub trait Account: Send + Sync {
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
     /// const result = await truapi.account.createAccountProof({
-    ///   context: ["truapi-playground.dot", "0x00"],
+    ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     junctions: [{ tag: "PalletInstance", value: 42 }],
