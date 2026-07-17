@@ -7,6 +7,7 @@
 //! for the session, zeroized on disconnect.
 
 mod local_activation;
+mod ring_vrf;
 
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +19,7 @@ use super::authority::{
     SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
     authority_session, require_current_session,
 };
-use super::connected_session_ui_info;
+use super::{RuntimeServices, connected_session_ui_info};
 use crate::host_logic::entropy::derive_product_entropy;
 use crate::host_logic::extrinsic::{Sr25519Signer, build_signed_extrinsic_v4};
 use crate::host_logic::product_account::{
@@ -28,10 +29,16 @@ use crate::host_logic::product_account::{
 use crate::host_logic::session::SessionState;
 use crate::host_logic::sso::messages::RingVrfError;
 use crate::runtime::auth_state::AuthStateMachine;
+use ring_vrf::{
+    ChainRingResolver, MemberCandidate, PersonKey, RingResolver, alias_from_entropy, context_bytes,
+    create_proof, key_for_collection, member_from_entropy, person_entropy,
+};
 
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, v01};
-use truapi_platform::{Platform, ProductContext, normalize_product_identifier};
+#[cfg(test)]
+use truapi_platform::Platform;
+use truapi_platform::{ProductContext, normalize_product_identifier};
 use zeroize::Zeroizing;
 
 const BYTES_WRAP_PREFIX: &[u8] = b"<Bytes>";
@@ -41,15 +48,32 @@ const BYTES_WRAP_SUFFIX: &[u8] = b"</Bytes>";
 pub(crate) struct SigningHost {
     session_state: Arc<SessionState>,
     auth_state: AuthStateMachine,
+    ring_resolver: Arc<dyn RingResolver>,
     /// Root BIP-39 entropy held only while a session is active.
     root_entropy: Mutex<Option<Zeroizing<Vec<u8>>>>,
 }
 
 impl SigningHost {
-    pub(crate) fn new(platform: Arc<dyn Platform>) -> Arc<Self> {
+    pub(crate) fn new(services: Arc<RuntimeServices>) -> Arc<Self> {
+        let platform = services.platform.clone();
+        let ring_resolver = ChainRingResolver::new(services.chain.clone());
         Arc::new(Self {
             session_state: SessionState::new(),
             auth_state: AuthStateMachine::new(platform),
+            ring_resolver,
+            root_entropy: Mutex::new(None),
+        })
+    }
+
+    #[cfg(test)]
+    fn new_with_ring_resolver(
+        platform: Arc<dyn Platform>,
+        ring_resolver: Arc<dyn RingResolver>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            session_state: SessionState::new(),
+            auth_state: AuthStateMachine::new(platform),
+            ring_resolver,
             root_entropy: Mutex::new(None),
         })
     }
@@ -87,6 +111,34 @@ impl SigningHost {
             })?;
         derive_product_keypair(&root, &product_id, account.derivation_index)
             .map_err(product_authority_error)
+    }
+
+    fn person_entropy(
+        &self,
+        session: &AuthoritySession,
+        key: PersonKey,
+    ) -> Result<Zeroizing<[u8; 32]>, RingVrfError> {
+        require_current_session(&self.session_state, session)?;
+        let root = self.root_entropy()?;
+        Ok(person_entropy(&root, key))
+    }
+
+    fn member_candidates(
+        &self,
+        session: &AuthoritySession,
+    ) -> Result<[MemberCandidate; 2], RingVrfError> {
+        let full_entropy = self.person_entropy(session, PersonKey::Full)?;
+        let lite_entropy = self.person_entropy(session, PersonKey::Lite)?;
+        Ok([
+            MemberCandidate {
+                key: PersonKey::Full,
+                member: member_from_entropy(&full_entropy)?,
+            },
+            MemberCandidate {
+                key: PersonKey::Lite,
+                member: member_from_entropy(&lite_entropy)?,
+            },
+        ])
     }
 }
 
@@ -213,22 +265,44 @@ impl ProductAuthority for SigningHost {
     async fn account_alias(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _request: AccountAliasAuthorityRequest,
+        session: &AuthoritySession,
+        request: AccountAliasAuthorityRequest,
     ) -> Result<v01::ContextualAlias, RingVrfError> {
-        Err(RingVrfError::Unknown {
-            reason: "signing host: ring-VRF alias derivation not yet implemented".to_string(),
+        require_current_session(&self.session_state, session)?;
+        let collection = self.ring_resolver.validate(&request.ring_location).await?;
+        let context = context_bytes(&request.context);
+        let entropy = self.person_entropy(session, key_for_collection(&collection))?;
+        let alias = alias_from_entropy(&entropy, &context)?;
+        Ok(v01::ContextualAlias {
+            context,
+            alias: alias.to_vec(),
         })
     }
 
     async fn create_proof(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _request: CreateProofAuthorityRequest,
+        session: &AuthoritySession,
+        request: CreateProofAuthorityRequest,
     ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
-        Err(RingVrfError::Unknown {
-            reason: "signing host: ring-VRF proof generation not yet implemented".to_string(),
+        let candidates = self.member_candidates(session)?;
+        let resolved = self
+            .ring_resolver
+            .resolve(&request.ring_location, &candidates)
+            .await?;
+        // Reject a stale request if the local session disconnected or changed
+        // while its chain snapshot was being resolved.
+        let entropy = self.person_entropy(session, resolved.selected.key)?;
+        let context = context_bytes(&request.context);
+        let (proof, alias) = create_proof(&entropy, &resolved, &context, &request.message)?;
+        Ok(v01::HostAccountCreateProofResponse {
+            proof,
+            contextual_alias: v01::ContextualAlias {
+                context,
+                alias: alias.to_vec(),
+            },
+            ring_index: resolved.ring_index,
+            ring_revision: resolved.ring_revision,
         })
     }
 
@@ -382,10 +456,16 @@ mod tests {
     use std::sync::Arc;
 
     use super::super::authority::{
-        AuthorityError, CreateTransactionAuthorityRequest, SignRawAuthorityRequest,
+        AccountAliasAuthorityRequest, AuthorityError, CreateProofAuthorityRequest,
+        CreateTransactionAuthorityRequest, SignRawAuthorityRequest,
     };
     use super::super::{ProductAuthority, ProductRuntimeHost, RuntimeServices, SigningHostRole};
-    use super::{BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, raw_payload_bytes};
+    use super::ring_vrf::{
+        MemberCandidate, PersonKey, ResolvedRing, RingResolver, member_from_entropy, person_entropy,
+    };
+    use super::{
+        BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, RingVrfError, raw_payload_bytes,
+    };
     use crate::host_logic::extrinsic::tests::split_v4;
     use crate::host_logic::product_account::{
         derive_product_keypair, derive_root_keypair_from_entropy,
@@ -397,8 +477,34 @@ mod tests {
     use truapi::versioned::signing::{HostSignRawError, HostSignRawRequest, HostSignRawResponse};
     use truapi::{CallContext, CallError, v01};
     use truapi_platform::{HostInfo, PlatformInfo, ProductContext, SigningHostConfig};
+    use verifiable::ring::RingDomainSize;
 
     const ENTROPY: [u8; 16] = [0xAB; 16];
+
+    #[derive(Clone)]
+    struct StubRingResolver {
+        collection: [u8; 32],
+        ring: ResolvedRing,
+    }
+
+    #[async_trait::async_trait]
+    impl RingResolver for StubRingResolver {
+        async fn validate(&self, _location: &v01::RingLocation) -> Result<[u8; 32], RingVrfError> {
+            Ok(self.collection)
+        }
+
+        async fn resolve(
+            &self,
+            _location: &v01::RingLocation,
+            candidates: &[MemberCandidate],
+        ) -> Result<ResolvedRing, RingVrfError> {
+            assert!(
+                candidates.contains(&self.ring.selected),
+                "signing host offered the selected person key"
+            );
+            Ok(self.ring.clone())
+        }
+    }
 
     fn signing_runtime() -> (Arc<RuntimeServices>, Arc<SigningHostRole>) {
         // Auto-confirm raw signing so the role-neutral confirmation gate does
@@ -424,7 +530,7 @@ mod tests {
             config.bulletin_chain_genesis_hash,
             test_spawner(),
         );
-        let signing_host = SigningHostRole::new(platform);
+        let signing_host = SigningHostRole::new(services.clone());
         (services, signing_host)
     }
 
@@ -449,6 +555,72 @@ mod tests {
             authority,
             ProductContext::new(product_id.to_string()).expect("valid product id"),
         )
+    }
+
+    #[test]
+    fn ring_alias_and_proof_share_the_selected_person_key() {
+        let full_entropy = person_entropy(&ENTROPY, PersonKey::Full);
+        let full_member = member_from_entropy(&full_entropy).expect("full-person member");
+        let selected = MemberCandidate {
+            key: PersonKey::Full,
+            member: full_member,
+        };
+        let resolver = Arc::new(StubRingResolver {
+            collection: *b"pop:polkadot.network/people     ",
+            ring: ResolvedRing {
+                selected,
+                ring_index: 7,
+                ring_revision: 11,
+                domain_size: RingDomainSize::Domain11,
+                members: vec![full_member],
+            },
+        });
+        let platform: Arc<dyn truapi_platform::Platform> = Arc::new(StubPlatform::default());
+        let authority = SigningHostRole::new_with_ring_resolver(platform, resolver);
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = authority.current_session().expect("active session");
+        let cx = CallContext::new();
+        let context = v01::ProductProofContext {
+            product_id: "myapp.dot".to_string(),
+            suffix: b"account".to_vec(),
+        };
+        let ring_location = v01::RingLocation {
+            chain_id: [0x22; 32],
+            junctions: vec![
+                v01::RingLocationJunction::PalletInstance(42),
+                v01::RingLocationJunction::CollectionId(
+                    b"pop:polkadot.network/people     ".to_vec(),
+                ),
+            ],
+        };
+
+        let alias = futures::executor::block_on(authority.account_alias(
+            &cx,
+            &session,
+            AccountAliasAuthorityRequest {
+                calling_product_id: "myapp.dot".to_string(),
+                context: context.clone(),
+                ring_location: ring_location.clone(),
+            },
+        ))
+        .expect("alias succeeds");
+        let proof = futures::executor::block_on(authority.create_proof(
+            &cx,
+            &session,
+            CreateProofAuthorityRequest {
+                calling_product_id: "myapp.dot".to_string(),
+                context,
+                ring_location,
+                message: b"prove me".to_vec(),
+            },
+        ))
+        .expect("proof succeeds");
+
+        assert!(!proof.proof.is_empty());
+        assert_eq!(proof.contextual_alias, alias);
+        assert_eq!(proof.ring_index, 7);
+        assert_eq!(proof.ring_revision, 11);
     }
 
     #[test]
