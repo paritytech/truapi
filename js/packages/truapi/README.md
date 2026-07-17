@@ -129,6 +129,30 @@ dotted method name (`22` → `account.getAccount`), derived from the generated w
 client's service names (`Object.keys(createClient(transport))`). Pass it as
 `createWireDebugger({ methodNames })` and the formatted frame lines carry real method names.
 
+### Try it out
+
+`examples/wire-debug-demo.mjs` fires a real `account.getAccount` round trip over an in-memory
+provider and prints the readable trace — no host or network needed:
+
+```bash
+cd js/packages/truapi
+bun examples/wire-debug-demo.mjs
+```
+
+```text
+account.getAccount round trip:
+
+  [wire p:1] → request account.getAccount (id=22, 14B)
+  [wire p:1] ← response account.getAccount (id=23, 35B)
+
+result: Ok
+  account.publicKey = 0x1111…1111
+
+WireTrace p:1 — 2 frames:
+  → request  account.getAccount  (14B)
+  ← response account.getAccount  (35B)
+```
+
 ## Wire format
 
 Frames are SCALE encoded:
