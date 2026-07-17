@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test dotli-link dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
+.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test uniffi uniffi-kotlin android-jni android-publish-local dotli-link dev dev-bootstrap dev-link-check e2e-dotli headless install matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -67,6 +67,57 @@ wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
 
 dotli-link: ## Link dotli to this checkout's local @parity/truapi packages.
 	cd $(DOTLI) && TRUAPI_REPO="$(CURDIR)" bun run link:truapi
+
+UNIFFI_CDYLIB_DIR := target/release
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.dylib
+else
+UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.so
+endif
+
+UNIFFI_SWIFT_TMP := target/uniffi-swift-out
+
+uniffi: ## Regenerate Swift bindings from truapi-server cdylib.
+	$(CARGO) build -p truapi-server --release --features ws-bridge
+	rm -rf $(UNIFFI_SWIFT_TMP)
+	mkdir -p $(UNIFFI_SWIFT_TMP)
+	$(CARGO) run -p uniffi-bindgen-cli -- generate \
+		--library $(UNIFFI_CDYLIB) \
+		--language swift \
+		--out-dir $(UNIFFI_SWIFT_TMP)
+	mkdir -p ios/truapi-host/Sources/truapi_serverFFI/include
+	cp $(UNIFFI_SWIFT_TMP)/truapi_server.swift \
+		ios/truapi-host/Sources/TrUAPIHost/truapi_server.swift
+	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.h \
+		ios/truapi-host/Sources/truapi_serverFFI/include/truapi_serverFFI.h
+	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.modulemap \
+		ios/truapi-host/Sources/truapi_serverFFI/include/module.modulemap
+
+UNIFFI_KOTLIN_OUT := android/truapi-host/src/main/kotlin/generated
+
+uniffi-kotlin: ## Regenerate Kotlin UniFFI bindings from the truapi-server cdylib.
+	$(CARGO) build -p truapi-server --release --features ws-bridge
+	rm -rf $(UNIFFI_KOTLIN_OUT)
+	mkdir -p $(UNIFFI_KOTLIN_OUT)
+	$(CARGO) run -p uniffi-bindgen-cli -- generate \
+		--library $(UNIFFI_CDYLIB) \
+		--language kotlin \
+		--out-dir $(UNIFFI_KOTLIN_OUT)
+
+# Android ABIs to cross-compile the cdylib for. arm64 + armv7 cover physical
+# devices; x86_64 covers the emulator on Intel/Apple-silicon hosts.
+ANDROID_ABIS ?= arm64-v8a armeabi-v7a x86_64
+ANDROID_JNILIBS := android/truapi-host/src/main/jniLibs
+
+android-jni: ## Cross-compile libtruapi_server.so for Android ABIs into jniLibs (needs cargo-ndk + NDK).
+	@command -v cargo-ndk >/dev/null || { echo "cargo-ndk not found: cargo install cargo-ndk"; exit 1; }
+	$(CARGO) ndk $(foreach abi,$(ANDROID_ABIS),-t $(abi)) \
+		-o $(ANDROID_JNILIBS) \
+		build --release -p truapi-server --features ws-bridge
+
+android-publish-local: uniffi-kotlin android-jni ## Build bindings + cdylib, then publish the AAR to ~/.m2 (needs Gradle + JDK 17).
+	gradle :truapi-host:publishReleasePublicationToMavenLocal
 
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace
