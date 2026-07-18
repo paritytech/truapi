@@ -37,6 +37,7 @@ pub mod coin_payment;
 pub mod entropy;
 pub mod local_storage;
 pub mod notifications;
+pub mod p2p_media;
 pub mod payment;
 pub mod permissions;
 pub mod preimage;

@@ -53,6 +53,11 @@ pub enum RemotePermission {
     /// Submitting statements on behalf of the user via `remote_statement_store_submit`.
     #[display("submit statements")]
     StatementSubmit,
+    /// Peer-to-peer media rooms: direct connections to other participants
+    /// (they learn this device's network address) plus the host's local
+    /// media relay, for the lifetime of a room.
+    #[display("peer-to-peer media rooms")]
+    MediaP2p,
 }
 
 /// remote-permission request (RFC 0002).
