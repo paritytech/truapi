@@ -64,8 +64,12 @@ js/packages/
   truapi-host/            @parity/truapi-host: WASM-backed host runtime; entries `.`
                           (shared host types), `/web` (iframe + Web Worker),
                           `/worker-runtime`
+ios/truapi-host/           Swift host adapter package over the truapi-server UniFFI core
+android/truapi-host/       Kotlin host adapter package over the truapi-server UniFFI core
 playground/                Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/               dotli host, vendored as a submodule
+hosts/ios/                 polkadot-app-ios-v2, vendored as a submodule (build/test against the core)
+hosts/android/             polkadot-app-android-v2, vendored as a submodule (build/test against the core)
 docs/                      Design docs, RFCs, feature proposals
 scripts/codegen.sh         Regenerate the TS client from the Rust source
 ```
