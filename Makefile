@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test uniffi uniffi-kotlin android-jni android-publish-local dotli-link dev dev-bootstrap dev-link-check e2e-dotli headless install matrix explorer
+.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test uniffi uniffi-kotlin android-jni android-publish-local check-android-parity dotli-link dev dev-bootstrap dev-link-check e2e-dotli headless install matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -133,6 +133,21 @@ check: ## Full verification suite (build, fmt, clippy, test, TS tests, playgroun
 	cd $(TRUAPI_PKG) && npm run build && npm test
 	cd $(JS_PACKAGES)/truapi-host && npm install --no-fund --no-audit && npm test
 	cd $(PLAYGROUND) && yarn build && yarn lint
+
+ANDROID_SHELL := android/truapi-host/src/main/kotlin/io/parity/truapi/TrUAPIHost.kt
+ANDROID_SHELL_VENDORED := hosts/android/bindings/truapi-host/src/main/kotlin/io/parity/truapi/TrUAPIHost.kt
+
+check-android-parity: ## Verify the canonical android/truapi-host shell matches the copy vendored in the app (hosts/android). Skips if the submodule is not initialized.
+	@if [ ! -f "$(ANDROID_SHELL_VENDORED)" ]; then \
+		echo "Skipping android parity check: hosts/android not initialized (run 'git submodule update --init hosts/android')."; \
+	elif diff -q "$(ANDROID_SHELL)" "$(ANDROID_SHELL_VENDORED)" >/dev/null; then \
+		echo "android/truapi-host shell matches the vendored app copy."; \
+	else \
+		echo "ERROR: $(ANDROID_SHELL) has drifted from $(ANDROID_SHELL_VENDORED)."; \
+		echo "The host adapter shell is duplicated in truapi and the app; keep them in sync."; \
+		diff "$(ANDROID_SHELL)" "$(ANDROID_SHELL_VENDORED)" || true; \
+		exit 1; \
+	fi
 
 clean: ## Remove local build/test artifacts without deleting dependencies.
 	cargo clean
