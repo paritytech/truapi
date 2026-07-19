@@ -138,7 +138,12 @@ impl<'a> SsoPairingFlow<'a> {
         };
 
         match self
-            .run_pairing_flow(&bootstrap, cancel_rx, last_processed_statement)
+            .run_pairing_flow(
+                &bootstrap,
+                cancel_rx,
+                pairing_epoch,
+                last_processed_statement,
+            )
             .await
         {
             Ok(outcome @ SsoPairingOutcome::Cancelled) => {
@@ -174,6 +179,7 @@ impl<'a> SsoPairingFlow<'a> {
         &self,
         bootstrap: &PairingBootstrap,
         cancel_rx: oneshot::Receiver<()>,
+        pairing_epoch: u64,
         last_processed_statement: Option<Vec<u8>>,
     ) -> Result<SsoPairingOutcome, String> {
         let mut cancel = cancel_rx.fuse();
@@ -211,6 +217,7 @@ impl<'a> SsoPairingFlow<'a> {
             _ = cancel => return Ok(SsoPairingOutcome::Cancelled),
             response_result = pairing_response => response_result?,
         };
+        self.host.auth_state.authentication_started(pairing_epoch);
         write_last_processed_pairing_statement(self.host.platform.as_ref(), &response.statement)
             .await;
         let sso = establish_sso_session_info(
@@ -795,10 +802,11 @@ mod tests {
             .auth_states
             .lock()
             .expect("auth state list mutex poisoned");
-        assert_eq!(auth_states.len(), 2, "states: {auth_states:?}");
+        assert_eq!(auth_states.len(), 3, "states: {auth_states:?}");
         assert!(matches!(&auth_states[0], AuthState::Pairing { .. }));
+        assert_eq!(auth_states[1], AuthState::Authenticating);
         assert_eq!(
-            auth_states[1],
+            auth_states[2],
             AuthState::Connected(connected_session_ui_info(&session))
         );
         drop(auth_states);
@@ -946,7 +954,8 @@ mod tests {
             .lock()
             .expect("auth state list mutex poisoned");
         assert!(matches!(&auth_states[0], AuthState::Pairing { .. }));
-        assert!(matches!(&auth_states[1], AuthState::Connected(_)));
+        assert_eq!(auth_states[1], AuthState::Authenticating);
+        assert!(matches!(&auth_states[2], AuthState::Connected(_)));
     }
 
     /// Pairing success must also be decoded from a snapshot query page, not only

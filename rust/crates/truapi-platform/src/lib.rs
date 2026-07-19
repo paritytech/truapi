@@ -509,6 +509,10 @@ pub enum AuthState {
         /// Human-readable failure reason.
         reason: String,
     },
+    /// The wallet accepted the pairing request and the core is resolving and
+    /// persisting the session. Hosts should replace the pairing QR with an
+    /// in-progress presentation until a terminal state is emitted.
+    Authenticating,
 }
 
 /// Host auth UI driven by core-owned [`AuthState`] transitions.
