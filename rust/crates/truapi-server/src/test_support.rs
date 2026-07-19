@@ -582,6 +582,24 @@ pub(crate) fn sign_response_message(
     }
 }
 
+/// SSO legacy-account raw signing response for the given request id.
+pub(crate) fn sign_raw_legacy_response_message(
+    message_id: &str,
+    signature: Vec<u8>,
+) -> crate::host_logic::sso::messages::RemoteMessage {
+    crate::host_logic::sso::messages::RemoteMessage {
+        message_id: format!("wallet-{message_id}"),
+        data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+            crate::host_logic::sso::messages::v1::RemoteMessage::SignRawLegacyResponse(
+                crate::host_logic::sso::messages::SignRawLegacyResponse {
+                    responding_to: message_id.to_string(),
+                    signature: Ok(signature),
+                },
+            ),
+        ),
+    }
+}
+
 /// Product account id fixture for `identifier` and derivation slot.
 pub(crate) fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
     v01::ProductAccountId {
