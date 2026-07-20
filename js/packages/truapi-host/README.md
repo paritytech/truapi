@@ -55,6 +55,20 @@ const secondProvider = await runtime.createProvider({
 protocol-iframe MessageChannel handshake. Host code creates one worker runtime
 and then opens one provider per product id.
 
+## Testing — in-memory mock host
+
+`@parity/truapi-host/web` also exports `createMockHost`, the JS sibling of
+`truapi-platform`'s `MockPlatform`. It returns a complete
+`RequiredHostCallbacks` set (in-memory storage, fixed permission policy, a
+silent-or-scripted chain connection, recorded navigations/notifications) plus
+accessor oracles for assertions, so tests and host simulators can drive the real
+WASM core against a mocked OS seam with no device and no network. `MockHostConfig`
+tunes permissions, feature support, theme, confirmation, and chain responses;
+`mockRuntimeConfig` builds a matching `ProductRuntimeConfig`. Hand `host.callbacks`
+straight to `createWebWorkerPairingHostRuntime` or to `createWasmRawCallbacks`.
+Signing and login still need a paired wallet, so those flows park under the
+default silent chain.
+
 ## Publishing
 
 This package is published by the root `Release` workflow through

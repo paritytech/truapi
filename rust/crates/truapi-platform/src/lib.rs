@@ -15,6 +15,10 @@ use unicode_normalization::UnicodeNormalization;
 
 pub use async_trait::async_trait;
 
+/// In-memory mock platform for tests and host simulators (enable the `mock` feature).
+#[cfg(feature = "mock")]
+pub mod mock;
+
 use truapi::latest::{
     GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageReadError,
