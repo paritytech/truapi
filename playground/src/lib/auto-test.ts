@@ -15,7 +15,9 @@ export interface TestEntry {
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
 const SSO_TIMEOUT_MS = 60_000;
-const LIVE_ALLOCATION_TIMEOUT_MS = 240_000;
+// Exceeds the runtime's 300s remote-allocation cap and 360s end-to-end
+// preimage cap, leaving time for the result to cross the iframe boundary.
+const LIVE_ALLOCATION_TIMEOUT_MS = 420_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);

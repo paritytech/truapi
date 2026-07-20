@@ -33,9 +33,7 @@ use crate::host_logic::bulletin::preimage_key;
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::PermissionsService;
-use crate::host_logic::product_account::{
-    derive_product_public_key, product_public_key_to_address,
-};
+use crate::host_logic::product_account::{derive_product_public_key, public_key_from_address};
 use crate::host_logic::session::SessionInfo;
 #[cfg(test)]
 use crate::host_logic::session::SessionState;
@@ -153,13 +151,51 @@ pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
 /// after 180 seconds:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L303-L307>
 const DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+/// Resource allocation may include a People -> Bulletin cross-chain
+/// propagation before the signing host can truthfully report `Allocated`.
+/// Keep this above the signing host's 240-second propagation ceiling while
+/// still bounding an unanswered request.
+const RESOURCE_ALLOCATION_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
 /// End-to-end timeout for an in-core Bulletin preimage submit, starting after
 /// user confirmation and covering allowance allocation, chain submission, and
-/// one optional allowance refresh and retry.
-const PREIMAGE_SUBMIT_TIMEOUT: Duration = Duration::from_secs(60);
+/// one optional allowance refresh and retry. A first live allocation may need
+/// to fund and register the identity before the submit can start.
+const PREIMAGE_SUBMIT_TIMEOUT: Duration = Duration::from_secs(360);
 /// Per-request cap for obtaining or refreshing the Bulletin allowance. The
 /// end-to-end submit deadline may reduce it further.
-const PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(45);
+const PREIMAGE_REMOTE_AUTHORITY_RESPONSE_TIMEOUT: Duration =
+    RESOURCE_ALLOCATION_REMOTE_AUTHORITY_RESPONSE_TIMEOUT;
+
+const LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON: &str =
+    "Account can't be derived from product account id";
+const LEGACY_ACCOUNT_UNAVAILABLE_REASON: &str = "Account is not available in the active session";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LegacySigner {
+    Product,
+    Identity([u8; 32]),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum LegacySignerError {
+    Unavailable,
+    ProductDerivation(String),
+}
+
+impl LegacySignerError {
+    fn into_reason(self, unavailable_reason: &'static str) -> String {
+        match self {
+            Self::Unavailable => unavailable_reason.to_string(),
+            Self::ProductDerivation(reason) => reason,
+        }
+    }
+
+    fn into_host_error(self, unavailable_reason: &'static str) -> v01::HostSignPayloadError {
+        v01::HostSignPayloadError::Unknown {
+            reason: self.into_reason(unavailable_reason),
+        }
+    }
+}
 
 fn remote_authority_context(cx: &CallContext) -> CallContext {
     remote_authority_context_with_default(cx, DEFAULT_REMOTE_AUTHORITY_RESPONSE_TIMEOUT)
@@ -537,41 +573,32 @@ impl ProductRuntimeHost {
         Ok(status)
     }
 
-    fn validate_legacy_address_signer(
+    fn classify_legacy_address_signer(
         &self,
         session: &AuthoritySession,
         signer: &str,
-    ) -> Result<[u8; 32], v01::HostSignPayloadError> {
-        let public_key = self
-            .legacy_slot_zero_public_key(session)
-            .map_err(|reason| v01::HostSignPayloadError::Unknown { reason })?;
-        let expected = product_public_key_to_address(public_key);
-        if expected == signer
-            || parse_legacy_signer_hex(signer).is_some_and(|key| key == public_key)
-        {
-            Ok(public_key)
-        } else {
-            Err(v01::HostSignPayloadError::Unknown {
-                reason: "Account can't be derived from product account id".to_string(),
-            })
-        }
+    ) -> Result<LegacySigner, LegacySignerError> {
+        let requested_key = parse_legacy_signer_hex(signer)
+            .or_else(|| public_key_from_address(signer))
+            .ok_or(LegacySignerError::Unavailable)?;
+        self.classify_legacy_signer(session, requested_key)
     }
 
-    fn validate_legacy_public_key_signer(
+    fn classify_legacy_signer(
         &self,
         session: &AuthoritySession,
-        signer: [u8; 32],
-    ) -> Result<(), v01::HostCreateTransactionError> {
-        let public_key = self
-            .legacy_slot_zero_public_key(session)
-            .map_err(|reason| v01::HostCreateTransactionError::Unknown { reason })?;
-        if public_key == signer {
-            Ok(())
-        } else {
-            Err(v01::HostCreateTransactionError::Unknown {
-                reason: "Account can't be derived from product account id".to_string(),
-            })
+        requested_key: [u8; 32],
+    ) -> Result<LegacySigner, LegacySignerError> {
+        if session.identity_account_id == Some(requested_key) {
+            return Ok(LegacySigner::Identity(requested_key));
         }
+        let product_public_key = self
+            .legacy_slot_zero_public_key(session)
+            .map_err(LegacySignerError::ProductDerivation)?;
+        if requested_key == product_public_key {
+            return Ok(LegacySigner::Product);
+        }
+        Err(LegacySignerError::Unavailable)
     }
 }
 
@@ -1279,8 +1306,20 @@ impl Signing for ProductRuntimeHost {
                 HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Rejected),
             ));
         };
-        self.validate_legacy_address_signer(&session, &inner.signer)
-            .map_err(|err| CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(err)))?;
+        let signer = self
+            .classify_legacy_address_signer(&session, &inner.signer)
+            .map_err(|err| {
+                CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(
+                    err.into_host_error(LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON),
+                ))
+            })?;
+        if !matches!(signer, LegacySigner::Product) {
+            return Err(CallError::Domain(
+                HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Unknown {
+                    reason: LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON.to_string(),
+                }),
+            ));
+        }
         self.require_chain_submit(HostSignPayloadWithLegacyAccountError::V1(
             v01::HostSignPayloadError::PermissionDenied,
         ))
@@ -1333,8 +1372,13 @@ impl Signing for ProductRuntimeHost {
                 v01::HostSignPayloadError::Rejected,
             )));
         };
-        self.validate_legacy_address_signer(&session, &inner.signer)
-            .map_err(|err| CallError::Domain(HostSignRawWithLegacyAccountError::V1(err)))?;
+        let signer = self
+            .classify_legacy_address_signer(&session, &inner.signer)
+            .map_err(|err| {
+                CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                    err.into_host_error(LEGACY_ACCOUNT_UNAVAILABLE_REASON),
+                ))
+            })?;
         self.require_chain_submit(HostSignRawWithLegacyAccountError::V1(
             v01::HostSignPayloadError::PermissionDenied,
         ))
@@ -1355,19 +1399,22 @@ impl Signing for ProductRuntimeHost {
             )));
         }
         let cx = remote_authority_context(cx);
+        let authority_request = match signer {
+            LegacySigner::Product => SignRawAuthorityRequest::Product(v01::HostSignRawRequest {
+                account: v01::ProductAccountId {
+                    dot_ns_identifier: self.product_id(),
+                    derivation_index: 0,
+                },
+                payload: inner.payload,
+            }),
+            LegacySigner::Identity(account) => SignRawAuthorityRequest::LegacyAccount {
+                account,
+                request: inner,
+            },
+        };
         remote_authority_call(
             &cx,
-            self.authority.sign_raw(
-                &cx,
-                &session,
-                SignRawAuthorityRequest::LegacyAccount {
-                    product_account: v01::ProductAccountId {
-                        dot_ns_identifier: self.product_id(),
-                        derivation_index: 0,
-                    },
-                    request: inner,
-                },
-            ),
+            self.authority.sign_raw(&cx, &session, authority_request),
         )
         .await
         .map(HostSignRawWithLegacyAccountResponse::V1)
@@ -1391,10 +1438,24 @@ impl Signing for ProductRuntimeHost {
                 ),
             ));
         };
-        self.validate_legacy_public_key_signer(&session, inner.signer)
+        let signer = self
+            .classify_legacy_signer(&session, inner.signer)
             .map_err(|err| {
-                CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(err))
+                CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
+                    v01::HostCreateTransactionError::Unknown {
+                        reason: err.into_reason(LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON),
+                    },
+                ))
             })?;
+        if !matches!(signer, LegacySigner::Product) {
+            return Err(CallError::Domain(
+                HostCreateTransactionWithLegacyAccountError::V1(
+                    v01::HostCreateTransactionError::Unknown {
+                        reason: LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON.to_string(),
+                    },
+                ),
+            ));
+        }
         self.require_chain_submit(HostCreateTransactionWithLegacyAccountError::V1(
             v01::HostCreateTransactionError::PermissionDenied,
         ))
@@ -1779,7 +1840,10 @@ impl ResourceAllocation for ProductRuntimeHost {
                 },
             )));
         }
-        let cx = remote_authority_context(cx);
+        let cx = remote_authority_context_with_default(
+            cx,
+            RESOURCE_ALLOCATION_REMOTE_AUTHORITY_RESPONSE_TIMEOUT,
+        );
         remote_authority_call(
             &cx,
             self.authority
@@ -3547,6 +3611,32 @@ mod tests {
     }
 
     #[test]
+    fn legacy_sign_payload_rejects_identity_account() {
+        let session = session_info();
+        let identity = session.identity_account_id.unwrap();
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+        let request = HostSignPayloadWithLegacyAccountRequest::V1(
+            v01::HostSignPayloadWithLegacyAccountRequest {
+                signer: subxt::utils::AccountId32(identity).to_string(),
+                payload: sign_payload_data(),
+            },
+        );
+
+        let err = futures::executor::block_on(host.sign_payload_with_legacy_account(&cx, request))
+            .unwrap_err();
+
+        match err {
+            CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(
+                v01::HostSignPayloadError::Unknown { reason },
+            )) => assert_eq!(reason, LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON),
+            other => panic!("expected identity account rejection, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn legacy_sign_raw_rejects_signer_mismatch() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
@@ -3562,7 +3652,7 @@ mod tests {
         match err {
             CallError::Domain(HostSignRawWithLegacyAccountError::V1(
                 v01::HostSignPayloadError::Unknown { reason },
-            )) => assert_eq!(reason, "Account can't be derived from product account id"),
+            )) => assert_eq!(reason, "Account is not available in the active session"),
             other => panic!("expected legacy signer mismatch, got {other:?}"),
         }
     }
@@ -3695,6 +3785,44 @@ mod tests {
     }
 
     #[test]
+    fn legacy_sign_raw_accepts_identity_ss58_then_routes_legacy_request() {
+        let session = sso_session_info();
+        let identity = session.identity_account_id.unwrap();
+        let platform = Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            sso_response_script: Some(sso_success_response_script(
+                &session,
+                sign_raw_legacy_response_message("identity-sign-raw-1", vec![7, 7]),
+            )),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("identity-sign-raw-1".to_string());
+        let request =
+            HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
+                signer: subxt::utils::AccountId32(identity).to_string(),
+                payload: raw_payload(),
+            });
+
+        let response =
+            futures::executor::block_on(host.sign_raw_with_legacy_account(&cx, request)).unwrap();
+
+        let HostSignRawWithLegacyAccountResponse::V1(response) = response;
+        assert_eq!(response.signature, vec![7, 7]);
+        let message = submitted_remote_message(&platform, &session);
+        let RemoteMessageData::V1(v1::RemoteMessage::SignRawLegacyRequest(request)) = message.data
+        else {
+            panic!("expected legacy raw signing request");
+        };
+        assert_eq!(request.account, identity);
+    }
+
+    #[test]
     fn legacy_create_transaction_rejects_raw_key_mismatch() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
@@ -3716,6 +3844,35 @@ mod tests {
                 v01::HostCreateTransactionError::Unknown { reason },
             )) => assert_eq!(reason, "Account can't be derived from product account id"),
             other => panic!("expected legacy signer mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_create_transaction_rejects_identity_account() {
+        let session = session_info();
+        let identity = session.identity_account_id.unwrap();
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+        let request =
+            HostCreateTransactionWithLegacyAccountRequest::V1(v01::LegacyAccountTxPayload {
+                signer: identity,
+                genesis_hash: [1; 32],
+                call_data: vec![0],
+                extensions: vec![],
+                tx_ext_version: 0,
+            });
+
+        let err =
+            futures::executor::block_on(host.create_transaction_with_legacy_account(&cx, request))
+                .unwrap_err();
+
+        match err {
+            CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
+                v01::HostCreateTransactionError::Unknown { reason },
+            )) => assert_eq!(reason, LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON),
+            other => panic!("expected identity account rejection, got {other:?}"),
         }
     }
 
@@ -3853,6 +4010,59 @@ mod tests {
         .unwrap_err();
         assert!(
             matches!(err, CallError::HostFailure { reason } if reason.contains("modal failed"))
+        );
+    }
+
+    #[test]
+    fn resource_allocation_respects_a_shorter_call_context_timeout() {
+        let session = sso_session_info();
+        let message_id = "allocation-timeout";
+        let mut rpc_responses = sso_success_responses(
+            &session,
+            message_id,
+            crate::host_logic::sso::messages::RemoteMessage {
+                message_id: "wallet-allocation-timeout".to_string(),
+                data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                    crate::host_logic::sso::messages::v1::RemoteMessage::ResourceAllocationResponse(
+                        crate::host_logic::sso::messages::ResourceAllocationResponse {
+                            responding_to: message_id.to_string(),
+                            payload: Ok(vec![]),
+                        },
+                    ),
+                ),
+            },
+        );
+        rpc_responses.truncate(3);
+        let platform = Arc::new(StubPlatform {
+            resource_allocation_confirmed: true,
+            rpc_responses,
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.test_session_state().set_session(session);
+        let mut cx = CallContext::with_request_id(message_id.to_string());
+        cx.set_timeout(std::time::Duration::from_millis(1));
+
+        let err = futures::executor::block_on(ResourceAllocation::request(
+            &host,
+            &cx,
+            resource_allocation_request(),
+        ))
+        .unwrap_err();
+
+        match err {
+            CallError::Domain(HostRequestResourceAllocationError::V1(
+                v01::ResourceAllocationError::Unknown { reason },
+            )) => assert_eq!(
+                reason,
+                "Account authority request timed out after 1ms for allocation-timeout"
+            ),
+            other => panic!("expected resource-allocation timeout, got {other:?}"),
+        }
+
+        wait_until(
+            || recorded_rpc_method_count(&platform.sent_rpc, "statement_unsubscribeStatement") == 2,
+            "timed-out resource allocation did not unsubscribe statement streams",
         );
     }
 

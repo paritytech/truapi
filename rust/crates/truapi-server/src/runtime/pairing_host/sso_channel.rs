@@ -19,7 +19,7 @@ use crate::host_logic::sso::messages::{
     SsoAllocatedResource, SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement,
     alias_request_message, build_outgoing_request_statement, create_transaction_message,
     decode_sso_session_statement, proof_request_message, resource_allocation_message,
-    sign_payload_message, sign_raw_message, v1,
+    sign_payload_message, sign_raw_legacy_message, sign_raw_message, v1,
 };
 use crate::host_logic::statement_store::parse_new_statements_result;
 
@@ -292,33 +292,38 @@ impl PairingHost {
     ) -> Result<latest::HostSignPayloadResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
         let message_id = sso_message_id();
-        let request = match request {
-            SignRawAuthorityRequest::Product(request) => request,
-            SignRawAuthorityRequest::LegacyAccount {
-                product_account,
-                request,
-            } => latest::HostSignRawRequest {
-                account: product_account,
-                payload: request.payload,
-            },
+        let (message, expects_legacy_response) = match request {
+            SignRawAuthorityRequest::Product(request) => {
+                (sign_raw_message(message_id, request), false)
+            }
+            SignRawAuthorityRequest::LegacyAccount { account, request } => (
+                sign_raw_legacy_message(message_id, account, request.payload),
+                true,
+            ),
         };
-        let message = sign_raw_message(message_id, request);
         let response = self
             .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await
             .map_err(remote_authority_error)?;
-        let SsoRemoteResponse::Sign(response) = response else {
-            return Err(AuthorityError::Unknown {
+        match (expects_legacy_response, response) {
+            (false, SsoRemoteResponse::Sign(response)) => response
+                .payload
+                .map(|payload| latest::HostSignPayloadResponse {
+                    signature: payload.signature,
+                    signed_transaction: payload.signed_transaction,
+                })
+                .map_err(remote_authority_error),
+            (true, SsoRemoteResponse::SignRawLegacy(response)) => response
+                .signature
+                .map(|signature| latest::HostSignPayloadResponse {
+                    signature,
+                    signed_transaction: None,
+                })
+                .map_err(remote_authority_error),
+            _ => Err(AuthorityError::Unknown {
                 reason: UNEXPECTED_SSO_SIGNING_RESPONSE.to_string(),
-            });
-        };
-        response
-            .payload
-            .map(|payload| latest::HostSignPayloadResponse {
-                signature: payload.signature,
-                signed_transaction: payload.signed_transaction,
-            })
-            .map_err(remote_authority_error)
+            }),
+        }
     }
 
     pub(super) async fn remote_create_transaction(
