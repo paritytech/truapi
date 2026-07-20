@@ -102,6 +102,9 @@ make check    # full suite: build, fmt, clippy, test, TS tests, playground build
 make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host/dist/wasm/
 ```
 
+CI regenerates the shared bindings before building and testing both npm
+packages, so generated client and host callback changes are checked together.
+
 To run the playground locally:
 
 ```bash
