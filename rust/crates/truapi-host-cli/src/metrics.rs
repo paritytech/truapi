@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// What kind of host operation a record measures.
 ///
@@ -17,7 +17,7 @@ use serde::Serialize;
 /// WebSocket boundary; the fine-grained variants below are decoded from the
 /// wire id. The `#[allow(dead_code)]` covers variants not yet emitted.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Category {
     Frame,
@@ -34,7 +34,7 @@ pub enum Category {
 
 /// Terminal outcome of a measured operation.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Outcome {
     Success,
@@ -43,7 +43,7 @@ pub enum Outcome {
 }
 
 /// One per-operation host metric event. Serialises to camelCase JSON.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostMetricRecord {
     pub ts: String,
@@ -227,8 +227,8 @@ pub fn response_outcome(frame: &[u8]) -> Option<(String, Outcome)> {
 }
 
 /// Map a method name to a coarse metric category by its namespace prefix.
-/// The buckets are provisional and unused in v1 (only `Frame` is emitted);
-/// revisit them when the fine-grained category path goes live.
+/// A few mappings are provisional (e.g. `statement` under Signing) and can be
+/// refined later without touching the wire.
 fn category_for_method(method: &str) -> Category {
     match method.split('_').next().unwrap_or("") {
         "signing" | "entropy" | "statement" => Category::Signing,
@@ -349,5 +349,18 @@ mod tests {
                 .expect("response frame is classified");
         assert_eq!(id, "req-err");
         assert!(matches!(outcome, Outcome::Error));
+    }
+
+    #[test]
+    fn record_round_trips_through_json() {
+        let line = r#"{"ts":"2026-07-20T10:00:00Z","runId":"fleet-1","vuIndex":2,"category":"signing","op":"signing_sign_raw","latencyMs":12.5,"outcome":"error","errorClass":"NoAllowance"}"#;
+        let rec: HostMetricRecord = serde_json::from_str(line).expect("deserializes");
+        assert_eq!(rec.run_id, "fleet-1");
+        assert_eq!(rec.vu_index, 2);
+        assert_eq!(rec.category, Category::Signing);
+        assert_eq!(rec.outcome, Outcome::Error);
+        assert_eq!(rec.error_class.as_deref(), Some("NoAllowance"));
+        let back = serde_json::to_string(&rec).expect("serializes");
+        assert_eq!(serde_json::from_str::<HostMetricRecord>(&back).unwrap().op, rec.op);
     }
 }
