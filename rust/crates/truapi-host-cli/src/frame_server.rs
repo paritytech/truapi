@@ -5,8 +5,10 @@
 //! binary messages. One binary WS message carries exactly one SCALE
 //! `ProtocolMessage`, matching the browser transport's framing.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -35,13 +37,26 @@ impl ProductRuntimeFactory for SigningHostRuntime {
     }
 }
 
-/// Frame sink that writes each outgoing protocol frame as one binary message.
+use crate::metrics::{FrameClass, MetricsRecorder, Outcome, classify_frame, response_outcome};
+
+/// True per-request outcomes, decoded from response frames as they are emitted
+/// and consumed by the request loop, keyed by `request_id`.
+type OutcomeMap = Arc<Mutex<HashMap<String, Outcome>>>;
+
+/// Frame sink that writes each outgoing protocol frame as one binary message,
+/// and records the true outcome of response frames for the metrics layer.
 struct WsFrameSink {
     outbound: mpsc::UnboundedSender<Message>,
+    outcomes: OutcomeMap,
 }
 
 impl FrameSink for WsFrameSink {
     fn emit_frame(&self, frame: Vec<u8>) {
+        if let Some((request_id, outcome)) = response_outcome(&frame)
+            && let Ok(mut map) = self.outcomes.lock()
+        {
+            map.insert(request_id, outcome);
+        }
         let _ = self.outbound.send(Message::Binary(frame));
     }
 }
@@ -64,6 +79,7 @@ pub async fn accept_loop(
     runtime: Arc<dyn ProductRuntimeFactory>,
     product_id: String,
     listener: TcpListener,
+    metrics: Arc<MetricsRecorder>,
 ) -> Result<()> {
     let bound = listener.local_addr()?;
     info!(%bound, %product_id, "product frame server listening");
@@ -71,8 +87,9 @@ pub async fn accept_loop(
         let (stream, peer) = listener.accept().await?;
         let runtime = runtime.clone();
         let product_id = product_id.clone();
+        let metrics = metrics.clone();
         tokio::task::spawn_local(async move {
-            if let Err(err) = serve_connection(runtime, product_id, stream).await {
+            if let Err(err) = serve_connection(runtime, product_id, stream, metrics).await {
                 debug!(%peer, %err, "frame connection ended");
             }
         });
@@ -83,6 +100,7 @@ async fn serve_connection(
     runtime: Arc<dyn ProductRuntimeFactory>,
     product_id: String,
     stream: TcpStream,
+    metrics: Arc<MetricsRecorder>,
 ) -> Result<()> {
     let ws = accept_async(stream).await?;
     let (mut write, mut read) = ws.split();
@@ -98,23 +116,31 @@ async fn serve_connection(
 
     let product = ProductContext::new(product_id)
         .map_err(|err| anyhow::anyhow!("invalid product id: {err}"))?;
+    let outcomes: OutcomeMap = Arc::new(Mutex::new(HashMap::new()));
     let sink = Arc::new(WsFrameSink {
         outbound: outbound_tx.clone(),
+        outcomes: outcomes.clone(),
     });
     let product_runtime = runtime.product_runtime(product, sink);
 
     while let Some(message) = read.next().await {
         match message {
             Ok(Message::Binary(bytes)) => {
-                if let Err(err) = product_runtime.receive_frame(bytes.to_vec()).await {
+                let class = classify_frame(&bytes);
+                let started = Instant::now();
+                let result = product_runtime.receive_frame(bytes.to_vec()).await;
+                record_frame(&metrics, &class, started, &result, &outcomes);
+                if let Err(err) = result {
                     debug!(%err, "product runtime rejected frame");
                 }
             }
             Ok(Message::Text(text)) => {
-                if let Err(err) = product_runtime
-                    .receive_frame(text.as_bytes().to_vec())
-                    .await
-                {
+                let bytes = text.as_bytes().to_vec();
+                let class = classify_frame(&bytes);
+                let started = Instant::now();
+                let result = product_runtime.receive_frame(bytes).await;
+                record_frame(&metrics, &class, started, &result, &outcomes);
+                if let Err(err) = result {
                     debug!(%err, "product runtime rejected text frame");
                 }
             }
@@ -127,4 +153,35 @@ async fn serve_connection(
     drop(outbound_tx);
     let _ = writer.await;
     Ok(())
+}
+
+/// Error class recorded when dispatch succeeded but the response frame carried
+/// a domain error. This is an emitted-schema value consumed by downstream ingest.
+const RESPONSE_ERROR_CLASS: &str = "response_error";
+
+/// Record one product-frame op: its `(category, op)`, receive-to-dispatch
+/// latency, and true outcome. A clean dispatch (`Ok`) still counts as an
+/// error when the captured response frame carried a domain error; a dispatch
+/// with no captured response counts as success.
+fn record_frame<E: std::fmt::Display>(
+    metrics: &MetricsRecorder,
+    class: &FrameClass,
+    started: Instant,
+    result: &Result<(), E>,
+    outcomes: &OutcomeMap,
+) {
+    let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let (outcome, error_class) = match result {
+        Err(err) => (Outcome::Error, Some(err.to_string())),
+        Ok(()) => match outcomes
+            .lock()
+            .ok()
+            .and_then(|mut m| m.remove(&class.request_id))
+        {
+            Some(Outcome::Error) => (Outcome::Error, Some(RESPONSE_ERROR_CLASS.to_string())),
+            Some(other) => (other, None),
+            None => (Outcome::Success, None),
+        },
+    };
+    metrics.record(class.category, &class.op, latency_ms, outcome, error_class);
 }

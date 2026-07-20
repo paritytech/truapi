@@ -14,6 +14,7 @@ mod alloc;
 mod attestation;
 mod chain;
 mod frame_server;
+mod metrics;
 mod network;
 mod platform;
 mod script_runner;
@@ -503,11 +504,15 @@ async fn with_frame_server<T, Fut>(
 where
     Fut: Future<Output = Result<T>>,
 {
+    // Per-operation metrics for the stress/sim layer. Opt-in via `METRICS_JSONL`;
+    // a no-op recorder otherwise, so default behaviour is unchanged.
+    let metrics = metrics::MetricsRecorder::from_env();
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async move {
-            let server =
-                tokio::task::spawn_local(frame_server::accept_loop(runtime, product_id, listener));
+            let server = tokio::task::spawn_local(frame_server::accept_loop(
+                runtime, product_id, listener, metrics,
+            ));
             let result = body.await;
             server.abort();
             result
