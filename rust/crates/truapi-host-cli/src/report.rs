@@ -167,6 +167,109 @@ fn category_key(c: Category) -> &'static str {
     }
 }
 
+#[derive(Debug, Serialize)]
+#[allow(dead_code)]
+pub struct OpDelta {
+    pub current: Option<OpStats>,
+    pub baseline: Option<OpStats>,
+    pub delta_count: Option<i64>,
+    pub delta_error_rate_pts: Option<f64>,
+    pub delta_p50_ms: Option<f64>,
+    pub delta_p95_ms: Option<f64>,
+    pub status: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[allow(dead_code)]
+pub struct CompareReport {
+    pub current: RunReport,
+    pub baseline: RunReport,
+    pub delta: BTreeMap<String, OpDelta>,
+}
+
+#[allow(dead_code)]
+pub fn compare(current: RunReport, baseline: RunReport) -> CompareReport {
+    let keys: std::collections::BTreeSet<String> = current
+        .ops
+        .keys()
+        .chain(baseline.ops.keys())
+        .cloned()
+        .collect();
+    let delta = keys
+        .into_iter()
+        .map(|key| {
+            let cur = current.ops.get(&key).cloned();
+            let base = baseline.ops.get(&key).cloned();
+            let entry = match (&cur, &base) {
+                (Some(c), Some(b)) => OpDelta {
+                    delta_count: Some(c.count as i64 - b.count as i64),
+                    delta_error_rate_pts: Some((c.error_rate - b.error_rate) * 100.0),
+                    delta_p50_ms: Some(c.p50_ms - b.p50_ms),
+                    delta_p95_ms: Some(c.p95_ms - b.p95_ms),
+                    status: "changed",
+                    current: cur.clone(),
+                    baseline: base.clone(),
+                },
+                (Some(_), None) => OpDelta {
+                    current: cur.clone(),
+                    baseline: None,
+                    delta_count: None,
+                    delta_error_rate_pts: None,
+                    delta_p50_ms: None,
+                    delta_p95_ms: None,
+                    status: "new",
+                },
+                (None, Some(_)) => OpDelta {
+                    current: None,
+                    baseline: base.clone(),
+                    delta_count: None,
+                    delta_error_rate_pts: None,
+                    delta_p50_ms: None,
+                    delta_p95_ms: None,
+                    status: "gone",
+                },
+                (None, None) => unreachable!("key came from one of the two maps"),
+            };
+            (key, entry)
+        })
+        .collect();
+    CompareReport { current, baseline, delta }
+}
+
+#[allow(dead_code)]
+pub fn render_compare_table(cmp: &CompareReport) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "current run {} ({} records)  vs  baseline run {} ({} records)",
+        cmp.current.run_id, cmp.current.records, cmp.baseline.run_id, cmp.baseline.records
+    );
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "{:<44} {:>7} {:>8} {:>9} {:>9} {:>9}  status",
+        "category/op", "count", "Δcount", "Δerr pts", "Δp50", "Δp95"
+    );
+    for (key, d) in &cmp.delta {
+        let count = d.current.as_ref().map_or(0, |s| s.count);
+        let fmt_i = |v: Option<i64>| v.map_or_else(|| "-".to_string(), |v| format!("{v:+}"));
+        let fmt_f = |v: Option<f64>| v.map_or_else(|| "-".to_string(), |v| format!("{v:+.1}"));
+        let _ = writeln!(
+            out,
+            "{:<44} {:>7} {:>8} {:>9} {:>9} {:>9}  {}",
+            key,
+            count,
+            fmt_i(d.delta_count),
+            fmt_f(d.delta_error_rate_pts),
+            fmt_f(d.delta_p50_ms),
+            fmt_f(d.delta_p95_ms),
+            d.status
+        );
+    }
+    out
+}
+
 #[allow(dead_code)]
 pub fn render_table(report: &RunReport) -> String {
     use std::fmt::Write as _;
@@ -327,6 +430,42 @@ mod tests {
             "TOTAL", "p50", "p95", "err%",
             "vu 0", "vu 1",
         ] {
+            assert!(table.contains(needle), "missing {needle:?} in:\n{table}");
+        }
+    }
+
+    #[test]
+    fn compare_marks_changed_new_and_gone_ops() {
+        let current = aggregate(
+            &[
+                rec(0, Category::Signing, "s", 20.0, Outcome::Error),
+                rec(0, Category::Storage, "new_op", 1.0, Outcome::Success),
+            ],
+            0,
+        );
+        let baseline = aggregate(
+            &[
+                rec(0, Category::Signing, "s", 10.0, Outcome::Success),
+                rec(0, Category::Frame, "old_op", 1.0, Outcome::Success),
+            ],
+            0,
+        );
+        let cmp = compare(current, baseline);
+        let s = &cmp.delta["signing/s"];
+        assert_eq!(s.status, "changed");
+        assert_eq!(s.delta_count, Some(0));
+        assert!((s.delta_error_rate_pts.unwrap() - 100.0).abs() < 1e-9);
+        assert!((s.delta_p95_ms.unwrap() - 10.0).abs() < 1e-9);
+        assert_eq!(cmp.delta["storage/new_op"].status, "new");
+        assert_eq!(cmp.delta["frame/old_op"].status, "gone");
+    }
+
+    #[test]
+    fn compare_table_shows_deltas_and_status() {
+        let current = aggregate(&[rec(0, Category::Signing, "s", 20.0, Outcome::Error)], 0);
+        let baseline = aggregate(&[rec(0, Category::Signing, "s", 10.0, Outcome::Success)], 0);
+        let table = render_compare_table(&compare(current, baseline));
+        for needle in ["signing/s", "Δp95", "+10.0", "+100.0", "changed"] {
             assert!(table.contains(needle), "missing {needle:?} in:\n{table}");
         }
     }
