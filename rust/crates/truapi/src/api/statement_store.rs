@@ -6,7 +6,8 @@ use crate::versioned::statement_store::{
     RemoteStatementStoreCreateProofAuthorizedResponse, RemoteStatementStoreCreateProofError,
     RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
     RemoteStatementStoreSubmitError, RemoteStatementStoreSubmitRequest,
-    RemoteStatementStoreSubscribeItem, RemoteStatementStoreSubscribeRequest,
+    RemoteStatementStoreSubscribeError, RemoteStatementStoreSubscribeItem,
+    RemoteStatementStoreSubscribeRequest,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
@@ -24,47 +25,50 @@ pub trait StatementStore: Send + Sync {
     /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     /// const statement: Statement = { expiry, topics: [topic] };
     ///
-    /// const proofResult = await truapi.statementStore.createProof({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
-    ///   },
-    ///   statement,
-    /// });
-    /// assert(proofResult.isOk(), "createProof failed:", proofResult);
+    /// const proofResult = await truapi.statementStore.createProofAuthorized(statement);
+    /// assert(proofResult.isOk(), "createProofAuthorized failed:", proofResult);
     ///
-    /// statement.proof = proofResult.value.proof;
-    /// console.log("submitting statement:", statement);
-    /// const submitted = await truapi.statementStore.submit({
+    /// const signedStatement = {
     ///   ...statement,
     ///   proof: proofResult.value.proof,
-    /// });
+    /// };
+    /// console.log("submitting statement:", signedStatement);
+    /// const submitted = await truapi.statementStore.submit(signedStatement);
     /// assert(submitted.isOk(), "failed to submit statement:", submitted);
     /// console.log("statement submitted");
     ///
-    /// const statements = await firstValueFrom(
+    /// const page = await firstValueFrom(
     ///   from(
     ///     truapi.statementStore.subscribe({
     ///       request: { tag: "MatchAll", value: [topic] },
     ///     }),
     ///   ),
     /// );
-    /// console.log("subscribe received", statements);
+    /// assert(
+    ///   page.statements.some((item) => item.topics.includes(topic)),
+    ///   "subscription did not return the submitted statement:",
+    ///   page,
+    /// );
+    /// console.log("subscribe received", page);
     /// ```
     #[wire(start_id = 56)]
     async fn subscribe(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreSubscribeRequest,
-    ) -> Subscription<RemoteStatementStoreSubscribeItem> {
-        Subscription::empty()
+    ) -> Result<
+        Subscription<RemoteStatementStoreSubscribeItem>,
+        CallError<RemoteStatementStoreSubscribeError>,
+    > {
+        Err(CallError::unavailable())
     }
 
     /// Create a proof for a statement.
     ///
     /// **Deprecated:** use [`create_proof_authorized`](Self::create_proof_authorized)
     /// instead, which uses a pre-allocated allowance account and does not
-    /// require a per-call signing prompt.
+    /// require a per-call signing prompt. Pairing hosts may reject this method
+    /// when their signing channel cannot sign statement proof payloads exactly.
     ///
     /// ```ts
     /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
@@ -80,8 +84,11 @@ pub trait StatementStore: Send + Sync {
     ///   },
     ///   statement,
     /// });
-    /// assert(result.isOk(), "createProof failed:", result);
-    /// console.log("proof created:", result.value);
+    /// if (result.isErr()) {
+    ///   console.log("deprecated createProof unavailable:", result.error);
+    /// } else {
+    ///   console.log("proof created:", result.value);
+    /// }
     /// ```
     #[wire(request_id = 60)]
     async fn create_proof(
@@ -132,18 +139,12 @@ pub trait StatementStore: Send + Sync {
     /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     /// const statement = { expiry, topics: [topic] };
     ///
-    /// const proofResult = await truapi.statementStore.createProof({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
-    ///   },
-    ///   statement,
-    /// });
-    /// assert(proofResult.isOk(), "createProof failed:", proofResult);
+    /// const proofResult = await truapi.statementStore.createProofAuthorized(statement);
+    /// assert(proofResult.isOk(), "createProofAuthorized failed:", proofResult);
     ///
     /// const result = await truapi.statementStore.submit({
-    ///   proof: proofResult.value.proof,
     ///   ...statement,
+    ///   proof: proofResult.value.proof,
     /// });
     /// assert(result.isOk(), "submit failed:", result);
     /// console.log("statement submitted");

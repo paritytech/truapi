@@ -13,13 +13,15 @@ import {
   type WireProvider,
 } from "./transport.js";
 import {
+  CallError,
   indexedTaggedUnion,
   Result,
   _void,
+  type CallErrorValue,
   type Codec,
   type ResultPayload,
 } from "./scale.js";
-import { TRUAPI_CODEC_VERSION, TRUAPI_VERSION } from "./generated/client.js";
+import { TRUAPI_CODEC_VERSION } from "./generated/client.js";
 import * as T from "./generated/types.js";
 import * as W from "./generated/wire-table.js";
 
@@ -30,12 +32,11 @@ export type { Subscription, TrUApiTransport };
  */
 export interface CreateTransportOptions {
   /**
-   * Highest TrUAPI protocol version exposed by the transport.
-   */
-  truapiVersion?: number;
-
-  /**
    * SCALE codec version advertised during host handshake negotiation.
+   *
+   * @deprecated TODO(shared-core-wire): remove this override with
+   * `TrUApiTransport.codecVersion` once generated handshake requests use
+   * `TRUAPI_CODEC_VERSION` directly.
    */
   codecVersion?: number;
 }
@@ -51,7 +52,10 @@ function protocolVersionTag(version: number): `V${number}` {
   return `V${version}` as `V${number}`;
 }
 
-type HandshakeResponse = ResultPayload<undefined, T.HostHandshakeError>;
+type HandshakeResponse = ResultPayload<
+  undefined,
+  CallErrorValue<T.VersionedHostHandshakeError>
+>;
 const HANDSHAKE_WIRE_VERSION = 1;
 
 /**
@@ -63,7 +67,7 @@ function handshakeResponseCodec(
   return indexedTaggedUnion({
     [protocolVersionTag(version)]: [
       version - 1,
-      Result(_void, T.HostHandshakeError),
+      Result(_void, CallError(T.VersionedHostHandshakeError)),
     ] as const,
   }) as Codec<{ tag: `V${number}`; value: HandshakeResponse }>;
 }
@@ -90,8 +94,14 @@ function encodeUnsupportedHandshakeResponse(version: number): Uint8Array {
     value: {
       success: false,
       value: {
-        tag: "UnsupportedProtocolVersion",
-        value: undefined,
+        tag: "Domain",
+        value: {
+          tag: "V1",
+          value: {
+            tag: "UnsupportedProtocolVersion",
+            value: undefined,
+          },
+        },
       },
     },
   });
@@ -140,7 +150,6 @@ export function createTransport(
   provider: WireProvider,
   options: CreateTransportOptions = {},
 ): TrUApiTransport {
-  const truapiVersion = options.truapiVersion ?? TRUAPI_VERSION;
   const codecVersion = options.codecVersion ?? TRUAPI_CODEC_VERSION;
   let idCounter = 0;
   let closedError: Error | null = null;
@@ -305,7 +314,6 @@ export function createTransport(
   }
 
   return {
-    truapiVersion,
     codecVersion,
     /**
      * Send one request frame and resolve with the typed Ok/Err outcome

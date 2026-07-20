@@ -43,6 +43,15 @@ pub trait Account: Send + Sync {
     /// });
     /// assert(result.isOk(), "getAccount failed:", result);
     /// console.log("account retrieved:", result.value);
+    ///
+    /// const otherProduct = await truapi.account.getAccount({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "other-product.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    /// });
+    /// assert(otherProduct.isOk(), "cross-product getAccount was denied or failed:", otherProduct);
+    /// console.log("other product account retrieved after approval:", otherProduct.value);
     /// ```
     #[wire(request_id = 22)]
     async fn get_account(
@@ -53,13 +62,22 @@ pub trait Account: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Retrieve a contextual alias for a product account.
+    /// Retrieve the contextual alias for a context and ring.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
+    ///
+    /// const PEOPLE_COLLECTION_ID =
+    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
+    ///
     /// const result = await truapi.account.getAccountAlias({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
+    ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
+    ///   ringLocation: {
+    ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
+    ///     junctions: [
+    ///       { tag: "PalletInstance", value: 67 },
+    ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
+    ///     ],
     ///   },
     /// });
     /// assert(result.isOk(), "getAccountAlias failed:", result);
@@ -74,22 +92,24 @@ pub trait Account: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Generate a ring VRF proof for a product account.
+    /// Generate a ring VRF proof; the host selects the member key for the ring.
     ///
     /// ```ts
-    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
+    ///
+    /// const PEOPLE_COLLECTION_ID =
+    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
     ///
     /// const result = await truapi.account.createAccountProof({
-    ///   productAccountId: {
-    ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
-    ///   },
+    ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
     ///   ringLocation: {
-    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///     ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     hints: { palletInstance: 42 },
+    ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
+    ///     junctions: [
+    ///       { tag: "PalletInstance", value: 67 },
+    ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
+    ///     ],
     ///   },
-    ///   context: "0x",
+    ///   message: "0x48656c6c6f",
     /// });
     /// assert(result.isOk(), "createAccountProof failed:", result);
     /// console.log("account proof created:", result.value);

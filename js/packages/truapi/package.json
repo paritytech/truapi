@@ -1,6 +1,6 @@
 {
   "name": "@parity/truapi",
-  "version": "0.3.1",
+  "version": "0.4.1",
   "description": "TrUAPI TypeScript transport, SCALE codecs, and generated API client",
   "license": "MIT",
   "author": "Parity Technologies <admin@parity.io>",
@@ -66,7 +66,7 @@
   },
   "scripts": {
     "ensure-generated": "./scripts/ensure-generated.sh",
-    "build": "tsc",
+    "build": "tsc -b",
     "prebuild": "npm run ensure-generated",
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground --explorer-output src/explorer",
     "typecheck": "npm run build",

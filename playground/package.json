@@ -10,7 +10,7 @@
     "prebuild": "node ./scripts/bundle-rxjs-dts.mjs",
     "build": "next build",
     "prelint": "node ./scripts/bundle-rxjs-dts.mjs",
-    "lint": "next lint --dir src --dir test/generated/examples && tsc --noEmit && tsc -p tsconfig.examples.json",
+    "lint": "eslint src test/generated/examples && tsc --noEmit && tsc -p tsconfig.examples.json",
     "pretypecheck": "node ./scripts/bundle-rxjs-dts.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:examples": "tsc -p tsconfig.examples.json",
@@ -23,7 +23,9 @@
   "dependencies": {
     "@monaco-editor/react": "^4",
     "@parity/truapi": "link:../js/packages/truapi",
-    "@polkadot-api/substrate-bindings": "^0.12.0",
+    "@polkadot-api/metadata-builders": "0.14.2",
+    "@polkadot-api/substrate-bindings": "0.20.2",
+    "@polkadot-api/utils": "0.4.0",
     "monaco-editor": "^0.52",
     "neverthrow": "^8.2.0",
     "next": "15.5.18",
@@ -39,6 +41,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^15.5.4",
+    "jsqr": "^1.4.0",
     "typescript": "^6.0"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"

@@ -15,13 +15,18 @@ export interface TestEntry {
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
 const SSO_TIMEOUT_MS = 60_000;
+// Exceeds the runtime's 300s remote-allocation cap and 360s end-to-end
+// preimage cap, leaving time for the result to cross the iframe boundary.
+const LIVE_ALLOCATION_TIMEOUT_MS = 420_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
-const SKIPPED_SERVICES = new Set(["Coin Payment"]);
-// Methods whose first call implicitly triggers a host permission/signing
-// prompt, so they need the longer signing-class timeout to allow for the user
-// to respond. `get_account_alias` and `Preimage/submit` prompt on first use.
+const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);
+// Individual methods skipped while the host surface is intentionally deferred.
+const SKIPPED_METHODS = new Set(["Account/create_account_proof"]);
+// Methods that trigger a host permission/signing prompt, so they need the
+// longer signing-class timeout to allow for the user to respond.
 const LONG_TIMEOUT_METHODS = new Set([
+  "Account/get_account",
   "Account/get_account_alias",
   "Resource Allocation/request",
   "Signing/sign_payload",
@@ -35,6 +40,13 @@ const LONG_TIMEOUT_METHODS = new Set([
 
 const METHOD_TIMEOUT_MS = new Map<string, number>([
   ["Account/get_account_alias", SSO_TIMEOUT_MS],
+  ["Resource Allocation/request", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Preimage/lookup_subscribe", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Preimage/submit", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Signing/create_transaction", SSO_TIMEOUT_MS],
+  ["Statement Store/create_proof_authorized", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Statement Store/submit", LIVE_ALLOCATION_TIMEOUT_MS],
+  ["Statement Store/subscribe", LIVE_ALLOCATION_TIMEOUT_MS],
 ]);
 
 type RunOneOpts = {
@@ -51,7 +63,17 @@ async function runOne({
   const id = `${serviceName}/${method.name}`;
 
   if (SKIPPED_SERVICES.has(serviceName)) {
-    onUpdate(id, { status: "skipped" });
+    onUpdate(id, {
+      status: "skipped",
+      output: `${serviceName} service not yet wired up by hosts`,
+    });
+    return;
+  }
+  if (SKIPPED_METHODS.has(id)) {
+    onUpdate(id, {
+      status: "skipped",
+      output: "host surface intentionally deferred",
+    });
     return;
   }
   if (!method.exampleSource) {

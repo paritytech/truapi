@@ -10,11 +10,7 @@
  * @module
  */
 
-import {
-  createIframeProvider,
-  createMessagePortProvider,
-  type WireProvider,
-} from "./transport.js";
+import { createMessagePortProvider, type WireProvider } from "./transport.js";
 import { createTransport } from "./client.js";
 import { createClient, type TrUApiClient } from "./generated/index.js";
 
@@ -62,10 +58,7 @@ export function isCorrectEnvironment(): boolean {
 }
 
 /**
- * Origin used as the `targetOrigin` for outbound `postMessage` frames. Frames
- * carry signed payloads and account ids, so this fails closed: when no concrete
- * origin can be pinned it returns `null` (rather than falling back to `"*"`) and
- * provider construction throws.
+ * Origin used as the `targetOrigin` for iframe bootstrap messages.
  */
 function resolveHostOrigin(): string | null {
   if (typeof document !== "undefined" && document.referrer) {
@@ -75,12 +68,41 @@ function resolveHostOrigin(): string | null {
       // Fall through to ancestorOrigins.
     }
   }
-  const ancestors = window.location?.ancestorOrigins;
-  if (ancestors && ancestors.length > 0) return ancestors[0] ?? null;
+  // Firefox serializes cross-origin ancestors as "null", which is not a
+  // valid postMessage targetOrigin; treat it as an unknown host origin.
+  const ancestor = window.location?.ancestorOrigins?.[0];
+  if (ancestor && ancestor !== "null") return ancestor;
   return null;
 }
 
-const WEBVIEW_PORT_TIMEOUT_MS = 20_000;
+const HOST_PORT_TIMEOUT_MS = 20_000;
+let iframePortPromise: Promise<MessagePort> | null = null;
+
+function withAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | undefined,
+  message: string,
+): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new Error(message));
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(new Error(message));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
 
 /**
  * Resolve the host-injected `MessagePort`, polling `window.__HOST_API_PORT__`
@@ -93,7 +115,7 @@ const WEBVIEW_PORT_TIMEOUT_MS = 20_000;
  */
 async function waitForWebviewPort(
   signal?: AbortSignal,
-  timeoutMs = WEBVIEW_PORT_TIMEOUT_MS,
+  timeoutMs = HOST_PORT_TIMEOUT_MS,
 ): Promise<MessagePort> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -107,21 +129,77 @@ async function waitForWebviewPort(
   );
 }
 
+/**
+ * Resolve the iframe `MessagePort` transferred by `createIframeHost`.
+ */
+function waitForIframePort(
+  signal?: AbortSignal,
+  timeoutMs = HOST_PORT_TIMEOUT_MS,
+): Promise<MessagePort> {
+  const existing = hostWindow()?.__HOST_API_PORT__;
+  if (existing) return Promise.resolve(existing);
+
+  iframePortPromise ??= new Promise<MessagePort>((resolve, reject) => {
+    const win = hostWindow();
+    if (!win) {
+      reject(new Error("window is unavailable"));
+      return;
+    }
+
+    const hostOrigin = resolveHostOrigin();
+    let done = false;
+    const cleanup = (): void => {
+      win.removeEventListener("message", onMessage);
+      clearTimeout(timer);
+    };
+    const finish = (result: MessagePort | Error): void => {
+      if (done) return;
+      done = true;
+      cleanup();
+      if (result instanceof Error) {
+        reject(result);
+      } else {
+        win.__HOST_API_PORT__ = result;
+        resolve(result);
+      }
+    };
+    const onMessage = (event: MessageEvent): void => {
+      if (event.source !== win.parent) return;
+      if (hostOrigin !== null && event.origin !== hostOrigin) return;
+      if (event.data?.type !== "truapi-init") return;
+      const [port] = event.ports;
+      if (!port) {
+        finish(new Error("truapi-init did not include a MessagePort"));
+        return;
+      }
+      finish(port);
+    };
+    const timer = setTimeout(() => {
+      finish(
+        new Error(`Timed out waiting for iframe MessagePort (${timeoutMs}ms)`),
+      );
+    }, timeoutMs);
+
+    win.addEventListener("message", onMessage);
+    // This readiness ping carries no MessagePort or account data. When the
+    // browser hides the parent origin, `*` is required so the parent can answer
+    // with the actual capability transfer, which is still source-checked above.
+    win.parent.postMessage({ type: "truapi-ready" }, hostOrigin ?? "*");
+  }).catch((error: unknown) => {
+    iframePortPromise = null;
+    throw error;
+  });
+
+  return withAbort(iframePortPromise, signal, "waitForIframePort aborted");
+}
+
 /** Build the {@link WireProvider} matching the detected environment (iframe or webview). */
 function createSandboxProvider(): WireProvider {
-  if (isIframe()) {
-    const hostOrigin = resolveHostOrigin();
-    if (!hostOrigin) {
-      throw new Error(
-        "TrUAPI iframe provider could not resolve the host origin from document.referrer / ancestorOrigins.",
-      );
-    }
-    return createIframeProvider({ target: window.parent, hostOrigin });
-  }
   const portController = new AbortController();
-  const provider = createMessagePortProvider(
-    waitForWebviewPort(portController.signal),
-  );
+  const portPromise = isIframe()
+    ? waitForIframePort(portController.signal)
+    : waitForWebviewPort(portController.signal);
+  const provider = createMessagePortProvider(portPromise);
   const baseDispose = provider.dispose;
   provider.dispose = () => {
     portController.abort();
@@ -166,14 +244,21 @@ export function getClientSync(): TrUApiClient | null {
 export function subscribeConnectionStatus(
   callback: (status: ConnectionStatus) => void,
 ): () => void {
-  statusListeners.add(callback);
-  callback(status);
+  let emitted = false;
+  const listener = (next: ConnectionStatus) => {
+    emitted = true;
+    callback(next);
+  };
+  statusListeners.add(listener);
 
   if (status === "disconnected") {
     setStatus(getClientSync() ? "connected" : "disconnected");
   }
+  if (!emitted) {
+    callback(status);
+  }
 
   return () => {
-    statusListeners.delete(callback);
+    statusListeners.delete(listener);
   };
 }

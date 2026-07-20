@@ -1,9 +1,9 @@
-# Releasing `@parity/truapi`
+# Releasing npm packages
 
-The `@parity/truapi` npm package is published by
+The `@parity/truapi` and `@parity/truapi-host` npm packages are published by
 [`paritytech/npm_publish_automation`](https://github.com/paritytech/npm_publish_automation).
 We never run `npm publish` locally or from a personal account; the
-`Release` workflow in `.github/workflows/release.yml` packs the package
+`Release` workflow in `.github/workflows/release.yml` packs the packages
 and dispatches the automation.
 
 Releases happen via a dedicated **release PR**. Nothing publishes
@@ -31,11 +31,15 @@ npm run version-packages     # consumes the changeset, bumps package.json + writ
 ```
 
 The first command writes a markdown file under `.changeset/`; the second
-consumes it, bumps `js/packages/truapi/package.json`, appends an entry to
-`js/packages/truapi/CHANGELOG.md`, deletes the changeset file, and then
-runs `scripts/sync-cargo-version.mjs` to bump
-`rust/crates/truapi/Cargo.toml` to the same version. All three files
-should appear in the resulting diff.
+consumes it, bumps the selected package `package.json`, appends the package
+`CHANGELOG.md`, deletes the changeset file, and then runs
+`scripts/sync-release-versions.mjs`. That script keeps
+`rust/crates/truapi/Cargo.toml` and the host package's `@parity/truapi`
+dependency aligned with `js/packages/truapi/package.json`; the command then
+refreshes `package-lock.json`. A protocol release should therefore include the
+`@parity/truapi` package, its changelog, the Cargo version, the host dependency,
+and the lockfile. A host-runtime-only release can bump
+`@parity/truapi-host` without changing the Rust crate version.
 
 ### 3. Open a release PR
 
@@ -49,6 +53,7 @@ The PR title must start with `release:`. Convention:
 
 ```
 release: @parity/truapi 0.1.1
+release: @parity/truapi-host 0.1.1
 ```
 
 ### 4. Get the PR reviewed and merged
@@ -66,11 +71,14 @@ say); the tag-already-exists guard makes re-runs safe.
 On merge, CI runs as usual. When CI passes, the `Release` workflow:
 
 1. Confirms the commit subject starts with `release:`.
-2. Reads the new version from `js/packages/truapi/package.json` and
-   checks no `@parity/truapi@<version>` tag exists yet (re-runs are
-   idempotent — they skip).
-3. Builds the package, creates and pushes the tag, packs the tarball,
-   and dispatches to `npm_publish_automation`.
+2. Reads package versions from `js/packages/truapi/package.json` and
+   `js/packages/truapi-host/package.json`.
+3. Checks for `@parity/truapi@<version>` and
+   `@parity/truapi-host@<version>` tags. Packages whose tag already exists
+   are skipped, so re-runs are idempotent.
+4. Builds generated sources and the host WASM bundle, creates and pushes tags
+   for unpublished packages, packs their tarballs, and dispatches to
+   `npm_publish_automation`.
 
 You can watch the dispatched run under
 [`paritytech/npm_publish_automation` Actions](https://github.com/paritytech/npm_publish_automation/actions).
@@ -79,7 +87,7 @@ You can watch the dispatched run under
 
 - A feature PR that accidentally bumps `package.json` will **not**
   trigger a publish — only `release:` PRs do.
-- A `release:` PR that forgets to bump the version will be skipped at
+- A `release:` PR that forgets to bump package versions will be skipped at
   the tag-already-exists check, not silently re-publish over an
   existing version.
 - A `release:` PR with mismatched `js/packages/truapi/package.json` and

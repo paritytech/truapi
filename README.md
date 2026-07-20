@@ -4,7 +4,7 @@
 
 > The following is a prototype, reference implementation, and proof-of-concept. This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
 
-*The protocol that lets product webviews talk to their Polkadot host.*
+_The protocol that lets product webviews talk to their Polkadot host._
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/paritytech/truapi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/paritytech/truapi/actions/workflows/ci.yml)
@@ -57,13 +57,29 @@ rust/crates/
   truapi/                Rust trait and type definitions (v01, v02)
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
+  truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
+  truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM surface
 js/packages/
-  truapi/                @parity/truapi TypeScript client
-playground/              Interactive Next.js playground (truapi-playground.dot)
-hosts/dotli/             dotli host, vendored as a submodule
-docs/                    Design docs, RFCs, feature proposals
-scripts/codegen.sh       Regenerate the TS client from the Rust source
+  truapi/                  @parity/truapi TypeScript client
+  truapi-host/            @parity/truapi-host: WASM-backed host runtime; entries `.`
+                          (shared host types), `/web` (iframe + Web Worker),
+                          `/worker-runtime`
+playground/                Interactive Next.js playground (truapi-playground.dot)
+hosts/dotli/               dotli host, vendored as a submodule
+docs/                      Design docs, RFCs, feature proposals
+scripts/codegen.sh         Regenerate the TS client from the Rust source
 ```
+
+### JS Host SDKs
+
+JS hosts integrate the Rust core through [`@parity/truapi-host`](js/packages/truapi-host),
+a single package with tree-shakeable subpath entries:
+
+- `@parity/truapi-host` (the `.` entry) exposes shared host runtime types and generated callback contracts.
+- `@parity/truapi-host/web` wires the WASM provider into a browser host: the iframe
+  MessageChannel handshake (`createIframeHost`) plus `createWebWorkerProvider`.
+- `@parity/truapi-host/worker-runtime` is the Web Worker entrypoint so the WASM core can
+  run off the page main thread.
 
 ## How it works
 
@@ -80,9 +96,10 @@ Common tasks are wrapped in the top-level `Makefile`. Run `make help` for the fu
 
 ```bash
 make setup    # submodules + JS dependencies
-make build    # Rust workspace + TypeScript client
-make test     # Rust + TypeScript client tests
+make build    # Rust workspace + TypeScript client + @parity/truapi-host
+make test     # Rust + TypeScript client + @parity/truapi-host tests
 make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
+make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host/dist/wasm/
 ```
 
 To run the playground locally:
@@ -104,6 +121,7 @@ make playground   # rebuild the playground against the refreshed snapshot
 ```
 
 This repopulates the ignored generated TS under `js/packages/truapi/`, including the playground metadata.
+`make dev` and `make e2e-dotli` run this generation step unconditionally before starting their local stacks.
 
 ## Protocol versions
 
@@ -129,4 +147,3 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for issue reports, feature proposals, a
 ## License
 
 [MIT](./LICENSE)
-
