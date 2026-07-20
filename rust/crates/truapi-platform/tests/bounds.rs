@@ -59,6 +59,7 @@ fn runtime_config_validation_cases() {
                 name: case.host_name.to_string(),
                 icon: case.host_icon.map(str::to_string),
                 version: None,
+                platform: truapi::latest::HostPlatform::Web,
             },
             PlatformInfo::default(),
         )
@@ -93,6 +94,7 @@ fn pairing_config_validation_cases() {
                 name: case.host_name.to_string(),
                 icon: case.host_icon.map(str::to_string),
                 version: None,
+                platform: truapi::latest::HostPlatform::Web,
             },
             PlatformInfo::default(),
             [0xa2; 32],

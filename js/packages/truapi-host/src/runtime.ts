@@ -66,6 +66,11 @@ export interface ProductRuntimeConfig {
     icon?: string;
     /** Host application version. */
     version?: string;
+    /**
+     * Platform category the host runs on, reported to products via
+     * `System.host_info`. Hosts that omit it report `"Unknown"`.
+     */
+    platform?: "Web" | "Android" | "Ios" | "Desktop" | "Cli" | "Unknown";
   };
   /** Metadata describing the platform running the host. */
   platform?: {

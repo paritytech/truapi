@@ -187,6 +187,7 @@ pub(crate) fn runtime_config(product_id: &str) -> (PairingHostConfig, ProductCon
                 name: "Polkadot Web".to_string(),
                 icon: Some("https://example.invalid/dotli.png".to_string()),
                 version: None,
+                platform: truapi::latest::HostPlatform::Web,
             },
             PlatformInfo::default(),
             [0; 32],

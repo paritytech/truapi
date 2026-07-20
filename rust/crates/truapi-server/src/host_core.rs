@@ -79,6 +79,7 @@ impl PairingHostRuntime {
         let platform: Arc<dyn Platform> = platform;
         let services = RuntimeServices::new(
             platform.clone(),
+            config.host.host_info.clone(),
             config.people_chain_genesis_hash,
             config.bulletin_chain_genesis_hash,
             spawner.clone(),
@@ -203,6 +204,7 @@ impl SigningHostRuntime {
         let platform: Arc<dyn Platform> = platform;
         let services = RuntimeServices::new(
             platform.clone(),
+            config.host.host_info.clone(),
             config.people_chain_genesis_hash,
             config.bulletin_chain_genesis_hash,
             spawner,
