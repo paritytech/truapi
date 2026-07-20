@@ -361,6 +361,9 @@ mod tests {
         assert_eq!(rec.outcome, Outcome::Error);
         assert_eq!(rec.error_class.as_deref(), Some("NoAllowance"));
         let back = serde_json::to_string(&rec).expect("serializes");
-        assert_eq!(serde_json::from_str::<HostMetricRecord>(&back).unwrap().op, rec.op);
+        assert_eq!(
+            serde_json::from_str::<HostMetricRecord>(&back).unwrap().op,
+            rec.op
+        );
     }
 }

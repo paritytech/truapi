@@ -74,7 +74,11 @@ fn op_stats(latencies: &mut [f64], errors: usize) -> OpStats {
     OpStats {
         count,
         errors,
-        error_rate: if count == 0 { 0.0 } else { errors as f64 / count as f64 },
+        error_rate: if count == 0 {
+            0.0
+        } else {
+            errors as f64 / count as f64
+        },
         p50_ms: percentile(latencies, 50.0),
         p95_ms: percentile(latencies, 95.0),
         max_ms: latencies.last().copied().unwrap_or(0.0),
@@ -138,7 +142,15 @@ pub fn aggregate(records: &[HostMetricRecord], skipped_lines: usize) -> RunRepor
             .into_iter()
             .map(|(vu, (mut lat, err))| {
                 let s = op_stats(&mut lat, err);
-                (vu, VuStats { count: s.count, errors: s.errors, error_rate: s.error_rate, p95_ms: s.p95_ms })
+                (
+                    vu,
+                    VuStats {
+                        count: s.count,
+                        errors: s.errors,
+                        error_rate: s.error_rate,
+                        p95_ms: s.p95_ms,
+                    },
+                )
             })
             .collect(),
         total: op_stats(&mut total.0, total.1),
@@ -223,7 +235,11 @@ pub fn compare(current: RunReport, baseline: RunReport) -> CompareReport {
             (key, entry)
         })
         .collect();
-    CompareReport { current, baseline, delta }
+    CompareReport {
+        current,
+        baseline,
+        delta,
+    }
 }
 
 pub fn render_compare_table(cmp: &CompareReport) -> String {
@@ -285,30 +301,51 @@ pub fn render_table(report: &RunReport) -> String {
         let _ = writeln!(
             out,
             "{:<44} {:>7} {:>7} {:>6.1}% {:>7.1}ms {:>7.1}ms {:>7.1}ms",
-            key, s.count, s.errors, s.error_rate * 100.0, s.p50_ms, s.p95_ms, s.max_ms
+            key,
+            s.count,
+            s.errors,
+            s.error_rate * 100.0,
+            s.p50_ms,
+            s.p95_ms,
+            s.max_ms
         );
     }
     let t = &report.total;
     let _ = writeln!(
         out,
         "{:<44} {:>7} {:>7} {:>6.1}% {:>7.1}ms {:>7.1}ms {:>7.1}ms",
-        "TOTAL", t.count, t.errors, t.error_rate * 100.0, t.p50_ms, t.p95_ms, t.max_ms
+        "TOTAL",
+        t.count,
+        t.errors,
+        t.error_rate * 100.0,
+        t.p50_ms,
+        t.p95_ms,
+        t.max_ms
     );
     let _ = writeln!(out);
     for (vu, s) in &report.per_vu {
         let _ = writeln!(
             out,
             "vu {:<41} {:>7} {:>7} {:>6.1}% {:>19.1}ms",
-            vu, s.count, s.errors, s.error_rate * 100.0, s.p95_ms
+            vu,
+            s.count,
+            s.errors,
+            s.error_rate * 100.0,
+            s.p95_ms
         );
     }
     out
 }
 
 pub fn load_report(path: &std::path::Path) -> anyhow::Result<RunReport> {
-    let file = std::fs::File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
+    let file =
+        std::fs::File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
     let (records, skipped) = parse_lines(std::io::BufReader::new(file));
-    anyhow::ensure!(!records.is_empty(), "no valid records in {}", path.display());
+    anyhow::ensure!(
+        !records.is_empty(),
+        "no valid records in {}",
+        path.display()
+    );
     Ok(aggregate(&records, skipped))
 }
 
@@ -332,9 +369,11 @@ mod tests {
     #[test]
     fn parse_skips_malformed_lines_and_counts_them() {
         let input = concat!(
-            r#"{"ts":"2026-07-20T10:00:00Z","runId":"r","vuIndex":0,"category":"frame","op":"a","latencyMs":1.0,"outcome":"success"}"#, "\n",
+            r#"{"ts":"2026-07-20T10:00:00Z","runId":"r","vuIndex":0,"category":"frame","op":"a","latencyMs":1.0,"outcome":"success"}"#,
+            "\n",
             "not json\n",
-            r#"{"ts":"2026-07-20T10:00:01Z","runId":"r","vuIndex":1,"category":"frame","op":"a","latencyMs":2.0,"outcome":"success"}"#, "\n",
+            r#"{"ts":"2026-07-20T10:00:01Z","runId":"r","vuIndex":1,"category":"frame","op":"a","latencyMs":2.0,"outcome":"success"}"#,
+            "\n",
             "{\"truncated\": \n",
         );
         let (records, skipped) = parse_lines(input.as_bytes());
@@ -414,16 +453,36 @@ mod tests {
     #[test]
     fn table_contains_header_ops_and_totals() {
         let records = vec![
-            rec(0, Category::Signing, "signing_sign_raw", 10.0, Outcome::Success),
-            rec(1, Category::Signing, "signing_sign_raw", 30.0, Outcome::Error),
+            rec(
+                0,
+                Category::Signing,
+                "signing_sign_raw",
+                10.0,
+                Outcome::Success,
+            ),
+            rec(
+                1,
+                Category::Signing,
+                "signing_sign_raw",
+                30.0,
+                Outcome::Error,
+            ),
             rec(0, Category::Storage, "storage_set", 5.0, Outcome::Success),
         ];
         let table = render_table(&aggregate(&records, 1));
         for needle in [
-            "run fleet-1", "records 3", "vus 2", "skipped lines 1",
-            "signing/signing_sign_raw", "storage/storage_set",
-            "TOTAL", "p50", "p95", "err%",
-            "vu 0", "vu 1",
+            "run fleet-1",
+            "records 3",
+            "vus 2",
+            "skipped lines 1",
+            "signing/signing_sign_raw",
+            "storage/storage_set",
+            "TOTAL",
+            "p50",
+            "p95",
+            "err%",
+            "vu 0",
+            "vu 1",
         ] {
             assert!(table.contains(needle), "missing {needle:?} in:\n{table}");
         }
@@ -485,6 +544,9 @@ mod tests {
         let a = serde_json::to_string_pretty(&aggregate(&records, 0)).unwrap();
         let b = serde_json::to_string_pretty(&aggregate(&records, 0)).unwrap();
         assert_eq!(a, b);
-        assert!(a.find("signing/a").unwrap() < a.find("storage/b").unwrap(), "ops must be key-sorted");
+        assert!(
+            a.find("signing/a").unwrap() < a.find("storage/b").unwrap(),
+            "ops must be key-sorted"
+        );
     }
 }

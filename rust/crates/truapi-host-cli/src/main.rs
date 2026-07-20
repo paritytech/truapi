@@ -196,10 +196,18 @@ async fn main() -> Result<()> {
             let text = match args.baseline {
                 Some(baseline) => {
                     let cmp = report::compare(current, report::load_report(&baseline)?);
-                    if args.json { serde_json::to_string_pretty(&cmp)? } else { report::render_compare_table(&cmp) }
+                    if args.json {
+                        serde_json::to_string_pretty(&cmp)?
+                    } else {
+                        report::render_compare_table(&cmp)
+                    }
                 }
                 None => {
-                    if args.json { serde_json::to_string_pretty(&current)? } else { report::render_table(&current) }
+                    if args.json {
+                        serde_json::to_string_pretty(&current)?
+                    } else {
+                        report::render_table(&current)
+                    }
                 }
             };
             println!("{text}");
