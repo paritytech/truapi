@@ -35,6 +35,19 @@ export type {
   WireMethodInfo,
   WireTrace,
 } from "./debug.js";
+export { createDebugHost } from "./debug-host.js";
+export type {
+  CreateDebugHostOptions,
+  DebugCallContext,
+  DebugHost,
+  DebugHostDecision,
+  DebugHostEntry,
+  DebugHostTier,
+  DebugRequestEntry,
+  DebugSubscriptionCleanup,
+  DebugSubscriptionEntry,
+  DebugSubscriptionPort,
+} from "./debug-host.js";
 export * as scale from "./scale.js";
 export type { Codec, HexString } from "./scale.js";
 export * from "./generated/index.js";
