@@ -32,6 +32,14 @@ const PRODUCT_ACCOUNT = {
   dotNsIdentifier: "playground.dot",
   derivationSuffix: "0x30",
 };
+const PROOF_CONTEXT = {
+  productId: "playground.dot",
+  suffix: "0x00" as const,
+};
+const RING_LOCATION = {
+  chainId: GENESIS,
+  junctions: [{ tag: "PalletInstance" as const, value: 67 }],
+};
 const SIGN_PAYLOAD: HostSignPayloadData = {
   blockHash: GENESIS,
   blockNumber: "0x01",
@@ -187,9 +195,15 @@ describe("createWasmRawCallbacks", () => {
               case "AccountAlias":
                 return (
                   review.value.callingProductId === "playground.dot" &&
-                  review.value.context.suffix === "0x30" &&
+                  review.value.context.productId === "playground.dot" &&
                   review.value.ringLocation.junctions[0]?.tag ===
                     "PalletInstance"
+                );
+              case "CreateProof":
+                return (
+                  review.value.callingProductId === "playground.dot" &&
+                  review.value.context.suffix === "0x00" &&
+                  review.value.message[0] === 7
                 );
               case "AccountAccess":
                 return (
@@ -289,11 +303,21 @@ describe("createWasmRawCallbacks", () => {
           tag: "AccountAlias",
           value: {
             callingProductId: "playground.dot",
-            context: { productId: "playground.dot", suffix: "0x30" },
-            ringLocation: {
-              chainId: GENESIS,
-              junctions: [{ tag: "PalletInstance", value: 1 }],
-            },
+            context: PROOF_CONTEXT,
+            ringLocation: RING_LOCATION,
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      await raw.confirmUserAction?.(
+        UserConfirmationReview.enc({
+          tag: "CreateProof",
+          value: {
+            callingProductId: "playground.dot",
+            context: PROOF_CONTEXT,
+            ringLocation: RING_LOCATION,
+            message: new Uint8Array([7, 8]),
           },
         }),
       ),
