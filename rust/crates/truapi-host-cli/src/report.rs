@@ -167,6 +167,53 @@ fn category_key(c: Category) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
+pub fn render_table(report: &RunReport) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "run {}  |  {} -> {}  ({})  |  records {}  |  vus {}  |  skipped lines {}",
+        report.run_id,
+        report.started,
+        report.ended,
+        report
+            .duration_secs
+            .map_or_else(|| "n/a".to_string(), |s| format!("{s:.1}s")),
+        report.records,
+        report.vus,
+        report.skipped_lines,
+    );
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "{:<44} {:>7} {:>7} {:>7} {:>9} {:>9} {:>9}",
+        "category/op", "count", "errors", "err%", "p50", "p95", "max"
+    );
+    for (key, s) in &report.ops {
+        let _ = writeln!(
+            out,
+            "{:<44} {:>7} {:>7} {:>6.1}% {:>7.1}ms {:>7.1}ms {:>7.1}ms",
+            key, s.count, s.errors, s.error_rate * 100.0, s.p50_ms, s.p95_ms, s.max_ms
+        );
+    }
+    let t = &report.total;
+    let _ = writeln!(
+        out,
+        "{:<44} {:>7} {:>7} {:>6.1}% {:>7.1}ms {:>7.1}ms {:>7.1}ms",
+        "TOTAL", t.count, t.errors, t.error_rate * 100.0, t.p50_ms, t.p95_ms, t.max_ms
+    );
+    let _ = writeln!(out);
+    for (vu, s) in &report.per_vu {
+        let _ = writeln!(
+            out,
+            "vu {:<41} {:>7} {:>7} {:>6.1}% {:>19.1}ms",
+            vu, s.count, s.errors, s.error_rate * 100.0, s.p95_ms
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,5 +311,23 @@ mod tests {
         ];
         records[1].run_id = "fleet-2".into();
         assert_eq!(aggregate(&records, 0).run_id, "multiple(2)");
+    }
+
+    #[test]
+    fn table_contains_header_ops_and_totals() {
+        let records = vec![
+            rec(0, Category::Signing, "signing_sign_raw", 10.0, Outcome::Success),
+            rec(1, Category::Signing, "signing_sign_raw", 30.0, Outcome::Error),
+            rec(0, Category::Storage, "storage_set", 5.0, Outcome::Success),
+        ];
+        let table = render_table(&aggregate(&records, 1));
+        for needle in [
+            "run fleet-1", "records 3", "vus 2", "skipped lines 1",
+            "signing/signing_sign_raw", "storage/storage_set",
+            "TOTAL", "p50", "p95", "err%",
+            "vu 0", "vu 1",
+        ] {
+            assert!(table.contains(needle), "missing {needle:?} in:\n{table}");
+        }
     }
 }
