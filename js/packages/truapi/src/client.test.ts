@@ -96,7 +96,7 @@ describe("generated client transport", () => {
         const client = createClient(transport);
 
         const request = {
-            productAccountId: { dotNsIdentifier: "foo", derivationIndex: 0 },
+            productAccountId: { dotNsIdentifier: "foo", derivationSuffix: "0x30" },
         };
         void client.account.getAccount(request);
 
@@ -156,7 +156,7 @@ describe("generated client transport", () => {
         const client = createClient(transport);
 
         const response = client.account.getAccount({
-            productAccountId: { dotNsIdentifier: "foo", derivationIndex: 0 },
+            productAccountId: { dotNsIdentifier: "foo", derivationSuffix: "0x30" },
         });
         const reason = { tag: "V1", value: { tag: "NotConnected", value: undefined } } as const;
         const frame = unwrap(

@@ -17,7 +17,7 @@ owner: "@valentunn"
 This RFC defines the derivation scheme for every key rooted in the user's main
 account:
 
-- **Product accounts** — sr25519 keys at `//{productId}/{suffix}`: a hard
+- **Product accounts** — sr25519 keys at `//product//{productId}/{suffix}`: a hard
   junction at the product boundary, plain soft derivation below it, no secret
   path components.
 - **Ring-VRF keys** — a hard-only keyed-hash chain rooted at
@@ -81,17 +81,19 @@ Account keys use **sr25519**.
 ### Product account derivations
 
 ```
-//{productId}/{suffix}
+//product//{productId}/{suffix}
 ```
 
 derived from the root keypair with standard substrate sr25519 HDKD — no
 secret components, no intermediate hashing layer.
 
+- `//product` — **hard** namespace junction separating product accounts from
+  the root keypair's other derivations.
 - `//{productId}` — **hard** junction; `productId` is the product's dotNS
   identifier (e.g. `browse.dot`).
 - `/{suffix}` — **soft** junction.
 
-The hard junction is the security firewall: leaking the `//{productId}`
+The hard junction is the security firewall: leaking the `//product//{productId}`
 secret key (via `AutoSigning` or compromise) exposes exactly that product's
 subtree. Below it, soft derivation adds no exposure — any party holding a
 child secret key already holds the product-root secret key.
@@ -129,12 +131,12 @@ non-numeric suffixes.
 
 The empty suffix is invalid; a product's default account uses suffix `b"0"`.
 
-`//browse.dot/5` in stock tooling therefore derives the same key as
+`//product//browse.dot/5` in stock tooling therefore derives the same key as
 `derivation_suffix = b"5"`.
 
 #### Fetching the product subtree
 
-`//{productId}` is hard, so the root public key alone no longer determines
+`//product//{productId}` is hard, so the root public key alone no longer determines
 product account public keys. One new Accounts Protocol request closes the
 gap:
 
@@ -147,7 +149,7 @@ ApProductSubtreeRequest {
 
 /// Account Holder → Host.
 ApProductSubtreeResponse {
-    /// sr25519 public key of `//{product_id}`.
+    /// sr25519 public key of `//product//{product_id}`.
     product_public_key: Sr25519PublicKey,
 }
 ```
@@ -162,7 +164,7 @@ Host behavior:
   round trip per product, ever — then derive account public keys locally via
   the soft suffix junction.
 - Without `AutoSigning`, signing round-trips to the Account Holder, which
-  derives `//{productId}/{suffix}` from the root keypair and signs.
+  derives `//product//{productId}/{suffix}` from the root keypair and signs.
 - With `AutoSigning`, the Host soft-derives the child secret key and signs
   locally.
 
@@ -174,7 +176,7 @@ The `AutoSigning` payload collapses to the product-root secret key alone.
 
 ```rust
 AutoSigning {
-    /// Secret key of `//{productId}`.
+    /// Secret key of `//product//{productId}`.
     product_root_private_key: Sr25519SecretKey,
 }
 ```
@@ -300,7 +302,7 @@ with no migration path.
   deployment claims the name.
 - **Public enumerability**: a party holding a product's subtree public key
   can enumerate all of its account public keys. Secret path components would
-  add no guarantee here: the `//{productId}` public key is published nowhere
+  add no guarantee here: the `//product//{productId}` public key is published nowhere
   — not even exposed to the product, only Hosts see it via
   `ApProductSubtreeResponse` — and a secret component would have to be shared
   with Hosts through that same response, so whatever leaks the subtree public

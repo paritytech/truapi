@@ -419,7 +419,7 @@ impl ProductRuntimeHost {
         Ok(v01::ProductAccountId {
             dot_ns_identifier: normalize_product_identifier(&product_account_id.dot_ns_identifier)
                 .map_err(|_| ())?,
-            derivation_index: product_account_id.derivation_index,
+            derivation_suffix: product_account_id.derivation_suffix,
         })
     }
 
@@ -428,7 +428,7 @@ impl ProductRuntimeHost {
     }
 
     fn legacy_slot_zero_public_key(&self, session: &AuthoritySession) -> Result<[u8; 32], String> {
-        derive_product_public_key(session.public_key, &self.product_id(), 0)
+        derive_product_public_key(session.public_key, &self.product_id(), b"0")
             .map_err(|err| err.to_string())
     }
 
@@ -837,7 +837,7 @@ impl Account for ProductRuntimeHost {
         let public_key = derive_product_public_key(
             session.public_key,
             &product_account_id.dot_ns_identifier,
-            product_account_id.derivation_index,
+            &product_account_id.derivation_suffix,
         )
         .map_err(|err| {
             CallError::Domain(HostAccountGetError::V1(v01::HostAccountGetError::Unknown {
@@ -980,7 +980,7 @@ impl Account for ProductRuntimeHost {
         let product_id = self.product_id();
 
         let public_key =
-            derive_product_public_key(session.public_key, &product_id, 0).map_err(|err| {
+            derive_product_public_key(session.public_key, &product_id, b"0").map_err(|err| {
                 CallError::Domain(HostGetLegacyAccountsError::V1(
                     v01::HostAccountGetError::Unknown {
                         reason: err.to_string(),
@@ -1348,7 +1348,7 @@ impl Signing for ProductRuntimeHost {
                 SignPayloadAuthorityRequest::LegacyAccount {
                     product_account: v01::ProductAccountId {
                         dot_ns_identifier: self.product_id(),
-                        derivation_index: 0,
+                        derivation_suffix: b"0".to_vec(),
                     },
                     request: inner,
                 },
@@ -1403,7 +1403,7 @@ impl Signing for ProductRuntimeHost {
             LegacySigner::Product => SignRawAuthorityRequest::Product(v01::HostSignRawRequest {
                 account: v01::ProductAccountId {
                     dot_ns_identifier: self.product_id(),
-                    derivation_index: 0,
+                    derivation_suffix: b"0".to_vec(),
                 },
                 payload: inner.payload,
             }),
@@ -1486,7 +1486,7 @@ impl Signing for ProductRuntimeHost {
                 CreateTransactionAuthorityRequest::LegacyAccount {
                     product_account: v01::ProductAccountId {
                         dot_ns_identifier: self.product_id(),
-                        derivation_index: 0,
+                        derivation_suffix: b"0".to_vec(),
                     },
                     request: inner,
                 },
@@ -2320,7 +2320,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             },
         });
         let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
@@ -2341,7 +2341,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "example.com".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             },
         });
         let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
@@ -2366,7 +2366,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             },
         });
         let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
@@ -2402,7 +2402,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             },
         });
         let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
@@ -2427,14 +2427,14 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             },
         });
         let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
         let HostAccountGetResponse::V1(inner) = response;
         assert_eq!(
             inner.account.public_key,
-            derive_product_public_key(session.public_key, "other.dot", 0)
+            derive_product_public_key(session.public_key, "other.dot", b"0")
                 .unwrap()
                 .to_vec()
         );
@@ -2449,7 +2449,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             },
         });
         let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
@@ -2469,7 +2469,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "MyApp.DOT".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             },
         });
         let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
@@ -2495,7 +2495,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             },
         });
         let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
@@ -3726,7 +3726,7 @@ mod tests {
             request.product_account_id,
             v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             }
         );
         assert!(matches!(
@@ -3739,7 +3739,7 @@ mod tests {
     #[test]
     fn legacy_sign_raw_accepts_derived_hex_then_returns_sso_response() {
         let session = sso_session_info();
-        let signer = derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap();
+        let signer = derive_product_public_key(session.public_key, "myapp.dot", b"0").unwrap();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
@@ -3779,7 +3779,7 @@ mod tests {
             request.product_account_id,
             v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             }
         );
     }
@@ -3879,7 +3879,7 @@ mod tests {
     #[test]
     fn legacy_create_transaction_accepts_derived_key_then_returns_sso_response() {
         let session = sso_session_info();
-        let signer = derive_product_public_key(session.public_key, "myapp.dot", 0).unwrap();
+        let signer = derive_product_public_key(session.public_key, "myapp.dot", b"0").unwrap();
         let platform = Arc::new(StubPlatform {
             create_transaction_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
@@ -3933,7 +3933,7 @@ mod tests {
             payload.signer,
             v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_suffix: b"0".to_vec(),
             }
         );
     }

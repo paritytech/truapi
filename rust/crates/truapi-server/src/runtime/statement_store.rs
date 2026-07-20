@@ -274,7 +274,7 @@ impl ProductRuntimeHost {
         let signer = derive_product_public_key(
             session.public_key,
             &product_account_id.dot_ns_identifier,
-            product_account_id.derivation_index,
+            &product_account_id.derivation_suffix,
         )
         .map_err(|err| StatementProofFailure::UnableToSign(err.to_string()))?;
         let fields = statement_fields_from_v01(statement)
@@ -461,7 +461,7 @@ mod tests {
         let statement = statement();
         let payload = statement_payload(statement.clone());
         let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
-        let product_keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let product_keypair = derive_product_keypair(&root, "myapp.dot", b"0").unwrap();
         let expected_signer = product_keypair.public.to_bytes();
         let cx = CallContext::new();
         let request = RemoteStatementStoreCreateProofRequest::V1(

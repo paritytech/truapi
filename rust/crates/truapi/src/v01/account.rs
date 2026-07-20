@@ -2,13 +2,15 @@ use crate::v01::transaction::GenesisHash;
 use parity_scale_codec::{Decode, Encode};
 
 /// Identifies a product-specific account by combining a dotNS domain name with a
-/// derivation index.
+/// derivation suffix.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ProductAccountId {
     /// A dotNS domain name identifier (e.g., `"my-product.dot"`).
     pub dot_ns_identifier: String,
-    /// Key derivation index for generating product-specific accounts.
-    pub derivation_index: u32,
+    /// Derivation suffix selecting an account within the product subtree.
+    /// Interpreted as a standard substrate derivation-path segment when valid
+    /// UTF-8, and as a raw-bytes junction otherwise.
+    pub derivation_suffix: Vec<u8>,
 }
 
 /// A user-imported (legacy) account: public key plus an optional user-chosen

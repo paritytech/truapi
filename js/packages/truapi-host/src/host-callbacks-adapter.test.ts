@@ -30,7 +30,7 @@ import { makeHostCallbacks, settle } from "./test-support.js";
 const GENESIS = `0x${"11".repeat(32)}` as `0x${string}`;
 const PRODUCT_ACCOUNT = {
   dotNsIdentifier: "playground.dot",
-  derivationIndex: 0,
+  derivationSuffix: "0x30",
 };
 const SIGN_PAYLOAD: HostSignPayloadData = {
   blockHash: GENESIS,
@@ -181,13 +181,15 @@ describe("createWasmRawCallbacks", () => {
               case "CreateTransaction":
                 return (
                   review.value.tag === "Product" &&
-                  review.value.value.signer.derivationIndex === 0 &&
+                  review.value.value.signer.derivationSuffix === "0x30" &&
                   review.value.value.callData === "0x0506"
                 );
               case "AccountAlias":
                 return (
-                  review.value.requestingProductId === "playground.dot" &&
-                  review.value.targetProductId === "wallet.dot"
+                  review.value.callingProductId === "playground.dot" &&
+                  review.value.context.suffix === "0x30" &&
+                  review.value.ringLocation.junctions[0]?.tag ===
+                    "PalletInstance"
                 );
               case "AccountAccess":
                 return (
@@ -286,8 +288,12 @@ describe("createWasmRawCallbacks", () => {
         UserConfirmationReview.enc({
           tag: "AccountAlias",
           value: {
-            requestingProductId: "playground.dot",
-            targetProductId: "wallet.dot",
+            callingProductId: "playground.dot",
+            context: { productId: "playground.dot", suffix: "0x30" },
+            ringLocation: {
+              chainId: GENESIS,
+              junctions: [{ tag: "PalletInstance", value: 1 }],
+            },
           },
         }),
       ),

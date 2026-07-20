@@ -1,7 +1,7 @@
 //! Product account derivation shared by all hosts.
 //!
 //! Mirrors host product-account derivation: derive an sr25519 public
-//! key through soft HDKD junctions `["product", product_id, derivation_index]`.
+//! key through soft HDKD junctions `["product", product_id, derivation_suffix]`.
 //! Host-spec C.5-C.7 define the product-account derivation, SS58 address, and
 //! `ProductAccountId` shape:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L66-L128>
@@ -47,19 +47,17 @@ pub fn derive_root_keypair_from_entropy(entropy: &[u8]) -> Result<Keypair, Produ
 /// Derive a product-account keypair from the root keypair.
 ///
 /// Applies the same soft HDKD junctions `["product", product_id,
-/// derivation_index]` as [`derive_product_public_key`] on the secret side, so
+/// derivation_suffix]` as [`derive_product_public_key`] on the secret side, so
 /// the resulting public key equals the seedless public derivation by
 /// construction.
 pub fn derive_product_keypair(
     root: &Keypair,
     product_id: &str,
-    derivation_index: u32,
+    derivation_suffix: &[u8],
 ) -> Result<Keypair, ProductAccountError> {
     let mut keypair = root.clone();
-    let derivation_index = derivation_index.to_string();
-    for junction in [PRODUCT_JUNCTION, product_id, derivation_index.as_str()] {
-        let chain_code = ChainCode(create_chain_code(junction)?);
-        keypair = keypair.derived_key_simple(chain_code, []).0;
+    for chain_code in product_chain_codes(product_id, derivation_suffix)? {
+        keypair = keypair.derived_key_simple(ChainCode(chain_code), []).0;
     }
     Ok(keypair)
 }
@@ -68,19 +66,39 @@ pub fn derive_product_keypair(
 pub fn derive_product_public_key(
     root_public_key: [u8; 32],
     product_id: &str,
-    derivation_index: u32,
+    derivation_suffix: &[u8],
 ) -> Result<[u8; 32], ProductAccountError> {
     let mut public_key = PublicKey::from_bytes(&root_public_key)
         .map_err(|_| ProductAccountError::InvalidRootPublicKey)?;
 
-    let derivation_index = derivation_index.to_string();
-    for junction in [PRODUCT_JUNCTION, product_id, derivation_index.as_str()] {
-        let chain_code = ChainCode(create_chain_code(junction)?);
-        let (derived, _) = public_key.derived_key_simple(chain_code, []);
+    for chain_code in product_chain_codes(product_id, derivation_suffix)? {
+        let (derived, _) = public_key.derived_key_simple(ChainCode(chain_code), []);
         public_key = derived;
     }
 
     Ok(public_key.to_bytes())
+}
+
+/// Chain codes for the product-account junction path
+/// `["product", product_id, derivation_suffix]`.
+fn product_chain_codes(
+    product_id: &str,
+    derivation_suffix: &[u8],
+) -> Result<[[u8; 32]; 3], ProductAccountError> {
+    Ok([
+        create_chain_code(PRODUCT_JUNCTION)?,
+        create_chain_code(product_id)?,
+        suffix_chain_code(derivation_suffix)?,
+    ])
+}
+
+/// Chain code for a derivation suffix: a valid-UTF-8 suffix is interpreted as
+/// a standard path segment; any other suffix is a raw-bytes junction.
+fn suffix_chain_code(suffix: &[u8]) -> Result<[u8; 32], ProductAccountError> {
+    match core::str::from_utf8(suffix) {
+        Ok(segment) => create_chain_code(segment),
+        Err(_) => Ok(normalize_chain_code(suffix.encode())),
+    }
 }
 
 /// Encode a product account public key as a generic Substrate SS58 address.
@@ -106,14 +124,18 @@ fn create_chain_code(code: &str) -> Result<[u8; 32], ProductAccountError> {
     } else {
         code.encode()
     };
+    Ok(normalize_chain_code(encoded))
+}
 
+/// Normalize a SCALE-encoded junction to a 32-byte chain code.
+fn normalize_chain_code(encoded: Vec<u8>) -> [u8; 32] {
     let mut chain_code = [0u8; JUNCTION_ID_LEN];
     if encoded.len() > JUNCTION_ID_LEN {
         chain_code = sp_crypto_hashing::blake2_256(&encoded);
     } else {
         chain_code[..encoded.len()].copy_from_slice(&encoded);
     }
-    Ok(chain_code)
+    chain_code
 }
 
 #[cfg(test)]
@@ -128,7 +150,7 @@ mod tests {
 
     #[test]
     fn derives_dotli_product_account_vector() {
-        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", b"0").unwrap();
         assert_eq!(
             hex::encode(derived),
             "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
@@ -137,7 +159,7 @@ mod tests {
 
     #[test]
     fn derives_different_index_vector() {
-        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 1).unwrap();
+        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", b"1").unwrap();
         assert_eq!(
             hex::encode(derived),
             "ec8a80808b46e44c1351b68e295eb975c55bda4855e5ea9fc1325be7296a2a4e"
@@ -149,7 +171,7 @@ mod tests {
         let derived = derive_product_public_key(
             ROOT_PUBLIC_KEY,
             "w-credentialless-staticblitz-com.local-credentialless.webcontainer-api.io",
-            0,
+            b"0",
         )
         .unwrap();
         assert_eq!(
@@ -160,7 +182,7 @@ mod tests {
 
     #[test]
     fn ss58_address_matches_dotli_vector() {
-        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", b"0").unwrap();
         assert_eq!(
             product_public_key_to_address(derived),
             "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1"
@@ -169,7 +191,7 @@ mod tests {
 
     #[test]
     fn ss58_address_round_trips_to_public_key() {
-        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", b"0").unwrap();
         let address = product_public_key_to_address(derived);
 
         assert_eq!(public_key_from_address(&address), Some(derived));
@@ -179,19 +201,41 @@ mod tests {
     #[test]
     fn product_secret_derivation_matches_public_derivation() {
         // The signing-host secret path and the seedless public path must agree
-        // on the product public key for any root, index, and product id.
+        // on the product public key for any root, suffix, and product id.
         let entropy = [0xABu8; 16];
         let root = derive_root_keypair_from_entropy(&entropy).unwrap();
         let root_public = root.public.to_bytes();
-        for (product_id, index) in [("myapp.dot", 0u32), ("myapp.dot", 1), ("localhost:3000", 7)] {
-            let keypair = derive_product_keypair(&root, product_id, index).unwrap();
-            let public = derive_product_public_key(root_public, product_id, index).unwrap();
+        for (product_id, suffix) in [
+            ("myapp.dot", &b"0"[..]),
+            ("myapp.dot", b"1"),
+            ("localhost:3000", b"7"),
+            ("myapp.dot", b"settings"),
+            ("myapp.dot", &[0xFF, 0xFE][..]),
+        ] {
+            let keypair = derive_product_keypair(&root, product_id, suffix).unwrap();
+            let public = derive_product_public_key(root_public, product_id, suffix).unwrap();
             assert_eq!(
                 keypair.public.to_bytes(),
                 public,
-                "{product_id}#{index} secret vs public derivation",
+                "{product_id}#{suffix:02x?} secret vs public derivation",
             );
         }
+    }
+
+    #[test]
+    fn numeric_suffix_forms_alias_to_one_key() {
+        // Substrate junction encoding normalizes numeric segments, so
+        // non-canonical decimal forms of the same number share a key.
+        let canonical = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", b"5").unwrap();
+        let padded = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", b"05").unwrap();
+        assert_eq!(canonical, padded);
+    }
+
+    #[test]
+    fn non_utf8_suffix_uses_raw_bytes_junction() {
+        let raw = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", &[0xFF, 0xFE]).unwrap();
+        let canonical = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", b"0").unwrap();
+        assert_ne!(raw, canonical);
     }
 
     #[test]
@@ -215,7 +259,7 @@ mod tests {
     #[test]
     fn product_secret_signs_verifiably() {
         let root = derive_root_keypair_from_entropy(&[0xABu8; 16]).unwrap();
-        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", b"0").unwrap();
         let message = b"<Bytes>hello</Bytes>";
         let signature = keypair
             .secret

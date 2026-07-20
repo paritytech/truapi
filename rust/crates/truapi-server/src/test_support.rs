@@ -610,11 +610,12 @@ pub(crate) fn sign_raw_legacy_response_message(
     }
 }
 
-/// Product account id fixture for `identifier` and derivation slot.
-pub(crate) fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
+/// Product account id fixture for `identifier`; the derivation suffix is the
+/// canonical decimal form of `index`.
+pub(crate) fn account_id(identifier: &str, index: u32) -> v01::ProductAccountId {
     v01::ProductAccountId {
         dot_ns_identifier: identifier.to_string(),
-        derivation_index,
+        derivation_suffix: index.to_string().into_bytes(),
     }
 }
 

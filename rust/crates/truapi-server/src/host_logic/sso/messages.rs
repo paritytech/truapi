@@ -331,17 +331,10 @@ pub enum SsoAllocationOutcome {
 /// Resource material allocated by the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatedResource {
-    StatementStoreAllowance {
-        slot_account_key: Vec<u8>,
-    },
-    BulletinAllowance {
-        slot_account_key: Vec<u8>,
-    },
+    StatementStoreAllowance { slot_account_key: Vec<u8> },
+    BulletinAllowance { slot_account_key: Vec<u8> },
     SmartContractAllowance,
-    AutoSigning {
-        product_derivation_secret: String,
-        product_root_private_key: Vec<u8>,
-    },
+    AutoSigning { product_root_private_key: Vec<u8> },
 }
 
 /// Request sent when a product asks the signing host to create a signed transaction
@@ -712,7 +705,7 @@ mod tests {
     fn account() -> ProductAccountId {
         ProductAccountId {
             dot_ns_identifier: "myapp.dot".to_string(),
-            derivation_index: 7,
+            derivation_suffix: b"7".to_vec(),
         }
     }
 
@@ -830,13 +823,13 @@ mod tests {
     }
 
     #[test]
-    fn create_transaction_message_matches_host_papp_0_8_8_fixture() {
+    fn create_transaction_message_wire_shape_pin() {
         let message = create_transaction_message(
             "m-product-tx".to_string(),
             ProductAccountTxPayload {
                 signer: ProductAccountId {
                     dot_ns_identifier: "truapi-playground.dot".to_string(),
-                    derivation_index: 0,
+                    derivation_suffix: b"0".to_vec(),
                 },
                 genesis_hash: sequential_bytes(32),
                 call_data: vec![0, 0],
@@ -851,18 +844,18 @@ mod tests {
 
         assert_host_papp_0_8_8_fixture(
             message,
-            "0x306d2d70726f647563742d7478000700547472756170692d706c617967726f756e642e646f7400000000202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
+            "0x306d2d70726f647563742d7478000700547472756170692d706c617967726f756e642e646f740430202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
         );
     }
 
     #[test]
-    fn playground_create_transaction_message_matches_host_papp_0_8_8_fixture() {
+    fn playground_create_transaction_message_wire_shape_pin() {
         let message = create_transaction_message(
             "create-transaction-1".to_string(),
             ProductAccountTxPayload {
                 signer: ProductAccountId {
                     dot_ns_identifier: "truapi-playground.dot".to_string(),
-                    derivation_index: 0,
+                    derivation_suffix: b"0".to_vec(),
                 },
                 genesis_hash: [
                     0xbf, 0x04, 0x88, 0xdb, 0xe9, 0xda, 0xa1, 0xde, 0x1c, 0x08, 0xc5, 0xf7, 0x43,
@@ -877,7 +870,7 @@ mod tests {
 
         assert_host_papp_0_8_8_fixture(
             message,
-            "0x506372656174652d7472616e73616374696f6e2d31000700547472756170692d706c617967726f756e642e646f7400000000bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f0800000000",
+            "0x506372656174652d7472616e73616374696f6e2d31000700547472756170692d706c617967726f756e642e646f740430bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f0800000000",
         );
     }
 
