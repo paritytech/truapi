@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 /// WebSocket boundary; the fine-grained variants below are decoded from the
 /// wire id. The `#[allow(dead_code)]` covers variants not yet emitted.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Category {
     Frame,

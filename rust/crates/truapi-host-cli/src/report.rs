@@ -8,7 +8,11 @@ use serde::Serialize;
 
 use crate::metrics::{Category, HostMetricRecord, Outcome};
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// Width of the leading `category/op` (or `vu <n>`) column in the rendered tables.
+const OP_COL: usize = 44;
+
+/// Per-op latency/error aggregate; percentiles are nearest-rank over the run's latencies.
+#[derive(Debug, Clone, Serialize)]
 pub struct OpStats {
     pub count: usize,
     pub errors: usize,
@@ -18,7 +22,8 @@ pub struct OpStats {
     pub max_ms: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// Per-VU latency/error aggregate; no per-op breakdown, p95 only (no p50/max).
+#[derive(Debug, Serialize)]
 pub struct VuStats {
     pub count: usize,
     pub errors: usize,
@@ -26,7 +31,8 @@ pub struct VuStats {
     pub p95_ms: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// One run's full aggregate: per-op and per-VU stats, plus totals and skip count.
+#[derive(Debug, Serialize)]
 pub struct RunReport {
     pub run_id: String,
     pub started: String,
@@ -40,7 +46,8 @@ pub struct RunReport {
     pub total: OpStats,
 }
 
-pub fn parse_lines<R: BufRead>(reader: R) -> (Vec<HostMetricRecord>, usize) {
+/// Parses JSONL lines into records; malformed lines are counted, not fatal.
+fn parse_lines<R: BufRead>(reader: R) -> (Vec<HostMetricRecord>, usize) {
     let mut records = Vec::new();
     let mut skipped = 0usize;
     for line in reader.lines() {
@@ -85,7 +92,9 @@ fn op_stats(latencies: &mut [f64], errors: usize) -> OpStats {
     }
 }
 
-pub fn aggregate(records: &[HostMetricRecord], skipped_lines: usize) -> RunReport {
+/// Aggregates records into per-op, per-VU, and total stats; `run_id` collapses
+/// to `multiple(n)` when the records span more than one run.
+fn aggregate(records: &[HostMetricRecord], skipped_lines: usize) -> RunReport {
     let mut by_op: BTreeMap<String, (Vec<f64>, usize)> = BTreeMap::new();
     let mut by_vu: BTreeMap<u32, (Vec<f64>, usize)> = BTreeMap::new();
     let mut total: (Vec<f64>, usize) = (Vec::new(), 0);
@@ -172,6 +181,8 @@ fn category_key(c: Category) -> &'static str {
     }
 }
 
+/// One op's current-vs-baseline comparison; fields are `None` when the op is
+/// absent on one side, and `status` is `changed`/`new`/`gone` accordingly.
 #[derive(Debug, Serialize)]
 pub struct OpDelta {
     pub current: Option<OpStats>,
@@ -183,6 +194,7 @@ pub struct OpDelta {
     pub status: &'static str,
 }
 
+/// A current run paired with a baseline run and their per-op delta map.
 #[derive(Debug, Serialize)]
 pub struct CompareReport {
     pub current: RunReport,
@@ -190,6 +202,8 @@ pub struct CompareReport {
     pub delta: BTreeMap<String, OpDelta>,
 }
 
+/// Builds the per-op delta over the union of both runs' op keys; an op present
+/// on only one side gets a `new`/`gone` entry instead of a numeric delta.
 pub fn compare(current: RunReport, baseline: RunReport) -> CompareReport {
     let keys: std::collections::BTreeSet<String> = current
         .ops
@@ -242,19 +256,32 @@ pub fn compare(current: RunReport, baseline: RunReport) -> CompareReport {
     }
 }
 
+/// Renders a current-vs-baseline delta table: one row per op, plus a
+/// changed/new/gone `status` column.
 pub fn render_compare_table(cmp: &CompareReport) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "current run {} ({} records)  vs  baseline run {} ({} records)",
-        cmp.current.run_id, cmp.current.records, cmp.baseline.run_id, cmp.baseline.records
+        "current run {} ({} records, {} skipped)  vs  baseline run {} ({} records, {} skipped)",
+        cmp.current.run_id,
+        cmp.current.records,
+        cmp.current.skipped_lines,
+        cmp.baseline.run_id,
+        cmp.baseline.records,
+        cmp.baseline.skipped_lines,
     );
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "{:<44} {:>7} {:>8} {:>9} {:>9} {:>9}  status",
-        "category/op", "count", "Δcount", "Δerr pts", "Δp50", "Δp95"
+        "{:<w$} {:>7} {:>8} {:>9} {:>9} {:>9}  status",
+        "category/op",
+        "count",
+        "Δcount",
+        "Δerr pts",
+        "Δp50",
+        "Δp95",
+        w = OP_COL
     );
     for (key, d) in &cmp.delta {
         let count = d.current.as_ref().map_or(0, |s| s.count);
@@ -262,19 +289,22 @@ pub fn render_compare_table(cmp: &CompareReport) -> String {
         let fmt_f = |v: Option<f64>| v.map_or_else(|| "-".to_string(), |v| format!("{v:+.1}"));
         let _ = writeln!(
             out,
-            "{:<44} {:>7} {:>8} {:>9} {:>9} {:>9}  {}",
+            "{:<w$} {:>7} {:>8} {:>9} {:>9} {:>9}  {}",
             key,
             count,
             fmt_i(d.delta_count),
             fmt_f(d.delta_error_rate_pts),
             fmt_f(d.delta_p50_ms),
             fmt_f(d.delta_p95_ms),
-            d.status
+            d.status,
+            w = OP_COL
         );
     }
     out
 }
 
+/// Renders a run's header, per-op table, TOTAL row, and per-VU summary as
+/// fixed-width text.
 pub fn render_table(report: &RunReport) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
@@ -294,49 +324,60 @@ pub fn render_table(report: &RunReport) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "{:<44} {:>7} {:>7} {:>7} {:>9} {:>9} {:>9}",
-        "category/op", "count", "errors", "err%", "p50", "p95", "max"
+        "{:<w$} {:>7} {:>7} {:>7} {:>9} {:>9} {:>9}",
+        "category/op",
+        "count",
+        "errors",
+        "err%",
+        "p50",
+        "p95",
+        "max",
+        w = OP_COL
     );
     for (key, s) in &report.ops {
         let _ = writeln!(
             out,
-            "{:<44} {:>7} {:>7} {:>6.1}% {:>7.1}ms {:>7.1}ms {:>7.1}ms",
+            "{:<w$} {:>7} {:>7} {:>6.1}% {:>7.1}ms {:>7.1}ms {:>7.1}ms",
             key,
             s.count,
             s.errors,
             s.error_rate * 100.0,
             s.p50_ms,
             s.p95_ms,
-            s.max_ms
+            s.max_ms,
+            w = OP_COL
         );
     }
     let t = &report.total;
     let _ = writeln!(
         out,
-        "{:<44} {:>7} {:>7} {:>6.1}% {:>7.1}ms {:>7.1}ms {:>7.1}ms",
+        "{:<w$} {:>7} {:>7} {:>6.1}% {:>7.1}ms {:>7.1}ms {:>7.1}ms",
         "TOTAL",
         t.count,
         t.errors,
         t.error_rate * 100.0,
         t.p50_ms,
         t.p95_ms,
-        t.max_ms
+        t.max_ms,
+        w = OP_COL
     );
     let _ = writeln!(out);
     for (vu, s) in &report.per_vu {
         let _ = writeln!(
             out,
-            "vu {:<41} {:>7} {:>7} {:>6.1}% {:>19.1}ms",
+            "vu {:<w$} {:>7} {:>7} {:>6.1}% {:>17.1}ms",
             vu,
             s.count,
             s.errors,
             s.error_rate * 100.0,
-            s.p95_ms
+            s.p95_ms,
+            w = OP_COL - 3
         );
     }
     out
 }
 
+/// Loads and aggregates a JSONL report file; errors if it has zero valid records.
 pub fn load_report(path: &std::path::Path) -> anyhow::Result<RunReport> {
     let file =
         std::fs::File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
@@ -519,7 +560,7 @@ mod tests {
         let current = aggregate(&[rec(0, Category::Signing, "s", 20.0, Outcome::Error)], 0);
         let baseline = aggregate(&[rec(0, Category::Signing, "s", 10.0, Outcome::Success)], 0);
         let table = render_compare_table(&compare(current, baseline));
-        for needle in ["signing/s", "Δp95", "+10.0", "+100.0", "changed"] {
+        for needle in ["signing/s", "Δp95", "+10.0", "+100.0", "changed", "skipped"] {
             assert!(table.contains(needle), "missing {needle:?} in:\n{table}");
         }
     }
@@ -548,5 +589,28 @@ mod tests {
             a.find("signing/a").unwrap() < a.find("storage/b").unwrap(),
             "ops must be key-sorted"
         );
+    }
+
+    #[test]
+    fn category_key_matches_serde_names() {
+        for c in [
+            Category::Frame,
+            Category::Pairing,
+            Category::Signing,
+            Category::Subscription,
+            Category::HostCallback,
+            Category::ChainRpc,
+            Category::Storage,
+            Category::Permission,
+            Category::Memory,
+            Category::Session,
+        ] {
+            let serde_name = serde_json::to_value(c)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(category_key(c), serde_name);
+        }
     }
 }
