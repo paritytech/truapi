@@ -28,23 +28,28 @@ pub trait StatementStore: Send + Sync {
     /// const proofResult = await truapi.statementStore.createProofAuthorized(statement);
     /// assert(proofResult.isOk(), "createProofAuthorized failed:", proofResult);
     ///
-    /// statement.proof = proofResult.value.proof;
-    /// console.log("submitting statement:", statement);
-    /// const submitted = await truapi.statementStore.submit({
+    /// const signedStatement = {
     ///   ...statement,
     ///   proof: proofResult.value.proof,
-    /// });
+    /// };
+    /// console.log("submitting statement:", signedStatement);
+    /// const submitted = await truapi.statementStore.submit(signedStatement);
     /// assert(submitted.isOk(), "failed to submit statement:", submitted);
     /// console.log("statement submitted");
     ///
-    /// const statements = await firstValueFrom(
+    /// const page = await firstValueFrom(
     ///   from(
     ///     truapi.statementStore.subscribe({
     ///       request: { tag: "MatchAll", value: [topic] },
     ///     }),
     ///   ),
     /// );
-    /// console.log("subscribe received", statements);
+    /// assert(
+    ///   page.statements.some((item) => item.topics.includes(topic)),
+    ///   "subscription did not return the submitted statement:",
+    ///   page,
+    /// );
+    /// console.log("subscribe received", page);
     /// ```
     #[wire(start_id = 56)]
     async fn subscribe(
@@ -138,8 +143,8 @@ pub trait StatementStore: Send + Sync {
     /// assert(proofResult.isOk(), "createProofAuthorized failed:", proofResult);
     ///
     /// const result = await truapi.statementStore.submit({
-    ///   proof: proofResult.value.proof,
     ///   ...statement,
+    ///   proof: proofResult.value.proof,
     /// });
     /// assert(result.isOk(), "submit failed:", result);
     /// console.log("statement submitted");

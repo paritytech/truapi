@@ -65,17 +65,17 @@ pub trait Account: Send + Sync {
     /// Retrieve the contextual alias for a context and ring.
     ///
     /// ```ts
-    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
     ///
     /// const PEOPLE_COLLECTION_ID =
-    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652020202020";
+    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
     ///
     /// const result = await truapi.account.getAccountAlias({
     ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
     ///   ringLocation: {
-    ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
     ///     junctions: [
-    ///       { tag: "PalletInstance", value: 97 },
+    ///       { tag: "PalletInstance", value: 67 },
     ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
     ///     ],
     ///   },
@@ -95,17 +95,17 @@ pub trait Account: Send + Sync {
     /// Generate a ring VRF proof; the host selects the member key for the ring.
     ///
     /// ```ts
-    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
     ///
     /// const PEOPLE_COLLECTION_ID =
-    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652020202020";
+    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
     ///
     /// const result = await truapi.account.createAccountProof({
     ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
     ///   ringLocation: {
-    ///     chainId: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
     ///     junctions: [
-    ///       { tag: "PalletInstance", value: 97 },
+    ///       { tag: "PalletInstance", value: 67 },
     ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
     ///     ],
     ///   },

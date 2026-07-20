@@ -248,10 +248,12 @@ async function openLoginQr(page: Page): Promise<string> {
   return await extractQrPayload(page, "#auth-modal-qr canvas");
 }
 
-async function signInWithBot(page: Page): Promise<PairResult> {
+async function signInWithBot(
+  page: Page,
+  username = botUsername ?? generateUsername(),
+): Promise<PairResult> {
   const { token, base, network } = requireBotEnv();
   const handshake = await openLoginQr(page);
-  const username = botUsername ?? generateUsername();
   console.log(`[e2e-dotli] pairing signer-bot user ${username}`);
   const result = await pair(base, token, {
     handshake,
@@ -473,7 +475,10 @@ async function waitForPlaygroundE2EHook(page: Page): Promise<void> {
   });
 }
 
-async function assertHostSignOutAndReconnect(page: Page): Promise<PairResult> {
+async function assertHostSignOutAndReconnect(
+  page: Page,
+  previous: PairResult,
+): Promise<PairResult> {
   console.log("[e2e-dotli] validating host sign-out");
   await signOutIfNeeded(page);
   await page
@@ -482,7 +487,11 @@ async function assertHostSignOutAndReconnect(page: Page): Promise<PairResult> {
   await captureStep(page, "signed-out");
 
   console.log("[e2e-dotli] validating signer reconnect");
-  return await signInWithBot(page);
+  const reconnected = await signInWithBot(page, previous.user.username);
+  if (reconnected.user.publicKeyHex !== previous.user.publicKeyHex) {
+    throw new Error("signer reconnect returned a different account");
+  }
+  return reconnected;
 }
 
 async function runDiagnosis(page: Page): Promise<{
@@ -716,7 +725,7 @@ async function main(): Promise<void> {
         await runDiagnosis(page);
       const reportPath = resolve(outputDir, "diagnosis-report.md");
       writeFileSync(reportPath, report);
-      pairResult = await assertHostSignOutAndReconnect(page);
+      pairResult = await assertHostSignOutAndReconnect(page, pairResult);
       const metadataPath = resolve(outputDir, "diagnosis-run.json");
       writeFileSync(
         metadataPath,

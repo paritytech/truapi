@@ -9,6 +9,7 @@
 use parity_scale_codec::Encode;
 use schnorrkel::derive::{ChainCode, Derivation};
 use schnorrkel::{ExpansionMode, Keypair, PublicKey};
+use std::str::FromStr;
 use thiserror::Error;
 
 const JUNCTION_ID_LEN: usize = 32;
@@ -91,6 +92,11 @@ pub fn product_public_key_to_address(public_key: [u8; 32]) -> String {
     subxt::utils::AccountId32(public_key).to_string()
 }
 
+/// Decode a Substrate SS58 account address into its raw public key.
+pub fn public_key_from_address(address: &str) -> Option<[u8; 32]> {
+    Some(subxt::utils::AccountId32::from_str(address).ok()?.0)
+}
+
 /// Create a Substrate soft-derivation chain code for one junction.
 fn create_chain_code(code: &str) -> Result<[u8; 32], ProductAccountError> {
     let encoded = if !code.is_empty() && code.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -159,6 +165,15 @@ mod tests {
             product_public_key_to_address(derived),
             "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1"
         );
+    }
+
+    #[test]
+    fn ss58_address_round_trips_to_public_key() {
+        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+        let address = product_public_key_to_address(derived);
+
+        assert_eq!(public_key_from_address(&address), Some(derived));
+        assert_eq!(public_key_from_address("not-an-address"), None);
     }
 
     #[test]

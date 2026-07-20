@@ -9,11 +9,12 @@ use core::fmt;
 use core::time::Duration;
 use std::sync::Arc;
 use truapi::latest::{
-    HostAccountCreateProofResponse, HostAccountGetAliasResponse, HostCreateTransactionResponse,
-    HostRequestResourceAllocationRequest, HostRequestResourceAllocationResponse,
-    HostSignPayloadRequest, HostSignPayloadResponse, HostSignPayloadWithLegacyAccountRequest,
-    HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload,
-    ProductAccountId, ProductAccountTxPayload, ProductProofContext, RingLocation,
+    AccountId, HostAccountCreateProofResponse, HostAccountGetAliasResponse,
+    HostCreateTransactionResponse, HostRequestResourceAllocationRequest,
+    HostRequestResourceAllocationResponse, HostSignPayloadRequest, HostSignPayloadResponse,
+    HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
+    HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId,
+    ProductAccountTxPayload, ProductProofContext, RingLocation,
 };
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, CancellationReason};
@@ -198,10 +199,10 @@ pub(crate) enum SignPayloadAuthorityRequest {
 pub(crate) enum SignRawAuthorityRequest {
     /// Sign raw data with a product-derived account.
     Product(HostSignRawRequest),
-    /// Sign raw data through the legacy-account API using the product slot-zero account.
+    /// Sign raw data through the legacy-account API.
     LegacyAccount {
-        /// Product slot-zero account that backs the validated legacy signer.
-        product_account: ProductAccountId,
+        /// Account selected by the product and validated against the session.
+        account: AccountId,
         /// Original legacy-account request.
         request: HostSignRawWithLegacyAccountRequest,
     },

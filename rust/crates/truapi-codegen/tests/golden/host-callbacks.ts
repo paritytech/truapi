@@ -91,7 +91,13 @@ export type AuthState =
   /**
    * The last login attempt failed; show the reason and offer a retry.
    */
-  | { tag: "LoginFailed"; value: { reason: string } };
+  | { tag: "LoginFailed"; value: { reason: string } }
+  /**
+   * The wallet accepted the pairing request and the core is resolving and
+   * persisting the session. Hosts should replace the pairing QR with an
+   * in-progress presentation until a terminal state is emitted.
+   */
+  | { tag: "Authenticating"; value?: undefined };
 
 /**
  * Core-owned host-private storage slots. Products never address these slots;
@@ -340,6 +346,7 @@ export const AuthState: S.Codec<AuthState> = S.lazy(
       Pairing: S.Struct({ deeplink: S.str }) as S.Codec<{ deeplink: string }>,
       Connected: SessionUiInfo,
       LoginFailed: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      Authenticating: S._void,
     }),
 );
 
