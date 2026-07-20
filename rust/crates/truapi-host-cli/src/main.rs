@@ -68,6 +68,8 @@ enum Command {
     /// specified, and can accept pairing deeplinks. With `--script`, exits with
     /// the script's status; otherwise stays interactive.
     SigningHost(SigningHostArgs),
+    /// Aggregate a metrics JSONL into one comparable report.
+    MetricsReport(MetricsReportArgs),
     /// Probe the People chain for a mnemonic's registered identity/username.
     IdentityCheck {
         /// BIP-39 mnemonic to probe.
@@ -160,6 +162,18 @@ struct SigningHostArgs {
     auto_accept: bool,
 }
 
+#[derive(clap::Args)]
+struct MetricsReportArgs {
+    /// Metrics JSONL produced by a host or fleet run (`METRICS_JSONL`).
+    file: PathBuf,
+    /// Older run to compare against; adds per-op delta columns.
+    #[arg(long)]
+    baseline: Option<PathBuf>,
+    /// Emit the structured report as JSON instead of a table.
+    #[arg(long)]
+    json: bool,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Install a rustls crypto provider so `wss://` chain connections work;
@@ -177,6 +191,20 @@ async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::PairingHost(args) => run_pairing_host(args).await,
         Command::SigningHost(args) => run_signing_host(args).await,
+        Command::MetricsReport(args) => {
+            let current = report::load_report(&args.file)?;
+            let text = match args.baseline {
+                Some(baseline) => {
+                    let cmp = report::compare(current, report::load_report(&baseline)?);
+                    if args.json { serde_json::to_string_pretty(&cmp)? } else { report::render_compare_table(&cmp) }
+                }
+                None => {
+                    if args.json { serde_json::to_string_pretty(&current)? } else { report::render_table(&current) }
+                }
+            };
+            println!("{text}");
+            Ok(())
+        }
         Command::IdentityCheck { mnemonic, network } => {
             let entropy = bip39::Mnemonic::parse(mnemonic.trim())
                 .context("invalid BIP-39 mnemonic")?

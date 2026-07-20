@@ -3,12 +3,12 @@
 use std::collections::BTreeMap;
 use std::io::BufRead;
 
+use anyhow::Context as _;
 use serde::Serialize;
 
 use crate::metrics::{Category, HostMetricRecord, Outcome};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[allow(dead_code)]
 pub struct OpStats {
     pub count: usize,
     pub errors: usize,
@@ -19,7 +19,6 @@ pub struct OpStats {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[allow(dead_code)]
 pub struct VuStats {
     pub count: usize,
     pub errors: usize,
@@ -28,7 +27,6 @@ pub struct VuStats {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[allow(dead_code)]
 pub struct RunReport {
     pub run_id: String,
     pub started: String,
@@ -42,7 +40,6 @@ pub struct RunReport {
     pub total: OpStats,
 }
 
-#[allow(dead_code)]
 pub fn parse_lines<R: BufRead>(reader: R) -> (Vec<HostMetricRecord>, usize) {
     let mut records = Vec::new();
     let mut skipped = 0usize;
@@ -63,7 +60,6 @@ pub fn parse_lines<R: BufRead>(reader: R) -> (Vec<HostMetricRecord>, usize) {
 }
 
 /// Nearest-rank percentile over an ascending-sorted slice.
-#[allow(dead_code)]
 fn percentile(sorted: &[f64], q: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
@@ -72,7 +68,6 @@ fn percentile(sorted: &[f64], q: f64) -> f64 {
     sorted[rank.clamp(1, sorted.len()) - 1]
 }
 
-#[allow(dead_code)]
 fn op_stats(latencies: &mut [f64], errors: usize) -> OpStats {
     latencies.sort_by(|a, b| a.total_cmp(b));
     let count = latencies.len();
@@ -86,7 +81,6 @@ fn op_stats(latencies: &mut [f64], errors: usize) -> OpStats {
     }
 }
 
-#[allow(dead_code)]
 pub fn aggregate(records: &[HostMetricRecord], skipped_lines: usize) -> RunReport {
     let mut by_op: BTreeMap<String, (Vec<f64>, usize)> = BTreeMap::new();
     let mut by_vu: BTreeMap<u32, (Vec<f64>, usize)> = BTreeMap::new();
@@ -151,7 +145,6 @@ pub fn aggregate(records: &[HostMetricRecord], skipped_lines: usize) -> RunRepor
     }
 }
 
-#[allow(dead_code)]
 fn category_key(c: Category) -> &'static str {
     match c {
         Category::Frame => "frame",
@@ -168,7 +161,6 @@ fn category_key(c: Category) -> &'static str {
 }
 
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
 pub struct OpDelta {
     pub current: Option<OpStats>,
     pub baseline: Option<OpStats>,
@@ -180,14 +172,12 @@ pub struct OpDelta {
 }
 
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
 pub struct CompareReport {
     pub current: RunReport,
     pub baseline: RunReport,
     pub delta: BTreeMap<String, OpDelta>,
 }
 
-#[allow(dead_code)]
 pub fn compare(current: RunReport, baseline: RunReport) -> CompareReport {
     let keys: std::collections::BTreeSet<String> = current
         .ops
@@ -236,7 +226,6 @@ pub fn compare(current: RunReport, baseline: RunReport) -> CompareReport {
     CompareReport { current, baseline, delta }
 }
 
-#[allow(dead_code)]
 pub fn render_compare_table(cmp: &CompareReport) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
@@ -270,7 +259,6 @@ pub fn render_compare_table(cmp: &CompareReport) -> String {
     out
 }
 
-#[allow(dead_code)]
 pub fn render_table(report: &RunReport) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
@@ -315,6 +303,13 @@ pub fn render_table(report: &RunReport) -> String {
         );
     }
     out
+}
+
+pub fn load_report(path: &std::path::Path) -> anyhow::Result<RunReport> {
+    let file = std::fs::File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
+    let (records, skipped) = parse_lines(std::io::BufReader::new(file));
+    anyhow::ensure!(!records.is_empty(), "no valid records in {}", path.display());
+    Ok(aggregate(&records, skipped))
 }
 
 #[cfg(test)]
@@ -468,5 +463,28 @@ mod tests {
         for needle in ["signing/s", "Δp95", "+10.0", "+100.0", "changed"] {
             assert!(table.contains(needle), "missing {needle:?} in:\n{table}");
         }
+    }
+
+    #[test]
+    fn load_report_errors_on_missing_and_empty_files() {
+        assert!(load_report(std::path::Path::new("/nonexistent/x.jsonl")).is_err());
+        let dir = std::env::temp_dir().join("metrics-report-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let empty = dir.join("empty.jsonl");
+        std::fs::write(&empty, "not json\n").unwrap();
+        let err = load_report(&empty).unwrap_err().to_string();
+        assert!(err.contains("no valid records"), "got: {err}");
+    }
+
+    #[test]
+    fn json_output_is_deterministic() {
+        let records = vec![
+            rec(1, Category::Storage, "b", 2.0, Outcome::Success),
+            rec(0, Category::Signing, "a", 1.0, Outcome::Error),
+        ];
+        let a = serde_json::to_string_pretty(&aggregate(&records, 0)).unwrap();
+        let b = serde_json::to_string_pretty(&aggregate(&records, 0)).unwrap();
+        assert_eq!(a, b);
+        assert!(a.find("signing/a").unwrap() < a.find("storage/b").unwrap(), "ops must be key-sorted");
     }
 }
