@@ -13,6 +13,19 @@ export {}; // module marker so top-level `await` is allowed
 const GENESIS_HASH = `0x${"11".repeat(32)}` as const;
 const account = host.productAccount();
 
+// Load-shaping knobs (both default 0 -> think() is a no-op, byte-identical run).
+//   THINK_MS         base pause (ms) between signer-critical calls
+//   THINK_JITTER_MS  extra uniform-random pause (ms), desyncs concurrent VUs
+const THINK_MS = Number(process.env.THINK_MS) || 0;
+const THINK_JITTER_MS = Number(process.env.THINK_JITTER_MS) || 0;
+const THINK_ENABLED = THINK_MS + THINK_JITTER_MS > 0;
+
+async function think() {
+  if (!THINK_ENABLED) return;
+  const ms = THINK_MS + Math.random() * THINK_JITTER_MS;
+  await new Promise((r) => setTimeout(r, ms));
+}
+
 interface Case {
   name: string;
   ok: boolean;
@@ -40,6 +53,7 @@ if (!(login.isOk() && login.value === "Success")) {
   throw new Error("login did not succeed");
 }
 
+await think();
 await record("account.getAccount", async () => {
   const result = await truapi.account.getAccount({ productAccountId: account });
   return result.match(
@@ -51,6 +65,7 @@ await record("account.getAccount", async () => {
   );
 });
 
+await think();
 await record("signing.signRaw(bytes)", async () => {
   const result = await truapi.signing.signRaw({
     account,
@@ -65,6 +80,7 @@ await record("signing.signRaw(bytes)", async () => {
   );
 });
 
+await think();
 await record("signing.signRaw(message)", async () => {
   const result = await truapi.signing.signRaw({
     account,
@@ -76,6 +92,7 @@ await record("signing.signRaw(message)", async () => {
   );
 });
 
+await think();
 await record("signing.signPayload", async () => {
   const result = await truapi.signing.signPayload({
     account,
@@ -103,6 +120,7 @@ await record("signing.signPayload", async () => {
   );
 });
 
+await think();
 await record("signing.createTransaction", async () => {
   const result = await truapi.signing.createTransaction({
     signer: account,
@@ -120,6 +138,7 @@ await record("signing.createTransaction", async () => {
   );
 });
 
+await think();
 await record("entropy.derive", async () => {
   const result = await truapi.entropy.derive({ context: "0x6d792d6b6579" });
   return result.match(
