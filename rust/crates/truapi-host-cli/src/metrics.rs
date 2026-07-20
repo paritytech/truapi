@@ -174,10 +174,7 @@ pub fn classify_frame(frame: &[u8]) -> FrameClass {
             WireKind::Request(r) => (false, r.request_id == id || r.response_id == id),
             WireKind::Subscription(s) => (
                 true,
-                s.start_id == id
-                    || s.stop_id == id
-                    || s.interrupt_id == id
-                    || s.receive_id == id,
+                s.start_id == id || s.stop_id == id || s.interrupt_id == id || s.receive_id == id,
             ),
         };
         if matches {
@@ -253,11 +250,26 @@ mod tests {
 
     #[test]
     fn category_maps_by_namespace() {
-        assert!(matches!(category_for_method("signing_sign_raw"), Category::Signing));
-        assert!(matches!(category_for_method("chain_call"), Category::ChainRpc));
-        assert!(matches!(category_for_method("local_storage_write"), Category::Storage));
-        assert!(matches!(category_for_method("account_request_login"), Category::Pairing));
-        assert!(matches!(category_for_method("mystery_method"), Category::Frame));
+        assert!(matches!(
+            category_for_method("signing_sign_raw"),
+            Category::Signing
+        ));
+        assert!(matches!(
+            category_for_method("chain_call"),
+            Category::ChainRpc
+        ));
+        assert!(matches!(
+            category_for_method("local_storage_write"),
+            Category::Storage
+        ));
+        assert!(matches!(
+            category_for_method("account_request_login"),
+            Category::Pairing
+        ));
+        assert!(matches!(
+            category_for_method("mystery_method"),
+            Category::Frame
+        ));
     }
 
     fn sample() -> HostMetricRecord {
@@ -319,7 +331,10 @@ mod tests {
         let frame = |request_id: &str, value: Vec<u8>| {
             ProtocolMessage {
                 request_id: request_id.to_string(),
-                payload: Payload { id: response_id, value },
+                payload: Payload {
+                    id: response_id,
+                    value,
+                },
             }
             .encode()
         };
@@ -329,8 +344,9 @@ mod tests {
         assert_eq!(id, "req-ok");
         assert!(matches!(outcome, Outcome::Success));
 
-        let (id, outcome) = response_outcome(&frame("req-err", encode_versioned_err_payload(0u32, 1)))
-            .expect("response frame is classified");
+        let (id, outcome) =
+            response_outcome(&frame("req-err", encode_versioned_err_payload(0u32, 1)))
+                .expect("response frame is classified");
         assert_eq!(id, "req-err");
         assert!(matches!(outcome, Outcome::Error));
     }

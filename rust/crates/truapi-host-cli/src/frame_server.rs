@@ -173,7 +173,11 @@ fn record_frame<E: std::fmt::Display>(
     let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
     let (outcome, error_class) = match result {
         Err(err) => (Outcome::Error, Some(err.to_string())),
-        Ok(()) => match outcomes.lock().ok().and_then(|mut m| m.remove(&class.request_id)) {
+        Ok(()) => match outcomes
+            .lock()
+            .ok()
+            .and_then(|mut m| m.remove(&class.request_id))
+        {
             Some(Outcome::Error) => (Outcome::Error, Some(RESPONSE_ERROR_CLASS.to_string())),
             Some(other) => (other, None),
             None => (Outcome::Success, None),
