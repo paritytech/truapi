@@ -53,39 +53,64 @@ jobs:
           # Squash merges append " (#<pr>)" to the pull request title.
           subject="${subject% (#*)}"
           release="${subject#release: }"
-          name="${release% *}"
-          declared_version="${release##* }"
+          packages=""
+          seen_names="|"
 
-          case "${name}" in
-            @parity/truapi) path="js/packages/truapi" ;;
-            @parity/truapi-host) path="js/packages/truapi-host" ;;
-            *)
-              echo "::error::Unsupported release commit subject: ${subject}"
-              exit 1
-              ;;
-          esac
-
-          version="$(jq -r '.version' "${path}/package.json")"
-          if [ "${declared_version}" != "${version}" ]; then
-            echo "::error::Release subject declares ${declared_version}, but ${path}/package.json is ${version}."
+          IFS=',' read -ra targets <<< "${release}"
+          if [ "${#targets[@]}" -eq 0 ]; then
+            echo "::error::Release subject does not declare a package and version: ${subject}"
             exit 1
           fi
+          for target in "${targets[@]}"; do
+            # Trim whitespace around comma-separated targets.
+            target="${target#"${target%%[![:space:]]*}"}"
+            target="${target%"${target##*[![:space:]]}"}"
+            if [[ ! "${target}" =~ ^(@parity/truapi|@parity/truapi-host)[[:space:]]+([^[:space:]]+)$ ]]; then
+              echo "::error::Unsupported release target '${target}' in subject: ${subject}"
+              exit 1
+            fi
+            name="${BASH_REMATCH[1]}"
+            declared_version="${BASH_REMATCH[2]}"
 
-          tag="${name}@${version}"
-          if npm_status="$(npm view "${tag}" version --registry=https://registry.npmjs.org 2>&1)"; then
-            echo "Package ${tag} already exists on npm; nothing to publish."
+            if [[ "${seen_names}" == *"|${name}|"* ]]; then
+              echo "::error::Release subject lists ${name} more than once."
+              exit 1
+            fi
+            seen_names+="${name}|"
+
+            case "${name}" in
+              @parity/truapi) path="js/packages/truapi" ;;
+              @parity/truapi-host) path="js/packages/truapi-host" ;;
+            esac
+
+            version="$(jq -r '.version' "${path}/package.json")"
+            if [ "${declared_version}" != "${version}" ]; then
+              echo "::error::Release subject declares ${name} ${declared_version}, but ${path}/package.json is ${version}."
+              exit 1
+            fi
+
+            tag="${name}@${version}"
+            if npm_status="$(npm view "${tag}" version --registry=https://registry.npmjs.org 2>&1)"; then
+              echo "Package ${tag} already exists on npm; skipping."
+            elif grep -Eq 'E404|404 Not Found' <<< "${npm_status}"; then
+              echo "Publishing ${tag}."
+              packages+="${name}|${path}|${version}|${tag}"$'\n'
+            else
+              echo "${npm_status}" >&2
+              exit 1
+            fi
+          done
+
+          if [ -z "${packages}" ]; then
+            echo "All requested packages already exist on npm; nothing to publish."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
-          elif grep -Eq 'E404|404 Not Found' <<< "${npm_status}"; then
-            echo "Publishing ${tag}."
+          else
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             {
               echo "packages<<EOF"
-              echo "${name}|${path}|${version}|${tag}"
+              printf '%s' "${packages}"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
-          else
-            echo "${npm_status}" >&2
-            exit 1
           fi
 
       - name: Verify release manifests
