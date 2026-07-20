@@ -17,6 +17,9 @@
 #   SIGNER_BOT_SVC_TOKEN bearer token; sent only if set (a local dev bot needs none)
 #   RUN_ID               shared run id (default fleet-<epoch>)
 #   METRICS_JSONL        shared metrics sink (default /tmp/fleet-metrics.jsonl)
+#   THINK_MS             base pause (ms) between signer calls in the flow script (default 0)
+#   THINK_JITTER_MS      extra uniform-random pause (ms), desyncs VUs (default 0)
+#   RAMP_JITTER          extra random seconds (0..N) added to each VU's ramp delay (default 0)
 #
 # Each VU pairs against the bot, which auto-provisions an attested user and
 # signs, so scale is bounded by the bot's per-user attestation, not the host.
@@ -29,12 +32,17 @@ BIN="$ROOT/target/debug/truapi-host"
 SCRIPT="${SCRIPT:-$ROOT/rust/crates/truapi-host-cli/js/scripts/battery.ts}"
 VUS="${VUS:-3}"
 RAMP="${RAMP:-3}"
+RAMP_JITTER="${RAMP_JITTER:-0}"
 PRODUCT_ID="${PRODUCT_ID:-headless-playground.dot}"
 BASE_PORT="${BASE_PORT:-9955}"
 BOT="${SIGNER_BOT_BASE_URL:-http://localhost:3737}"
 NETWORK="${SIGNER_BOT_NETWORK:-paseo-next-v2}"
 export RUN_ID="${RUN_ID:-fleet-$(date +%s)}"
 export METRICS_JSONL="${METRICS_JSONL:-/tmp/fleet-metrics.jsonl}"
+# Think-time knobs: exported so each VU's host process (and the script it
+# spawns) inherits them; default 0 keeps flow scripts pause-free.
+export THINK_MS="${THINK_MS:-0}"
+export THINK_JITTER_MS="${THINK_JITTER_MS:-0}"
 
 [ -x "$BIN" ] || { echo "missing $BIN — build first (cargo build -p truapi-host-cli)" >&2; exit 2; }
 
@@ -87,6 +95,7 @@ for i in $(seq 0 $((VUS - 1))); do
   run_vu "$i" "$((BASE_PORT + i))" &
   pids+=($!)
   sleep "$RAMP"
+  [ "$RAMP_JITTER" -gt 0 ] && sleep $((RANDOM % (RAMP_JITTER + 1)))
 done
 for p in "${pids[@]}"; do wait "$p" || true; done
 echo "fleet complete -> $METRICS_JSONL"
