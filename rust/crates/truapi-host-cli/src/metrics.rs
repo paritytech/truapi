@@ -15,8 +15,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// `Frame` is the coarse label for a whole product request frame at the
 /// WebSocket boundary; the fine-grained variants below are decoded from the
-/// wire id. The `#[allow(dead_code)]` covers variants not yet emitted.
-#[allow(dead_code)]
+/// wire id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Category {
@@ -33,7 +32,6 @@ pub enum Category {
 }
 
 /// Terminal outcome of a measured operation.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Outcome {
