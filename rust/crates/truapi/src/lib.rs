@@ -28,10 +28,10 @@ pub mod latest {
 
     pub use crate::v01::{
         AccountId, AllocatableResource, AllocationOutcome, ContextualAlias, GenericError,
-        HostSignPayloadData, NotificationId, OperationStartedResult, ProductAccountId,
-        ProductProofContext, RawPayload, RemotePermission, RingLocation, RuntimeApi, RuntimeSpec,
-        RuntimeType, StorageQueryItem, StorageQueryType, StorageResultItem, ThemeVariant,
-        TxPayloadExtension,
+        HostPlatform, HostSignPayloadData, NotificationId, OperationStartedResult,
+        ProductAccountId, ProductProofContext, RawPayload, RemotePermission, RingLocation,
+        RuntimeApi, RuntimeSpec, RuntimeType, StorageQueryItem, StorageQueryType,
+        StorageResultItem, ThemeVariant, TxPayloadExtension,
     };
 
     pub type LatestOf<T> = <T as Versioned>::Latest;

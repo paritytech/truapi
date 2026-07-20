@@ -67,6 +67,8 @@ pub enum HostPlatform {
     Ios,
     /// Desktop application.
     Desktop,
+    /// Command-line host running in a terminal or headless environment.
+    Cli,
     /// Host could not classify its platform.
     Unknown,
 }

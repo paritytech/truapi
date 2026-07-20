@@ -13,7 +13,7 @@ use crate::runtime::bulletin_rpc::BulletinRpc;
 use crate::runtime::statement_store_rpc::StatementStoreRpc;
 use crate::subscription::Spawner;
 use async_trait::async_trait;
-use truapi_platform::{JsonRpcConnection, Platform};
+use truapi_platform::{HostInfo, JsonRpcConnection, Platform};
 
 /// Upper bound on the in-core preimage cache. The cache is a bridge until
 /// content propagates to the lookup backend, not a store, so it stays small.
@@ -22,6 +22,8 @@ const PREIMAGE_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
 /// Infrastructure shared by all product runtimes created from one host role.
 pub(crate) struct RuntimeServices {
     pub(crate) platform: Arc<dyn Platform>,
+    /// Host identity reported to products via `System::host_info`.
+    pub(crate) host_info: HostInfo,
     pub(crate) chain: ChainRuntime,
     pub(crate) statement_store: StatementStoreRpc,
     /// In-core Bulletin submission over the configured Bulletin chain.
@@ -34,11 +36,13 @@ pub(crate) struct RuntimeServices {
 }
 
 impl RuntimeServices {
-    /// Build role-neutral runtime services from the platform, the People-chain
-    /// genesis hash used by statement-store backed protocols, and the
-    /// Bulletin-chain genesis hash used for in-core preimage submission.
+    /// Build role-neutral runtime services from the platform, the host
+    /// identity reported to products, the People-chain genesis hash used by
+    /// statement-store backed protocols, and the Bulletin-chain genesis hash
+    /// used for in-core preimage submission.
     pub(crate) fn new(
         platform: Arc<dyn Platform>,
+        host_info: HostInfo,
         people_chain_genesis_hash: [u8; 32],
         bulletin_chain_genesis_hash: [u8; 32],
         spawner: Spawner,
@@ -52,6 +56,7 @@ impl RuntimeServices {
         let bulletin = BulletinRpc::new(chain.clone(), bulletin_chain_genesis_hash);
         Arc::new(Self {
             platform,
+            host_info,
             chain,
             statement_store,
             bulletin,

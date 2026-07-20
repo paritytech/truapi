@@ -18,7 +18,7 @@ pub use async_trait::async_trait;
 use truapi::latest::{
     GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageReadError,
-    HostNavigateToError, HostPushNotificationRequest, HostPushNotificationResponse,
+    HostNavigateToError, HostPlatform, HostPushNotificationRequest, HostPushNotificationResponse,
     HostRequestResourceAllocationRequest, HostSignPayloadRequest,
     HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
     HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
@@ -96,6 +96,9 @@ pub struct HostInfo {
     pub icon: Option<String>,
     /// Optional host version.
     pub version: Option<String>,
+    /// Platform category the host runs on, reported to products via
+    /// `System::host_info`.
+    pub platform: HostPlatform,
 }
 
 /// Platform metadata.
