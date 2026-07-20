@@ -17,6 +17,7 @@ mod frame_server;
 mod metrics;
 mod network;
 mod platform;
+mod report;
 mod script_runner;
 
 use std::future::Future;

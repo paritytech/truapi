@@ -1,0 +1,268 @@
+//! Aggregates a fleet's `HostMetricRecord` JSONL into one comparable report.
+
+use std::collections::BTreeMap;
+use std::io::BufRead;
+
+use serde::Serialize;
+
+use crate::metrics::{Category, HostMetricRecord, Outcome};
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[allow(dead_code)]
+pub struct OpStats {
+    pub count: usize,
+    pub errors: usize,
+    pub error_rate: f64,
+    pub p50_ms: f64,
+    pub p95_ms: f64,
+    pub max_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
+pub struct VuStats {
+    pub count: usize,
+    pub errors: usize,
+    pub error_rate: f64,
+    pub p95_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
+pub struct RunReport {
+    pub run_id: String,
+    pub started: String,
+    pub ended: String,
+    pub duration_secs: Option<f64>,
+    pub records: usize,
+    pub vus: usize,
+    pub skipped_lines: usize,
+    pub ops: BTreeMap<String, OpStats>,
+    pub per_vu: BTreeMap<u32, VuStats>,
+    pub total: OpStats,
+}
+
+#[allow(dead_code)]
+pub fn parse_lines<R: BufRead>(reader: R) -> (Vec<HostMetricRecord>, usize) {
+    let mut records = Vec::new();
+    let mut skipped = 0usize;
+    for line in reader.lines() {
+        let Ok(line) = line else {
+            skipped += 1;
+            continue;
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<HostMetricRecord>(&line) {
+            Ok(rec) => records.push(rec),
+            Err(_) => skipped += 1,
+        }
+    }
+    (records, skipped)
+}
+
+/// Nearest-rank percentile over an ascending-sorted slice.
+#[allow(dead_code)]
+fn percentile(sorted: &[f64], q: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+    let rank = ((q / 100.0) * sorted.len() as f64).ceil() as usize;
+    sorted[rank.clamp(1, sorted.len()) - 1]
+}
+
+#[allow(dead_code)]
+fn op_stats(latencies: &mut [f64], errors: usize) -> OpStats {
+    latencies.sort_by(|a, b| a.total_cmp(b));
+    let count = latencies.len();
+    OpStats {
+        count,
+        errors,
+        error_rate: if count == 0 { 0.0 } else { errors as f64 / count as f64 },
+        p50_ms: percentile(latencies, 50.0),
+        p95_ms: percentile(latencies, 95.0),
+        max_ms: latencies.last().copied().unwrap_or(0.0),
+    }
+}
+
+#[allow(dead_code)]
+pub fn aggregate(records: &[HostMetricRecord], skipped_lines: usize) -> RunReport {
+    let mut by_op: BTreeMap<String, (Vec<f64>, usize)> = BTreeMap::new();
+    let mut by_vu: BTreeMap<u32, (Vec<f64>, usize)> = BTreeMap::new();
+    let mut total: (Vec<f64>, usize) = (Vec::new(), 0);
+    let mut run_ids: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut started: Option<&str> = None;
+    let mut ended: Option<&str> = None;
+
+    for rec in records {
+        let is_error = rec.outcome == Outcome::Error;
+        let key = format!("{}/{}", category_key(rec.category), rec.op);
+        let op = by_op.entry(key).or_default();
+        op.0.push(rec.latency_ms);
+        op.1 += is_error as usize;
+        let vu = by_vu.entry(rec.vu_index).or_default();
+        vu.0.push(rec.latency_ms);
+        vu.1 += is_error as usize;
+        total.0.push(rec.latency_ms);
+        total.1 += is_error as usize;
+        run_ids.insert(&rec.run_id);
+        if started.is_none_or(|s| rec.ts.as_str() < s) {
+            started = Some(&rec.ts);
+        }
+        if ended.is_none_or(|e| rec.ts.as_str() > e) {
+            ended = Some(&rec.ts);
+        }
+    }
+
+    let started = started.unwrap_or("").to_string();
+    let ended = ended.unwrap_or("").to_string();
+    let duration_secs = match (
+        chrono::DateTime::parse_from_rfc3339(&started),
+        chrono::DateTime::parse_from_rfc3339(&ended),
+    ) {
+        (Ok(a), Ok(b)) => Some((b - a).num_milliseconds() as f64 / 1000.0),
+        _ => None,
+    };
+
+    RunReport {
+        run_id: match run_ids.len() {
+            1 => run_ids.first().unwrap().to_string(),
+            n => format!("multiple({n})"),
+        },
+        started,
+        ended,
+        duration_secs,
+        records: records.len(),
+        vus: by_vu.len(),
+        skipped_lines,
+        ops: by_op
+            .into_iter()
+            .map(|(k, (mut lat, err))| (k, op_stats(&mut lat, err)))
+            .collect(),
+        per_vu: by_vu
+            .into_iter()
+            .map(|(vu, (mut lat, err))| {
+                let s = op_stats(&mut lat, err);
+                (vu, VuStats { count: s.count, errors: s.errors, error_rate: s.error_rate, p95_ms: s.p95_ms })
+            })
+            .collect(),
+        total: op_stats(&mut total.0, total.1),
+    }
+}
+
+#[allow(dead_code)]
+fn category_key(c: Category) -> &'static str {
+    match c {
+        Category::Frame => "frame",
+        Category::Pairing => "pairing",
+        Category::Signing => "signing",
+        Category::Subscription => "subscription",
+        Category::HostCallback => "host_callback",
+        Category::ChainRpc => "chain_rpc",
+        Category::Storage => "storage",
+        Category::Permission => "permission",
+        Category::Memory => "memory",
+        Category::Session => "session",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rec(vu: u32, cat: Category, op: &str, ms: f64, outcome: Outcome) -> HostMetricRecord {
+        HostMetricRecord {
+            ts: "2026-07-20T10:00:00Z".into(),
+            run_id: "fleet-1".into(),
+            vu_index: vu,
+            category: cat,
+            op: op.into(),
+            latency_ms: ms,
+            outcome,
+            error_class: None,
+        }
+    }
+
+    #[test]
+    fn parse_skips_malformed_lines_and_counts_them() {
+        let input = concat!(
+            r#"{"ts":"2026-07-20T10:00:00Z","runId":"r","vuIndex":0,"category":"frame","op":"a","latencyMs":1.0,"outcome":"success"}"#, "\n",
+            "not json\n",
+            r#"{"ts":"2026-07-20T10:00:01Z","runId":"r","vuIndex":1,"category":"frame","op":"a","latencyMs":2.0,"outcome":"success"}"#, "\n",
+            "{\"truncated\": \n",
+        );
+        let (records, skipped) = parse_lines(input.as_bytes());
+        assert_eq!(records.len(), 2);
+        assert_eq!(skipped, 2);
+    }
+
+    #[test]
+    fn percentiles_single_record() {
+        let report = aggregate(&[rec(0, Category::Frame, "a", 7.0, Outcome::Success)], 0);
+        let stats = &report.ops["frame/a"];
+        assert_eq!(stats.p50_ms, 7.0);
+        assert_eq!(stats.p95_ms, 7.0);
+        assert_eq!(stats.max_ms, 7.0);
+    }
+
+    #[test]
+    fn percentiles_even_and_odd_counts() {
+        // odd: 1,2,3 -> p50 = ceil(0.5*3)=2nd -> 2.0 ; even: 1,2,3,4 -> p50 = ceil(0.5*4)=2nd -> 2.0, p95 = ceil(0.95*4)=4th -> 4.0
+        let odd: Vec<_> = [1.0, 2.0, 3.0]
+            .iter()
+            .map(|ms| rec(0, Category::Frame, "a", *ms, Outcome::Success))
+            .collect();
+        assert_eq!(aggregate(&odd, 0).ops["frame/a"].p50_ms, 2.0);
+        let even: Vec<_> = [1.0, 2.0, 3.0, 4.0]
+            .iter()
+            .map(|ms| rec(0, Category::Frame, "a", *ms, Outcome::Success))
+            .collect();
+        let stats = aggregate(&even, 0).ops["frame/a"].clone();
+        assert_eq!(stats.p50_ms, 2.0);
+        assert_eq!(stats.p95_ms, 4.0);
+    }
+
+    #[test]
+    fn error_rate_counts_only_error_outcomes() {
+        let records = vec![
+            rec(0, Category::Signing, "s", 1.0, Outcome::Success),
+            rec(0, Category::Signing, "s", 1.0, Outcome::Error),
+            rec(0, Category::Signing, "s", 1.0, Outcome::Skipped),
+            rec(0, Category::Signing, "s", 1.0, Outcome::Error),
+        ];
+        let stats = aggregate(&records, 0).ops["signing/s"].clone();
+        assert_eq!(stats.count, 4);
+        assert_eq!(stats.errors, 2);
+        assert!((stats.error_rate - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn header_covers_run_vus_span_and_skipped() {
+        let mut records = vec![
+            rec(0, Category::Frame, "a", 1.0, Outcome::Success),
+            rec(1, Category::Frame, "a", 1.0, Outcome::Success),
+            rec(2, Category::Frame, "a", 1.0, Outcome::Success),
+        ];
+        records[0].ts = "2026-07-20T10:00:00Z".into();
+        records[2].ts = "2026-07-20T10:00:30Z".into();
+        let report = aggregate(&records, 5);
+        assert_eq!(report.run_id, "fleet-1");
+        assert_eq!(report.vus, 3);
+        assert_eq!(report.records, 3);
+        assert_eq!(report.skipped_lines, 5);
+        assert_eq!(report.started, "2026-07-20T10:00:00Z");
+        assert_eq!(report.ended, "2026-07-20T10:00:30Z");
+        assert_eq!(report.duration_secs, Some(30.0));
+    }
+
+    #[test]
+    fn mixed_run_ids_are_labelled() {
+        let mut records = vec![
+            rec(0, Category::Frame, "a", 1.0, Outcome::Success),
+            rec(0, Category::Frame, "a", 1.0, Outcome::Success),
+        ];
+        records[1].run_id = "fleet-2".into();
+        assert_eq!(aggregate(&records, 0).run_id, "multiple(2)");
+    }
+}
