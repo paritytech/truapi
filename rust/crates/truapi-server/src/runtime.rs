@@ -3611,6 +3611,32 @@ mod tests {
     }
 
     #[test]
+    fn legacy_sign_payload_rejects_identity_account() {
+        let session = session_info();
+        let identity = session.identity_account_id.unwrap();
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+        let request = HostSignPayloadWithLegacyAccountRequest::V1(
+            v01::HostSignPayloadWithLegacyAccountRequest {
+                signer: subxt::utils::AccountId32(identity).to_string(),
+                payload: sign_payload_data(),
+            },
+        );
+
+        let err = futures::executor::block_on(host.sign_payload_with_legacy_account(&cx, request))
+            .unwrap_err();
+
+        match err {
+            CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(
+                v01::HostSignPayloadError::Unknown { reason },
+            )) => assert_eq!(reason, LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON),
+            other => panic!("expected identity account rejection, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn legacy_sign_raw_rejects_signer_mismatch() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
@@ -3818,6 +3844,35 @@ mod tests {
                 v01::HostCreateTransactionError::Unknown { reason },
             )) => assert_eq!(reason, "Account can't be derived from product account id"),
             other => panic!("expected legacy signer mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_create_transaction_rejects_identity_account() {
+        let session = session_info();
+        let identity = session.identity_account_id.unwrap();
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.test_session_state().set_session(session);
+        let cx = CallContext::new();
+        let request =
+            HostCreateTransactionWithLegacyAccountRequest::V1(v01::LegacyAccountTxPayload {
+                signer: identity,
+                genesis_hash: [1; 32],
+                call_data: vec![0],
+                extensions: vec![],
+                tx_ext_version: 0,
+            });
+
+        let err =
+            futures::executor::block_on(host.create_transaction_with_legacy_account(&cx, request))
+                .unwrap_err();
+
+        match err {
+            CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
+                v01::HostCreateTransactionError::Unknown { reason },
+            )) => assert_eq!(reason, LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON),
+            other => panic!("expected identity account rejection, got {other:?}"),
         }
     }
 

@@ -29,8 +29,8 @@ pub trait StatementStore: Send + Sync {
     /// assert(proofResult.isOk(), "createProofAuthorized failed:", proofResult);
     ///
     /// const signedStatement = {
-    ///   proof: proofResult.value.proof,
     ///   ...statement,
+    ///   proof: proofResult.value.proof,
     /// };
     /// console.log("submitting statement:", signedStatement);
     /// const submitted = await truapi.statementStore.submit(signedStatement);
@@ -143,8 +143,8 @@ pub trait StatementStore: Send + Sync {
     /// assert(proofResult.isOk(), "createProofAuthorized failed:", proofResult);
     ///
     /// const result = await truapi.statementStore.submit({
-    ///   proof: proofResult.value.proof,
     ///   ...statement,
+    ///   proof: proofResult.value.proof,
     /// });
     /// assert(result.isOk(), "submit failed:", result);
     /// console.log("statement submitted");

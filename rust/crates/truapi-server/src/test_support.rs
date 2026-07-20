@@ -103,6 +103,8 @@ pub(crate) struct StubPlatform {
     /// Set when the pending theme stream is dropped.
     pub(crate) theme_stream_dropped: Arc<AtomicBool>,
     pub(crate) pairing_success_response: bool,
+    /// Deliver an authenticated wallet pending status and then stay open.
+    pub(crate) pairing_pending_response: bool,
     /// Deliver a wallet failure status on the pairing subscription.
     pub(crate) pairing_failure_response: bool,
     /// Deliver the pairing success statement only through a snapshot
@@ -494,6 +496,14 @@ pub(crate) fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
         deeplink,
         pairing::v2::EncryptedResponse::Success(Box::new(wallet_handshake_success())),
         0x44,
+    )
+}
+
+fn pending_wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
+    wallet_handshake_statement_with_response(
+        deeplink,
+        pairing::v2::EncryptedResponse::Pending(pairing::v2::Status::AllowanceAllocation),
+        0x43,
     )
 }
 
@@ -913,6 +923,7 @@ struct RecordingConnection {
     sso_response_script: Option<SsoResponseScript>,
     auth_states: Arc<Mutex<Vec<AuthState>>>,
     pairing_success_response: bool,
+    pairing_pending_response: bool,
     pairing_failure_response: bool,
     pairing_success_via_query: bool,
 }
@@ -1146,6 +1157,38 @@ impl JsonRpcConnection for RecordingConnection {
                 }
             }));
         }
+        if self.pairing_pending_response {
+            let auth_states = self.auth_states.clone();
+            let sent = self.sent.clone();
+            return Box::pin(stream::unfold(0, move |state| {
+                let auth_states = auth_states.clone();
+                let sent = sent.clone();
+                async move {
+                    match state {
+                        0 => {
+                            let id = wait_for_statement_subscribe_id(sent.clone(), 0).await;
+                            Some((subscribe_ack_frame(&id, "pairing-sub"), 1))
+                        }
+                        1 => {
+                            for _ in 0..100 {
+                                if let Some(deeplink) = first_pairing_deeplink(&auth_states) {
+                                    return Some((
+                                        new_statements_frame(
+                                            "pairing-sub",
+                                            vec![pending_wallet_handshake_statement(&deeplink)],
+                                        ),
+                                        2,
+                                    ));
+                                }
+                                futures_timer::Delay::new(Duration::from_millis(1)).await;
+                            }
+                            panic!("pairing deeplink was not presented");
+                        }
+                        _ => futures::future::pending().await,
+                    }
+                }
+            }));
+        }
         if self.pairing_success_response {
             let auth_states = self.auth_states.clone();
             let sent = self.sent.clone();
@@ -1260,6 +1303,7 @@ impl ChainProvider for StubPlatform {
             sso_response_script: self.sso_response_script.clone(),
             auth_states: self.auth_states.clone(),
             pairing_success_response: self.pairing_success_response,
+            pairing_pending_response: self.pairing_pending_response,
             pairing_failure_response: self.pairing_failure_response,
             pairing_success_via_query: self.pairing_success_via_query,
         }))

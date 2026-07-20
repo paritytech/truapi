@@ -190,3 +190,65 @@ impl AuthStateMachine {
         Some(applied)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::stub_platform;
+
+    #[test]
+    fn pairing_started_refuses_a_second_login_while_authenticating() {
+        let platform = stub_platform();
+        let machine = AuthStateMachine::new(platform.clone());
+        let (_cancel_rx, epoch) = machine
+            .pairing_started("polkadotapp://first".to_string())
+            .expect("first login should start");
+        machine.authentication_started(epoch);
+
+        assert!(
+            machine
+                .pairing_started("polkadotapp://second".to_string())
+                .is_none(),
+            "an authenticating login must retain the single-flight guard"
+        );
+        assert_eq!(
+            *platform
+                .auth_states
+                .lock()
+                .expect("auth state list mutex poisoned"),
+            vec![
+                AuthState::Pairing {
+                    deeplink: "polkadotapp://first".to_string(),
+                },
+                AuthState::Authenticating,
+            ]
+        );
+    }
+
+    #[test]
+    fn login_cancelled_while_authenticating_disconnects_and_wakes_the_login() {
+        let platform = stub_platform();
+        let machine = AuthStateMachine::new(platform.clone());
+        let (cancel_rx, epoch) = machine
+            .pairing_started("polkadotapp://pair".to_string())
+            .expect("login should start");
+        machine.authentication_started(epoch);
+
+        machine.login_cancelled();
+
+        futures::executor::block_on(cancel_rx).expect("cancel signal should be delivered");
+        assert_eq!(
+            *platform
+                .auth_states
+                .lock()
+                .expect("auth state list mutex poisoned"),
+            vec![
+                AuthState::Pairing {
+                    deeplink: "polkadotapp://pair".to_string(),
+                },
+                AuthState::Authenticating,
+                AuthState::Disconnected,
+            ]
+        );
+    }
+}
