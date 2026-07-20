@@ -90,6 +90,8 @@ pub enum HostPlatform {
     Ios,
     /// Desktop application.
     Desktop,
+    /// Command-line host running in a terminal or headless environment.
+    Cli,
     /// Host could not classify its platform.
     Unknown,
 }
@@ -130,32 +132,6 @@ pub enum HostInfoError { V1 => v01::GenericError }
 The error is the `GenericError` catch-all, matching `feature_supported`; the
 call is host-local introspection with no domain-specific failure modes.
 
-### Generated client
-
-`./scripts/codegen.sh` regenerates the TypeScript client and playground
-metadata from the trait's rustdoc. The codegen strips the conventional `host_`
-prefix from method names, so `host_info` projects to `truapi.system.info()`
-(the wire constant keeps the full `SYSTEM_HOST_INFO`). `HostInfo` becomes an
-object `{ platform, name, version }`, and the fieldless `HostPlatform` enum
-becomes the string union `"Web" | "Android" | "Ios" | "Desktop" | "Unknown"`.
-
-## Alternatives
-
-- **Extend the handshake response.** A `HostHandshakeResponse::V2` variant could
-  carry host info, delivering it at connection time with no extra round trip.
-  Rejected: it couples host identity to codec negotiation, is harder to evolve
-  than a dedicated versioned type, and forces every product through the
-  handshake path to read a value many will not need.
-- **Window globals (`__HOST_VERSION__`, `__HOST_NAME__`).** Hosts could inject
-  globals the product reads directly. Rejected: it bypasses the typed protocol
-  and codegen, is invisible to non-web transports, and offers no versioning or
-  schema.
-- **Structured app-plus-components model.** A richer `HostInfo { name, version,
-  components: Vec<{ name, version }> }` could report the app *and* its embedded
-  runtime (e.g. Polkadot Desktop *and* dotli) simultaneously. Rejected for now
-  as more than current consumers need: the directly-running host names itself,
-  and the flat triple already identifies it unambiguously. The components model
-  is noted under Future Directions.
 
 ## Compatibility
 
@@ -169,23 +145,3 @@ Diagnosis report will do exactly this — populate the report header from
 The generated `HostPlatform` string union uses `Ios`, whereas the playground's
 existing `HostMode` type uses the literal `iOS`. The playground will reconcile
 its local type to the generated `Ios` variant when it adopts `host_info`.
-
-## Future Directions
-
-If a need arises to report an app and its embedded runtime separately (for
-instance distinguishing the Polkadot Desktop version from the dotli version it
-embeds), `HostInfo` can gain an optional `components: Vec<HostComponent>` field
-in a later version without disturbing the flat triple. This RFC intentionally
-does not add it until a concrete consumer needs it.
-
-A natural follow-up, outside this RFC's protocol scope, is the playground
-Diagnosis report consuming `host_info` to stamp each report with the host
-name and version, and the explorer's compatibility matrix keying rows on them.
-
-## Unresolved Questions
-
-- Should the RFC recommend a canonical registry of `name` values (e.g.
-  `"Polkadot Desktop"`, `"Polkadot Mobile"`, `"dotli"`) so reports group
-  cleanly, or leave naming entirely to hosts? A loose convention may be enough.
-- Is a recommended `version` format (semver) worth stating, given hosts may not
-  all follow semver?
