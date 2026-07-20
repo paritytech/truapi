@@ -1,5 +1,14 @@
 # @parity/truapi
 
+## 0.5.0
+
+### Minor Changes
+
+- Redesign account alias and ring-VRF proof requests around stable, junction-based
+  ring locations and product-scoped proof contexts. Proof responses now include
+  the contextual alias, ring index, and ring revision, with distinct
+  `RingNotFound` and `NotMember` errors.
+
 ## 0.4.1
 
 ### Patch Changes

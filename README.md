@@ -138,7 +138,8 @@ Pushes to `main` build and deploy:
 
 ## Release
 
-See [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for how to ship a new `@parity/truapi` version to npm.
+See [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for how to ship
+`@parity/truapi`, `@parity/truapi-host`, or both packages to npm.
 
 ## Contributing
 

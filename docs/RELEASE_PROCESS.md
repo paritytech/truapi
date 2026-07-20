@@ -54,7 +54,12 @@ The PR title must start with `release:`. Convention:
 ```
 release: @parity/truapi 0.1.1
 release: @parity/truapi-host 0.1.1
+release: @parity/truapi 0.5.0, @parity/truapi-host 0.2.0
 ```
+
+Separate multiple package/version targets with commas. The workflow validates
+each declared version against its package manifest and publishes every target
+whose version is not already on npm in the same automation run.
 
 ### 4. Get the PR reviewed and merged
 
@@ -71,8 +76,8 @@ say); the tag-already-exists guard makes re-runs safe.
 On merge, CI runs as usual. When CI passes, the `Release` workflow:
 
 1. Confirms the commit subject starts with `release:`.
-2. Reads package versions from `js/packages/truapi/package.json` and
-   `js/packages/truapi-host/package.json`.
+2. Reads each package/version target from the comma-separated release subject
+   and validates it against the corresponding package manifest.
 3. Checks for `@parity/truapi@<version>` and
    `@parity/truapi-host@<version>` tags. Packages whose tag already exists
    are skipped, so re-runs are idempotent.
