@@ -9,8 +9,9 @@ Novasama-operated dependency.
 Either host can be driven by a **product script** you write: a JS/TS file that
 receives a global `truapi` (the `@parity/truapi` client, scoped to a product id)
 and calls it like any product would. With `--script`, the CLI runs the script
-and exits with its status. Without `--script`, the host stays in an interactive
-shell until you quit.
+and exits with its status. Without `--script`, `pairing-host` keeps its line
+prompt while `signing-host` opens a full-screen terminal UI when stdin and
+stdout are TTYs.
 
 One binary, `truapi-host`:
 
@@ -38,15 +39,48 @@ through the identity backend, waits for ring readiness, and rotates when the
 current account exhausts Statement Store slots. Override the product with
 `PRODUCT_ID=...` and the pairing frame port with `FRAME=...`.
 
-Without `--script` or `--deeplink`, `signing-host` opens an interactive prompt
-with `whoami`, `deeplink <url>`, `script <path>`, and `quit`. `whoami` runs the
-bundled product script through the public TrUAPI frame endpoint and prints the
-result of `truapi.account.getUserId()`:
+### Signing-host terminal UI
 
-```text
-signing-host> whoami
-WHOAMI alice.dot
+In a TTY, `truapi-host signing-host` opens a scrollable transcript above a
+single command bar. Host lifecycle events, tracing logs, every incoming SSO
+request, script stdout/stderr, commands, and approval prompts all use that
+transcript, so background output cannot overwrite input. `--deeplink URL`
+opens the same UI and starts the pairing response after initialization.
+
+Commands always start with `/`:
+
+| Command | Result |
+| --- | --- |
+| `/whoami` | Run the bundled product script that calls `truapi.account.getUserId()`. |
+| `/deeplink <url>` | Validate and answer a `polkadotapp://pair?...` deeplink. |
+| `/script <path>` | Run a JS/TS product script through the public frame endpoint. |
+| `/log <level>` | Change tracing to `error`, `warn`, `info`, `debug`, or `trace`. |
+| `/help` | Show commands and keyboard shortcuts. |
+| `/clear` | Clear the visible transcript. |
+| `/quit` | Shut down cleanly. |
+
+Typing `/` opens autocomplete. Up/Down selects a completion; with the menu
+closed it navigates process-local command history. Tab inserts a completion,
+and `/script` completes filesystem paths. Ctrl-U/Ctrl-D scroll by half a
+viewport, End restores auto-follow, Esc closes autocomplete, and Ctrl-C clears
+input, cancels a running command, or exits when idle. Deeplinks are deliberately
+not persisted in history across processes.
+
+Only one operational command runs at once, but SSO traffic and approvals keep
+flowing while it runs. Without a TTY, use one-shot `exec` mode (parent options
+come first):
+
+```bash
+truapi-host signing-host --auto-accept exec '/whoami'
+truapi-host signing-host --auto-accept exec '/script ./js/scripts/ring-vrf-smoke.ts'
+truapi-host signing-host exec '/deeplink polkadotapp://pair?handshake=...'
 ```
+
+`exec` does not enable raw mode or emit terminal controls. Command results go
+to stdout, diagnostics go to stderr, and the process exits when the command
+finishes. Starting `signing-host` without `--script` or `exec` while either
+stdin or stdout is not a TTY is an invocation error. The existing `--script`
+one-shot mode remains supported.
 
 ## Writing a product script
 
@@ -120,24 +154,31 @@ Six scripts ship under `js/scripts/`:
 
 Both hosts take `--auto-accept`. Without it, confirmations a web/iOS host would
 show as a modal (sign requests, permission prompts, and cross-product Ring-VRF
-requests) are printed on the CLI and answered `y/n` on stdin. Same-product
-Ring-VRF requests do not prompt, matching the iOS signing host. `run.sh` passes
-`--auto-accept` to both for unattended runs. Auto-approved confirmation gates
-print an `[auto-accept]` line; requests which require no confirmation do not.
+requests) are rendered prominently in the signing-host transcript and answered
+with `y`/`yes` or `n`/`no` in the command bar. The current command draft is
+restored afterward; Esc safely rejects. Concurrent approvals are serialized.
+In non-interactive `exec` mode, a TTY gets a plain yes/no prompt and non-TTY
+stdin safely rejects instead of hanging. Same-product Ring-VRF requests do not
+prompt, matching the iOS signing host. `run.sh` passes `--auto-accept` to both
+for unattended runs. Every auto-approved decision is still printed.
 
 ## Logging
 
 Use the global `--log-level` option (`error`, `warn`, `info`, `debug`, or
-`trace`) before or after the subcommand. At `trace`, the signing host prints
-every decoded inbound SSO message with its statement request id, remote message
-id, variant, and payload:
+`trace`) before or after the subcommand, or `/log <level>` in the terminal UI.
+Every decoded inbound SSO request is visible regardless of the selected level:
+the stable request name plus statement request and remote message ids are
+logged at `info`. `debug` adds the decoded summary and `trace` adds the complete
+decoded payload and transport metadata. Undecodable requests are warnings with
+the available identifiers so protocol-version mismatches can be diagnosed.
 
 ```bash
 truapi-host signing-host --log-level trace --deeplink '<deeplink>' --auto-accept
 ```
 
-Trace output may contain product signing payloads. `RUST_LOG` takes precedence
-when set and remains available for module-specific filters.
+Debug and trace output may contain product signing payloads. `RUST_LOG` takes
+precedence at startup and remains available for module-specific filters; using
+`/log` replaces the active filter with the selected global level.
 
 ## Statement-store allowance
 

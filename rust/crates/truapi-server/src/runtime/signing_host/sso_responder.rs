@@ -155,11 +155,37 @@ async fn serve_session(
                 Ok(Some(incoming)) => incoming,
                 Ok(None) => continue,
                 Err(reason) => {
-                    debug!(%reason, "ignoring undecodable session statement");
+                    let prefix = hex::encode(&statement[..statement.len().min(16)]);
+                    warn!(
+                        %reason,
+                        statement_bytes = statement.len(),
+                        statement_prefix = %prefix,
+                        "ignoring undecodable SSO session statement"
+                    );
                     continue;
                 }
             };
             for message in &incoming.messages {
+                let cli_summary = format!(
+                    "Incoming SSO request · {}\nstatement_request_id={}\nremote_message_id={}",
+                    remote_message_name(&message.data),
+                    incoming.request_id,
+                    message.message_id
+                );
+                tracing::event!(
+                    target: "truapi_server::incoming_sso_request",
+                    tracing::Level::INFO,
+                    cli_summary = cli_summary.as_str(),
+                    statement_request_id = %incoming.request_id,
+                    remote_message_id = %message.message_id,
+                    remote_message = remote_message_name(&message.data),
+                );
+                debug!(
+                    statement_request_id = %incoming.request_id,
+                    remote_message_id = %message.message_id,
+                    remote_message = ?message.data,
+                    "decoded SSO request"
+                );
                 trace!(
                     statement_request_id = %incoming.request_id,
                     remote_message_id = %message.message_id,
@@ -220,6 +246,27 @@ async fn serve_request(
             .await?;
     }
     Ok(None)
+}
+
+fn remote_message_name(message: &RemoteMessageData) -> &'static str {
+    match message {
+        RemoteMessageData::V1(message) => match message {
+            v1::RemoteMessage::Disconnected => "disconnected",
+            v1::RemoteMessage::SignRequest(_) => "sign_request",
+            v1::RemoteMessage::SignResponse(_) => "sign_response",
+            v1::RemoteMessage::RingVrfAliasRequest(_) => "get_account_alias",
+            v1::RemoteMessage::RingVrfAliasResponse(_) => "get_account_alias_response",
+            v1::RemoteMessage::ResourceAllocationRequest(_) => "resource_allocation",
+            v1::RemoteMessage::ResourceAllocationResponse(_) => "resource_allocation_response",
+            v1::RemoteMessage::CreateTransactionRequest(_) => "create_transaction",
+            v1::RemoteMessage::CreateTransactionResponse(_) => "create_transaction_response",
+            v1::RemoteMessage::CreateTransactionLegacyRequest(_) => "create_transaction_legacy",
+            v1::RemoteMessage::SignRawLegacyRequest(_) => "sign_raw_legacy",
+            v1::RemoteMessage::SignRawLegacyResponse(_) => "sign_raw_legacy_response",
+            v1::RemoteMessage::RingVrfProofRequest(_) => "create_account_proof",
+            v1::RemoteMessage::RingVrfProofResponse(_) => "create_account_proof_response",
+        },
+    }
 }
 
 /// Answer one application-level request message; `None` for message kinds

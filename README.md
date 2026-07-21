@@ -105,6 +105,13 @@ make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-ho
 CI regenerates the shared bindings before building and testing both npm
 packages, so generated client and host callback changes are checked together.
 
+The native `truapi-host` utility can run pairing and signing hosts against the
+real SSO transport for local end-to-end work. Its signing-host command provides
+a transcript-based terminal UI, slash commands such as `/whoami`, `/deeplink`,
+and `/script`, plus a non-interactive `exec` form for automation. See the
+[`truapi-host-cli` guide](rust/crates/truapi-host-cli/README.md) for setup,
+controls, and examples.
+
 To run the playground locally:
 
 ```bash
