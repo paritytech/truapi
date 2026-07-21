@@ -15,10 +15,12 @@ The chain below is also automated:
   `refresh-playground-snapshot`, `playground-checks`, `e2e-dotli`, and
   the umbrella `truapi-definition-of-done`. Invoke them when working in
   the repo with Claude Code; each is a small, command-first runbook.
-- **CI workflow** `.github/workflows/ci.yml` runs the static portion of the
-  chain on every PR. Its Playwright `e2e` job is currently disabled with
-  `if: false`; until the compatibility jobs described below replace it, the
-  two local harnesses are the authoritative end-to-end gate.
+- **CI workflow** `.github/workflows/ci.yml` runs the same chain on every
+  PR. The static jobs (`rust`, `codegen-drift`, `ts-client`,
+  `playground`) are fast; the `e2e` job builds dotli and
+  drives the playground inside its iframe via Playwright (specs in
+  `playground/tests/e2e/`). Failed e2e runs upload the Playwright HTML
+  report as an artifact.
 
 The doc below is still the canonical narrative and the source of truth
 for failure modes — both the skills and CI cite it.
@@ -44,140 +46,6 @@ Skip a step only if you are certain the change cannot affect that layer.
 ```
 Rust crates  →  codegen  →  @parity/truapi  →  playground  →  dotli iframe
 ```
-
-## Core migration compatibility strategy
-
-During the Rust Core migration, testing only the newest app against the newest
-host can miss either compatibility seam. Every migration candidate must run
-these two cross-version lanes:
-
-| Lane        | Product under test                                 | Host/Core under test                                                             | Regression caught                                            |
-| ----------- | -------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Legacy host | This checkout's TrUAPI playground                  | Standalone `~/github/dotli` with its legacy Host Core and published dependencies | A new TrUAPI product no longer works in the existing host    |
-| New Core    | `~/github/host-playground`, a Nova Product SDK app | This checkout's `hosts/dotli` submodule with the Rust Core                       | An existing Nova app no longer works after the host migrates |
-
-Do not link this checkout's `@parity/truapi-host` into the standalone legacy
-dotli checkout. That silently replaces the component the first lane is meant
-to test. The new-Core lane may run `bun run link:truapi`; its purpose is to
-exercise this checkout's Core.
-
-### Lane 1: current playground against legacy dotli
-
-Record both immutable revisions before the run:
-
-```bash
-cd ~/github/truapi
-git rev-parse HEAD
-git -C ~/github/dotli rev-parse HEAD
-```
-
-Prepare each repository without changing the legacy host's package graph:
-
-```bash
-( cd ~/github/dotli && bun install --frozen-lockfile )
-( cd js/packages/truapi && npm run build )
-( cd playground && yarn install --frozen-lockfile )
-```
-
-Run the full signer-bot-backed Diagnosis against the external checkout. The
-allowed-failure list is exact and opt-in: `Account/get_account_alias` still
-runs and remains in the report, but its known intermittent failure does not
-fail this lane. No other failure is tolerated.
-
-```bash
-set -a
-. ./.env
-set +a
-E2E_DOTLI_ROOT="$HOME/github/dotli" \
-E2E_DOTLI_ALLOWED_FAILURES="Account/get_account_alias" \
-E2E_DOTLI_HOST_PORT=5274 \
-E2E_DOTLI_PLAYGROUND_PORT=5300 \
-bun playground/tests/e2e/dotli-diagnosis.ts
-```
-
-The lane passes when the host connects, sign-in/sign-out/reconnect works, the
-Diagnosis completes, and `unexpectedFailedMethods` is empty in
-`playground/test-results/e2e-dotli/diagnosis-run.json`. Intentional service
-skips remain visible in `diagnosis-report.md` but do not gate. Remove the alias
-from `E2E_DOTLI_ALLOWED_FAILURES` as soon as its tracked flake is fixed; never
-use a service-wide or wildcard quarantine.
-
-### Lane 2: Nova host-playground against the new Core
-
-The root repository must pin `hosts/dotli` to the exact commit being tested,
-not merely document a moving branch name. For this migration candidate,
-`codex/bulletin-preimage-in-core-dotli` resolved on 2026-07-21 to:
-
-```
-7921ce413a4a1661b36c3f5032d91287a8f160bf
-```
-
-Verify the branch and gitlink before the run:
-
-```bash
-cd ~/github/truapi
-git -C hosts/dotli fetch community codex/bulletin-preimage-in-core-dotli
-test "$(git -C hosts/dotli rev-parse community/codex/bulletin-preimage-in-core-dotli)" = \
-  "7921ce413a4a1661b36c3f5032d91287a8f160bf"
-test "$(git -C hosts/dotli rev-parse HEAD)" = \
-  "7921ce413a4a1661b36c3f5032d91287a8f160bf"
-```
-
-First prove the Nova app is healthy on its own, then drive that source checkout
-inside dotli's real host iframe and Rust Core. The branch's `test:e2e:local`
-target starts the local product and host, pairs through signer-bot, and runs the
-full host-playground method suite.
-
-```bash
-( cd ~/github/host-playground && \
-  yarn install --frozen-lockfile && \
-  yarn typecheck && \
-  yarn test && \
-  yarn build )
-
-cd ~/github/truapi
-set -a
-. ./.env
-set +a
-cd hosts/dotli
-PORT=5273 \
-E2E_PRODUCT_URL=http://localhost:5299 \
-E2E_PRODUCT_REPO="$HOME/github/host-playground" \
-SIGNER_BOT_BASE_URL="$SIGNER_BOT_BASE_URL" \
-SIGNER_BOT_SVC_TOKEN="$SIGNER_BOT_SVC_TOKEN" \
-SIGNER_BOT_NETWORK="$SIGNER_BOT_NETWORK" \
-bunx playwright test \
-  --config=apps/host/tests/e2e/playwright.config.ts \
-  --grep-invert="Product Account Alias"
-```
-
-The grep is the same narrow alias quarantine used in lane 1; all selected
-Playwright tests must pass. Run the alias test separately and retain its result
-so the quarantine remains measurable. Exit code `99` means signer-bot was
-unavailable and should be reported as infrastructure failure rather than a
-product regression; it is not a passing or skipped run. For a release
-candidate, repeat the suite without `E2E_PRODUCT_URL` to resolve and exercise
-the deployed `host-playground.dot` artifact as a post-deploy smoke test.
-
-### CI shape and evidence
-
-Implement these as separate jobs so a failure names the broken compatibility
-direction. Pin all three inputs in CI: the TrUAPI commit, legacy dotli commit,
-and host-playground commit; the new dotli Core is already pinned by the
-submodule gitlink. Upload the following even on failure:
-
-- the three product/host SHAs and new-Core submodule SHA;
-- Diagnosis markdown and JSON from the legacy-host lane;
-- Playwright JSON, traces, screenshots, and host/browser logs from the
-  new-Core lane;
-- whether a failure was an assertion, an allowed flake, or signer-bot/chain
-  infrastructure.
-
-Run both full lanes as required checks on Core-migration and protocol PRs. A
-small handshake + unary + subscription smoke can gate unrelated PRs quickly;
-run the full matrix nightly as well to detect external-chain and deployed-app
-drift. A retry may classify a known flake, but cannot turn an unexpected first
-failure into a pass without retaining the first-attempt artifacts.
 
 ## 0. Pre-flight
 
