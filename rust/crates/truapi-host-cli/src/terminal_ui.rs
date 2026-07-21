@@ -262,6 +262,7 @@ impl TerminalUi {
             receiver: self.receiver,
             sender: self.sender,
             app: self.app,
+            clipboard: None,
         })
     }
 }
@@ -283,6 +284,7 @@ pub struct ActiveTerminalUi {
     receiver: mpsc::UnboundedReceiver<UiEvent>,
     sender: mpsc::UnboundedSender<UiEvent>,
     app: App,
+    clipboard: Option<arboard::Clipboard>,
 }
 
 impl ActiveTerminalUi {
@@ -315,11 +317,15 @@ impl ActiveTerminalUi {
     }
 
     /// Copy the retained transcript to the system clipboard.
-    pub fn copy_transcript(&self) -> Result<usize> {
+    pub fn copy_transcript(&mut self) -> Result<usize> {
         let text = self.app.transcript_text();
         let entries = self.app.entries.len();
-        arboard::Clipboard::new()
-            .context("open system clipboard")?
+        if self.clipboard.is_none() {
+            self.clipboard = Some(arboard::Clipboard::new().context("open system clipboard")?);
+        }
+        self.clipboard
+            .as_mut()
+            .expect("clipboard was initialized above")
             .set_text(text)
             .context("copy transcript to system clipboard")?;
         Ok(entries)
