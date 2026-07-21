@@ -191,6 +191,32 @@ pub fn validate_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Select the Lite username prefix for auto-accounts owned by a session.
+///
+/// Lite username bases accept lowercase ASCII letters only, while session
+/// names additionally accept digits and separators. Preserve the recognizable
+/// alphabetic portion of a named session and use a neutral fallback when its
+/// name contains no letters. The default session retains the account manager's
+/// historical default unless an explicit prefix was supplied.
+pub fn lite_username_prefix(name: &str, explicit: Option<&str>) -> Option<String> {
+    if let Some(explicit) = explicit {
+        return Some(explicit.to_string());
+    }
+    if name == DEFAULT_SESSION_NAME {
+        return None;
+    }
+    let prefix: String = name
+        .bytes()
+        .filter(u8::is_ascii_lowercase)
+        .map(char::from)
+        .collect();
+    Some(if prefix.is_empty() {
+        "session".to_string()
+    } else {
+        prefix
+    })
+}
+
 fn absolute_path(path: PathBuf) -> Result<PathBuf> {
     if path.is_absolute() {
         return Ok(path);
@@ -211,6 +237,27 @@ mod tests {
             assert!(validate_name(invalid).is_err(), "accepted {invalid:?}");
         }
         assert!(validate_name("alice-2.test").is_ok());
+    }
+
+    #[test]
+    fn derives_lite_username_prefix_from_session_name() {
+        assert_eq!(
+            lite_username_prefix("pgtest", None).as_deref(),
+            Some("pgtest")
+        );
+        assert_eq!(
+            lite_username_prefix("pg-test_2", None).as_deref(),
+            Some("pgtest")
+        );
+        assert_eq!(
+            lite_username_prefix("123", None).as_deref(),
+            Some("session")
+        );
+        assert_eq!(lite_username_prefix(DEFAULT_SESSION_NAME, None), None);
+        assert_eq!(
+            lite_username_prefix("pgtest", Some("custom")).as_deref(),
+            Some("custom")
+        );
     }
 
     #[test]

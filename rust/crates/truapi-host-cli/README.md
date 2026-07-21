@@ -79,6 +79,11 @@ names contain lowercase ASCII letters, digits, `.`, `_`, or `-`; they
 cannot be paths. Switching prepares the target while the old session remains
 active, then stops its pairing responder and resets product WebSocket
 connections so clients reconnect against the new runtime.
+New auto-managed accounts use the session name as their Lite username prefix;
+characters other than lowercase letters are omitted. For example, session
+`pgtest` creates usernames beginning with `pgtest`. An explicit
+`--lite-username-prefix` takes precedence, and `default` retains the historical
+`headless` prefix.
 The selected username is cached in `session.json` inside the displayed
 session path. On restart, an already-provisioned local signer is activated from
 disk without an identity-backend or ring-membership round trip, so `/session`

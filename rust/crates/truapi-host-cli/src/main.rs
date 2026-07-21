@@ -850,13 +850,15 @@ async fn ensure_signer(session: &mut SigningHostSession) -> Result<()> {
     let account = (profile.name == DEFAULT_SESSION_NAME)
         .then(|| session.default_account.clone())
         .flatten();
+    let lite_username_prefix =
+        sessions::lite_username_prefix(&profile.name, session.lite_username_prefix.as_deref());
     session.signer = Some(
         accounts::resolve_signer(ResolveSignerConfig {
             base_path: &profile.account_base_path,
             network: session.network,
             mnemonic: session.mnemonic.clone(),
             account,
-            lite_username_prefix: session.lite_username_prefix.clone(),
+            lite_username_prefix,
         })
         .await?,
     );
@@ -930,13 +932,21 @@ async fn prepare_pairing_response(session: &mut SigningHostSession, deeplink: &s
                     ));
                 }
                 let account_base_path = current_account_base_path(session)?;
+                let session_name = session
+                    .profile
+                    .as_ref()
+                    .map_or(DEFAULT_SESSION_NAME, |profile| profile.name.as_str());
+                let lite_username_prefix = sessions::lite_username_prefix(
+                    session_name,
+                    session.lite_username_prefix.as_deref(),
+                );
                 session.signer = Some(
                     accounts::resolve_signer(ResolveSignerConfig {
                         base_path: &account_base_path,
                         network: session.network,
                         mnemonic: None,
                         account: None,
-                        lite_username_prefix: session.lite_username_prefix.clone(),
+                        lite_username_prefix,
                     })
                     .await?,
                 );
@@ -1047,6 +1057,8 @@ async fn switch_session(session: &mut SigningHostSession, name: String) -> Resul
     // Resolve and provision the target completely while the old runtime keeps
     // serving. Only the final runtime replacement invalidates product sockets.
     let profile = session.catalog.ensure_profile(&name)?;
+    let lite_username_prefix =
+        sessions::lite_username_prefix(&name, session.lite_username_prefix.as_deref());
     let signer = accounts::resolve_signer(ResolveSignerConfig {
         base_path: &profile.account_base_path,
         network: session.network,
@@ -1056,7 +1068,7 @@ async fn switch_session(session: &mut SigningHostSession, name: String) -> Resul
         } else {
             None
         },
-        lite_username_prefix: session.lite_username_prefix.clone(),
+        lite_username_prefix,
     })
     .await?;
     if let Some(user_id) = &signer.lite_username {
