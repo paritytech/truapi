@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::io::{self, IsTerminal, Write};
+use std::ops::Range;
 use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result};
@@ -32,6 +33,7 @@ use crate::LogLevel;
 use crate::signing_shell::{CommandEditor, parse_approval};
 
 const TRANSCRIPT_LIMIT: usize = 10_000;
+const MAX_VISIBLE_COMPLETIONS: usize = 10;
 
 /// Tracing target reserved for SSO summaries that must remain visible at every log level.
 pub const INCOMING_SSO_TARGET: &str = "truapi_server::incoming_sso_request";
@@ -646,10 +648,11 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
     } else {
         app.editor.completions()
     };
+    let completion_range = completion_window(completions.len(), app.editor.completion_index());
     let completion_height = if completions.is_empty() {
         0
     } else {
-        (completions.len().min(6) + 2) as u16
+        (completion_range.len() + 2) as u16
     };
     let areas = Layout::vertical([
         Constraint::Min(3),
@@ -682,7 +685,8 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         let selected = app.editor.completion_index();
         let items = completions
             .iter()
-            .take(6)
+            .skip(completion_range.start)
+            .take(completion_range.len())
             .map(|completion| {
                 ListItem::new(Line::from(vec![
                     Span::styled(
@@ -696,7 +700,8 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
                 ]))
             })
             .collect::<Vec<_>>();
-        let mut state = ListState::default().with_selected(Some(selected));
+        let mut state = ListState::default()
+            .with_selected(Some(selected.saturating_sub(completion_range.start)));
         frame.render_stateful_widget(
             List::new(items)
                 .block(
@@ -750,6 +755,17 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         .style(Style::default().fg(Color::DarkGray)),
         areas[3],
     );
+}
+
+fn completion_window(total: usize, selected: usize) -> Range<usize> {
+    if total <= MAX_VISIBLE_COMPLETIONS {
+        return 0..total;
+    }
+    let start = selected
+        .saturating_add(1)
+        .saturating_sub(MAX_VISIBLE_COMPLETIONS)
+        .min(total - MAX_VISIBLE_COMPLETIONS);
+    start..start + MAX_VISIBLE_COMPLETIONS
 }
 
 fn entry_lines(entry: &TranscriptEntry) -> Vec<Line<'static>> {
@@ -867,6 +883,22 @@ mod tests {
             app.transcript_text(),
             "HOST · ready\nYOU · /whoami\nSCRIPT · WHOAMI alice.dot"
         );
+    }
+
+    #[test]
+    fn autocomplete_shows_all_current_commands_and_scrolls_larger_menus() {
+        let mut app = App::new("testnet".to_string(), LogLevel::Info);
+        app.editor.set_text("/");
+        let completions = app.editor.completions();
+        let visible = completion_window(completions.len(), app.editor.completion_index());
+        assert!(
+            completions[visible]
+                .iter()
+                .any(|completion| completion.value == "/copy")
+        );
+
+        assert_eq!(completion_window(12, 0), 0..10);
+        assert_eq!(completion_window(12, 11), 2..12);
     }
 
     #[test]

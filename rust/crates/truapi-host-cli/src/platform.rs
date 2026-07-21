@@ -20,8 +20,8 @@ use tokio::sync::Mutex as AsyncMutex;
 use truapi::latest as api;
 use truapi_platform::{
     AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features, JsonRpcConnection, Navigation,
-    Notifications, Permissions, PreimageHost, ProductStorage, ThemeHost, UserConfirmation,
-    UserConfirmationReview,
+    Notifications, Permissions, PreimageHost, ProductStorage, SessionUiInfo, ThemeHost,
+    UserConfirmation, UserConfirmationReview,
 };
 
 use crate::chain::WsChainProvider;
@@ -314,11 +314,22 @@ impl Features for CliPlatform {
 impl truapi_platform::AuthPresenter for CliPlatform {
     fn auth_state_changed(&self, state: AuthState) {
         let (connection, line) = match &state {
-            AuthState::Pairing { deeplink } => ("pairing", format!("PAIRING_DEEPLINK {deeplink}")),
-            AuthState::Authenticating => ("authenticating", "PAIRING_AUTHENTICATING".to_string()),
-            AuthState::Connected(_) => ("connected", "PAIRING_CONNECTED".to_string()),
-            AuthState::Disconnected => ("disconnected", "PAIRING_DISCONNECTED".to_string()),
-            AuthState::LoginFailed { reason } => ("failed", format!("PAIRING_FAILED {reason}")),
+            AuthState::Pairing { deeplink } => (
+                "pairing".to_string(),
+                format!("PAIRING_DEEPLINK {deeplink}"),
+            ),
+            AuthState::Authenticating => (
+                "authenticating".to_string(),
+                "PAIRING_AUTHENTICATING".to_string(),
+            ),
+            AuthState::Connected(info) => (connected_label(info), "PAIRING_CONNECTED".to_string()),
+            AuthState::Disconnected => (
+                "disconnected".to_string(),
+                "PAIRING_DISCONNECTED".to_string(),
+            ),
+            AuthState::LoginFailed { reason } => {
+                ("failed".to_string(), format!("PAIRING_FAILED {reason}"))
+            }
         };
         if let Some(ui) = &self.ui {
             ui.connection(connection);
@@ -327,6 +338,21 @@ impl truapi_platform::AuthPresenter for CliPlatform {
             println!("{line}");
         }
     }
+}
+
+fn connected_label(info: &SessionUiInfo) -> String {
+    info.full_username
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            info.lite_username
+                .as_deref()
+                .filter(|value| !value.is_empty())
+        })
+        .map_or_else(
+            || "connected".to_string(),
+            |user_id| format!("connected · {user_id}"),
+        )
 }
 
 #[async_trait]
@@ -414,4 +440,26 @@ fn save_hex_key_map(path: &Path, values: &HashMap<Vec<u8>, Vec<u8>>) -> Result<(
         .map(|(key, value)| (hex::encode(key), value.clone()))
         .collect();
     save_string_map(path, &keyed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connected_label_includes_the_primary_user_id() {
+        let info = SessionUiInfo {
+            lite_username: Some("alice.dot".to_string()),
+            full_username: Some("Alice".to_string()),
+            ..SessionUiInfo::default()
+        };
+        assert_eq!(connected_label(&info), "connected · Alice");
+
+        let info = SessionUiInfo {
+            lite_username: Some("alice.dot".to_string()),
+            ..SessionUiInfo::default()
+        };
+        assert_eq!(connected_label(&info), "connected · alice.dot");
+        assert_eq!(connected_label(&SessionUiInfo::default()), "connected");
+    }
 }
