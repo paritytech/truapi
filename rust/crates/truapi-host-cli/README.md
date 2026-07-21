@@ -55,6 +55,9 @@ Commands always start with `/`:
 | `/deeplink <url>` | Validate and answer a `polkadotapp://pair?...` deeplink. |
 | `/script <path>` | Run a JS/TS product script through the public frame endpoint. |
 | `/log <level>` | Change tracing to `error`, `warn`, `info`, `debug`, or `trace`. |
+| `/session` | Show the current session name, path, and user id. |
+| `/session <name>` | Switch to an existing session or create an isolated one. |
+| `/session --list` | List sessions for the current network. |
 | `/help` | Show commands and keyboard shortcuts. |
 | `/clear` | Clear the visible transcript. |
 | `/copy` | Copy the retained transcript to the system clipboard. |
@@ -66,6 +69,26 @@ and `/script` completes filesystem paths. Ctrl-U/Ctrl-D scroll by half a
 viewport, End restores auto-follow, Esc closes autocomplete, and Ctrl-C clears
 input, cancels a running command, or exits when idle. Deeplinks are deliberately
 not persisted in history across processes.
+
+Named sessions isolate signer accounts, product/core storage, and permissions
+under
+`<base-path>/<network>/signing-host/sessions/<name>`. The selected name is
+remembered per network and shown in the top bar. `default` preserves the
+pre-session account and storage locations for backward compatibility. Session
+names contain lowercase ASCII letters, digits, `.`, `_`, or `-`; they
+cannot be paths. Switching prepares the target while the old session remains
+active, then stops its pairing responder and resets product WebSocket
+connections so clients reconnect against the new runtime.
+
+Select or create a session at startup with:
+
+```bash
+truapi-host signing-host --session alice
+```
+
+`--session` cannot be combined with `--account` or `--mnemonic`. A host
+started with an explicit mnemonic reports an `ephemeral` session and does not
+allow runtime switching.
 
 Only one operational command runs at once, but SSO traffic and approvals keep
 flowing while it runs. Without a TTY, use one-shot `exec` mode (parent options

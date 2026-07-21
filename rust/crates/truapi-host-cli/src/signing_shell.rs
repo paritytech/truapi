@@ -4,6 +4,18 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::LogLevel;
+use crate::sessions;
+
+/// Operation selected through `/session`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionCommand {
+    /// Print the current session.
+    Current,
+    /// List sessions for the active network.
+    List,
+    /// Switch to or create the named session.
+    Switch(String),
+}
 
 /// A command accepted by the signing-host command bar or `exec` mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +34,8 @@ pub enum ShellCommand {
     Copy,
     /// Replace the active tracing filter with a log level.
     Log(LogLevel),
+    /// Inspect, list, or switch the active persistent session.
+    Session(SessionCommand),
     /// Shut down the signing host.
     Quit,
 }
@@ -65,6 +79,18 @@ pub fn parse_command(input: &str) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::Log(argument.parse::<LogLevel>()?))
         }
+        "/session" => {
+            if argument.is_empty() {
+                return Ok(ShellCommand::Session(SessionCommand::Current));
+            }
+            if argument == "--list" {
+                return Ok(ShellCommand::Session(SessionCommand::List));
+            }
+            sessions::validate_name(argument)?;
+            Ok(ShellCommand::Session(SessionCommand::Switch(
+                argument.to_string(),
+            )))
+        }
         "/quit" => no_argument(name, argument, ShellCommand::Quit),
         _ => Err(format!(
             "unknown command `{name}`; use /help to list commands"
@@ -94,6 +120,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("/deeplink ", "answer a Polkadot Mobile pairing URL"),
     ("/script ", "run a JS/TS product script"),
     ("/log ", "set error, warn, info, debug, or trace"),
+    ("/session", "show or switch the active session"),
     ("/help", "show commands and keyboard shortcuts"),
     ("/clear", "clear the visible transcript"),
     ("/copy", "copy the transcript to the clipboard"),
@@ -101,9 +128,32 @@ const COMMANDS: &[(&str, &str)] = &[
 ];
 
 /// Compute slash-command or `/script` filesystem completions for `input`.
-pub fn completions(input: &str) -> Vec<Completion> {
+pub fn completions(input: &str, session_names: &[String]) -> Vec<Completion> {
     if let Some(path) = input.strip_prefix("/script ") {
         return path_completions(path);
+    }
+    if let Some(prefix) = input.strip_prefix("/session ") {
+        if prefix.contains(char::is_whitespace) {
+            return Vec::new();
+        }
+        let mut matches = session_names
+            .iter()
+            .filter(|name| name.starts_with(prefix))
+            .map(|name| Completion {
+                value: format!("/session {name}"),
+                description: "existing session",
+            })
+            .collect::<Vec<_>>();
+        if "--list".starts_with(prefix) {
+            matches.insert(
+                0,
+                Completion {
+                    value: "/session --list".to_string(),
+                    description: "list sessions",
+                },
+            );
+        }
+        return matches;
     }
     if !input.starts_with('/') || input.contains(char::is_whitespace) {
         return Vec::new();
@@ -172,6 +222,7 @@ pub struct CommandEditor {
     history_draft: String,
     completion_index: usize,
     completions_dismissed: bool,
+    session_names: Vec<String>,
 }
 
 impl CommandEditor {
@@ -243,12 +294,18 @@ impl CommandEditor {
         self.edited();
     }
 
+    /// Replace session names offered after `/session `.
+    pub fn set_session_names(&mut self, names: Vec<String>) {
+        self.session_names = names;
+        self.edited();
+    }
+
     /// Return currently visible completions.
     pub fn completions(&self) -> Vec<Completion> {
         if self.completions_dismissed {
             Vec::new()
         } else {
-            completions(&self.text())
+            completions(&self.text(), &self.session_names)
         }
     }
 
@@ -363,6 +420,9 @@ pub const HELP_TEXT: &str = "\
 /deeplink <url>         answer a Polkadot Mobile pairing URL
 /script <path>          run a JS/TS product script
 /log <level>            set error, warn, info, debug, or trace
+/session                show the current session and path
+/session <name>         switch to or create a session
+/session --list         list sessions for this network
 /help                   show this help
 /clear                  clear the visible transcript
 /copy                   copy the transcript to the clipboard
@@ -393,6 +453,16 @@ mod tests {
             Ok(ShellCommand::Log(LogLevel::Trace))
         );
         assert_eq!(parse_command("/copy"), Ok(ShellCommand::Copy));
+        assert_eq!(
+            parse_command("/session"),
+            Ok(ShellCommand::Session(SessionCommand::Current))
+        );
+        assert_eq!(
+            parse_command("/session alice"),
+            Ok(ShellCommand::Session(SessionCommand::Switch(
+                "alice".to_string()
+            )))
+        );
     }
 
     #[test]
@@ -406,6 +476,7 @@ mod tests {
         assert!(parse_command("/copy now").is_err());
         assert!(parse_command("/deeplink https://example.com").is_err());
         assert!(parse_command("/log noisy").is_err());
+        assert!(parse_command("/session ../escape").is_err());
     }
 
     #[test]
@@ -450,12 +521,20 @@ mod tests {
         let prefix = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("signing_s");
-        let matches = completions(&format!("/script {}", prefix.display()));
+        let matches = completions(&format!("/script {}", prefix.display()), &[]);
 
         assert!(
             matches
                 .iter()
                 .any(|completion| completion.value.ends_with("signing_shell.rs"))
         );
+    }
+
+    #[test]
+    fn session_completion_lists_existing_names() {
+        let matches = completions("/session a", &["alice".to_string(), "bob".to_string()]);
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].value, "/session alice");
     }
 }

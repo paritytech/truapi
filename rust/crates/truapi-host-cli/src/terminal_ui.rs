@@ -63,6 +63,10 @@ enum UiEvent {
         response: oneshot::Sender<bool>,
     },
     Connection(String),
+    Session {
+        name: String,
+        available: Vec<String>,
+    },
 }
 
 static ACTIVE_UI: OnceLock<Mutex<Option<mpsc::UnboundedSender<UiEvent>>>> = OnceLock::new();
@@ -185,6 +189,14 @@ impl UiHandle {
         let _ = self.sender.send(UiEvent::Connection(state.into()));
     }
 
+    /// Update the active session and session-name completions.
+    pub fn session(&self, name: impl Into<String>, available: Vec<String>) {
+        let _ = self.sender.send(UiEvent::Session {
+            name: name.into(),
+            available,
+        });
+    }
+
     /// Ask the terminal owner for a serialized yes/no decision.
     pub async fn confirm(&self, action: impl Into<String>, detail: impl Into<String>) -> bool {
         let (response, answer) = oneshot::channel();
@@ -219,7 +231,12 @@ pub struct TerminalUi {
 
 impl TerminalUi {
     /// Create a terminal transcript and its cloneable host bridge.
-    pub fn new(network: impl Into<String>, log_level: LogLevel) -> (Self, UiHandle) {
+    pub fn new(
+        network: impl Into<String>,
+        session: impl Into<String>,
+        session_names: Vec<String>,
+        log_level: LogLevel,
+    ) -> (Self, UiHandle) {
         let (sender, receiver) = mpsc::unbounded_channel();
         let handle = UiHandle {
             sender: sender.clone(),
@@ -228,7 +245,7 @@ impl TerminalUi {
             Self {
                 sender,
                 receiver,
-                app: App::new(network.into(), log_level),
+                app: App::new(network.into(), session.into(), session_names, log_level),
             },
             handle,
         )
@@ -429,6 +446,7 @@ struct PendingApproval {
 
 struct App {
     network: String,
+    session: String,
     connection: String,
     log_level: LogLevel,
     entries: VecDeque<TranscriptEntry>,
@@ -440,13 +458,21 @@ struct App {
 }
 
 impl App {
-    fn new(network: String, log_level: LogLevel) -> Self {
+    fn new(
+        network: String,
+        session: String,
+        session_names: Vec<String>,
+        log_level: LogLevel,
+    ) -> Self {
+        let mut editor = CommandEditor::default();
+        editor.set_session_names(session_names);
         Self {
             network,
+            session,
             connection: "disconnected".to_string(),
             log_level,
             entries: VecDeque::new(),
-            editor: CommandEditor::default(),
+            editor,
             pending_approval: None,
             busy: None,
             scroll_from_bottom: 0,
@@ -476,6 +502,10 @@ impl App {
         match event {
             UiEvent::Entry(entry) => self.push(entry.kind, entry.text),
             UiEvent::Connection(state) => self.connection = state,
+            UiEvent::Session { name, available } => {
+                self.session = name;
+                self.editor.set_session_names(available);
+            }
             UiEvent::Approval {
                 action,
                 detail,
@@ -676,8 +706,8 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         .saturating_sub(app.scroll_from_bottom)
         .min(u16::MAX as usize) as u16;
     let title = format!(
-        " TrUAPI signing host · {} · {} · {} ",
-        app.network, app.connection, app.log_level
+        " TrUAPI signing host · {} · session {} · {} · {} ",
+        app.network, app.session, app.connection, app.log_level
     );
     frame.render_widget(
         Paragraph::new(transcript_lines)
@@ -831,9 +861,18 @@ mod tests {
     use super::*;
     use tracing_subscriber::layer::SubscriberExt;
 
+    fn test_app() -> App {
+        App::new(
+            "testnet".to_string(),
+            "default".to_string(),
+            vec!["default".to_string()],
+            LogLevel::Info,
+        )
+    }
+
     #[test]
     fn approval_temporarily_replaces_and_then_restores_command_draft() {
-        let mut app = App::new("testnet".to_string(), LogLevel::Info);
+        let mut app = test_app();
         app.editor.set_text("/script draft.ts");
         let (response, answer) = oneshot::channel();
         app.handle_event(UiEvent::Approval {
@@ -851,7 +890,7 @@ mod tests {
 
     #[test]
     fn ctrl_u_and_ctrl_d_scroll_half_a_viewport() {
-        let mut app = App::new("testnet".to_string(), LogLevel::Info);
+        let mut app = test_app();
         app.transcript_height = 20;
         app.handle_common_key(
             KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
@@ -867,7 +906,7 @@ mod tests {
 
     #[test]
     fn transcript_is_bounded() {
-        let mut app = App::new("testnet".to_string(), LogLevel::Info);
+        let mut app = test_app();
         for index in 0..=TRANSCRIPT_LIMIT {
             app.push(EntryKind::Log, index.to_string());
         }
@@ -880,7 +919,7 @@ mod tests {
 
     #[test]
     fn transcript_text_includes_visible_speaker_labels() {
-        let mut app = App::new("testnet".to_string(), LogLevel::Info);
+        let mut app = test_app();
         app.push(EntryKind::System, "ready");
         app.push(EntryKind::Command, "/whoami");
         app.push(EntryKind::Script, "WHOAMI alice.dot");
@@ -893,7 +932,7 @@ mod tests {
 
     #[test]
     fn autocomplete_shows_all_current_commands_and_scrolls_larger_menus() {
-        let mut app = App::new("testnet".to_string(), LogLevel::Info);
+        let mut app = test_app();
         app.editor.set_text("/");
         let completions = app.editor.completions();
         let visible = completion_window(completions.len(), app.editor.completion_index());
@@ -905,6 +944,19 @@ mod tests {
 
         assert_eq!(completion_window(12, 0), 0..10);
         assert_eq!(completion_window(12, 11), 2..12);
+    }
+
+    #[test]
+    fn session_event_updates_header_state_and_completions() {
+        let mut app = test_app();
+        app.handle_event(UiEvent::Session {
+            name: "alice".to_string(),
+            available: vec!["alice".to_string(), "bob".to_string()],
+        });
+        app.editor.set_text("/session b");
+
+        assert_eq!(app.session, "alice");
+        assert_eq!(app.editor.completions()[0].value, "/session bob");
     }
 
     #[test]

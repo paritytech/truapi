@@ -16,6 +16,7 @@ mod frame_server;
 mod network;
 mod platform;
 mod script_runner;
+mod sessions;
 mod signing_shell;
 mod terminal_ui;
 
@@ -42,7 +43,8 @@ use truapi_server::{PairingHostConfig, PairingHostRuntime, SigningHostConfig, Si
 use crate::accounts::{ResolveSignerConfig, ResolvedSigner};
 use crate::network::{Network, NetworkConfig};
 use crate::platform::{ApprovalPolicy, CliPlatform};
-use crate::signing_shell::{HELP_TEXT, ShellCommand, parse_command};
+use crate::sessions::{DEFAULT_SESSION_NAME, SessionCatalog, SessionProfile};
+use crate::signing_shell::{HELP_TEXT, SessionCommand, ShellCommand, parse_command};
 use crate::terminal_ui::{ActiveTerminalUi, DriveResult, TerminalUi, UiHandle};
 
 /// Default product served by the pairing host's frame endpoint. Product ids
@@ -221,6 +223,9 @@ struct SigningHostArgs {
     /// or create a usable account.
     #[arg(long)]
     account: Option<String>,
+    /// Persistent signing-host session to restore or create.
+    #[arg(long)]
+    session: Option<String>,
     /// Prefix for newly-created lite usernames in auto-account mode.
     #[arg(long = "lite-username-prefix")]
     lite_username_prefix: Option<String>,
@@ -514,13 +519,31 @@ async fn run_signing_host(
         .map(|input| parse_command(input).unwrap_or_else(|error| invalid_invocation(error)));
     let network = args.network.config();
     let base_path = args.base_path.clone().unwrap_or_else(default_base_path);
+    let session_catalog = SessionCatalog::new(base_path.clone(), network.id)?;
+    let initial_session_name = initial_session_name(&args, &session_catalog);
+    if normalized(args.mnemonic.clone()).is_none() {
+        session_catalog.set_current(&initial_session_name)?;
+    }
+    let initial_session_names = session_catalog.list()?;
     let (terminal_ui, ui_handle) = if interactive {
-        let (ui, handle) = TerminalUi::new(network.id, initial_log_level);
+        let (ui, handle) = TerminalUi::new(
+            network.id,
+            initial_session_name.clone(),
+            initial_session_names,
+            initial_log_level,
+        );
         (Some(ui.enter()?), Some(handle))
     } else {
         (None, None)
     };
-    let mut session = start_signing_host(&args, base_path, network, ui_handle.clone()).await?;
+    let mut session = start_signing_host(
+        &args,
+        session_catalog,
+        initial_session_name,
+        network,
+        ui_handle.clone(),
+    )
+    .await?;
     let listener = frame_server::bind(args.frame_listen).await?;
     let frame_url = format!("ws://{}", listener.local_addr()?);
     if let Some(ui) = &ui_handle {
@@ -529,7 +552,8 @@ async fn run_signing_host(
     } else {
         println!("FRAMES_LISTENING {frame_url}");
     }
-    let runtime_for_frames: Arc<dyn frame_server::ProductRuntimeFactory> = session.runtime.clone();
+    let runtime_for_frames: Arc<dyn frame_server::ProductRuntimeFactory> =
+        session.runtime_factory.clone();
 
     if let Some(script) = args.script {
         let product_id = args.product_id.clone();
@@ -618,26 +642,81 @@ async fn run_signing_host(
 
 struct SigningHostSession {
     runtime: Arc<SigningHostRuntime>,
+    runtime_factory: Arc<frame_server::SwitchableSigningRuntime>,
     responder: Option<tokio::task::JoinHandle<()>>,
     signer: Option<ResolvedSigner>,
-    base_path: PathBuf,
+    catalog: SessionCatalog,
+    profile: Option<SessionProfile>,
     network: NetworkConfig,
     mnemonic: Option<String>,
-    account: Option<String>,
+    default_account: Option<String>,
     lite_username_prefix: Option<String>,
+    approval: ApprovalPolicy,
+    ui: Option<UiHandle>,
+}
+
+fn initial_session_name(args: &SigningHostArgs, catalog: &SessionCatalog) -> String {
+    if normalized(args.mnemonic.clone()).is_some() {
+        return "ephemeral".to_string();
+    }
+    normalized(args.session.clone())
+        .or_else(|| normalized(args.account.clone()).map(|_| DEFAULT_SESSION_NAME.to_string()))
+        .unwrap_or_else(|| catalog.current_name())
 }
 
 async fn start_signing_host(
     args: &SigningHostArgs,
-    base_path: PathBuf,
+    catalog: SessionCatalog,
+    session_name: String,
     network: NetworkConfig,
     ui: Option<UiHandle>,
 ) -> Result<SigningHostSession> {
+    let mnemonic = normalized(args.mnemonic.clone());
+    let profile = if mnemonic.is_some() {
+        None
+    } else {
+        Some(catalog.ensure_profile(&session_name)?)
+    };
+    let storage_path = profile
+        .as_ref()
+        .map(|profile| profile.path.clone())
+        .unwrap_or_else(|| {
+            catalog
+                .profile(DEFAULT_SESSION_NAME)
+                .expect("default session profile is valid")
+                .path
+        });
+    let approval = approval_policy(args.auto_accept);
+    let runtime = build_signing_runtime(network, storage_path, approval, ui.clone())?;
+    let runtime_factory = frame_server::SwitchableSigningRuntime::new(runtime.clone());
+
+    Ok(SigningHostSession {
+        runtime,
+        runtime_factory,
+        responder: None,
+        signer: None,
+        catalog,
+        profile,
+        network,
+        mnemonic,
+        default_account: normalized(args.account.clone()),
+        lite_username_prefix: normalized(args.lite_username_prefix.clone()),
+        approval,
+        ui,
+    })
+}
+
+fn build_signing_runtime(
+    network: NetworkConfig,
+    storage_path: PathBuf,
+    approval: ApprovalPolicy,
+    ui: Option<UiHandle>,
+) -> Result<Arc<SigningHostRuntime>> {
     let platform = CliPlatform::new(
         network.people_ws,
         network.live_chain_endpoints,
-        Some(role_state_path(&base_path, network, "signing-host")),
-        approval_policy(args.auto_accept),
+        Some(storage_path),
+        approval,
         ui,
     );
     let config = SigningHostConfig::new(
@@ -647,18 +726,11 @@ async fn start_signing_host(
         network.bulletin_genesis,
     )
     .context("invalid signing host config")?;
-    let runtime = Arc::new(SigningHostRuntime::new(platform, config, tokio_spawner()));
-
-    Ok(SigningHostSession {
-        runtime,
-        responder: None,
-        signer: None,
-        base_path,
-        network,
-        mnemonic: normalized(args.mnemonic.clone()),
-        account: normalized(args.account.clone()),
-        lite_username_prefix: normalized(args.lite_username_prefix.clone()),
-    })
+    Ok(Arc::new(SigningHostRuntime::new(
+        platform,
+        config,
+        tokio_spawner(),
+    )))
 }
 
 impl Drop for SigningHostSession {
@@ -672,12 +744,22 @@ impl Drop for SigningHostSession {
 fn validate_signing_args(args: &SigningHostArgs) -> Result<()> {
     let mnemonic = normalized(args.mnemonic.clone());
     let account = normalized(args.account.clone());
+    let session = normalized(args.session.clone());
     let prefix = normalized(args.lite_username_prefix.clone());
     if args.script.is_some() && args.action.is_some() {
         bail!("--script cannot be combined with the exec subcommand");
     }
     if mnemonic.is_some() && account.is_some() {
         bail!("--account cannot be used when --mnemonic or HOST_CLI_SIGNER_MNEMONIC is set");
+    }
+    if mnemonic.is_some() && session.is_some() {
+        bail!("--session cannot be used when --mnemonic or HOST_CLI_SIGNER_MNEMONIC is set");
+    }
+    if account.is_some() && session.is_some() {
+        bail!("--session cannot be combined with --account");
+    }
+    if let Some(session) = session {
+        sessions::validate_name(&session).map_err(anyhow::Error::msg)?;
     }
     if mnemonic.is_some() && prefix.is_some() {
         bail!(
@@ -727,17 +809,37 @@ async fn ensure_signer(session: &mut SigningHostSession) -> Result<()> {
     if session.signer.is_some() {
         return Ok(());
     }
+    let profile = session
+        .profile
+        .clone()
+        .unwrap_or(session.catalog.profile(DEFAULT_SESSION_NAME)?);
+    let account = (profile.name == DEFAULT_SESSION_NAME)
+        .then(|| session.default_account.clone())
+        .flatten();
     session.signer = Some(
         accounts::resolve_signer(ResolveSignerConfig {
-            base_path: &session.base_path,
+            base_path: &profile.account_base_path,
             network: session.network,
             mnemonic: session.mnemonic.clone(),
-            account: session.account.clone(),
+            account,
             lite_username_prefix: session.lite_username_prefix.clone(),
         })
         .await?,
     );
     activate_current_signer(session).await
+}
+
+fn current_account_base_path(session: &SigningHostSession) -> Result<PathBuf> {
+    Ok(session
+        .profile
+        .as_ref()
+        .map(|profile| profile.account_base_path.clone())
+        .unwrap_or(
+            session
+                .catalog
+                .profile(DEFAULT_SESSION_NAME)?
+                .account_base_path,
+        ))
 }
 
 async fn activate_current_signer(session: &mut SigningHostSession) -> Result<()> {
@@ -778,8 +880,9 @@ async fn prepare_pairing_response(session: &mut SigningHostSession, deeplink: &s
                 }
                 if let Some(name) = &account_name {
                     let period = accounts::current_statement_period()?;
+                    let account_base_path = current_account_base_path(session)?;
                     accounts::mark_account_exhausted(
-                        &session.base_path,
+                        &account_base_path,
                         session.network.id,
                         name,
                         period,
@@ -788,9 +891,10 @@ async fn prepare_pairing_response(session: &mut SigningHostSession, deeplink: &s
                         "SIGNING_HOST_ACCOUNT_EXHAUSTED {name} period={period}"
                     ));
                 }
+                let account_base_path = current_account_base_path(session)?;
                 session.signer = Some(
                     accounts::resolve_signer(ResolveSignerConfig {
-                        base_path: &session.base_path,
+                        base_path: &account_base_path,
                         network: session.network,
                         mnemonic: None,
                         account: None,
@@ -838,6 +942,113 @@ async fn start_deeplink_responder(
         }
     }));
     terminal_ui::output_line("SIGNING_HOST_RESPONDER_STARTED");
+    Ok(())
+}
+
+fn session_status(session: &SigningHostSession) -> String {
+    let name = session
+        .profile
+        .as_ref()
+        .map_or("ephemeral", |profile| profile.name.as_str());
+    let path = session.profile.as_ref().map_or_else(
+        || "<none>".to_string(),
+        |profile| profile.path.display().to_string(),
+    );
+    let user_id = session
+        .signer
+        .as_ref()
+        .and_then(|signer| signer.lite_username.as_deref())
+        .unwrap_or("<not activated>");
+    format!("Current session\nname={name}\npath={path}\nuser.id={user_id}")
+}
+
+fn session_list(session: &SigningHostSession) -> Result<String> {
+    let current = session
+        .profile
+        .as_ref()
+        .map_or("ephemeral", |profile| profile.name.as_str());
+    let mut lines = vec!["Sessions".to_string()];
+    for name in session.catalog.list()? {
+        let marker = if name == current { "*" } else { " " };
+        let path = session.catalog.profile(&name)?.path;
+        lines.push(format!("{marker} {name}  {}", path.display()));
+    }
+    if session.profile.is_none() {
+        lines.push("* ephemeral  <none>".to_string());
+    }
+    Ok(lines.join("\n"))
+}
+
+async fn switch_session(session: &mut SigningHostSession, name: String) -> Result<()> {
+    if session.mnemonic.is_some() {
+        bail!("session switching is unavailable when launched with --mnemonic");
+    }
+    sessions::validate_name(&name).map_err(anyhow::Error::msg)?;
+    if session
+        .profile
+        .as_ref()
+        .is_some_and(|profile| profile.name == name)
+    {
+        terminal_ui::output_line(session_status(session));
+        return Ok(());
+    }
+
+    let existed = session.catalog.exists(&name);
+    let old_name = session
+        .profile
+        .as_ref()
+        .map_or(DEFAULT_SESSION_NAME, |profile| profile.name.as_str())
+        .to_string();
+    if existed {
+        terminal_ui::output_line(format!("Switching session {old_name} -> {name}"));
+    } else {
+        terminal_ui::output_line(format!("Session {name:?} does not exist; creating it"));
+    }
+
+    // Resolve and provision the target completely while the old runtime keeps
+    // serving. Only the final runtime replacement invalidates product sockets.
+    let profile = session.catalog.ensure_profile(&name)?;
+    let signer = accounts::resolve_signer(ResolveSignerConfig {
+        base_path: &profile.account_base_path,
+        network: session.network,
+        mnemonic: None,
+        account: if name == DEFAULT_SESSION_NAME {
+            session.default_account.clone()
+        } else {
+            None
+        },
+        lite_username_prefix: session.lite_username_prefix.clone(),
+    })
+    .await?;
+    let runtime = build_signing_runtime(
+        session.network,
+        profile.path.clone(),
+        session.approval,
+        session.ui.clone(),
+    )?;
+    let available_sessions = session.catalog.list()?;
+
+    session.catalog.set_current(&name)?;
+    if let Err(error) = runtime
+        .activate_local_session_with_identity(signer.entropy.clone(), signer.lite_username.clone())
+        .await
+    {
+        let _ = session.catalog.set_current(&old_name);
+        bail!("failed to activate session {name:?}: {}", error.reason);
+    }
+
+    if let Some(responder) = session.responder.take() {
+        responder.abort();
+    }
+    session.runtime_factory.replace(runtime.clone());
+    session.runtime = runtime;
+    session.signer = Some(signer);
+    session.profile = Some(profile);
+    if let Some(ui) = &session.ui {
+        ui.session(name, available_sessions);
+    }
+    terminal_ui::output_line("PRODUCT_CONNECTIONS_RESET reconnect required");
+    terminal_ui::output_line(session_status(session));
     Ok(())
 }
 
@@ -1003,6 +1214,13 @@ async fn signing_interactive_loop(
                     ui.system(format!("LOG_LEVEL {level}"));
                 }
             }
+            ShellCommand::Session(SessionCommand::Current) => {
+                ui.system(session_status(session));
+            }
+            ShellCommand::Session(SessionCommand::List) => match session_list(session) {
+                Ok(sessions) => ui.system(sessions),
+                Err(error) => ui.error(format!("failed to list sessions: {error}")),
+            },
             ShellCommand::Quit => return Ok(()),
             command => {
                 run_interactive_operation(
@@ -1062,10 +1280,14 @@ async fn execute_interactive_operation(
             }
             terminal_ui::output_line("SCRIPT_EXIT 0");
         }
+        ShellCommand::Session(SessionCommand::Switch(name)) => {
+            switch_session(session, name).await?;
+        }
         ShellCommand::Help
         | ShellCommand::Clear
         | ShellCommand::Copy
         | ShellCommand::Log(_)
+        | ShellCommand::Session(SessionCommand::Current | SessionCommand::List)
         | ShellCommand::Quit => {
             bail!("command must be handled by the terminal UI")
         }
@@ -1104,6 +1326,15 @@ async fn execute_non_interactive_command(
         ShellCommand::Log(level) => {
             log_controller.set(level)?;
             println!("LOG_LEVEL {level}");
+        }
+        ShellCommand::Session(SessionCommand::Current) => {
+            println!("{}", session_status(session));
+        }
+        ShellCommand::Session(SessionCommand::List) => {
+            println!("{}", session_list(session)?);
+        }
+        ShellCommand::Session(SessionCommand::Switch(name)) => {
+            switch_session(session, name).await?;
         }
     }
     Ok(())
@@ -1211,6 +1442,50 @@ mod cli_tests {
                 .unwrap_err()
                 .to_string()
                 .contains("--script cannot be combined")
+        );
+    }
+
+    #[test]
+    fn signing_host_accepts_a_startup_session() {
+        let cli = Cli::try_parse_from([
+            "truapi-host",
+            "signing-host",
+            "--session",
+            "alice",
+            "exec",
+            "/session",
+        ])
+        .expect("startup session should parse");
+        let Command::SigningHost(args) = cli.command else {
+            panic!("expected signing-host command");
+        };
+
+        assert_eq!(args.session.as_deref(), Some("alice"));
+        assert!(validate_signing_args(&args).is_ok());
+    }
+
+    #[test]
+    fn signing_host_rejects_managed_session_with_mnemonic() {
+        let cli = Cli::try_parse_from([
+            "truapi-host",
+            "signing-host",
+            "--mnemonic",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            "--session",
+            "alice",
+            "exec",
+            "/session",
+        ])
+        .expect("clap should parse conflicting signer options");
+        let Command::SigningHost(args) = cli.command else {
+            panic!("expected signing-host command");
+        };
+
+        assert!(
+            validate_signing_args(&args)
+                .unwrap_err()
+                .to_string()
+                .contains("--session cannot be used")
         );
     }
 }

@@ -6,12 +6,12 @@
 //! `ProtocolMessage`, matching the browser transport's framing.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, info, warn};
@@ -21,6 +21,11 @@ use truapi_server::{
 
 pub trait ProductRuntimeFactory: Send + Sync + 'static {
     fn product_runtime(&self, product: ProductContext, sink: Arc<dyn FrameSink>) -> ProductRuntime;
+
+    /// Subscribe to a signal that invalidates existing product connections.
+    fn connection_reset(&self) -> Option<watch::Receiver<u64>> {
+        None
+    }
 }
 
 impl ProductRuntimeFactory for PairingHostRuntime {
@@ -32,6 +37,43 @@ impl ProductRuntimeFactory for PairingHostRuntime {
 impl ProductRuntimeFactory for SigningHostRuntime {
     fn product_runtime(&self, product: ProductContext, sink: Arc<dyn FrameSink>) -> ProductRuntime {
         SigningHostRuntime::product_runtime(self, product, sink)
+    }
+}
+
+/// Signing runtime factory whose active session can be replaced without
+/// restarting the frame listener.
+pub struct SwitchableSigningRuntime {
+    current: RwLock<Arc<SigningHostRuntime>>,
+    generation: watch::Sender<u64>,
+}
+
+impl SwitchableSigningRuntime {
+    pub fn new(runtime: Arc<SigningHostRuntime>) -> Arc<Self> {
+        let (generation, _) = watch::channel(0);
+        Arc::new(Self {
+            current: RwLock::new(runtime),
+            generation,
+        })
+    }
+
+    /// Replace the runtime and disconnect every product using the old one.
+    pub fn replace(&self, runtime: Arc<SigningHostRuntime>) {
+        *self.current.write().expect("runtime lock poisoned") = runtime;
+        self.generation
+            .send_modify(|generation| *generation = generation.wrapping_add(1));
+    }
+}
+
+impl ProductRuntimeFactory for SwitchableSigningRuntime {
+    fn product_runtime(&self, product: ProductContext, sink: Arc<dyn FrameSink>) -> ProductRuntime {
+        self.current
+            .read()
+            .expect("runtime lock poisoned")
+            .product_runtime(product, sink)
+    }
+
+    fn connection_reset(&self) -> Option<watch::Receiver<u64>> {
+        Some(self.generation.subscribe())
     }
 }
 
@@ -90,6 +132,9 @@ async fn serve_connection(
     product_id: String,
     stream: TcpStream,
 ) -> Result<()> {
+    // Subscribe before resolving the runtime so a concurrent replacement can
+    // only cause an extra reconnect, never leave a connection on stale state.
+    let mut reset = runtime.connection_reset();
     let ws = accept_async(stream).await?;
     let (mut write, mut read) = ws.split();
     let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<Message>();
@@ -109,7 +154,14 @@ async fn serve_connection(
     });
     let product_runtime = runtime.product_runtime(product, sink);
 
-    while let Some(message) = read.next().await {
+    loop {
+        let message = tokio::select! {
+            _ = connection_reset(&mut reset) => break,
+            message = read.next() => message,
+        };
+        let Some(message) = message else {
+            break;
+        };
         match message {
             Ok(Message::Binary(bytes)) => {
                 if let Err(err) = product_runtime.receive_frame(bytes.to_vec()).await {
@@ -133,4 +185,13 @@ async fn serve_connection(
     drop(outbound_tx);
     let _ = writer.await;
     Ok(())
+}
+
+async fn connection_reset(reset: &mut Option<watch::Receiver<u64>>) {
+    match reset {
+        Some(reset) => {
+            let _ = reset.changed().await;
+        }
+        None => std::future::pending().await,
+    }
 }
