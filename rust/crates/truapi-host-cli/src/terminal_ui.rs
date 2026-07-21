@@ -256,26 +256,12 @@ impl TerminalUi {
         let mut active = active_ui()
             .lock()
             .map_err(|_| anyhow::anyhow!("active terminal UI mutex poisoned"))?;
-        enable_raw_mode().context("enable terminal raw mode")?;
-        let mut stdout = io::stdout();
-        if let Err(error) = execute!(stdout, EnterAlternateScreen, EnableBracketedPaste, Hide) {
-            let _ = disable_raw_mode();
-            return Err(error).context("enter alternate terminal screen");
-        }
-        let terminal = match Terminal::new(CrosstermBackend::new(stdout)) {
-            Ok(terminal) => terminal,
-            Err(error) => {
-                let mut stdout = io::stdout();
-                let _ = execute!(stdout, Show, DisableBracketedPaste, LeaveAlternateScreen);
-                let _ = disable_raw_mode();
-                return Err(error).context("initialize terminal renderer");
-            }
-        };
+        let terminal = enter_terminal()?;
         *active = Some(self.sender.clone());
         drop(active);
         Ok(ActiveTerminalUi {
             terminal: Some(terminal),
-            events: EventStream::new(),
+            events: Some(EventStream::new()),
             receiver: self.receiver,
             sender: self.sender,
             app: self.app,
@@ -297,7 +283,7 @@ pub enum DriveResult<T> {
 /// Full-screen terminal owner used by the signing-host session loop.
 pub struct ActiveTerminalUi {
     terminal: Option<Renderer>,
-    events: EventStream,
+    events: Option<EventStream>,
     receiver: mpsc::UnboundedReceiver<UiEvent>,
     sender: mpsc::UnboundedSender<UiEvent>,
     app: App,
@@ -353,6 +339,33 @@ impl ActiveTerminalUi {
         self.app.log_level = level;
     }
 
+    /// Yield terminal ownership to an external interactive program.
+    pub fn suspend(&mut self) -> Result<()> {
+        self.events = None;
+        let terminal = self
+            .terminal
+            .take()
+            .context("terminal renderer is unavailable")?;
+        if let Err(error) = leave_terminal(terminal) {
+            if let Ok(terminal) = enter_terminal() {
+                self.terminal = Some(terminal);
+                self.events = Some(EventStream::new());
+            }
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// Re-enter the full-screen UI after an external program exits.
+    pub fn resume(&mut self) -> Result<()> {
+        if self.terminal.is_some() {
+            return Ok(());
+        }
+        self.terminal = Some(enter_terminal()?);
+        self.events = Some(EventStream::new());
+        Ok(())
+    }
+
     /// Wait for the next submitted command while continuing to render host events.
     pub async fn next_command(&mut self) -> Result<Option<String>> {
         loop {
@@ -362,7 +375,7 @@ impl ActiveTerminalUi {
                     let Some(event) = event else { return Ok(None); };
                     self.app.handle_event(event);
                 }
-                event = self.events.next() => {
+                event = self.events.as_mut().expect("terminal events are active").next() => {
                     let Some(event) = event else { return Ok(None); };
                     let event = event.context("read terminal event")?;
                     if let Some(outcome) = self.app.handle_idle_event(event) {
@@ -396,7 +409,7 @@ impl ActiveTerminalUi {
                         self.app.handle_event(event);
                     }
                 }
-                event = self.events.next() => {
+                event = self.events.as_mut().expect("terminal events are active").next() => {
                     let Some(event) = event else {
                         self.app.busy = None;
                         return Ok(DriveResult::Cancelled);
@@ -427,16 +440,43 @@ impl Drop for ActiveTerminalUi {
         if let Ok(mut active) = active_ui().lock() {
             *active = None;
         }
-        if let Some(mut terminal) = self.terminal.take() {
-            let _ = execute!(
-                terminal.backend_mut(),
-                Show,
-                DisableBracketedPaste,
-                LeaveAlternateScreen
-            );
+        if let Some(terminal) = self.terminal.take() {
+            let _ = leave_terminal(terminal);
+        } else {
+            let _ = disable_raw_mode();
         }
-        let _ = disable_raw_mode();
     }
+}
+
+fn enter_terminal() -> Result<Renderer> {
+    enable_raw_mode().context("enable terminal raw mode")?;
+    let mut stdout = io::stdout();
+    if let Err(error) = execute!(stdout, EnterAlternateScreen, EnableBracketedPaste, Hide) {
+        let _ = disable_raw_mode();
+        return Err(error).context("enter alternate terminal screen");
+    }
+    match Terminal::new(CrosstermBackend::new(stdout)) {
+        Ok(terminal) => Ok(terminal),
+        Err(error) => {
+            let mut stdout = io::stdout();
+            let _ = execute!(stdout, Show, DisableBracketedPaste, LeaveAlternateScreen);
+            let _ = disable_raw_mode();
+            Err(error).context("initialize terminal renderer")
+        }
+    }
+}
+
+fn leave_terminal(mut terminal: Renderer) -> Result<()> {
+    let screen_result = execute!(
+        terminal.backend_mut(),
+        Show,
+        DisableBracketedPaste,
+        LeaveAlternateScreen
+    )
+    .context("leave alternate terminal screen");
+    let raw_result = disable_raw_mode().context("disable terminal raw mode");
+    screen_result?;
+    raw_result
 }
 
 struct PendingApproval {

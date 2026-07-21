@@ -7,15 +7,23 @@
 //! `truapi-host pairing-host --script foo.ts` *is* the test — there is no
 //! separate bun orchestrator.
 
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::process::Stdio;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::terminal_ui::UiHandle;
+
+const SCRATCH_TEMPLATE: &str = r#"const result = await truapi.account.getUserId();
+assert(result.isOk(), "getUserId failed:", result);
+console.log("user id:", result.value);
+"#;
 
 /// Locate `js/runner.ts`, shipped alongside the crate.
 ///
@@ -32,6 +40,83 @@ pub fn bundled_script(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("js/scripts")
         .join(name)
+}
+
+/// Create a durable, uniquely-named TypeScript scratch file seeded with the
+/// public TrUAPI example.
+pub fn create_scratch_script(directory: &Path) -> Result<PathBuf> {
+    fs::create_dir_all(directory)
+        .with_context(|| format!("create script directory {}", directory.display()))?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    for sequence in 0..100 {
+        let path = directory.join(format!(
+            "script-{timestamp}-{}-{sequence}.ts",
+            std::process::id()
+        ));
+        let mut file = match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("create scratch script {}", path.display()));
+            }
+        };
+        file.write_all(SCRATCH_TEMPLATE.as_bytes())
+            .with_context(|| format!("write scratch script {}", path.display()))?;
+        return Ok(path);
+    }
+    anyhow::bail!(
+        "could not allocate a unique scratch script in {}",
+        directory.display()
+    );
+}
+
+/// Open the script in the configured terminal editor and wait for it to exit.
+pub async fn edit(script: &Path) -> Result<ExitStatus> {
+    let specification = configured_editor();
+    let (program, arguments) = parse_editor(&specification)?;
+    let mut command = Command::new(program);
+    command
+        .args(arguments)
+        .arg(script)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    command
+        .status()
+        .await
+        .with_context(|| format!("failed to launch editor {specification:?}"))
+}
+
+fn configured_editor() -> String {
+    std::env::var("VISUAL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("EDITOR")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "notepad".to_string()
+            } else {
+                "vi".to_string()
+            }
+        })
+}
+
+fn parse_editor(specification: &str) -> Result<(String, Vec<String>)> {
+    let mut parts = shlex::split(specification)
+        .with_context(|| format!("invalid editor command {specification:?}"))?
+        .into_iter();
+    let program = parts
+        .next()
+        .with_context(|| format!("editor command is empty: {specification:?}"))?;
+    Ok((program, parts.collect()))
 }
 
 /// Run `script` against the host serving frames at `frame_url`, as product
@@ -101,4 +186,28 @@ fn command(frame_url: &str, product_id: &str, script: &Path) -> Result<Command> 
         .env("TRUAPI_PRODUCT_ID", product_id)
         .env("TRUAPI_SCRIPT", &script);
     Ok(command)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scratch_script_contains_the_public_api_template() -> Result<()> {
+        let temporary = tempfile::tempdir()?;
+
+        let script = create_scratch_script(temporary.path())?;
+
+        assert_eq!(fs::read_to_string(script)?, SCRATCH_TEMPLATE);
+        Ok(())
+    }
+
+    #[test]
+    fn editor_command_accepts_quoted_arguments_without_a_shell() -> Result<()> {
+        let (program, arguments) = parse_editor("code --wait \"profile one\"")?;
+
+        assert_eq!(program, "code");
+        assert_eq!(arguments, ["--wait", "profile one"]);
+        Ok(())
+    }
 }

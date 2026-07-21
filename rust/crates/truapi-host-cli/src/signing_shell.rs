@@ -24,8 +24,9 @@ pub enum ShellCommand {
     Whoami,
     /// Answer a Polkadot Mobile pairing deeplink.
     Deeplink(String),
-    /// Run a product script through the public frame endpoint.
-    Script(PathBuf),
+    /// Edit a new product script, or run an existing one, through the public
+    /// frame endpoint.
+    Script(Option<PathBuf>),
     /// Show command and keyboard help.
     Help,
     /// Clear the visible transcript.
@@ -66,9 +67,9 @@ pub fn parse_command(input: &str) -> Result<ShellCommand, String> {
         }
         "/script" => {
             if argument.is_empty() {
-                return Err("usage: /script <path>".to_string());
+                return Ok(ShellCommand::Script(None));
             }
-            Ok(ShellCommand::Script(PathBuf::from(argument)))
+            Ok(ShellCommand::Script(Some(PathBuf::from(argument))))
         }
         "/help" => no_argument(name, argument, ShellCommand::Help),
         "/clear" => no_argument(name, argument, ShellCommand::Clear),
@@ -118,7 +119,7 @@ pub struct Completion {
 const COMMANDS: &[(&str, &str)] = &[
     ("/whoami", "show the current TrUAPI user id"),
     ("/deeplink ", "answer a Polkadot Mobile pairing URL"),
-    ("/script ", "run a JS/TS product script"),
+    ("/script", "edit a new or run an existing product script"),
     ("/log ", "set error, warn, info, debug, or trace"),
     ("/session", "show or switch the active session"),
     ("/help", "show commands and keyboard shortcuts"),
@@ -418,7 +419,8 @@ pub fn parse_approval(input: &str) -> Option<bool> {
 pub const HELP_TEXT: &str = "\
 /whoami                 show the current TrUAPI user id
 /deeplink <url>         answer a Polkadot Mobile pairing URL
-/script <path>          run a JS/TS product script
+/script                 edit and run a new TypeScript product script
+/script <path>          run an existing JS/TS product script
 /log <level>            set error, warn, info, debug, or trace
 /session                show the current session and path
 /session <name>         switch to or create a session
@@ -446,8 +448,11 @@ mod tests {
         );
         assert_eq!(
             parse_command("/script scripts/my smoke.ts"),
-            Ok(ShellCommand::Script(PathBuf::from("scripts/my smoke.ts")))
+            Ok(ShellCommand::Script(Some(PathBuf::from(
+                "scripts/my smoke.ts"
+            ))))
         );
+        assert_eq!(parse_command("/script"), Ok(ShellCommand::Script(None)));
         assert_eq!(
             parse_command("/log trace"),
             Ok(ShellCommand::Log(LogLevel::Trace))
@@ -518,6 +523,10 @@ mod tests {
 
     #[test]
     fn script_completion_lists_matching_filesystem_paths() {
+        let command = completions("/script", &[]);
+        assert_eq!(command.len(), 1);
+        assert_eq!(command[0].value, "/script");
+
         let prefix = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("signing_s");

@@ -53,7 +53,8 @@ Commands always start with `/`:
 | --- | --- |
 | `/whoami` | Run the bundled product script that calls `truapi.account.getUserId()`. |
 | `/deeplink <url>` | Validate and answer a `polkadotapp://pair?...` deeplink. |
-| `/script <path>` | Run a JS/TS product script through the public frame endpoint. |
+| `/script` | Open a new TypeScript scratch script in the terminal editor, then run it. |
+| `/script <path>` | Run an existing JS/TS product script through the public frame endpoint. |
 | `/log <level>` | Change tracing to `error`, `warn`, `info`, `debug`, or `trace`. |
 | `/session` | Show the current session name, path, and user id. |
 | `/session <name>` | Switch to an existing session or create an isolated one. |
@@ -69,6 +70,13 @@ and `/script` completes filesystem paths. Ctrl-U/Ctrl-D scroll by half a
 viewport, End restores auto-follow, Esc closes autocomplete, and Ctrl-C clears
 input, cancels a running command, or exits when idle. Deeplinks are deliberately
 not persisted in history across processes.
+
+Bare `/script` creates a durable scratch file under the active session's
+`scripts/` directory, seeded with a `truapi.account.getUserId()` example.
+The TUI temporarily yields the terminal to `$VISUAL`, then `$EDITOR`, or
+`vi` when neither is set. After the editor exits successfully, the TUI is
+restored and the saved script runs through the public frame endpoint. Editor
+settings containing arguments, such as `EDITOR='code --wait'`, are supported.
 
 Named sessions isolate signer accounts, product/core storage, and permissions
 under

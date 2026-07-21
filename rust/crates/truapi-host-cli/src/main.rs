@@ -1277,6 +1277,20 @@ async fn signing_interactive_loop(
                 Err(error) => ui.error(format!("failed to list sessions: {error}")),
             },
             ShellCommand::Quit => return Ok(()),
+            ShellCommand::Script(None) => match edit_new_script(session, &mut ui).await {
+                Ok(script) => {
+                    run_interactive_operation(
+                        session,
+                        &frame_url,
+                        &product_id,
+                        ShellCommand::Script(Some(script)),
+                        input,
+                        &mut ui,
+                    )
+                    .await?;
+                }
+                Err(error) => ui.error(error.to_string()),
+            },
             command => {
                 run_interactive_operation(
                     session,
@@ -1327,7 +1341,7 @@ async fn execute_interactive_operation(
             }
         }
         ShellCommand::Deeplink(deeplink) => start_deeplink_responder(session, deeplink).await?,
-        ShellCommand::Script(script) => {
+        ShellCommand::Script(Some(script)) => {
             ensure_signer(session).await?;
             let status = script_runner::run_captured(frame_url, product_id, &script, ui).await?;
             if !status.success() {
@@ -1335,6 +1349,7 @@ async fn execute_interactive_operation(
             }
             terminal_ui::output_line("SCRIPT_EXIT 0");
         }
+        ShellCommand::Script(None) => bail!("new scripts must be edited by the terminal UI"),
         ShellCommand::Session(SessionCommand::Switch(name)) => {
             switch_session(session, name).await?;
         }
@@ -1368,6 +1383,10 @@ async fn execute_non_interactive_command(
         }
         ShellCommand::Deeplink(deeplink) => respond_to_deeplink(session, deeplink).await?,
         ShellCommand::Script(script) => {
+            let script = match script {
+                Some(script) => script,
+                None => edit_new_script_plain(session).await?,
+            };
             ensure_signer(session).await?;
             let status = script_runner::run(frame_url, product_id, &script).await?;
             if !status.success() {
@@ -1393,6 +1412,55 @@ async fn execute_non_interactive_command(
         }
     }
     Ok(())
+}
+
+fn scratch_script_directory(session: &SigningHostSession) -> PathBuf {
+    session.profile.as_ref().map_or_else(
+        || std::env::temp_dir().join("truapi-host").join("scripts"),
+        |profile| profile.path.join("scripts"),
+    )
+}
+
+async fn edit_new_script(
+    session: &SigningHostSession,
+    ui: &mut ActiveTerminalUi,
+) -> Result<PathBuf> {
+    let script = script_runner::create_scratch_script(&scratch_script_directory(session))?;
+    ui.system(format!("Opening editor for {}", script.display()));
+    ui.suspend()?;
+    let edit_result = script_runner::edit(&script).await;
+    let resume_result = ui.resume();
+    if let Err(error) = resume_result {
+        return Err(error).context("restore terminal UI after editor");
+    }
+    let status = edit_result?;
+    if !status.success() {
+        bail!(
+            "editor exited with {}; script retained at {}",
+            status.code().unwrap_or(1),
+            script.display()
+        );
+    }
+    ui.system(format!("Saved script {}", script.display()));
+    Ok(script)
+}
+
+async fn edit_new_script_plain(session: &SigningHostSession) -> Result<PathBuf> {
+    if !terminal_ui::is_interactive_terminal() {
+        bail!("/script without a path requires an interactive terminal");
+    }
+    let script = script_runner::create_scratch_script(&scratch_script_directory(session))?;
+    eprintln!("EDITING_SCRIPT {}", script.display());
+    let status = script_runner::edit(&script).await?;
+    if !status.success() {
+        bail!(
+            "editor exited with {}; script retained at {}",
+            status.code().unwrap_or(1),
+            script.display()
+        );
+    }
+    eprintln!("SAVED_SCRIPT {}", script.display());
+    Ok(script)
 }
 
 async fn print_prompt(prompt: &str) -> Result<()> {

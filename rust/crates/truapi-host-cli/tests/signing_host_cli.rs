@@ -44,6 +44,31 @@ fn exec_help_is_plain_and_exits_successfully() {
 }
 
 #[test]
+fn bare_script_in_non_tty_exec_mode_fails_without_opening_an_editor() {
+    let temporary = tempfile::tempdir().expect("create temporary session root");
+    let output = command()
+        .args(["signing-host", "--frame-listen", "127.0.0.1:0"])
+        .arg("--base-path")
+        .arg(temporary.path())
+        .args(["exec", "/script"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run bare script without a TTY");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("/script without a path requires an interactive terminal")
+    );
+    assert!(
+        !temporary
+            .path()
+            .join("paseo-next-v2/signing-host/scripts")
+            .exists()
+    );
+}
+
+#[test]
 fn startup_session_is_reported_and_restored() {
     let temporary = tempfile::tempdir().expect("create temporary session root");
     let base_path = temporary.path();
