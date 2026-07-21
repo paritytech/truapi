@@ -645,6 +645,7 @@ struct SigningHostSession {
     runtime_factory: Arc<frame_server::SwitchableSigningRuntime>,
     responder: Option<tokio::task::JoinHandle<()>>,
     signer: Option<ResolvedSigner>,
+    cached_user_id: Option<String>,
     catalog: SessionCatalog,
     profile: Option<SessionProfile>,
     network: NetworkConfig,
@@ -689,17 +690,50 @@ async fn start_signing_host(
     let approval = approval_policy(args.auto_accept);
     let runtime = build_signing_runtime(network, storage_path, approval, ui.clone())?;
     let runtime_factory = frame_server::SwitchableSigningRuntime::new(runtime.clone());
+    let default_account = normalized(args.account.clone());
+    let mut cached_user_id = profile
+        .as_ref()
+        .map(|profile| catalog.cached_user_id(profile))
+        .transpose()?
+        .flatten();
+    let mut signer = None;
+    if let Some(profile) = &profile
+        && let Some(cached_signer) = accounts::resolve_cached_signer(
+            &profile.account_base_path,
+            network.id,
+            (profile.name == DEFAULT_SESSION_NAME)
+                .then_some(default_account.as_deref())
+                .flatten(),
+        )?
+    {
+        runtime
+            .activate_local_session_with_identity(
+                cached_signer.entropy.clone(),
+                cached_signer.lite_username.clone(),
+            )
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!("failed to activate cached session: {}", error.reason)
+            })?;
+        if let Some(user_id) = &cached_signer.lite_username {
+            catalog.store_user_id(profile, user_id)?;
+            cached_user_id = Some(user_id.clone());
+        }
+        terminal_ui::output_line("SIGNING_HOST_READY");
+        signer = Some(cached_signer);
+    }
 
     Ok(SigningHostSession {
         runtime,
         runtime_factory,
         responder: None,
-        signer: None,
+        signer,
+        cached_user_id,
         catalog,
         profile,
         network,
         mnemonic,
-        default_account: normalized(args.account.clone()),
+        default_account,
         lite_username_prefix: normalized(args.lite_username_prefix.clone()),
         approval,
         ui,
@@ -852,6 +886,10 @@ async fn activate_current_signer(session: &mut SigningHostSession) -> Result<()>
         .activate_local_session_with_identity(signer.entropy.clone(), signer.lite_username.clone())
         .await
         .map_err(|err| anyhow::anyhow!("failed to activate local session: {}", err.reason))?;
+    if let (Some(profile), Some(user_id)) = (&session.profile, &signer.lite_username) {
+        session.catalog.store_user_id(profile, user_id)?;
+        session.cached_user_id = Some(user_id.clone());
+    }
     terminal_ui::output_line("SIGNING_HOST_READY");
     Ok(())
 }
@@ -958,7 +996,8 @@ fn session_status(session: &SigningHostSession) -> String {
         .signer
         .as_ref()
         .and_then(|signer| signer.lite_username.as_deref())
-        .unwrap_or("<not activated>");
+        .or(session.cached_user_id.as_deref())
+        .unwrap_or("<not provisioned>");
     format!("Current session\nname={name}\npath={path}\nuser.id={user_id}")
 }
 
@@ -1020,6 +1059,9 @@ async fn switch_session(session: &mut SigningHostSession, name: String) -> Resul
         lite_username_prefix: session.lite_username_prefix.clone(),
     })
     .await?;
+    if let Some(user_id) = &signer.lite_username {
+        session.catalog.store_user_id(&profile, user_id)?;
+    }
     let runtime = build_signing_runtime(
         session.network,
         profile.path.clone(),
@@ -1042,6 +1084,7 @@ async fn switch_session(session: &mut SigningHostSession, name: String) -> Resul
     }
     session.runtime_factory.replace(runtime.clone());
     session.runtime = runtime;
+    session.cached_user_id = signer.lite_username.clone();
     session.signer = Some(signer);
     session.profile = Some(profile);
     if let Some(ui) = &session.ui {

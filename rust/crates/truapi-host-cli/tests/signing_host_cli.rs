@@ -59,7 +59,7 @@ fn startup_session_is_reported_and_restored() {
     let first_stdout = String::from_utf8_lossy(&first.stdout);
     assert!(first_stdout.contains("name=alice"));
     assert!(first_stdout.contains("signing-host/sessions/alice"));
-    assert!(first_stdout.contains("user.id=<not activated>"));
+    assert!(first_stdout.contains("user.id=<not provisioned>"));
 
     let restored = command()
         .args(["signing-host", "--frame-listen", "127.0.0.1:0"])
@@ -74,4 +74,45 @@ fn startup_session_is_reported_and_restored() {
     assert!(restored_stdout.contains("* alice"));
     assert!(restored_stdout.contains("  default"));
     assert!(!restored.stdout.contains(&0x1b));
+}
+
+#[test]
+fn existing_local_signer_is_activated_and_cached_at_startup() {
+    let temporary = tempfile::tempdir().expect("create temporary session root");
+    let base_path = temporary.path();
+    std::fs::write(
+        base_path.join("accounts.json"),
+        r#"{
+  "version": 1,
+  "accounts": [{
+    "name": "auto-1",
+    "network": "paseo-next-v2",
+    "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "lite_username": "cachedalice",
+    "public_key_hex": "0x00",
+    "address": "5GrwvaEF5zXb26Fz9rcQpDWSKfwVwqNxyvE9uZunJMtBEw2s",
+    "created_at_unix": 1,
+    "attested": true
+  }]
+}"#,
+    )
+    .expect("seed local account store");
+
+    let output = command()
+        .args(["signing-host", "--frame-listen", "127.0.0.1:0"])
+        .arg("--base-path")
+        .arg(base_path)
+        .args(["exec", "/session"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run signing-host with a cached signer");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("SIGNING_HOST_READY"));
+    assert!(stdout.contains("user.id=cachedalice"));
+    let metadata =
+        std::fs::read_to_string(base_path.join("paseo-next-v2/signing-host/session.json"))
+            .expect("read persisted session identity");
+    assert!(metadata.contains("cachedalice"));
 }

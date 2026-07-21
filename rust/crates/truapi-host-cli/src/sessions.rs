@@ -4,9 +4,17 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_SESSION_NAME: &str = "default";
 const CURRENT_SESSION_FILE: &str = "current-session";
+const SESSION_INFO_FILE: &str = "session.json";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SessionInfo {
+    version: u32,
+    user_id: String,
+}
 
 /// Filesystem locations owned by one managed signing-host session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,6 +127,42 @@ impl SessionCatalog {
         names.sort();
         Ok(names)
     }
+
+    pub fn cached_user_id(&self, profile: &SessionProfile) -> Result<Option<String>> {
+        let path = profile.path.join(SESSION_INFO_FILE);
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("read session identity {}", path.display()));
+            }
+        };
+        let info: SessionInfo = serde_json::from_str(&text)
+            .with_context(|| format!("decode session identity {}", path.display()))?;
+        Ok((!info.user_id.is_empty()).then_some(info.user_id))
+    }
+
+    pub fn store_user_id(&self, profile: &SessionProfile, user_id: &str) -> Result<()> {
+        if user_id.is_empty() {
+            return Ok(());
+        }
+        fs::create_dir_all(&profile.path)
+            .with_context(|| format!("create session {}", profile.path.display()))?;
+        let path = profile.path.join(SESSION_INFO_FILE);
+        let temporary = profile
+            .path
+            .join(format!(".{SESSION_INFO_FILE}.{}.tmp", std::process::id()));
+        let text = serde_json::to_string_pretty(&SessionInfo {
+            version: 1,
+            user_id: user_id.to_string(),
+        })?;
+        fs::write(&temporary, format!("{text}\n"))
+            .with_context(|| format!("write session identity {}", temporary.display()))?;
+        fs::rename(&temporary, &path)
+            .with_context(|| format!("persist session identity {}", path.display()))?;
+        Ok(())
+    }
 }
 
 /// Validate a portable session name before using it as a path component.
@@ -195,6 +239,23 @@ mod tests {
 
         assert_eq!(profile.account_base_path, temporary.path());
         assert!(profile.path.ends_with("testnet/signing-host"));
+        Ok(())
+    }
+
+    #[test]
+    fn session_user_id_round_trips_in_the_profile_path() -> Result<()> {
+        let temporary = tempdir()?;
+        let catalog = SessionCatalog::new(temporary.path().to_path_buf(), "testnet")?;
+        let profile = catalog.ensure_profile("alice")?;
+
+        assert_eq!(catalog.cached_user_id(&profile)?, None);
+        catalog.store_user_id(&profile, "alice.dot")?;
+
+        assert_eq!(
+            catalog.cached_user_id(&profile)?.as_deref(),
+            Some("alice.dot")
+        );
+        assert!(profile.path.join(SESSION_INFO_FILE).is_file());
         Ok(())
     }
 }

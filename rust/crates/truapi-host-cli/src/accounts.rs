@@ -267,6 +267,27 @@ pub async fn resolve_signer(config: ResolveSignerConfig<'_>) -> Result<ResolvedS
     resolved_from_record(record, true)
 }
 
+/// Resolve an already-provisioned signer from local state without network
+/// attestation or ring-membership checks.
+pub fn resolve_cached_signer(
+    base_path: &Path,
+    network_id: &str,
+    account: Option<&str>,
+) -> Result<Option<ResolvedSigner>> {
+    let _lock = AccountStoreLock::acquire(base_path)?;
+    let store = AccountStore::load(base_path)?;
+    let (record, auto_managed) = if let Some(name) = account {
+        (store.get(network_id, name).cloned(), false)
+    } else {
+        let period = current_statement_period()?;
+        (store.auto_candidate(network_id, period), true)
+    };
+    let Some(record) = record.filter(|record| record.attested) else {
+        return Ok(None);
+    };
+    resolved_from_record(record, auto_managed).map(Some)
+}
+
 pub fn mark_account_exhausted(
     base_path: &Path,
     network_id: &str,
@@ -626,6 +647,22 @@ mod tests {
             Some("auto-1")
         );
         assert!(!temp_path(&dir.path().join(ACCOUNT_STORE_FILE)).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn cached_signer_resolves_without_network_access() -> Result<()> {
+        let dir = tempdir()?;
+        let mut store = AccountStore::load(dir.path())?;
+        store.upsert(record("auto-1", "paseo-next-v2", true));
+        store.save()?;
+
+        let signer =
+            resolve_cached_signer(dir.path(), "paseo-next-v2", None)?.expect("cached signer");
+
+        assert_eq!(signer.account_name.as_deref(), Some("auto-1"));
+        assert_eq!(signer.lite_username.as_deref(), Some("auto-1lite"));
+        assert!(signer.auto_managed);
         Ok(())
     }
 }

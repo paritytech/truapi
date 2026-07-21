@@ -79,6 +79,11 @@ names contain lowercase ASCII letters, digits, `.`, `_`, or `-`; they
 cannot be paths. Switching prepares the target while the old session remains
 active, then stops its pairing responder and resets product WebSocket
 connections so clients reconnect against the new runtime.
+The selected username is cached in `session.json` inside the displayed
+session path. On restart, an already-provisioned local signer is activated from
+disk without an identity-backend or ring-membership round trip, so `/session`
+can report `user.id` immediately. A session with no signer yet reports
+`<not provisioned>`; inspecting it never starts network onboarding.
 
 Select or create a session at startup with:
 
