@@ -22,7 +22,8 @@ account:
   path components.
 - **Ring-VRF keys** — a hard-only keyed-hash chain rooted at
   `hash(root_entropy, "ring-vrf")`, with paths `//{domain}//{index}`.
-- **ECDH keys** — sr25519 keys hard-derived at `//ecdh//{domain}`.
+- **ECDH keys** — P-256 keys whose key material is hashed from sr25519 keys
+  hard-derived at `//ecdh//{domain}`.
 
 It amends `ProductAccountId` (`derivation_index: u32` →
 `derivation_suffix: Bytes`), adds one Accounts Protocol request for fetching a
@@ -256,15 +257,20 @@ Coinage's ring-VRF keys (recyclers/vouchers) are deferred to the coinage RFC.
 
 ### ECDH key derivations
 
-Keys used for ECDH-based E2E encryption are **sr25519** keys, hard-derived
-from the root keypair with standard substrate HDKD:
+Keys used for ECDH-based E2E encryption are **P-256 (NIST)** keys. Their key
+material comes from the same substrate tree as everything else: an sr25519
+key is hard-derived from the root keypair with standard substrate HDKD at
 
 ```
 //ecdh//{DerivationDomain}
 ```
 
-This RFC specifies only the derivation of these keys; key agreement, KDF, and
-AEAD choices are specified in a separate encryption RFC.
+and the derived sr25519 private key is hashed to obtain the P-256 key
+material.
+
+This RFC specifies only this derivation. The exact hash-to-P-256 key mapping,
+key agreement, KDF, and AEAD choices — and a potential migration from P-256
+to x25519 — are specified in a separate encryption RFC.
 
 Domains for built-in app features:
 
