@@ -35,13 +35,6 @@ fn runner_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("js/runner.ts")
 }
 
-/// Locate one of the product scripts shipped with the CLI crate.
-pub fn bundled_script(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("js/scripts")
-        .join(name)
-}
-
 /// Create a durable, uniquely-named TypeScript scratch file seeded with the
 /// public TrUAPI example.
 pub fn create_scratch_script(directory: &Path) -> Result<PathBuf> {

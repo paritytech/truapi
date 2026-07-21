@@ -961,12 +961,12 @@ mod tests {
     fn transcript_text_includes_visible_speaker_labels() {
         let mut app = test_app();
         app.push(EntryKind::System, "ready");
-        app.push(EntryKind::Command, "/whoami");
-        app.push(EntryKind::Script, "WHOAMI alice.dot");
+        app.push(EntryKind::Command, "/script demo.ts");
+        app.push(EntryKind::Script, "user id: alice.dot");
 
         assert_eq!(
             app.transcript_text(),
-            "HOST · ready\nYOU · /whoami\nSCRIPT · WHOAMI alice.dot"
+            "HOST · ready\nYOU · /script demo.ts\nSCRIPT · user id: alice.dot"
         );
     }
 

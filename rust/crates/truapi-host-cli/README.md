@@ -51,7 +51,6 @@ Commands always start with `/`:
 
 | Command | Result |
 | --- | --- |
-| `/whoami` | Run the bundled product script that calls `truapi.account.getUserId()`. |
 | `/deeplink <url>` | Validate and answer a `polkadotapp://pair?...` deeplink. |
 | `/script` | Open a new TypeScript scratch script in the terminal editor, then run it. |
 | `/script <path>` | Run an existing JS/TS product script through the public frame endpoint. |
@@ -113,7 +112,7 @@ flowing while it runs. Without a TTY, use one-shot `exec` mode (parent options
 come first):
 
 ```bash
-truapi-host signing-host --auto-accept exec '/whoami'
+truapi-host signing-host exec '/session'
 truapi-host signing-host --auto-accept exec '/script ./js/scripts/ring-vrf-smoke.ts'
 truapi-host signing-host exec '/deeplink polkadotapp://pair?handshake=...'
 ```
@@ -165,7 +164,7 @@ Six scripts ship under `js/scripts/`:
 - `battery.ts` — the curated signer gate (login + raw/payload signing,
   create-transaction, entropy). This is `run.sh`'s default.
 - `whoami.ts` — calls `getUserId` and prints `WHOAMI <primary username>`; this
-  backs the signing host's interactive `whoami` command.
+  remains available as an explicit `/script <path>` example.
 - `signing-smoke.ts` — a focused product-account signing check.
 - `ring-vrf-smoke.ts` — calls `getAccountAlias` and `createAccountProof`
   against the Paseo Next v2 LitePeople ring, then verifies both calls return

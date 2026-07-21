@@ -250,7 +250,7 @@ struct SigningHostArgs {
 enum SigningHostAction {
     /// Execute one slash command and exit.
     Exec {
-        /// Slash command to execute, such as `/whoami`.
+        /// Slash command to execute, such as `/session`.
         command: String,
     },
 }
@@ -511,7 +511,7 @@ async fn run_signing_host(
     let interactive = args.script.is_none() && exec_input.is_none();
     if interactive && !terminal_ui::is_interactive_terminal() {
         invalid_invocation(
-            "interactive signing-host requires a TTY; use `signing-host exec '/whoami'` or --script",
+            "interactive signing-host requires a TTY; use `signing-host exec '/script path.ts'` or --script",
         );
     }
     let exec_command = exec_input
@@ -1332,14 +1332,6 @@ async fn execute_interactive_operation(
     ui: UiHandle,
 ) -> Result<()> {
     match command {
-        ShellCommand::Whoami => {
-            ensure_signer(session).await?;
-            let script = script_runner::bundled_script("whoami.ts");
-            let status = script_runner::run_captured(frame_url, product_id, &script, ui).await?;
-            if !status.success() {
-                bail!("WHOAMI_EXIT {}", status.code().unwrap_or(1));
-            }
-        }
         ShellCommand::Deeplink(deeplink) => start_deeplink_responder(session, deeplink).await?,
         ShellCommand::Script(Some(script)) => {
             ensure_signer(session).await?;
@@ -1373,14 +1365,6 @@ async fn execute_non_interactive_command(
     log_controller: &LogController,
 ) -> Result<()> {
     match command {
-        ShellCommand::Whoami => {
-            ensure_signer(session).await?;
-            let script = script_runner::bundled_script("whoami.ts");
-            let status = script_runner::run(frame_url, product_id, &script).await?;
-            if !status.success() {
-                bail!("WHOAMI_EXIT {}", status.code().unwrap_or(1));
-            }
-        }
         ShellCommand::Deeplink(deeplink) => respond_to_deeplink(session, deeplink).await?,
         ShellCommand::Script(script) => {
             let script = match script {
@@ -1534,7 +1518,7 @@ mod cli_tests {
             "signing-host",
             "--auto-accept",
             "exec",
-            "/whoami",
+            "/help",
         ])
         .expect("exec slash command should parse");
         let Command::SigningHost(args) = cli.command else {
@@ -1543,7 +1527,7 @@ mod cli_tests {
         let Some(SigningHostAction::Exec { command }) = args.action else {
             panic!("expected exec action");
         };
-        assert_eq!(command, "/whoami");
+        assert_eq!(command, "/help");
     }
 
     #[test]
@@ -1554,7 +1538,7 @@ mod cli_tests {
             "--script",
             "smoke.ts",
             "exec",
-            "/whoami",
+            "/help",
         ])
         .expect("clap should parse parent options before exec");
         let Command::SigningHost(args) = cli.command else {

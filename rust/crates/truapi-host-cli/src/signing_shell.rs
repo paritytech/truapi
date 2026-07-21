@@ -20,8 +20,6 @@ pub enum SessionCommand {
 /// A command accepted by the signing-host command bar or `exec` mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellCommand {
-    /// Resolve the current user's primary username through TrUAPI.
-    Whoami,
     /// Answer a Polkadot Mobile pairing deeplink.
     Deeplink(String),
     /// Edit a new product script, or run an existing one, through the public
@@ -55,7 +53,6 @@ pub fn parse_command(input: &str) -> Result<ShellCommand, String> {
         .split_once(char::is_whitespace)
         .map_or((input, ""), |(name, argument)| (name, argument.trim()));
     match name {
-        "/whoami" => no_argument(name, argument, ShellCommand::Whoami),
         "/deeplink" => {
             if argument.is_empty() {
                 return Err("usage: /deeplink <polkadotapp://pair?...>".to_string());
@@ -117,7 +114,6 @@ pub struct Completion {
 }
 
 const COMMANDS: &[(&str, &str)] = &[
-    ("/whoami", "show the current TrUAPI user id"),
     ("/deeplink ", "answer a Polkadot Mobile pairing URL"),
     ("/script", "edit a new or run an existing product script"),
     ("/log ", "set error, warn, info, debug, or trace"),
@@ -417,7 +413,6 @@ pub fn parse_approval(input: &str) -> Option<bool> {
 
 /// Text displayed by `/help` in either presentation mode.
 pub const HELP_TEXT: &str = "\
-/whoami                 show the current TrUAPI user id
 /deeplink <url>         answer a Polkadot Mobile pairing URL
 /script                 edit and run a new TypeScript product script
 /script <path>          run an existing JS/TS product script
@@ -439,7 +434,6 @@ mod tests {
 
     #[test]
     fn parses_all_operational_commands() {
-        assert_eq!(parse_command("/whoami"), Ok(ShellCommand::Whoami));
         assert_eq!(
             parse_command("/deeplink polkadotapp://pair?handshake=01"),
             Ok(ShellCommand::Deeplink(
@@ -477,7 +471,7 @@ mod tests {
                 .unwrap_err()
                 .contains("start with `/`")
         );
-        assert!(parse_command("/whoami now").is_err());
+        assert!(parse_command("/whoami").is_err());
         assert!(parse_command("/copy now").is_err());
         assert!(parse_command("/deeplink https://example.com").is_err());
         assert!(parse_command("/log noisy").is_err());
@@ -493,12 +487,12 @@ mod tests {
         assert_ne!(editor.completions()[editor.completion_index()].value, first);
 
         editor.dismiss_completions();
-        editor.set_text("/whoami");
+        editor.set_text("/help");
         editor.submit();
         editor.set_text("draft");
         editor.dismiss_completions();
         editor.up();
-        assert_eq!(editor.text(), "/whoami");
+        assert_eq!(editor.text(), "/help");
         editor.down();
         assert_eq!(editor.text(), "draft");
     }

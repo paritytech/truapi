@@ -36,7 +36,8 @@ fn exec_help_is_plain_and_exits_successfully() {
     let _ = std::fs::remove_dir_all(base_path);
 
     assert!(output.status.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("/whoami"));
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("/whoami"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("/script"));
     assert!(String::from_utf8_lossy(&output.stdout).contains("/copy"));
     assert!(String::from_utf8_lossy(&output.stdout).contains("/session"));
     assert!(!output.stdout.contains(&0x1b));
