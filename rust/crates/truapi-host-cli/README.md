@@ -108,7 +108,22 @@ Both hosts take `--auto-accept`. Without it, confirmations a web/iOS host would
 show as a modal (sign requests, permission prompts, and cross-product Ring-VRF
 requests) are printed on the CLI and answered `y/n` on stdin. Same-product
 Ring-VRF requests do not prompt, matching the iOS signing host. `run.sh` passes
-`--auto-accept` to both for unattended runs.
+`--auto-accept` to both for unattended runs. Auto-approved confirmation gates
+print an `[auto-accept]` line; requests which require no confirmation do not.
+
+## Logging
+
+Use the global `--log-level` option (`error`, `warn`, `info`, `debug`, or
+`trace`) before or after the subcommand. At `trace`, the signing host prints
+every decoded inbound SSO message with its statement request id, remote message
+id, variant, and payload:
+
+```bash
+truapi-host signing-host --log-level trace --deeplink '<deeplink>' --auto-accept
+```
+
+Trace output may contain product signing payloads. `RUST_LOG` takes precedence
+when set and remains available for module-specific filters.
 
 ## Statement-store allowance
 

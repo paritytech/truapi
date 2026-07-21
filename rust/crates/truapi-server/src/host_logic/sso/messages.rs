@@ -13,11 +13,13 @@
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L194-L208>
 //! Deployed extension variants are tracked as a host-spec divergence:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/divergences.md?plain=1#L26-L33>
-//! Field order and enum variant order are kept wire-compatible with host-papp:
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts#L23-L35>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/signing.ts#L6-L68>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/ringVrf.ts#L5-L15>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/createTransaction.ts#L6-L25>
+//! Field order and enum variant order are kept wire-compatible with
+//! `@novasamatech/host-papp` 0.8.11:
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/signing.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/ringVrf.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/resourceAllocation.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/createTransaction.ts>
 
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
@@ -872,41 +874,83 @@ mod tests {
     }
 
     #[test]
-    fn ring_vrf_variants_match_ios_host_order() {
+    fn ring_vrf_messages_match_host_papp_0_8_11_fixtures() {
         let context = ProductProofContext {
             product_id: "voting.dot".to_string(),
             suffix: vec![0, 1, 2, 3],
         };
         let ring_location = RingLocation {
-            chain_id: [1; 32],
-            junctions: vec![RingLocationJunction::PalletInstance(67)],
+            chain_id: [0x11; 32],
+            junctions: vec![
+                RingLocationJunction::PalletInstance(67),
+                RingLocationJunction::CollectionId(b"pop".to_vec()),
+            ],
         };
 
         let alias = alias_request_message(
-            String::new(),
-            "voting.dot".to_string(),
+            "m-alias".to_string(),
+            "caller.dot".to_string(),
             context.clone(),
             ring_location.clone(),
-        )
-        .encode();
+        );
         let proof = proof_request_message(
-            String::new(),
-            "voting.dot".to_string(),
+            "m-proof".to_string(),
+            "caller.dot".to_string(),
             context,
             ring_location,
             b"vote".to_vec(),
-        )
-        .encode();
+        );
+        let contextual_alias = HostAccountGetAliasResponse {
+            context: [0x22; 32],
+            alias: vec![0x33, 0x44],
+        };
+        let alias_response = RemoteMessage {
+            message_id: "r-alias".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasResponse(
+                RingVrfAliasResponse {
+                    responding_to: "m-alias".to_string(),
+                    payload: Ok(contextual_alias.clone()),
+                },
+            )),
+        };
+        let proof_response = RemoteMessage {
+            message_id: "r-proof".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofResponse(
+                RingVrfProofResponse {
+                    responding_to: "m-proof".to_string(),
+                    payload: Ok(HostAccountCreateProofResponse {
+                        proof: vec![0x55, 0x66],
+                        contextual_alias,
+                        ring_index: 7,
+                        ring_revision: 9,
+                    }),
+                },
+            )),
+        };
 
-        assert_eq!(alias[..3], [0, 0, 3]);
-        assert_eq!(proof[..3], [0, 0, 12]);
+        assert_host_papp_0_8_11_fixture(
+            alias,
+            "0x1c6d2d616c69617300032863616c6c65722e646f7428766f74696e672e646f7410000102031111111111111111111111111111111111111111111111111111111111111111080043010c706f70",
+        );
+        assert_host_papp_0_8_11_fixture(
+            proof,
+            "0x1c6d2d70726f6f66000c2863616c6c65722e646f7428766f74696e672e646f7410000102031111111111111111111111111111111111111111111111111111111111111111080043010c706f7010766f7465",
+        );
+        assert_host_papp_0_8_11_fixture(
+            alias_response,
+            "0x1c722d616c69617300041c6d2d616c696173002222222222222222222222222222222222222222222222222222222222222222083344",
+        );
+        assert_host_papp_0_8_11_fixture(
+            proof_response,
+            "0x1c722d70726f6f66000d1c6d2d70726f6f660008556622222222222222222222222222222222222222222222222222222222222222220833440700000009000000",
+        );
     }
 
     fn sequential_bytes<const N: usize>(start: u8) -> [u8; N] {
         std::array::from_fn(|index| start.wrapping_add(index as u8))
     }
 
-    fn assert_host_papp_0_8_8_fixture(message: RemoteMessage, expected: &str) {
+    fn assert_host_papp_0_8_11_fixture(message: RemoteMessage, expected: &str) {
         assert_eq!(
             hex::encode(message.encode()),
             expected.trim_start_matches("0x")
@@ -914,7 +958,7 @@ mod tests {
     }
 
     #[test]
-    fn resource_allocation_message_matches_host_papp_0_8_8_fixture() {
+    fn resource_allocation_message_matches_host_papp_0_8_11_fixture() {
         let message = resource_allocation_message(
             "m-resource".to_string(),
             "truapi-playground.dot".to_string(),
@@ -927,14 +971,14 @@ mod tests {
             OnExistingAllowancePolicy::Increase,
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x286d2d7265736f757263650005547472756170692d706c617967726f756e642e646f7410000102090000000301",
         );
     }
 
     #[test]
-    fn create_transaction_message_matches_host_papp_0_8_8_fixture() {
+    fn create_transaction_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_message(
             "m-product-tx".to_string(),
             ProductAccountTxPayload {
@@ -953,14 +997,14 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x306d2d70726f647563742d7478000700547472756170692d706c617967726f756e642e646f7400000000202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
         );
     }
 
     #[test]
-    fn playground_create_transaction_message_matches_host_papp_0_8_8_fixture() {
+    fn playground_create_transaction_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_message(
             "create-transaction-1".to_string(),
             ProductAccountTxPayload {
@@ -979,14 +1023,14 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x506372656174652d7472616e73616374696f6e2d31000700547472756170692d706c617967726f756e642e646f7400000000bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f0800000000",
         );
     }
 
     #[test]
-    fn create_transaction_legacy_message_matches_host_papp_0_8_8_fixture() {
+    fn create_transaction_legacy_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_legacy_message(
             "m-legacy-tx".to_string(),
             LegacyAccountTxPayload {
@@ -1002,15 +1046,15 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x2c6d2d6c65676163792d7478000900000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
         );
     }
 
     #[test]
-    fn sign_raw_legacy_messages_match_host_papp_0_8_8_fixtures() {
-        assert_host_papp_0_8_8_fixture(
+    fn sign_raw_legacy_messages_match_host_papp_0_8_11_fixtures() {
+        assert_host_papp_0_8_11_fixture(
             sign_raw_legacy_message(
                 "m-legacy-raw".to_string(),
                 sequential_bytes(0),
@@ -1020,7 +1064,7 @@ mod tests {
             ),
             "0x306d2d6c65676163792d726177000a000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f00084869",
         );
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             sign_raw_legacy_message(
                 "m-legacy-raw-payload".to_string(),
                 sequential_bytes(0),

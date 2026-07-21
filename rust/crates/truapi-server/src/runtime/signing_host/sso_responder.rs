@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use parity_scale_codec::Encode;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, instrument, trace, warn};
 use truapi::CallContext;
 use truapi::latest as api;
 use truapi_platform::{
@@ -159,6 +159,14 @@ async fn serve_session(
                     continue;
                 }
             };
+            for message in &incoming.messages {
+                trace!(
+                    statement_request_id = %incoming.request_id,
+                    remote_message_id = %message.message_id,
+                    remote_message = ?message.data,
+                    "received SSO message"
+                );
+            }
             if !served_request_ids.insert(incoming.request_id.clone()) {
                 continue;
             }

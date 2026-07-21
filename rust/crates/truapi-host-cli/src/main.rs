@@ -24,7 +24,7 @@ use std::process::ExitStatus;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures::future::BoxFuture;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use truapi_platform::{HostInfo, PlatformInfo};
@@ -49,8 +49,38 @@ const DEEPLINK_SCHEME: &str = "polkadotapp";
 #[derive(Parser)]
 #[command(name = "truapi-host", about = "Headless TrUAPI hosts for e2e testing")]
 struct Cli {
+    /// Log verbosity. `RUST_LOG` takes precedence when set.
+    #[arg(
+        long,
+        global = true,
+        value_enum,
+        env = "TRUAPI_HOST_LOG",
+        default_value = "info"
+    )]
+    log_level: LogLevel,
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    const fn as_filter(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -164,15 +194,16 @@ async fn main() -> Result<()> {
     // rustls 0.23 panics without a process-level default provider.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
+    let cli = Cli::parse();
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(cli.log_level.as_filter())),
         )
         .with_writer(std::io::stderr)
         .init();
 
-    match Cli::parse().command {
+    match cli.command {
         Command::PairingHost(args) => run_pairing_host(args).await,
         Command::SigningHost(args) => run_signing_host(args).await,
         Command::IdentityCheck { mnemonic, network } => {
@@ -791,4 +822,21 @@ fn default_base_path() -> PathBuf {
 
 fn role_state_path(base_path: &std::path::Path, network: NetworkConfig, role: &str) -> PathBuf {
     base_path.join(network.id).join(role)
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn trace_log_level_is_available_before_or_after_the_subcommand() {
+        let before = Cli::try_parse_from(["truapi-host", "--log-level", "trace", "signing-host"])
+            .expect("global log level before subcommand should parse");
+        let after = Cli::try_parse_from(["truapi-host", "signing-host", "--log-level", "trace"])
+            .expect("global log level after subcommand should parse");
+
+        assert_eq!(before.log_level, LogLevel::Trace);
+        assert_eq!(after.log_level, LogLevel::Trace);
+        assert_eq!(LogLevel::Trace.as_filter(), "trace");
+    }
 }

@@ -10,7 +10,7 @@
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L105-L183>
 //! The SCALE handshake codecs are kept wire-compatible with host-papp's v2
 //! handshake codec:
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/auth/scale/handshakeV2.ts#L43-L115>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/auth/scale/handshakeV2.ts>
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -98,7 +98,7 @@ pub mod v2;
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L151-L175>
 ///
 /// Mirrors `@novasamatech/statement-store` session statement data:
-/// <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/statement-store/src/session/scale/statementData.ts#L33-L46>
+/// <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/statement-store/src/session/scale/statementData.ts>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoStatementData {
     Request {
