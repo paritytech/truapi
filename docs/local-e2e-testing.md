@@ -35,6 +35,7 @@ requires `SIGNER_BOT_SVC_TOKEN`; `SIGNER_BOT_BASE_URL` and
 `paseo-next-v2`. Without the token, use
 `E2E_DOTLI_SMOKE=1 make e2e-dotli` to verify the local stack, browser launch,
 login click, TrUAPI debug logs, and QR/deeplink extraction without a phone.
+Ports 5173 and 3000 must be free so the diagnosis runner can start both apps.
 In root CI, the job also needs `DOTLI_CHECKOUT_TOKEN` to read the private
 dotli submodule. Without dotli access it reports a warning and skips the e2e
 job; with dotli access but without `SIGNER_BOT_SVC_TOKEN`, it runs the smoke
