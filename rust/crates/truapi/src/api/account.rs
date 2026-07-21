@@ -67,8 +67,9 @@ pub trait Account: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
     ///
-    /// const PEOPLE_COLLECTION_ID =
-    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
+    /// const bytes = new Uint8Array(32);
+    /// bytes.set(new TextEncoder().encode("pop:polkadot.network/people-lite"));
+    /// const PEOPLE_COLLECTION_ID = `0x${bytes.toHex()}` as const;
     ///
     /// const result = await truapi.account.getAccountAlias({
     ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
@@ -97,8 +98,9 @@ pub trait Account: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
     ///
-    /// const PEOPLE_COLLECTION_ID =
-    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
+    /// const bytes = new Uint8Array(32);
+    /// bytes.set(new TextEncoder().encode("pop:polkadot.network/people-lite"));
+    /// const PEOPLE_COLLECTION_ID = `0x${bytes.toHex()}` as const;
     ///
     /// const result = await truapi.account.createAccountProof({
     ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
