@@ -36,7 +36,7 @@ const TRANSCRIPT_LIMIT: usize = 10_000;
 const MAX_VISIBLE_COMPLETIONS: usize = 10;
 
 /// Tracing target reserved for SSO summaries that must remain visible at every log level.
-pub const INCOMING_SSO_TARGET: &str = "truapi_server::incoming_sso_request";
+pub const SSO_TRANSCRIPT_TARGET: &str = "truapi_server::sso_transcript";
 
 #[derive(Debug, Clone, Copy)]
 enum EntryKind {
@@ -127,15 +127,15 @@ impl Drop for LogWriter {
     }
 }
 
-/// Unfiltered tracing layer for the stable incoming-SSO transcript summary.
-pub struct IncomingSsoLayer;
+/// Unfiltered tracing layer for stable incoming and outgoing SSO summaries.
+pub struct SsoTranscriptLayer;
 
-impl<S> Layer<S> for IncomingSsoLayer
+impl<S> Layer<S> for SsoTranscriptLayer
 where
     S: Subscriber,
 {
     fn on_event(&self, event: &tracing::Event<'_>, _context: LayerContext<'_, S>) {
-        if event.metadata().target() != INCOMING_SSO_TARGET {
+        if event.metadata().target() != SSO_TRANSCRIPT_TARGET {
             return;
         }
         let mut visitor = SsoSummaryVisitor::default();
@@ -1000,21 +1000,21 @@ mod tests {
     }
 
     #[test]
-    fn incoming_sso_summary_bypasses_the_adjustable_log_filter() {
+    fn sso_summary_bypasses_the_adjustable_log_filter() {
         let (sender, mut receiver) = mpsc::unbounded_channel();
         *active_ui().lock().expect("lock active test UI") = Some(sender);
         let filtered_logs = tracing_subscriber::fmt::layer()
             .with_writer(io::sink)
             .with_filter(tracing_subscriber::EnvFilter::new("error"));
         let subscriber = tracing_subscriber::registry()
-            .with(IncomingSsoLayer)
+            .with(SsoTranscriptLayer)
             .with(filtered_logs);
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::event!(
-                target: INCOMING_SSO_TARGET,
+                target: SSO_TRANSCRIPT_TARGET,
                 tracing::Level::INFO,
-                cli_summary = "Incoming SSO request · get_account_alias"
+                cli_summary = "SSO response sent · get_account_alias · ok"
             );
         });
         *active_ui().lock().expect("unlock active test UI") = None;
@@ -1022,6 +1022,6 @@ mod tests {
         let UiEvent::Entry(entry) = receiver.try_recv().expect("summary transcript event") else {
             panic!("expected transcript entry");
         };
-        assert_eq!(entry.text, "Incoming SSO request · get_account_alias");
+        assert_eq!(entry.text, "SSO response sent · get_account_alias · ok");
     }
 }

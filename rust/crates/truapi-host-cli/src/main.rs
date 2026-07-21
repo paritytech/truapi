@@ -280,7 +280,7 @@ async fn main() -> Result<()> {
             log_target_is_visible(metadata.target())
         }));
     tracing_subscriber::registry()
-        .with(terminal_ui::IncomingSsoLayer)
+        .with(terminal_ui::SsoTranscriptLayer)
         .with(log_layer)
         .init();
 
@@ -304,7 +304,7 @@ async fn main() -> Result<()> {
 }
 
 fn log_target_is_visible(target: &str) -> bool {
-    target != terminal_ui::INCOMING_SSO_TARGET
+    target != terminal_ui::SSO_TRANSCRIPT_TARGET
         && target != "rustls"
         && !target.starts_with("rustls::")
         && target != "tungstenite::protocol"
@@ -1501,6 +1501,7 @@ mod cli_tests {
 
     #[test]
     fn noisy_transport_targets_are_always_excluded_from_cli_logs() {
+        assert!(!log_target_is_visible(terminal_ui::SSO_TRANSCRIPT_TARGET));
         assert!(!log_target_is_visible("rustls"));
         assert!(!log_target_is_visible("rustls::client::tls13"));
         assert!(!log_target_is_visible("tungstenite::protocol"));

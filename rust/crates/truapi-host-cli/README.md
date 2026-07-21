@@ -207,11 +207,14 @@ for unattended runs. Every auto-approved decision is still printed.
 
 Use the global `--log-level` option (`error`, `warn`, `info`, `debug`, or
 `trace`) before or after the subcommand, or `/log <level>` in the terminal UI.
-Every decoded inbound SSO request is visible regardless of the selected level:
-the stable request name plus statement request and remote message ids are
-logged at `info`. `debug` adds the decoded summary and `trace` adds the complete
-decoded payload and transport metadata. Undecodable requests are warnings with
-the available identifiers so protocol-version mismatches can be diagnosed.
+Every decoded inbound SSO request and every published response is visible
+regardless of the selected level. Stable response entries include the request
+name, statement and remote message ids, protocol outcome, and elapsed time;
+encoded protocol errors include their reason. Response-publication failures
+are shown separately. `debug` adds decoded request/response summaries and
+`trace` adds complete payload and transport metadata. Undecodable requests are
+warnings with the available identifiers so protocol-version mismatches can be
+diagnosed.
 
 ```bash
 truapi-host signing-host --log-level trace --deeplink '<deeplink>' --auto-accept

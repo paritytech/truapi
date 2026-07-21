@@ -13,6 +13,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument, trace, warn};
@@ -175,7 +176,7 @@ async fn serve_session(
                     message.message_id
                 );
                 tracing::event!(
-                    target: "truapi_server::incoming_sso_request",
+                    target: "truapi_server::sso_transcript",
                     tracing::Level::INFO,
                     cli_summary = cli_summary.as_str(),
                     statement_request_id = %incoming.request_id,
@@ -230,11 +231,31 @@ async fn serve_request(
             info!("pairing host disconnected the SSO session");
             return Ok(Some(ResponderExit::PeerDisconnected));
         }
+        let request_name = remote_v1_message_name(&request);
+        let responding_to = message.message_id.clone();
+        let started = Instant::now();
         let Some(response) =
             answer_remote_message(services, signing_host, message.message_id, request).await
         else {
             continue;
         };
+        let response_message_id = response.message_id.clone();
+        let response_result = remote_response_result(&response.data);
+        debug!(
+            statement_request_id = %incoming.request_id,
+            responding_to = %responding_to,
+            %response_message_id,
+            response = remote_message_name(&response.data),
+            outcome = response_result.outcome,
+            "prepared SSO response"
+        );
+        trace!(
+            statement_request_id = %incoming.request_id,
+            responding_to = %responding_to,
+            %response_message_id,
+            response = ?response.data,
+            "prepared SSO response payload"
+        );
         let statement_request_id = format!("resp:{}", response.message_id);
         let statement = build_outgoing_request_statement(
             session,
@@ -242,39 +263,158 @@ async fn serve_request(
             vec![response],
             fresh_statement_expiry(),
         )?;
-        services
+        let publish_result = services
             .statement_store
             .submit(statement, "sso-responder response")
-            .await?;
+            .await;
+        let elapsed_ms = started.elapsed().as_millis();
+        match publish_result {
+            Ok(()) => {
+                let cli_summary = response_cli_summary(
+                    "SSO response sent",
+                    request_name,
+                    &incoming.request_id,
+                    &responding_to,
+                    &response_message_id,
+                    &response_result,
+                    elapsed_ms,
+                );
+                tracing::event!(
+                    target: "truapi_server::sso_transcript",
+                    tracing::Level::INFO,
+                    cli_summary = cli_summary.as_str(),
+                    request = request_name,
+                    statement_request_id = %incoming.request_id,
+                    responding_to = %responding_to,
+                    %response_message_id,
+                    outcome = response_result.outcome,
+                    elapsed_ms = %elapsed_ms,
+                );
+            }
+            Err(reason) => {
+                let failure = ResponseResult {
+                    outcome: "publish_failed",
+                    reason: Some(reason.clone()),
+                };
+                let cli_summary = response_cli_summary(
+                    "SSO response failed",
+                    request_name,
+                    &incoming.request_id,
+                    &responding_to,
+                    &response_message_id,
+                    &failure,
+                    elapsed_ms,
+                );
+                tracing::event!(
+                    target: "truapi_server::sso_transcript",
+                    tracing::Level::WARN,
+                    cli_summary = cli_summary.as_str(),
+                    request = request_name,
+                    statement_request_id = %incoming.request_id,
+                    responding_to = %responding_to,
+                    %response_message_id,
+                    outcome = failure.outcome,
+                    reason = %reason,
+                    elapsed_ms = %elapsed_ms,
+                );
+                return Err(reason);
+            }
+        }
     }
     Ok(None)
 }
 
 fn remote_message_name(message: &RemoteMessageData) -> &'static str {
     match message {
-        RemoteMessageData::V1(message) => match message {
-            v1::RemoteMessage::Disconnected => "disconnected",
-            v1::RemoteMessage::SignRequest(_) => "sign_request",
-            v1::RemoteMessage::SignResponse(_) => "sign_response",
-            v1::RemoteMessage::RingVrfAliasRequest(_) => "get_account_alias",
-            v1::RemoteMessage::RingVrfAliasResponse(_) => "get_account_alias_response",
-            v1::RemoteMessage::ResourceAllocationRequest(_) => "resource_allocation",
-            v1::RemoteMessage::ResourceAllocationResponse(_) => "resource_allocation_response",
-            v1::RemoteMessage::CreateTransactionRequest(_) => "create_transaction",
-            v1::RemoteMessage::CreateTransactionResponse(_) => "create_transaction_response",
-            v1::RemoteMessage::CreateTransactionLegacyRequest(_) => "create_transaction_legacy",
-            v1::RemoteMessage::SignRawLegacyRequest(_) => "sign_raw_legacy",
-            v1::RemoteMessage::SignRawLegacyResponse(_) => "sign_raw_legacy_response",
-            v1::RemoteMessage::RingVrfProofRequest(_) => "create_account_proof",
-            v1::RemoteMessage::RingVrfProofResponse(_) => "create_account_proof_response",
-            v1::RemoteMessage::StatementStoreProductSignRequest(_) => {
-                "statement_store_product_sign"
-            }
-            v1::RemoteMessage::StatementStoreProductSignResponse(_) => {
-                "statement_store_product_sign_response"
-            }
-        },
+        RemoteMessageData::V1(message) => remote_v1_message_name(message),
     }
+}
+
+fn remote_v1_message_name(message: &v1::RemoteMessage) -> &'static str {
+    match message {
+        v1::RemoteMessage::Disconnected => "disconnected",
+        v1::RemoteMessage::SignRequest(_) => "sign_request",
+        v1::RemoteMessage::SignResponse(_) => "sign_response",
+        v1::RemoteMessage::RingVrfAliasRequest(_) => "get_account_alias",
+        v1::RemoteMessage::RingVrfAliasResponse(_) => "get_account_alias_response",
+        v1::RemoteMessage::ResourceAllocationRequest(_) => "resource_allocation",
+        v1::RemoteMessage::ResourceAllocationResponse(_) => "resource_allocation_response",
+        v1::RemoteMessage::CreateTransactionRequest(_) => "create_transaction",
+        v1::RemoteMessage::CreateTransactionResponse(_) => "create_transaction_response",
+        v1::RemoteMessage::CreateTransactionLegacyRequest(_) => "create_transaction_legacy",
+        v1::RemoteMessage::SignRawLegacyRequest(_) => "sign_raw_legacy",
+        v1::RemoteMessage::SignRawLegacyResponse(_) => "sign_raw_legacy_response",
+        v1::RemoteMessage::RingVrfProofRequest(_) => "create_account_proof",
+        v1::RemoteMessage::RingVrfProofResponse(_) => "create_account_proof_response",
+        v1::RemoteMessage::StatementStoreProductSignRequest(_) => "statement_store_product_sign",
+        v1::RemoteMessage::StatementStoreProductSignResponse(_) => {
+            "statement_store_product_sign_response"
+        }
+    }
+}
+
+struct ResponseResult {
+    outcome: &'static str,
+    reason: Option<String>,
+}
+
+fn remote_response_result(message: &RemoteMessageData) -> ResponseResult {
+    let RemoteMessageData::V1(message) = message;
+    let error = match message {
+        v1::RemoteMessage::SignResponse(response) => response.payload.as_ref().err().cloned(),
+        v1::RemoteMessage::RingVrfAliasResponse(response) => {
+            response.payload.as_ref().err().map(ring_vrf_error_reason)
+        }
+        v1::RemoteMessage::RingVrfProofResponse(response) => {
+            response.payload.as_ref().err().map(ring_vrf_error_reason)
+        }
+        v1::RemoteMessage::ResourceAllocationResponse(response) => {
+            response.payload.as_ref().err().cloned()
+        }
+        v1::RemoteMessage::CreateTransactionResponse(response) => {
+            response.signed_transaction.as_ref().err().cloned()
+        }
+        v1::RemoteMessage::SignRawLegacyResponse(response) => {
+            response.signature.as_ref().err().cloned()
+        }
+        v1::RemoteMessage::StatementStoreProductSignResponse(response) => {
+            response.signature.as_ref().err().cloned()
+        }
+        _ => None,
+    };
+    ResponseResult {
+        outcome: if error.is_some() { "error" } else { "ok" },
+        reason: error,
+    }
+}
+
+fn ring_vrf_error_reason(error: &RingVrfError) -> String {
+    match error {
+        RingVrfError::RingNotFound => "RingNotFound".to_string(),
+        RingVrfError::NotMember => "NotMember".to_string(),
+        RingVrfError::Rejected => "Rejected".to_string(),
+        RingVrfError::Unknown { reason } => format!("Unknown: {reason}"),
+    }
+}
+
+fn response_cli_summary(
+    heading: &str,
+    request_name: &str,
+    statement_request_id: &str,
+    responding_to: &str,
+    response_message_id: &str,
+    result: &ResponseResult,
+    elapsed_ms: u128,
+) -> String {
+    let mut summary = format!(
+        "{heading} · {request_name} · {}\nstatement_request_id={statement_request_id}\nresponding_to={responding_to}\nresponse_message_id={response_message_id}\nelapsed_ms={elapsed_ms}",
+        result.outcome
+    );
+    if let Some(reason) = &result.reason {
+        summary.push_str("\nreason=");
+        summary.push_str(&reason.replace(['\r', '\n'], " "));
+    }
+    summary
 }
 
 /// Answer one application-level request message; `None` for message kinds
@@ -943,6 +1083,40 @@ mod tests {
             panic!("expected alias response");
         };
         assert_eq!(response.payload.unwrap_err(), RingVrfError::Rejected);
+    }
+
+    #[test]
+    fn response_summary_reports_protocol_errors_without_multiline_output() {
+        let response = RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasResponse(
+            RingVrfAliasResponse {
+                responding_to: "alias-1".to_string(),
+                payload: Err(RingVrfError::Unknown {
+                    reason: "chain RPC\ntimed out".to_string(),
+                }),
+            },
+        ));
+
+        let result = remote_response_result(&response);
+        let summary = response_cli_summary(
+            "SSO response sent",
+            "get_account_alias",
+            "statement-1",
+            "alias-1",
+            "alias-1:response",
+            &result,
+            42,
+        );
+
+        assert_eq!(result.outcome, "error");
+        assert_eq!(
+            summary,
+            "SSO response sent · get_account_alias · error\n\
+             statement_request_id=statement-1\n\
+             responding_to=alias-1\n\
+             response_message_id=alias-1:response\n\
+             elapsed_ms=42\n\
+            reason=Unknown: chain RPC timed out"
+        );
     }
 
     #[test]
