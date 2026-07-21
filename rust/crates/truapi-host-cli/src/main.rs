@@ -302,6 +302,8 @@ fn log_target_is_visible(target: &str) -> bool {
     target != terminal_ui::INCOMING_SSO_TARGET
         && target != "rustls"
         && !target.starts_with("rustls::")
+        && target != "tungstenite::protocol"
+        && !target.starts_with("tungstenite::protocol::")
 }
 
 /// Check statement-store allowance for a mnemonic: ring membership, the chosen
@@ -1160,9 +1162,14 @@ mod cli_tests {
     }
 
     #[test]
-    fn rustls_targets_are_always_excluded_from_cli_logs() {
+    fn noisy_transport_targets_are_always_excluded_from_cli_logs() {
         assert!(!log_target_is_visible("rustls"));
         assert!(!log_target_is_visible("rustls::client::tls13"));
+        assert!(!log_target_is_visible("tungstenite::protocol"));
+        assert!(!log_target_is_visible(
+            "tungstenite::protocol::frame::socket"
+        ));
+        assert!(log_target_is_visible("tungstenite::handshake"));
         assert!(log_target_is_visible("truapi_server::runtime"));
     }
 
