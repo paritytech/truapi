@@ -754,7 +754,7 @@ async fn signing_interactive_loop(
     frame_url: String,
     product_id: String,
 ) -> Result<()> {
-    println!("SIGNING_HOST_INTERACTIVE commands: deeplink <url>, script <path>, quit");
+    println!("SIGNING_HOST_INTERACTIVE commands: whoami, deeplink <url>, script <path>, quit");
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     loop {
         print_prompt("signing-host> ").await?;
@@ -772,13 +772,22 @@ async fn signing_interactive_loop(
             respond_to_deeplink(session, deeplink).await?;
             continue;
         }
+        if is_whoami(line) {
+            ensure_signer(session).await?;
+            let script = script_runner::bundled_script("whoami.ts");
+            let status = script_runner::run(&frame_url, &product_id, &script).await?;
+            if !status.success() {
+                println!("WHOAMI_EXIT {}", status.code().unwrap_or(1));
+            }
+            continue;
+        }
         if let Some(script) = script_command(line) {
             ensure_signer(session).await?;
             let status = script_runner::run(&frame_url, &product_id, &script).await?;
             println!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
             continue;
         }
-        println!("unknown command; use: deeplink <url>, script <path>, quit");
+        println!("unknown command; use: whoami, deeplink <url>, script <path>, quit");
     }
 }
 
@@ -791,6 +800,10 @@ async fn print_prompt(prompt: &str) -> Result<()> {
 
 fn is_quit(line: &str) -> bool {
     matches!(line, "quit" | "exit" | "q")
+}
+
+fn is_whoami(line: &str) -> bool {
+    line == "whoami"
 }
 
 fn script_command(line: &str) -> Option<PathBuf> {
@@ -838,5 +851,11 @@ mod cli_tests {
         assert_eq!(before.log_level, LogLevel::Trace);
         assert_eq!(after.log_level, LogLevel::Trace);
         assert_eq!(LogLevel::Trace.as_filter(), "trace");
+    }
+
+    #[test]
+    fn whoami_command_matches_only_the_exact_command() {
+        assert!(is_whoami("whoami"));
+        assert!(!is_whoami("whoami now"));
     }
 }

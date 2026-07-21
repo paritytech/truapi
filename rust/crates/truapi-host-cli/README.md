@@ -38,6 +38,16 @@ through the identity backend, waits for ring readiness, and rotates when the
 current account exhausts Statement Store slots. Override the product with
 `PRODUCT_ID=...` and the pairing frame port with `FRAME=...`.
 
+Without `--script` or `--deeplink`, `signing-host` opens an interactive prompt
+with `whoami`, `deeplink <url>`, `script <path>`, and `quit`. `whoami` runs the
+bundled product script through the public TrUAPI frame endpoint and prints the
+result of `truapi.account.getUserId()`:
+
+```text
+signing-host> whoami
+WHOAMI alice.dot
+```
+
 ## Writing a product script
 
 A product script is top-level code (an ES module). The runner injects two
@@ -74,13 +84,17 @@ res.match(
 `headless-playground.dot`) scopes product-owned APIs like `truapi.localStorage.*`
 and the accounts `host.productAccount()` returns.
 
-Three scripts ship under `js/scripts/`:
+Six scripts ship under `js/scripts/`:
 
 - `battery.ts` — the curated signer gate (login + raw/payload signing,
   create-transaction, entropy). This is `run.sh`'s default.
+- `whoami.ts` — calls `getUserId` and prints `WHOAMI <primary username>`; this
+  backs the signing host's interactive `whoami` command.
+- `signing-smoke.ts` — a focused product-account signing check.
 - `ring-vrf-smoke.ts` — calls `getAccountAlias` and `createAccountProof`
   against the Paseo Next v2 LitePeople ring, then verifies both calls return
   the same contextual alias.
+- `preimage-smoke.ts` — a focused Bulletin preimage flow check.
 - `diagnosis.ts` — runs the playground's own generated example sources
   (`runExample`) and writes a `web.md`-shape report to
   `explorer/diagnosis-reports/headless.md`, gating on the signer-critical

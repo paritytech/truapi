@@ -23,6 +23,13 @@ fn runner_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("js/runner.ts")
 }
 
+/// Locate one of the product scripts shipped with the CLI crate.
+pub fn bundled_script(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("js/scripts")
+        .join(name)
+}
+
 /// Run `script` against the host serving frames at `frame_url`, as product
 /// `product_id`. Inherits stdio so the script's output and any CLI confirmation
 /// prompts share the terminal. Returns the child's exit status.
