@@ -7,7 +7,7 @@ use serde_json::Value;
 use subxt_rpcs::RpcClient as HostRpcClient;
 use subxt_rpcs::client::{RpcClient as NativeRpcClient, RpcParams, rpc_params};
 
-/// Timeout for an allowance registration extrinsic to finalize.
+/// Timeout for an allowance registration extrinsic to reach a block.
 const SUBMIT_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Thin adapter matching the allowance allocator's minimal RPC surface.
@@ -52,7 +52,7 @@ impl RpcClient {
         }
     }
 
-    /// Submit an extrinsic and wait for `finalized`; returns the block hash.
+    /// Submit an extrinsic and wait for `inBlock` or `finalized`; returns the block hash.
     pub async fn submit_and_watch(&self, extrinsic: &[u8]) -> Result<String, String> {
         let extrinsic_hex = format!("0x{}", hex::encode(extrinsic));
         let mut subscription = self
@@ -75,11 +75,12 @@ impl RpcClient {
                     "author_submitAndWatchExtrinsic subscription ended".to_string()
                 })?.map_err(rpc_error_message)?,
                 () = timeout => return Err(
-                    "timed out waiting for author_submitAndWatchExtrinsic finalization".to_string()
+                    "timed out waiting for author_submitAndWatchExtrinsic inclusion".to_string()
                 ),
             };
+            tracing::debug!(?status, "allowance extrinsic status");
             match extrinsic_status(&status) {
-                ExtrinsicStatus::Finalized(hash) => return Ok(hash),
+                ExtrinsicStatus::Included(hash) => return Ok(hash),
                 ExtrinsicStatus::Rejected(reason) => return Err(format!("extrinsic {reason}")),
                 ExtrinsicStatus::Pending => {}
             }
@@ -88,14 +89,16 @@ impl RpcClient {
 }
 
 enum ExtrinsicStatus {
-    Finalized(String),
+    Included(String),
     Rejected(String),
     Pending,
 }
 
 fn extrinsic_status(status: &Value) -> ExtrinsicStatus {
-    if let Some(hash) = status.get("finalized").and_then(Value::as_str) {
-        return ExtrinsicStatus::Finalized(hash.to_string());
+    for key in ["finalized", "inBlock"] {
+        if let Some(hash) = status.get(key).and_then(Value::as_str) {
+            return ExtrinsicStatus::Included(hash.to_string());
+        }
     }
     for key in ["invalid", "dropped", "usurped", "finalityTimeout"] {
         if status.get(key).is_some() {
@@ -125,5 +128,26 @@ fn rpc_error_message(error: subxt_rpcs::Error) -> String {
     match error {
         subxt_rpcs::Error::User(error) => error.message,
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{ExtrinsicStatus, extrinsic_status};
+
+    #[test]
+    fn in_block_status_completes_submission() {
+        let status = extrinsic_status(&json!({"inBlock": "0x1234"}));
+
+        assert!(matches!(status, ExtrinsicStatus::Included(hash) if hash == "0x1234"));
+    }
+
+    #[test]
+    fn finalized_status_completes_submission() {
+        let status = extrinsic_status(&json!({"finalized": "0xabcd"}));
+
+        assert!(matches!(status, ExtrinsicStatus::Included(hash) if hash == "0xabcd"));
     }
 }

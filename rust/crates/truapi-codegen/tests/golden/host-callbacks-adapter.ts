@@ -16,25 +16,16 @@ import {
   RemotePermissionResponse,
   ThemeVariant,
 } from "@parity/truapi";
-import type {
-  NotificationId,
-} from "@parity/truapi";
+import type { GenericError, NotificationId } from "@parity/truapi";
 import {
   AuthState,
   CoreStorageKey,
   UserConfirmationReview,
 } from "./host-callbacks.js";
-import type {
-  RequiredHostCallbacks,
-} from "./host-callbacks.js";
+import type { RequiredHostCallbacks } from "./host-callbacks.js";
 
-import type {
-  ChainConnect,
-} from "../runtime.js";
-import {
-  chainConnectAdapter,
-  driveResultStream,
-} from "../adapter-support.js";
+import type { ChainConnect } from "../runtime.js";
+import { chainConnectAdapter, driveResultStream } from "../adapter-support.js";
 
 export interface RawCallbacks {
   authStateChanged(state: Uint8Array): void;
@@ -48,11 +39,18 @@ export interface RawCallbacks {
   cancelNotification(id: NotificationId): Promise<void>;
   devicePermission(request: Uint8Array): Promise<Uint8Array>;
   remotePermission(request: Uint8Array): Promise<Uint8Array>;
-  lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
+  lookupPreimage(
+    key: Uint8Array,
+    sendItem: (item?: Uint8Array) => void,
+    sendError: (error: GenericError) => void,
+  ): (() => void) | void;
   read(key: string): Promise<Uint8Array | null | undefined>;
   write(key: string, value: Uint8Array): Promise<void>;
   clear(key: string): Promise<void>;
-  subscribeTheme(sendItem: (item?: Uint8Array) => void): (() => void) | void;
+  subscribeTheme(
+    sendItem: (item?: Uint8Array) => void,
+    sendError: (error: GenericError) => void,
+  ): (() => void) | void;
   confirmUserAction(review: Uint8Array): Promise<boolean>;
 }
 /** Adapt typed host callbacks into the raw SCALE callback surface the
@@ -61,22 +59,64 @@ export function createWasmRawCallbacks(
   callbacks: RequiredHostCallbacks,
 ): RawCallbacks {
   return {
-    authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
+    authStateChanged: async (state) =>
+      await callbacks.auth.authStateChanged(AuthState.dec(state)),
     chainConnect: chainConnectAdapter(callbacks.chain),
-    readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
-    writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),
-    clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
-    featureSupported: async (request) => HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(HostFeatureSupportedRequest.dec(request))),
+    readCoreStorage: async (key) =>
+      await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
+    writeCoreStorage: async (key, value) =>
+      await callbacks.coreStorage.writeCoreStorage(
+        CoreStorageKey.dec(key),
+        value,
+      ),
+    clearCoreStorage: async (key) =>
+      await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
+    featureSupported: async (request) =>
+      HostFeatureSupportedResponse.enc(
+        await callbacks.features.featureSupported(
+          HostFeatureSupportedRequest.dec(request),
+        ),
+      ),
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
-    pushNotification: async (notification) => HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(HostPushNotificationRequest.dec(notification))),
-    cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
-    devicePermission: async (request) => HostDevicePermissionResponse.enc(await callbacks.permissions.devicePermission(HostDevicePermissionRequest.dec(request))),
-    remotePermission: async (request) => RemotePermissionResponse.enc(await callbacks.permissions.remotePermission(RemotePermissionRequest.dec(request))),
-    lookupPreimage: (key, sendItem) => driveResultStream(callbacks.preimage.lookupPreimage(key), sendItem),
+    pushNotification: async (notification) =>
+      HostPushNotificationResponse.enc(
+        await callbacks.notifications.pushNotification(
+          HostPushNotificationRequest.dec(notification),
+        ),
+      ),
+    cancelNotification: async (id) =>
+      await callbacks.notifications.cancelNotification(id),
+    devicePermission: async (request) =>
+      HostDevicePermissionResponse.enc(
+        await callbacks.permissions.devicePermission(
+          HostDevicePermissionRequest.dec(request),
+        ),
+      ),
+    remotePermission: async (request) =>
+      RemotePermissionResponse.enc(
+        await callbacks.permissions.remotePermission(
+          RemotePermissionRequest.dec(request),
+        ),
+      ),
+    lookupPreimage: (key, sendItem, sendError) =>
+      driveResultStream(
+        callbacks.preimage.lookupPreimage(key),
+        sendItem,
+        sendError,
+      ),
     read: async (key) => await callbacks.productStorage.read(key),
-    write: async (key, value) => await callbacks.productStorage.write(key, value),
+    write: async (key, value) =>
+      await callbacks.productStorage.write(key, value),
     clear: async (key) => await callbacks.productStorage.clear(key),
-    subscribeTheme: (sendItem) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(ThemeVariant.enc(item))),
-    confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review)),
+    subscribeTheme: (sendItem, sendError) =>
+      driveResultStream(
+        callbacks.theme.subscribeTheme(),
+        (item) => sendItem(ThemeVariant.enc(item)),
+        sendError,
+      ),
+    confirmUserAction: async (review) =>
+      await callbacks.userConfirmation.confirmUserAction(
+        UserConfirmationReview.dec(review),
+      ),
   };
 }

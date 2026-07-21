@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -36,43 +38,98 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
       - name: Resolve target packages
         id: version
+        env:
+          RELEASE_COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
         run: |
           set -euo pipefail
-          packages=(
-            "@parity/truapi js/packages/truapi"
-            "@parity/truapi-host js/packages/truapi-host"
-          )
-          pending="$(mktemp)"
-          for entry in "${packages[@]}"; do
-            name="${entry%% *}"
-            path="${entry#* }"
+          subject="${RELEASE_COMMIT_MESSAGE%%$'\n'*}"
+          # Squash merges append " (#<pr>)" to the pull request title.
+          subject="${subject% (#*)}"
+          release="${subject#release: }"
+          packages=""
+          seen_names="|"
+
+          IFS=',' read -ra targets <<< "${release}"
+          if [ "${#targets[@]}" -eq 0 ]; then
+            echo "::error::Release subject does not declare a package and version: ${subject}"
+            exit 1
+          fi
+          for target in "${targets[@]}"; do
+            # Trim whitespace around comma-separated targets.
+            target="${target#"${target%%[![:space:]]*}"}"
+            target="${target%"${target##*[![:space:]]}"}"
+            if [[ ! "${target}" =~ ^(@parity/truapi|@parity/truapi-host)[[:space:]]+([^[:space:]]+)$ ]]; then
+              echo "::error::Unsupported release target '${target}' in subject: ${subject}"
+              exit 1
+            fi
+            name="${BASH_REMATCH[1]}"
+            declared_version="${BASH_REMATCH[2]}"
+
+            if [[ "${seen_names}" == *"|${name}|"* ]]; then
+              echo "::error::Release subject lists ${name} more than once."
+              exit 1
+            fi
+            seen_names+="${name}|"
+
+            case "${name}" in
+              @parity/truapi) path="js/packages/truapi" ;;
+              @parity/truapi-host) path="js/packages/truapi-host" ;;
+            esac
+
             version="$(jq -r '.version' "${path}/package.json")"
+            if [ "${declared_version}" != "${version}" ]; then
+              echo "::error::Release subject declares ${name} ${declared_version}, but ${path}/package.json is ${version}."
+              exit 1
+            fi
+
             tag="${name}@${version}"
-            if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
-              echo "Tag ${tag} already exists; skipping ${name}."
-            else
+            if npm_status="$(npm view "${tag}" version --registry=https://registry.npmjs.org 2>&1)"; then
+              echo "Package ${tag} already exists on npm; skipping."
+            elif grep -Eq 'E404|404 Not Found' <<< "${npm_status}"; then
               echo "Publishing ${tag}."
-              echo "${name}|${path}|${version}|${tag}" >> "${pending}"
+              packages+="${name}|${path}|${version}|${tag}"$'\n'
+            else
+              echo "${npm_status}" >&2
+              exit 1
             fi
           done
-          if [ -s "${pending}" ]; then
+
+          if [ -z "${packages}" ]; then
+            echo "All requested packages already exist on npm; nothing to publish."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             {
               echo "packages<<EOF"
-              cat "${pending}"
+              printf '%s' "${packages}"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
-          else
-            echo "No unpublished package tags found."
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify release manifests
+        if: steps.version.outputs.proceed == 'true'
+        run: |
+          set -euo pipefail
+          npm run check-release-versions
+          remaining_changesets="$(find .changeset -maxdepth 1 -type f -name '*.md' -print)"
+          if [ -n "${remaining_changesets}" ]; then
+            echo "::error::Release commit still contains unconsumed changesets. Run npm run version-packages."
+            echo "${remaining_changesets}"
+            exit 1
           fi
 
       - if: steps.version.outputs.proceed == 'true'
         uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
         with:
           toolchain: nightly
+          components: rustfmt
 
       - if: steps.version.outputs.proceed == 'true'
         uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
@@ -81,12 +138,6 @@ jobs:
 
       - if: steps.version.outputs.proceed == 'true'
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-
-      - if: steps.version.outputs.proceed == 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
         if: steps.version.outputs.proceed == 'true'
@@ -108,19 +159,6 @@ jobs:
         env:
           STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
 
-      - name: Tag release
-        if: steps.version.outputs.proceed == 'true'
-        run: |
-          set -euo pipefail
-          tags=()
-          while IFS='|' read -r name path version tag; do
-            git tag "${tag}"
-            tags+=("${tag}")
-          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
-          git push origin "${tags[@]}"
-        env:
-          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
-
       - name: Pack package
         if: steps.version.outputs.proceed == 'true'
         run: |
@@ -139,6 +177,12 @@ jobs:
           name: package
           path: artifacts/*.tgz
 
+      - name: Attest package artifacts
+        if: steps.version.outputs.proceed == 'true'
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: artifacts/*.tgz
+
       - name: Publish via npm_publish_automation
         if: steps.version.outputs.proceed == 'true'
         uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae # v3.0.0
@@ -148,6 +192,24 @@ jobs:
           inputs: '${{ format(''{{ "repo": "{0}", "run_id": "{1}" }}'', github.repository, github.run_id) }}'
         env:
           GITHUB_TOKEN: ${{ secrets.NPM_PUBLISH_AUTOMATION_TOKEN }}
+
+      - name: Create release tags
+        if: steps.version.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          STEPS_VERSION_OUTPUTS_PACKAGES: ${{ steps.version.outputs.packages }}
+        run: |
+          set -euo pipefail
+          while IFS='|' read -r name path version tag; do
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+              echo "Tag ${tag} already exists; skipping create."
+              continue
+            fi
+            gh api --method POST "repos/${{ github.repository }}/git/refs" \
+              -f ref="refs/tags/${tag}" \
+              -f sha="${RELEASE_SHA}"
+          done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"
 
       - name: Create GitHub Release
         if: steps.version.outputs.proceed == 'true'
@@ -159,8 +221,12 @@ jobs:
           while IFS='|' read -r name path version tag; do
             tarball_name="${name#@}"
             tarball_name="${tarball_name//\//-}-${version}.tgz"
-            gh release create "${tag}" \
-              --title "${name} ${version}" \
-              --generate-notes \
-              "artifacts/${tarball_name}"
+            if gh release view "${tag}" >/dev/null 2>&1; then
+              gh release upload "${tag}" "artifacts/${tarball_name}" --clobber
+            else
+              gh release create "${tag}" \
+                --title "${name} ${version}" \
+                --generate-notes \
+                "artifacts/${tarball_name}"
+            fi
           done <<< "${STEPS_VERSION_OUTPUTS_PACKAGES}"

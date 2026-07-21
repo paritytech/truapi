@@ -207,7 +207,7 @@ impl SigningHostRuntime {
             config.bulletin_chain_genesis_hash,
             spawner,
         );
-        let signing_host = SigningHostRole::new(platform, services.clone());
+        let signing_host = SigningHostRole::new(services.clone());
         Self {
             services,
             signing_host,
@@ -270,9 +270,7 @@ impl SigningHostRuntime {
     }
 
     /// Answer a pairing host's handshake deeplink and serve the resulting SSO
-    /// session until it ends (host-spec §B responder half). Requires an
-    /// active local session; sensitive requests consult the platform's
-    /// [`truapi_platform::UserConfirmation`] before signing.
+    /// session until it ends.
     #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.respond_to_pairing"))]
     pub async fn respond_to_pairing(
         &self,

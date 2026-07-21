@@ -100,7 +100,9 @@ function readCustomSectionNames(bytes) {
       if (nameEnd > payloadEnd) {
         throw new Error("wasm custom section name extends past section end");
       }
-      names.push(Buffer.from(bytes.subarray(nameStart, nameEnd)).toString("utf8"));
+      names.push(
+        Buffer.from(bytes.subarray(nameStart, nameEnd)).toString("utf8"),
+      );
     }
     offset = payloadEnd;
   }
@@ -113,7 +115,8 @@ async function validateReleaseWasm(wasmPath) {
   const wasm = await readFile(wasmPath);
   const customSections = readCustomSectionNames(wasm);
   const forbidden = customSections.filter(
-    (name) => name === "name" || name === "producers" || name.startsWith(".debug"),
+    (name) =>
+      name === "name" || name === "producers" || name.startsWith(".debug"),
   );
   if (forbidden.length > 0) {
     throw new Error(

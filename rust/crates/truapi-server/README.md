@@ -84,9 +84,9 @@ stage in the frame path; the host's `Platform` impl is the syscall floor.
 `ProductRuntimeHost` handles everything role-neutral (id normalization,
 permission gating, confirmation, soft product-key derivation), then delegates
 the wallet-authority tail (`sign_*`, `create_transaction`, `account_alias`,
-`allocate_resources`, `derive_entropy`) through an `Arc<dyn ProductAuthority>`
-handle with an `AuthoritySession` snapshot the role revalidates before touching
-key material.
+`create_proof`, `allocate_resources`, `derive_entropy`) through an
+`Arc<dyn ProductAuthority>` handle with an `AuthoritySession` snapshot the
+role revalidates before touching key material.
 
 ### Permission flow
 
@@ -185,9 +185,13 @@ role-specific lifecycle, so no method exists on a role that can't mean it:
   signing-host liveness monitoring.
 - **`SigningHost`** (wallet-local): signs on device from local BIP-39 entropy,
   no pairing flow. `signing_host/local_activation.rs` establishes a session
-  from host-held secret material. Extrinsic signing / transaction construction /
-  ring-VRF aliases / resource allocation currently return `Unavailable` pending
-  chain-metadata and on-chain support.
+  from host-held secret material. It derives the same full- and lite-person
+  Bandersnatch keys as Nova, resolves RFC-0004 `RingLocation` values against
+  the chain's `Members` pallet, and pins membership, ring pages, exponent, and
+  revision reads to one finalized block before creating an alias or proof.
+  Full personhood is preferred over lite personhood. Extrinsic-payload signing
+  and resource allocation still return `Unavailable` pending chain-metadata
+  and on-chain support.
 
 `host_logic` stays pure: the orchestrators above call into it for codecs,
 session/SSO crypto, key derivation, and permission policy, while all I/O

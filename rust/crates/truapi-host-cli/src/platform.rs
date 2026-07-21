@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -24,6 +25,7 @@ use truapi_platform::{
 };
 
 use crate::chain::WsChainProvider;
+use crate::terminal_ui::UiHandle;
 
 /// How the host answers confirmation prompts (the web/iOS "sign?" modals).
 #[derive(Clone, Copy)]
@@ -43,6 +45,7 @@ pub struct CliPlatform {
     core_storage_path: Option<PathBuf>,
     preimages: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
     approval: ApprovalPolicy,
+    ui: Option<UiHandle>,
     /// Serializes interactive CLI prompts so concurrent confirmations don't
     /// interleave on stdin.
     prompt_lock: AsyncMutex<()>,
@@ -56,6 +59,7 @@ impl CliPlatform {
         live_chain_endpoints: &[crate::network::ChainEndpoint],
         storage_dir: Option<PathBuf>,
         approval: ApprovalPolicy,
+        ui: Option<UiHandle>,
     ) -> Arc<Self> {
         let (product_storage_path, core_storage_path) = storage_dir
             .as_ref()
@@ -86,6 +90,7 @@ impl CliPlatform {
             core_storage_path,
             preimages: Mutex::new(HashMap::new()),
             approval,
+            ui,
             prompt_lock: AsyncMutex::new(()),
         })
     }
@@ -121,12 +126,20 @@ impl CliPlatform {
     async fn decide(&self, action: &str, detail: String) -> bool {
         match self.approval {
             ApprovalPolicy::AutoAccept => {
-                eprintln!("[auto-accept] {action}: {detail}");
+                if let Some(ui) = &self.ui {
+                    ui.system(format!("Auto-approved {action}\n{detail}"));
+                } else {
+                    eprintln!("[auto-accept] {action}: {detail}");
+                }
                 true
             }
             ApprovalPolicy::Prompt => {
                 let _guard = self.prompt_lock.lock().await;
-                prompt_yes_no(action, &detail).await
+                if let Some(ui) = &self.ui {
+                    ui.confirm(action, detail).await
+                } else {
+                    prompt_yes_no(action, &detail).await
+                }
             }
         }
     }
@@ -134,6 +147,10 @@ impl CliPlatform {
 
 /// Print a confirmation and read a y/n answer from the CLI (default: no).
 async fn prompt_yes_no(action: &str, detail: &str) -> bool {
+    if !std::io::stdin().is_terminal() {
+        eprintln!("approval required for {action}, but stdin is not a terminal; rejecting");
+        return false;
+    }
     let mut stdout = tokio::io::stdout();
     let _ = stdout
         .write_all(
@@ -296,12 +313,18 @@ impl Features for CliPlatform {
 
 impl truapi_platform::AuthPresenter for CliPlatform {
     fn auth_state_changed(&self, state: AuthState) {
-        // Machine-readable lines for orchestrators to observe pairing.
-        match &state {
-            AuthState::Pairing { deeplink } => println!("PAIRING_DEEPLINK {deeplink}"),
-            AuthState::Connected(_) => println!("PAIRING_CONNECTED"),
-            AuthState::Disconnected => println!("PAIRING_DISCONNECTED"),
-            AuthState::LoginFailed { reason } => println!("PAIRING_FAILED {reason}"),
+        let (connection, line) = match &state {
+            AuthState::Pairing { deeplink } => ("pairing", format!("PAIRING_DEEPLINK {deeplink}")),
+            AuthState::Authenticating => ("authenticating", "PAIRING_AUTHENTICATING".to_string()),
+            AuthState::Connected(_) => ("connected", "PAIRING_CONNECTED".to_string()),
+            AuthState::Disconnected => ("disconnected", "PAIRING_DISCONNECTED".to_string()),
+            AuthState::LoginFailed { reason } => ("failed", format!("PAIRING_FAILED {reason}")),
+        };
+        if let Some(ui) = &self.ui {
+            ui.connection(connection);
+            ui.system(line);
+        } else {
+            println!("{line}");
         }
     }
 }

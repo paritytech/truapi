@@ -59,7 +59,6 @@ rust/crates/
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
   truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM surface
-  truapi-host-cli/       Headless pairing-host + signing-host CLIs that pair over the real People-chain statement store for local e2e (signing-bot replacement)
 js/packages/
   truapi/                  @parity/truapi TypeScript client
   truapi-host/            @parity/truapi-host: WASM-backed host runtime; entries `.`
@@ -103,6 +102,16 @@ make check    # full suite: build, fmt, clippy, test, TS tests, playground build
 make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host/dist/wasm/
 ```
 
+CI regenerates the shared bindings before building and testing both npm
+packages, so generated client and host callback changes are checked together.
+
+The native `truapi-host` utility can run pairing and signing hosts against the
+real SSO transport for local end-to-end work. Its signing-host command provides
+a transcript-based terminal UI, slash commands such as `/whoami`, `/deeplink`,
+and `/script`, plus a non-interactive `exec` form for automation. See the
+[`truapi-host-cli` guide](rust/crates/truapi-host-cli/README.md) for setup,
+controls, and examples.
+
 To run the playground locally:
 
 ```bash
@@ -122,6 +131,7 @@ make playground   # rebuild the playground against the refreshed snapshot
 ```
 
 This repopulates the ignored generated TS under `js/packages/truapi/`, including the playground metadata.
+`make dev` and `make e2e-dotli` run this generation step unconditionally before starting their local stacks.
 
 ## Protocol versions
 
@@ -138,7 +148,8 @@ Pushes to `main` build and deploy:
 
 ## Release
 
-See [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for how to ship a new `@parity/truapi` version to npm.
+See [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for how to ship
+`@parity/truapi`, `@parity/truapi-host`, or both packages to npm.
 
 ## Contributing
 

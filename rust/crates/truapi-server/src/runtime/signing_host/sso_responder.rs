@@ -15,27 +15,27 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use parity_scale_codec::Encode;
-use tracing::{debug, info, instrument, warn};
-use truapi::latest::HostAccountGetAliasResponse;
+use tracing::{debug, info, instrument, trace, warn};
 use truapi::{CallContext, latest as api};
 use truapi_platform::{
-    AccountAliasReview, CreateTransactionReview, SignPayloadReview, SignRawReview,
-    UserConfirmationReview,
+    CreateTransactionReview, SignPayloadReview, SignRawReview, UserConfirmationReview,
 };
 
 use super::SigningHost;
 use crate::host_logic::entropy::root_entropy_source;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::host_logic::product_account::ProductAccountError;
-use crate::host_logic::product_account::derive_sr25519_hard_path;
+use crate::host_logic::product_account::{
+    derive_root_keypair_from_entropy, derive_sr25519_hard_path,
+};
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
     self, CreateTransactionPayload, IncomingSsoRequest, OnExistingAllowancePolicy, RemoteMessage,
-    RemoteMessageData, ResourceAllocationResponse, RingVrfAliasResponse, SignRawLegacyResponse,
-    SigningPayloadResponseData, SigningRequest, SigningResponse, SsoAllocatableResource,
-    SsoAllocatedResource, SsoAllocationOutcome, StatementStoreProductSignResponse,
-    build_outgoing_request_statement, build_signed_session_response_statement,
-    decode_incoming_sso_request, v1,
+    RemoteMessageData, ResourceAllocationResponse, RingVrfAliasResponse, RingVrfError,
+    RingVrfProofResponse, SignRawLegacyResponse, SigningPayloadResponseData, SigningRequest,
+    SigningResponse, SsoAllocatableResource, SsoAllocatedResource, SsoAllocationOutcome,
+    StatementStoreProductSignResponse, build_outgoing_request_statement,
+    build_signed_session_response_statement, decode_incoming_sso_request, v1,
 };
 use crate::host_logic::sso::pairing::{
     ResponderIdentity, VersionedHandshakeProposal, bootstrap_topic, decode_pairing_deeplink,
@@ -47,8 +47,8 @@ use crate::host_logic::statement_store::{
     validate_unsigned_statement_signing_payload,
 };
 use crate::runtime::authority::{
-    CreateTransactionAuthorityRequest, ProductAuthority, SignPayloadAuthorityRequest,
-    SignRawAuthorityRequest,
+    AccountAliasAuthorityRequest, CreateProofAuthorityRequest, CreateTransactionAuthorityRequest,
+    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
 };
 use crate::runtime::services::RuntimeServices;
 use crate::runtime::sso_remote::fresh_statement_expiry;
@@ -79,13 +79,10 @@ pub(crate) async fn respond_to_pairing(
     let entropy = signing_host
         .root_entropy()
         .map_err(|err| format!("signing host has no active local session: {err}"))?;
-    // `//wallet` is the user's main account (host-spec C.0): it backs
-    // product-account derivation and is `rootUserAccountId`. The
-    // statement/identity account is `//wallet//sso`. Usernames may be
-    // registered on either (mobile registers `//wallet`, the bot
-    // `//wallet//sso`); the paired host's lookup tries identity then root.
-    let wallet = derive_sr25519_hard_path(&entropy, &["wallet"])
-        .map_err(|err| format!("//wallet derivation failed: {err}"))?;
+    // Product accounts derive from the canonical root key. The SSO statement
+    // identity keeps its dedicated hard-derived key.
+    let root = derive_root_keypair_from_entropy(&entropy)
+        .map_err(|err| format!("root account derivation failed: {err}"))?;
     let statement = derive_sr25519_hard_path(&entropy, &["wallet", "sso"])
         .map_err(|err| format!("//wallet//sso derivation failed: {err}"))?;
     let (encryption_secret_key, encryption_public_key) =
@@ -107,7 +104,7 @@ pub(crate) async fn respond_to_pairing(
 
     let success = v2::EncryptedResponse::Success(Box::new(v2::Success {
         identity_account_id: identity.statement_public_key,
-        root_account_id: wallet.public.to_bytes(),
+        root_account_id: root.public.to_bytes(),
         identity_chat_private_key,
         sso_enc_pub_key: identity.encryption_public_key,
         device_enc_pub_key: identity.encryption_public_key,
@@ -160,10 +157,44 @@ async fn serve_session(
                 Ok(Some(incoming)) => incoming,
                 Ok(None) => continue,
                 Err(reason) => {
-                    debug!(%reason, "ignoring undecodable session statement");
+                    let prefix = hex::encode(&statement[..statement.len().min(16)]);
+                    warn!(
+                        %reason,
+                        statement_bytes = statement.len(),
+                        statement_prefix = %prefix,
+                        "ignoring undecodable SSO session statement"
+                    );
                     continue;
                 }
             };
+            for message in &incoming.messages {
+                let cli_summary = format!(
+                    "Incoming SSO request · {}\nstatement_request_id={}\nremote_message_id={}",
+                    remote_message_name(&message.data),
+                    incoming.request_id,
+                    message.message_id
+                );
+                tracing::event!(
+                    target: "truapi_server::incoming_sso_request",
+                    tracing::Level::INFO,
+                    cli_summary = cli_summary.as_str(),
+                    statement_request_id = %incoming.request_id,
+                    remote_message_id = %message.message_id,
+                    remote_message = remote_message_name(&message.data),
+                );
+                debug!(
+                    statement_request_id = %incoming.request_id,
+                    remote_message_id = %message.message_id,
+                    remote_message = ?message.data,
+                    "decoded SSO request"
+                );
+                trace!(
+                    statement_request_id = %incoming.request_id,
+                    remote_message_id = %message.message_id,
+                    remote_message = ?message.data,
+                    "received SSO message"
+                );
+            }
             if !served_request_ids.insert(incoming.request_id.clone()) {
                 continue;
             }
@@ -219,6 +250,33 @@ async fn serve_request(
     Ok(None)
 }
 
+fn remote_message_name(message: &RemoteMessageData) -> &'static str {
+    match message {
+        RemoteMessageData::V1(message) => match message {
+            v1::RemoteMessage::Disconnected => "disconnected",
+            v1::RemoteMessage::SignRequest(_) => "sign_request",
+            v1::RemoteMessage::SignResponse(_) => "sign_response",
+            v1::RemoteMessage::RingVrfAliasRequest(_) => "get_account_alias",
+            v1::RemoteMessage::RingVrfAliasResponse(_) => "get_account_alias_response",
+            v1::RemoteMessage::ResourceAllocationRequest(_) => "resource_allocation",
+            v1::RemoteMessage::ResourceAllocationResponse(_) => "resource_allocation_response",
+            v1::RemoteMessage::CreateTransactionRequest(_) => "create_transaction",
+            v1::RemoteMessage::CreateTransactionResponse(_) => "create_transaction_response",
+            v1::RemoteMessage::CreateTransactionLegacyRequest(_) => "create_transaction_legacy",
+            v1::RemoteMessage::SignRawLegacyRequest(_) => "sign_raw_legacy",
+            v1::RemoteMessage::SignRawLegacyResponse(_) => "sign_raw_legacy_response",
+            v1::RemoteMessage::RingVrfProofRequest(_) => "create_account_proof",
+            v1::RemoteMessage::RingVrfProofResponse(_) => "create_account_proof_response",
+            v1::RemoteMessage::StatementStoreProductSignRequest(_) => {
+                "statement_store_product_sign"
+            }
+            v1::RemoteMessage::StatementStoreProductSignResponse(_) => {
+                "statement_store_product_sign_response"
+            }
+        },
+    }
+}
+
 /// Answer one application-level request message; `None` for message kinds
 /// that take no response (responses echoed by the peer, unknown variants).
 async fn answer_remote_message(
@@ -233,8 +291,15 @@ async fn answer_remote_message(
             sign_response(services, signing_host, &message_id, *request).await,
         ),
         v1::RemoteMessage::RingVrfAliasRequest(request) => {
-            let payload = account_alias_response(services, signing_host, request).await;
+            let payload = account_alias_response(signing_host, request).await;
             v1::RemoteMessage::RingVrfAliasResponse(RingVrfAliasResponse {
+                responding_to: message_id,
+                payload,
+            })
+        }
+        v1::RemoteMessage::RingVrfProofRequest(request) => {
+            let payload = create_proof_response(signing_host, request).await;
+            v1::RemoteMessage::RingVrfProofResponse(RingVrfProofResponse {
                 responding_to: message_id,
                 payload,
             })
@@ -292,6 +357,7 @@ async fn answer_remote_message(
         v1::RemoteMessage::Disconnected
         | v1::RemoteMessage::SignResponse(_)
         | v1::RemoteMessage::RingVrfAliasResponse(_)
+        | v1::RemoteMessage::RingVrfProofResponse(_)
         | v1::RemoteMessage::ResourceAllocationResponse(_)
         | v1::RemoteMessage::CreateTransactionResponse(_)
         | v1::RemoteMessage::SignRawLegacyResponse(_)
@@ -674,33 +740,52 @@ async fn create_transaction_response(
 }
 
 async fn account_alias_response(
-    services: &Arc<RuntimeServices>,
     signing_host: &Arc<SigningHost>,
     request: messages::RingVrfAliasRequest,
-) -> Result<HostAccountGetAliasResponse, String> {
-    if request.product_account_id.dot_ns_identifier != request.product_id {
-        confirm(
-            services,
-            UserConfirmationReview::AccountAlias(AccountAliasReview {
-                requesting_product_id: request.product_id.clone(),
-                target_product_id: request.product_account_id.dot_ns_identifier.clone(),
-            }),
-        )
-        .await?;
-    }
+) -> Result<api::HostAccountGetAliasResponse, RingVrfError> {
     let session = signing_host
         .current_session()
-        .ok_or_else(|| "signing host session is not active".to_string())?;
+        .ok_or_else(disconnected_ring_vrf)?;
     let cx = CallContext::new();
     signing_host
         .account_alias(
             &cx,
             &session,
-            request.product_account_id,
-            request.product_id,
+            AccountAliasAuthorityRequest {
+                calling_product_id: request.calling_product_id,
+                context: request.context,
+                ring_location: request.ring_location,
+            },
         )
         .await
-        .map_err(|err| err.reason())
+}
+
+async fn create_proof_response(
+    signing_host: &Arc<SigningHost>,
+    request: messages::RingVrfProofRequest,
+) -> Result<api::HostAccountCreateProofResponse, RingVrfError> {
+    let session = signing_host
+        .current_session()
+        .ok_or_else(disconnected_ring_vrf)?;
+    let cx = CallContext::new();
+    signing_host
+        .create_proof(
+            &cx,
+            &session,
+            CreateProofAuthorityRequest {
+                calling_product_id: request.calling_product_id,
+                context: request.context,
+                ring_location: request.ring_location,
+                message: request.message,
+            },
+        )
+        .await
+}
+
+fn disconnected_ring_vrf() -> RingVrfError {
+    RingVrfError::Unknown {
+        reason: "signing host session is not active".to_string(),
+    }
 }
 
 /// Run the platform confirmation seam; rejection and failure both refuse the
@@ -754,7 +839,7 @@ mod tests {
             config.bulletin_chain_genesis_hash,
             test_spawner(),
         );
-        let signing_host = SigningHost::new(platform, services.clone());
+        let signing_host = SigningHost::new(services.clone());
         futures::executor::block_on(signing_host.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         (services, signing_host)
@@ -841,8 +926,15 @@ mod tests {
             &signing_host,
             "alias-1".to_string(),
             v1::RemoteMessage::RingVrfAliasRequest(messages::RingVrfAliasRequest {
-                product_account_id: product_account("other.dot"),
-                product_id: "myapp.dot".to_string(),
+                calling_product_id: "myapp.dot".to_string(),
+                context: api::ProductProofContext {
+                    product_id: "other.dot".to_string(),
+                    suffix: vec![],
+                },
+                ring_location: api::RingLocation {
+                    chain_id: [0; 32],
+                    junctions: vec![],
+                },
             }),
         ))
         .expect("response is emitted");
@@ -850,7 +942,7 @@ mod tests {
         let v1::RemoteMessage::RingVrfAliasResponse(response) = response_payload(response) else {
             panic!("expected alias response");
         };
-        assert_eq!(response.payload.unwrap_err(), "Rejected");
+        assert_eq!(response.payload.unwrap_err(), RingVrfError::Rejected);
     }
 
     #[test]

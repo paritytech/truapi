@@ -1,4 +1,5 @@
-use super::{SigningHost, wallet_root_keypair};
+use super::{SigningHost, product_authority_error};
+use crate::host_logic::product_account::derive_root_keypair_from_entropy;
 use crate::host_logic::session::SessionInfo;
 use crate::runtime::authority::AuthorityError;
 use crate::runtime::connected_session_ui_info;
@@ -38,8 +39,8 @@ impl LocalActivation for SigningHost {
         lite_username: Option<String>,
     ) -> Result<(), AuthorityError> {
         let secret = Zeroizing::new(secret);
-        let wallet = wallet_root_keypair(&secret)?;
-        let public_key = wallet.public.to_bytes();
+        let root = derive_root_keypair_from_entropy(&secret).map_err(product_authority_error)?;
+        let public_key = root.public.to_bytes();
         *self
             .root_entropy
             .lock()

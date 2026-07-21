@@ -29,8 +29,37 @@ function buildPairCurl(url: string, body: unknown): string {
   ].join(" \\\n  ");
 }
 
-function redactSignerBotResponse(text: string): string {
-  return text.replace(/"mnemonic"\s*:\s*"[^"]+"/g, '"mnemonic":"[redacted]"');
+const SECRET_FIELD_NAMES = new Set([
+  "mnemonic",
+  "privatekey",
+  "secret",
+  "secretphrase",
+  "secretseed",
+  "secreturi",
+  "seed",
+  "suri",
+]);
+
+const QUOTED_JSON_FIELD = /"((?:\\.|[^"\\])+)"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+
+function normalizeSecretFieldName(name: string): string {
+  return name.replace(/[-_]/g, "").toLowerCase();
+}
+
+function isSecretFieldName(name: string): boolean {
+  return SECRET_FIELD_NAMES.has(normalizeSecretFieldName(name));
+}
+
+export function redactSignerBotResponse(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), (key, value) =>
+      isSecretFieldName(key) ? "[redacted]" : value,
+    );
+  } catch {
+    return text.replace(QUOTED_JSON_FIELD, (field, name: string) =>
+      isSecretFieldName(name) ? `"${name}":"[redacted]"` : field,
+    );
+  }
 }
 
 async function fetchWithTimeout(
@@ -170,7 +199,9 @@ export async function pair(
     `[bot] /api/pair raw response ${r.status} ${r.statusText}: ${redactSignerBotResponse(text) || "<empty>"}`,
   );
   if (!r.ok) {
-    throw new Error(`pair ${r.status}: ${text}`);
+    throw new Error(
+      `pair ${r.status}: ${redactSignerBotResponse(text) || "<empty>"}`,
+    );
   }
   return JSON.parse(text) as PairResult;
 }

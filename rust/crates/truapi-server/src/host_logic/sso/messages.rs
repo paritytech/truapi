@@ -13,16 +13,19 @@
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L194-L208>
 //! Deployed extension variants are tracked as a host-spec divergence:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/divergences.md?plain=1#L26-L33>
-//! Field order and enum variant order are kept wire-compatible with host-papp:
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts#L23-L35>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/signing.ts#L6-L68>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/ringVrf.ts#L5-L15>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/createTransaction.ts#L6-L25>
+//! Field order and enum variant order are kept wire-compatible with
+//! `@novasamatech/host-papp` 0.8.11:
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/signing.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/ringVrf.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/resourceAllocation.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/createTransaction.ts>
 
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
-    AccountId, AllocatableResource, HostAccountGetAliasResponse, LegacyAccountTxPayload,
-    ProductAccountId, ProductAccountTxPayload, RawPayload,
+    AccountId, AllocatableResource, HostAccountCreateProofResponse, HostAccountGetAliasResponse,
+    LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext,
+    RawPayload, RingLocation,
 };
 
 use crate::host_logic::session::SsoSessionInfo;
@@ -258,10 +261,9 @@ pub struct SignRawLegacyResponse {
     pub signature: Result<Vec<u8>, String>,
 }
 
-/// Request sent when a product asks the paired signing host to sign exact
-/// statement-store proof bytes with a product-derived account.
+/// Request exact statement-store proof signing with a product-derived account.
 ///
-/// This cannot reuse raw signing: raw-signing requests apply the public
+/// Raw signing cannot be reused because it applies the public
 /// `<Bytes>...</Bytes>` payload convention, while statement proofs sign the
 /// unsigned statement payload bytes directly.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -270,30 +272,67 @@ pub struct StatementStoreProductSignRequest {
     pub payload: Vec<u8>,
 }
 
-/// Response returned by the signing host for exact statement-store proof
-/// signing.
+/// Response returned for exact statement-store proof signing.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct StatementStoreProductSignResponse {
     pub responding_to: String,
     pub signature: Result<Vec<u8>, String>,
 }
 
-/// Request sent when a product asks the signing host for a ring-VRF alias.
+/// Failure returned by the Account Holder for a ring-VRF proof or alias request.
 ///
-/// Used by `Account::get_account_alias`; the product account identifies the
-/// alias target, while `product_id` identifies the caller that the signing host is
-/// authorizing over the SSO channel.
+/// Mirrors the identical error sets of `Account::create_account_proof` and
+/// `Account::get_account_alias` (RFC 0004): the two operations perform the same
+/// ring resolution and member-key selection, so they share these failure modes.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct RingVrfAliasRequest {
-    pub product_account_id: ProductAccountId,
-    pub product_id: String,
+pub enum RingVrfError {
+    /// The `RingLocation` did not resolve to a known ring.
+    RingNotFound,
+    /// The selected member key is not a member of the requested ring.
+    NotMember,
+    /// User or Account Holder rejected the request.
+    Rejected,
+    /// Catch-all failure, carrying a diagnostic reason.
+    Unknown { reason: String },
 }
 
-/// Response returned by the signing host for a ring-VRF alias request.
+/// Request sent when a product asks the Account Holder for a contextual alias.
+///
+/// Used by `Account::get_account_alias`; `calling_product_id` names the caller
+/// so the Account Holder can scope context derivation, while `context` and
+/// `ring_location` select the member key and bind the derived alias (RFC 0004).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RingVrfAliasRequest {
+    pub calling_product_id: String,
+    pub context: ProductProofContext,
+    pub ring_location: RingLocation,
+}
+
+/// Response returned by the Account Holder for a ring-VRF alias request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasResponse {
     pub responding_to: String,
-    pub payload: Result<HostAccountGetAliasResponse, String>,
+    pub payload: Result<HostAccountGetAliasResponse, RingVrfError>,
+}
+
+/// Request sent when a product asks the Account Holder for a ring-VRF proof.
+///
+/// Used by `Account::create_account_proof`; carries the same `(context,
+/// ring_location)` as the alias request plus the opaque `message` bound into
+/// the proof (RFC 0004).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RingVrfProofRequest {
+    pub calling_product_id: String,
+    pub context: ProductProofContext,
+    pub ring_location: RingLocation,
+    pub message: Vec<u8>,
+}
+
+/// Response returned by the Account Holder for a ring-VRF proof request.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RingVrfProofResponse {
+    pub responding_to: String,
+    pub payload: Result<HostAccountCreateProofResponse, RingVrfError>,
 }
 
 /// Request sent when a product asks the signing host to allocate SSO-backed
@@ -418,6 +457,7 @@ pub enum SsoRemoteResponse {
     SignRawLegacy(SignRawLegacyResponse),
     StatementStoreProductSign(StatementStoreProductSignResponse),
     RingVrfAlias(RingVrfAliasResponse),
+    RingVrfProof(RingVrfProofResponse),
     ResourceAllocation(ResourceAllocationResponse),
     CreateTransaction(CreateTransactionResponse),
 }
@@ -511,6 +551,11 @@ fn remote_response_for_message(
         {
             Some(SsoRemoteResponse::RingVrfAlias(response))
         }
+        v1::RemoteMessage::RingVrfProofResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::RingVrfProof(response))
+        }
         v1::RemoteMessage::SignRawLegacyResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
@@ -535,7 +580,7 @@ fn remote_response_for_message(
     }
 }
 
-/// Build a signing-host exact statement-store proof signing request message.
+/// Build an exact statement-store proof signing request.
 pub fn statement_store_product_sign_message(
     message_id: String,
     product_account_id: ProductAccountId,
@@ -595,18 +640,41 @@ pub fn sign_raw_legacy_message(
     }
 }
 
-/// Build a signing-host account-alias request message.
+/// Build an Account Holder contextual-alias request message.
 pub fn alias_request_message(
     message_id: String,
-    product_account_id: ProductAccountId,
-    product_id: String,
+    calling_product_id: String,
+    context: ProductProofContext,
+    ring_location: RingLocation,
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasRequest(
             RingVrfAliasRequest {
-                product_account_id,
-                product_id,
+                calling_product_id,
+                context,
+                ring_location,
+            },
+        )),
+    }
+}
+
+/// Build an Account Holder ring-VRF proof request message.
+pub fn proof_request_message(
+    message_id: String,
+    calling_product_id: String,
+    context: ProductProofContext,
+    ring_location: RingLocation,
+    message: Vec<u8>,
+) -> RemoteMessage {
+    RemoteMessage {
+        message_id,
+        data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofRequest(
+            RingVrfProofRequest {
+                calling_product_id,
+                context,
+                ring_location,
+                message,
             },
         )),
     }
@@ -662,20 +730,17 @@ pub fn create_transaction_legacy_message(
 }
 
 /// Inbound request decoded from a peer-signed session statement.
-///
-/// `request_id` identifies the statement for the transport-level ack;
-/// `messages` are the application messages batched into it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IncomingSsoRequest {
+    /// Statement-level request id used by the transport acknowledgement.
     pub request_id: String,
+    /// Application messages batched into the request.
     pub messages: Vec<RemoteMessage>,
 }
 
-/// Decode an inbound session statement into the peer's request batch.
+/// Decode a peer request for a signing-host responder.
 ///
-/// Returns `Ok(None)` for statements that carry no peer request: own echoes,
-/// transport-level acks, and expired statements. Used by the signing-host
-/// responder, which serves peer requests instead of matching pending ones.
+/// Own echoes, response acknowledgements, and expired statements are ignored.
 pub fn decode_incoming_sso_request(
     session: &SsoSessionInfo,
     statement: &[u8],
@@ -712,8 +777,7 @@ pub fn decode_incoming_sso_request(
     }
 }
 
-/// Build the signed transport-level ack for a peer-initiated request
-/// statement: topic `session_id_peer`, channel [`peer_response_channel`].
+/// Build the signed transport acknowledgement for a peer-initiated request.
 pub fn build_signed_session_response_statement(
     session: &SsoSessionInfo,
     request_id: String,
@@ -808,6 +872,7 @@ mod tests {
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
     use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
+    use truapi::v01::RingLocationJunction;
 
     fn account() -> ProductAccountId {
         ProductAccountId {
@@ -898,11 +963,84 @@ mod tests {
         assert_eq!(legacy_raw[..3], [0, 0, 10]);
     }
 
+    #[test]
+    fn ring_vrf_messages_match_host_papp_0_8_11_fixtures() {
+        let context = ProductProofContext {
+            product_id: "voting.dot".to_string(),
+            suffix: vec![0, 1, 2, 3],
+        };
+        let ring_location = RingLocation {
+            chain_id: [0x11; 32],
+            junctions: vec![
+                RingLocationJunction::PalletInstance(67),
+                RingLocationJunction::CollectionId(b"pop".to_vec()),
+            ],
+        };
+
+        let alias = alias_request_message(
+            "m-alias".to_string(),
+            "caller.dot".to_string(),
+            context.clone(),
+            ring_location.clone(),
+        );
+        let proof = proof_request_message(
+            "m-proof".to_string(),
+            "caller.dot".to_string(),
+            context,
+            ring_location,
+            b"vote".to_vec(),
+        );
+        let contextual_alias = HostAccountGetAliasResponse {
+            context: [0x22; 32],
+            alias: vec![0x33, 0x44],
+        };
+        let alias_response = RemoteMessage {
+            message_id: "r-alias".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasResponse(
+                RingVrfAliasResponse {
+                    responding_to: "m-alias".to_string(),
+                    payload: Ok(contextual_alias.clone()),
+                },
+            )),
+        };
+        let proof_response = RemoteMessage {
+            message_id: "r-proof".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofResponse(
+                RingVrfProofResponse {
+                    responding_to: "m-proof".to_string(),
+                    payload: Ok(HostAccountCreateProofResponse {
+                        proof: vec![0x55, 0x66],
+                        contextual_alias,
+                        ring_index: 7,
+                        ring_revision: 9,
+                    }),
+                },
+            )),
+        };
+
+        assert_host_papp_0_8_11_fixture(
+            alias,
+            "0x1c6d2d616c69617300032863616c6c65722e646f7428766f74696e672e646f7410000102031111111111111111111111111111111111111111111111111111111111111111080043010c706f70",
+        );
+        assert_host_papp_0_8_11_fixture(
+            proof,
+            "0x1c6d2d70726f6f66000c2863616c6c65722e646f7428766f74696e672e646f7410000102031111111111111111111111111111111111111111111111111111111111111111080043010c706f7010766f7465",
+        );
+        assert_host_papp_0_8_11_fixture(
+            alias_response,
+            "0x1c722d616c69617300041c6d2d616c696173002222222222222222222222222222222222222222222222222222222222222222083344",
+        );
+        assert_host_papp_0_8_11_fixture(
+            proof_response,
+            "0x1c722d70726f6f66000d1c6d2d70726f6f660008556622222222222222222222222222222222222222222222222222222222222222220833440700000009000000",
+        );
+    }
+
     fn sequential_bytes<const N: usize>(start: u8) -> [u8; N] {
         std::array::from_fn(|index| start.wrapping_add(index as u8))
     }
 
-    fn assert_host_papp_0_8_8_fixture(message: RemoteMessage, expected: &str) {
+    fn assert_host_papp_0_8_11_fixture(message: RemoteMessage, expected: &str) {
         assert_eq!(
             hex::encode(message.encode()),
             expected.trim_start_matches("0x")
@@ -910,7 +1048,7 @@ mod tests {
     }
 
     #[test]
-    fn resource_allocation_message_matches_host_papp_0_8_8_fixture() {
+    fn resource_allocation_message_matches_host_papp_0_8_11_fixture() {
         let message = resource_allocation_message(
             "m-resource".to_string(),
             "truapi-playground.dot".to_string(),
@@ -923,14 +1061,14 @@ mod tests {
             OnExistingAllowancePolicy::Increase,
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x286d2d7265736f757263650005547472756170692d706c617967726f756e642e646f7410000102090000000301",
         );
     }
 
     #[test]
-    fn create_transaction_message_matches_host_papp_0_8_8_fixture() {
+    fn create_transaction_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_message(
             "m-product-tx".to_string(),
             ProductAccountTxPayload {
@@ -949,14 +1087,14 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x306d2d70726f647563742d7478000700547472756170692d706c617967726f756e642e646f7400000000202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
         );
     }
 
     #[test]
-    fn playground_create_transaction_message_matches_host_papp_0_8_8_fixture() {
+    fn playground_create_transaction_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_message(
             "create-transaction-1".to_string(),
             ProductAccountTxPayload {
@@ -975,14 +1113,14 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x506372656174652d7472616e73616374696f6e2d31000700547472756170692d706c617967726f756e642e646f7400000000bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f0800000000",
         );
     }
 
     #[test]
-    fn create_transaction_legacy_message_matches_host_papp_0_8_8_fixture() {
+    fn create_transaction_legacy_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_legacy_message(
             "m-legacy-tx".to_string(),
             LegacyAccountTxPayload {
@@ -998,15 +1136,15 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x2c6d2d6c65676163792d7478000900000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
         );
     }
 
     #[test]
-    fn sign_raw_legacy_messages_match_host_papp_0_8_8_fixtures() {
-        assert_host_papp_0_8_8_fixture(
+    fn sign_raw_legacy_messages_match_host_papp_0_8_11_fixtures() {
+        assert_host_papp_0_8_11_fixture(
             sign_raw_legacy_message(
                 "m-legacy-raw".to_string(),
                 sequential_bytes(0),
@@ -1016,7 +1154,7 @@ mod tests {
             ),
             "0x306d2d6c65676163792d726177000a000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f00084869",
         );
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             sign_raw_legacy_message(
                 "m-legacy-raw-payload".to_string(),
                 sequential_bytes(0),
@@ -1339,7 +1477,6 @@ mod tests {
             None
         );
     }
-
     fn response_ack_statement(session: &SsoSessionInfo, expiry: u64) -> Vec<u8> {
         let encrypted = encrypt_session_statement_data_with_nonce(
             session,

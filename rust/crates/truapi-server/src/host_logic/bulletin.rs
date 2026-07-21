@@ -5,17 +5,17 @@
 //! takes raw preimage bytes plus a [`BulletinAllowanceKey`], never
 //! caller-supplied call data.
 
-use parity_scale_codec::{Compact, Encode};
 use subxt::client::{ClientAtBlock, OnlineClientAtBlockT};
 use subxt::config::DefaultExtrinsicParamsBuilder;
 use subxt::config::substrate::SubstrateConfig;
 use subxt::error::ExtrinsicError;
+use subxt::ext::codec::Encode;
 use subxt::ext::scale_encode::{self, EncodeAsFields, FieldIter, TypeResolver};
 use subxt::ext::scale_type_resolver::{Primitive, visitor};
 use subxt::tx::{StaticPayload, SubmittableTransaction};
-use truapi_platform::BulletinAllowanceKey;
 
 use crate::host_logic::extrinsic::Sr25519Signer;
+use crate::runtime::BulletinAllowanceKey;
 
 pub(crate) const STORE_PALLET_NAME: &str = "TransactionStorage";
 pub(crate) const STORE_CALL_NAME: &str = "store";
@@ -52,13 +52,7 @@ pub(crate) fn allowance_signer(allowance: &BulletinAllowanceKey) -> Result<Sr255
         .map_err(|reason| format!("invalid bulletin allowance key: {reason}"))
 }
 
-/// `store { data: Vec<u8> }` call arguments with a byte-level fast path.
-///
-/// scale-encode has no `u8` specialization, so encoding the preimage as a
-/// `Vec<u8>` value would pay a registry resolution and visitor dispatch per
-/// byte, twice per transaction. This implementation verifies once that the
-/// `data` field resolves to a sequence of `u8` (hard error otherwise, so
-/// metadata lies about the argument type are rejected) and then memcpys.
+/// `store { data: Vec<u8> }` call arguments with exact metadata validation.
 struct StoreCallData<'a>(&'a [u8]);
 
 impl EncodeAsFields for StoreCallData<'_> {
@@ -76,10 +70,8 @@ impl EncodeAsFields for StoreCallData<'_> {
                 "store call has more than one field",
             ));
         }
-        require_u8_sequence(types, field.id)?;
-
-        Compact(self.0.len() as u32).encode_to(out);
-        out.extend_from_slice(self.0);
+        require_u8_sequence(types, field.id.clone())?;
+        self.0.encode_to(out);
         Ok(())
     }
 }
@@ -355,7 +347,62 @@ mod tests {
             &[1, 2, 3],
         )
         .unwrap_err();
-        assert!(error.contains("not a"), "{error}");
+        assert!(error.contains("not a byte sequence"), "{error}");
+    }
+
+    #[test]
+    fn rejects_integer_sequence_that_is_not_bytes() {
+        let mut metadata = bulletin_metadata_v14();
+        let u32_type = extension_by_identifier(&metadata, "CheckSpecVersion").additional_signed;
+        let calls_type_id = metadata
+            .pallets
+            .iter()
+            .find(|pallet| pallet.name == STORE_PALLET_NAME)
+            .unwrap()
+            .calls
+            .as_ref()
+            .unwrap()
+            .ty
+            .id;
+        let calls_type = metadata
+            .types
+            .types
+            .iter()
+            .find(|ty| ty.id == calls_type_id)
+            .unwrap();
+        let scale_info::TypeDef::Variant(variants) = &calls_type.ty.type_def else {
+            panic!("calls type is not a variant");
+        };
+        let data_type_id = variants
+            .variants
+            .iter()
+            .find(|variant| variant.name == STORE_CALL_NAME)
+            .unwrap()
+            .fields[0]
+            .ty
+            .id;
+        let data_type = metadata
+            .types
+            .types
+            .iter_mut()
+            .find(|ty| ty.id == data_type_id)
+            .unwrap();
+        let scale_info::TypeDef::Sequence(sequence) = &mut data_type.ty.type_def else {
+            panic!("store data type is not a sequence");
+        };
+        sequence.type_param = u32_type;
+
+        let state = state_with_metadata(metadata_from_v14(metadata));
+        let client = state.client_at(anchor_fixture().number).unwrap();
+        let error = build_signed_store_transaction_offline(
+            &client,
+            &anchor_fixture(),
+            &signer_fixture(),
+            0,
+            &[1, 2, 3],
+        )
+        .unwrap_err();
+        assert!(error.contains("not a sequence of u8"), "{error}");
     }
 
     #[test]
@@ -441,10 +488,8 @@ mod tests {
 
     #[test]
     fn builds_large_preimage_without_pathological_cost() {
-        // The store call data must not encode per byte (scale-encode has no u8
-        // fast path); the StoreCallData memcpy keeps an 8 MiB preimage cheap.
-        // A generous bound catches an O(n^2)/per-byte-visitor regression
-        // without being flaky under CI load.
+        // Keep a generous bound around metadata validation and byte encoding so
+        // a future library change cannot make large preimages pathological.
         let data = vec![0x5au8; 8 * 1024 * 1024];
         let client = bulletin_chain_state()
             .client_at(anchor_fixture().number)

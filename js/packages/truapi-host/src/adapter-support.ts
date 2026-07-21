@@ -7,6 +7,7 @@
 import { type GenericError, type Result } from "@parity/truapi";
 import { hexToBytes } from "@parity/truapi/scale";
 
+import { errorMessage } from "./error.js";
 import type { ChainConnect, ChainConnection } from "./runtime.js";
 import type { ChainProvider } from "./generated/host-callbacks.js";
 
@@ -64,6 +65,7 @@ function pumpIterator<T>(
   iterator: AsyncIterator<T>,
   onItem: (value: T) => void,
   label: string,
+  onError?: (error: GenericError) => void,
 ): () => void {
   let stopped = false;
   void (async () => {
@@ -75,6 +77,7 @@ function pumpIterator<T>(
       }
     } catch (err) {
       console.error(`[truapi host callbacks] ${label} failed:`, err);
+      onError?.({ reason: errorMessage(err) });
     }
   })();
   return () => {
@@ -91,11 +94,13 @@ function pumpIterator<T>(
 export function driveResultStream<T>(
   stream: MaybeAsyncIterable<StreamResult<T, GenericError>>,
   sendItem: (value: T) => void,
+  sendError: (error: GenericError) => void,
 ): () => void {
   return pumpIterator(
     toAsyncIterator(stream),
     (value) => sendItem(unwrapStreamResult(value)),
     "subscription",
+    sendError,
   );
 }
 

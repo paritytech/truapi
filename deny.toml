@@ -9,8 +9,6 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "CC0-1.0",
-    "CDLA-Permissive-2.0",
-    "ISC",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
@@ -20,11 +18,11 @@ confidence-threshold = 0.8
 # uniffi is MPL-2.0: file-level weak copyleft, consumed unmodified as a
 # dependency, which MPL-2.0 permits without affecting the MIT outbound licence.
 # Scoped per crate so MPL-2.0 stays disallowed everywhere else.
-#
-# verifiable is GPL-3.0-or-later with the Classpath exception, consumed as an
-# unmodified library dependency for ring-VRF proof construction. Keep the
-# exception scoped to that crate.
 exceptions = [
+    # Ring-VRF implementation shared with the Individuality runtimes and Nova.
+    # The Classpath exception permits linking it without changing this crate's
+    # MIT outbound licence.
+    { name = "verifiable", allow = ["GPL-3.0-or-later WITH Classpath-exception-2.0"] },
     { name = "uniffi", allow = ["MPL-2.0"] },
     { name = "uniffi_bindgen", allow = ["MPL-2.0"] },
     { name = "uniffi_core", allow = ["MPL-2.0"] },
@@ -33,5 +31,4 @@ exceptions = [
     { name = "uniffi_meta", allow = ["MPL-2.0"] },
     { name = "uniffi_pipeline", allow = ["MPL-2.0"] },
     { name = "uniffi_udl", allow = ["MPL-2.0"] },
-    { name = "verifiable", allow = ["GPL-3.0-or-later WITH Classpath-exception-2.0"] },
 ]

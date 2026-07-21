@@ -16,17 +16,24 @@ mod frame_server;
 mod network;
 mod platform;
 mod script_runner;
+mod signing_shell;
+mod terminal_ui;
 
+use std::fmt;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitStatus;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures::future::BoxFuture;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tracing_subscriber::Layer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use truapi_platform::{HostInfo, PlatformInfo};
 use truapi_server::statement_allowance as alloc;
 use truapi_server::subscription::Spawner;
@@ -35,6 +42,8 @@ use truapi_server::{PairingHostConfig, PairingHostRuntime, SigningHostConfig, Si
 use crate::accounts::{ResolveSignerConfig, ResolvedSigner};
 use crate::network::{Network, NetworkConfig};
 use crate::platform::{ApprovalPolicy, CliPlatform};
+use crate::signing_shell::{HELP_TEXT, ShellCommand, parse_command};
+use crate::terminal_ui::{ActiveTerminalUi, DriveResult, TerminalUi, UiHandle};
 
 /// Default product served by the pairing host's frame endpoint. Product ids
 /// must be a `.dot` name or a `localhost` identifier (host-spec product id).
@@ -49,8 +58,79 @@ const DEEPLINK_SCHEME: &str = "polkadotapp";
 #[derive(Parser)]
 #[command(name = "truapi-host", about = "Headless TrUAPI hosts for e2e testing")]
 struct Cli {
+    /// Log verbosity. `RUST_LOG` takes precedence when set.
+    #[arg(
+        long,
+        global = true,
+        value_enum,
+        env = "TRUAPI_HOST_LOG",
+        default_value = "info"
+    )]
+    log_level: LogLevel,
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    const fn as_filter(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
+    }
+
+    fn scoped_filter(self) -> String {
+        let level = self.as_filter();
+        format!(
+            "warn,truapi={level},truapi_host={level},truapi_platform={level},truapi_server={level}"
+        )
+    }
+}
+
+impl FromStr for LogLevel {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "error" => Ok(Self::Error),
+            "warn" => Ok(Self::Warn),
+            "info" => Ok(Self::Info),
+            "debug" => Ok(Self::Debug),
+            "trace" => Ok(Self::Trace),
+            _ => Err(format!(
+                "invalid log level `{value}`; expected error, warn, info, debug, or trace"
+            )),
+        }
+    }
+}
+
+impl fmt::Display for LogLevel {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_filter())
+    }
+}
+
+#[derive(Clone)]
+struct LogController {
+    reload: Arc<dyn Fn(LogLevel) -> Result<(), String> + Send + Sync>,
+}
+
+impl LogController {
+    fn set(&self, level: LogLevel) -> Result<()> {
+        (self.reload)(level).map_err(anyhow::Error::msg)
+    }
 }
 
 #[derive(Subcommand)]
@@ -100,7 +180,7 @@ enum Command {
 
 #[derive(Args)]
 struct PairingHostArgs {
-    /// Product script to run (JS/TS). If omitted, start an interactive shell.
+    /// Product script to run (JS/TS). If omitted, start the terminal UI.
     #[arg(long)]
     script: Option<PathBuf>,
     /// Product id the host serves; scopes storage and product accounts.
@@ -156,6 +236,18 @@ struct SigningHostArgs {
     /// Approve every confirmation without prompting on the CLI.
     #[arg(long)]
     auto_accept: bool,
+    /// Execute one slash command without starting the terminal UI.
+    #[command(subcommand)]
+    action: Option<SigningHostAction>,
+}
+
+#[derive(Subcommand)]
+enum SigningHostAction {
+    /// Execute one slash command and exit.
+    Exec {
+        /// Slash command to execute, such as `/whoami`.
+        command: String,
+    },
 }
 
 #[tokio::main]
@@ -164,17 +256,32 @@ async fn main() -> Result<()> {
     // rustls 0.23 panics without a process-level default provider.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_writer(std::io::stderr)
+    let cli = Cli::parse();
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(cli.log_level.scoped_filter()));
+    let (filter, reload) = tracing_subscriber::reload::Layer::new(filter);
+    let log_controller = LogController {
+        reload: Arc::new(move |level| {
+            reload
+                .reload(tracing_subscriber::EnvFilter::new(level.scoped_filter()))
+                .map_err(|error| error.to_string())
+        }),
+    };
+    let log_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_writer(terminal_ui::LogWriter::default)
+        .with_filter(filter)
+        .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
+            metadata.target() != terminal_ui::INCOMING_SSO_TARGET
+        }));
+    tracing_subscriber::registry()
+        .with(terminal_ui::IncomingSsoLayer)
+        .with(log_layer)
         .init();
 
-    match Cli::parse().command {
+    match cli.command {
         Command::PairingHost(args) => run_pairing_host(args).await,
-        Command::SigningHost(args) => run_signing_host(args).await,
+        Command::SigningHost(args) => run_signing_host(args, cli.log_level, log_controller).await,
         Command::IdentityCheck { mnemonic, network } => {
             let entropy = bip39::Mnemonic::parse(mnemonic.trim())
                 .context("invalid BIP-39 mnemonic")?
@@ -341,6 +448,7 @@ async fn run_pairing_host(args: PairingHostArgs) -> Result<()> {
         network.live_chain_endpoints,
         Some(role_state_path(&base_path, network, "pairing-host")),
         approval_policy(args.auto_accept),
+        None,
     );
     // SSO and identity both run over the real People chain, so usernames always
     // resolve from `Resources.Consumers` (host-spec G).
@@ -351,8 +459,7 @@ async fn run_pairing_host(args: PairingHostArgs) -> Result<()> {
         network.bulletin_genesis,
         DEEPLINK_SCHEME.to_string(),
     )
-    .context("invalid pairing host config")?
-    .with_identity_chain_genesis_hash(network.people_genesis);
+    .context("invalid pairing host config")?;
     let runtime = Arc::new(PairingHostRuntime::new(platform, config, tokio_spawner()));
 
     let listener = frame_server::bind(args.frame_listen).await?;
@@ -376,14 +483,44 @@ async fn run_pairing_host(args: PairingHostArgs) -> Result<()> {
     .await
 }
 
-async fn run_signing_host(args: SigningHostArgs) -> Result<()> {
-    validate_signing_args(&args)?;
+async fn run_signing_host(
+    args: SigningHostArgs,
+    initial_log_level: LogLevel,
+    log_controller: LogController,
+) -> Result<()> {
+    if let Err(error) = validate_signing_args(&args) {
+        invalid_invocation(error);
+    }
+    let exec_input = args
+        .action
+        .as_ref()
+        .map(|SigningHostAction::Exec { command }| command.clone());
+    let interactive = args.script.is_none() && exec_input.is_none();
+    if interactive && !terminal_ui::is_interactive_terminal() {
+        invalid_invocation(
+            "interactive signing-host requires a TTY; use `signing-host exec '/whoami'` or --script",
+        );
+    }
+    let exec_command = exec_input
+        .as_deref()
+        .map(|input| parse_command(input).unwrap_or_else(|error| invalid_invocation(error)));
     let network = args.network.config();
     let base_path = args.base_path.clone().unwrap_or_else(default_base_path);
-    let mut session = start_signing_host(&args, base_path, network).await?;
+    let (terminal_ui, ui_handle) = if interactive {
+        let (ui, handle) = TerminalUi::new(network.id, initial_log_level);
+        (Some(ui.enter()?), Some(handle))
+    } else {
+        (None, None)
+    };
+    let mut session = start_signing_host(&args, base_path, network, ui_handle.clone()).await?;
     let listener = frame_server::bind(args.frame_listen).await?;
     let frame_url = format!("ws://{}", listener.local_addr()?);
-    println!("FRAMES_LISTENING {frame_url}");
+    if let Some(ui) = &ui_handle {
+        ui.system(format!("FRAMES_LISTENING {frame_url}"));
+        ui.system("Type /help to list commands");
+    } else {
+        println!("FRAMES_LISTENING {frame_url}");
+    }
     let runtime_for_frames: Arc<dyn frame_server::ProductRuntimeFactory> = session.runtime.clone();
 
     if let Some(script) = args.script {
@@ -416,15 +553,56 @@ async fn run_signing_host(args: SigningHostArgs) -> Result<()> {
 
     let product_id = args.product_id.clone();
     let initial_deeplink = args.deeplink.clone();
+    if let Some(command) = exec_command {
+        return with_frame_server(
+            runtime_for_frames,
+            product_id.clone(),
+            listener,
+            async move {
+                let responder = if let Some(deeplink) = initial_deeplink {
+                    prepare_pairing_response(&mut session, &deeplink).await?;
+                    let runtime = session.runtime.clone();
+                    Some(tokio::spawn(async move {
+                        match runtime.respond_to_pairing(&deeplink).await {
+                            Ok(exit) => println!("SIGNING_HOST_EXIT {exit:?}"),
+                            Err(err) => eprintln!("SIGNING_HOST_ERROR {}", err.reason),
+                        }
+                    }))
+                } else {
+                    None
+                };
+                let result = execute_non_interactive_command(
+                    &mut session,
+                    &frame_url,
+                    &product_id,
+                    command,
+                    &log_controller,
+                )
+                .await;
+                if let Some(responder) = responder {
+                    responder.abort();
+                }
+                result
+            },
+        )
+        .await;
+    }
+
+    let terminal_ui = terminal_ui.context("interactive terminal was not initialized")?;
     with_frame_server(
         runtime_for_frames,
         product_id.clone(),
         listener,
         async move {
-            if let Some(deeplink) = initial_deeplink {
-                respond_to_deeplink(&mut session, deeplink).await?;
-            }
-            signing_interactive_loop(&mut session, frame_url, product_id).await
+            signing_interactive_loop(
+                &mut session,
+                frame_url,
+                product_id,
+                initial_deeplink,
+                terminal_ui,
+                log_controller,
+            )
+            .await
         },
     )
     .await
@@ -432,6 +610,7 @@ async fn run_signing_host(args: SigningHostArgs) -> Result<()> {
 
 struct SigningHostSession {
     runtime: Arc<SigningHostRuntime>,
+    responder: Option<tokio::task::JoinHandle<()>>,
     signer: Option<ResolvedSigner>,
     base_path: PathBuf,
     network: NetworkConfig,
@@ -444,12 +623,14 @@ async fn start_signing_host(
     args: &SigningHostArgs,
     base_path: PathBuf,
     network: NetworkConfig,
+    ui: Option<UiHandle>,
 ) -> Result<SigningHostSession> {
     let platform = CliPlatform::new(
         network.people_ws,
         network.live_chain_endpoints,
         Some(role_state_path(&base_path, network, "signing-host")),
         approval_policy(args.auto_accept),
+        ui,
     );
     let config = SigningHostConfig::new(
         host_info("Headless Signing Host"),
@@ -462,6 +643,7 @@ async fn start_signing_host(
 
     Ok(SigningHostSession {
         runtime,
+        responder: None,
         signer: None,
         base_path,
         network,
@@ -471,10 +653,21 @@ async fn start_signing_host(
     })
 }
 
+impl Drop for SigningHostSession {
+    fn drop(&mut self) {
+        if let Some(responder) = self.responder.take() {
+            responder.abort();
+        }
+    }
+}
+
 fn validate_signing_args(args: &SigningHostArgs) -> Result<()> {
     let mnemonic = normalized(args.mnemonic.clone());
     let account = normalized(args.account.clone());
     let prefix = normalized(args.lite_username_prefix.clone());
+    if args.script.is_some() && args.action.is_some() {
+        bail!("--script cannot be combined with the exec subcommand");
+    }
     if mnemonic.is_some() && account.is_some() {
         bail!("--account cannot be used when --mnemonic or HOST_CLI_SIGNER_MNEMONIC is set");
     }
@@ -494,6 +687,11 @@ fn normalized(value: Option<String>) -> Option<String> {
         let trimmed = value.trim().to_string();
         (!trimmed.is_empty()).then_some(trimmed)
     })
+}
+
+fn invalid_invocation(error: impl fmt::Display) -> ! {
+    eprintln!("error: {error}");
+    std::process::exit(2);
 }
 
 async fn with_frame_server<T, Fut>(
@@ -544,7 +742,7 @@ async fn activate_current_signer(session: &mut SigningHostSession) -> Result<()>
         .activate_local_session_with_identity(signer.entropy.clone(), signer.lite_username.clone())
         .await
         .map_err(|err| anyhow::anyhow!("failed to activate local session: {}", err.reason))?;
-    println!("SIGNING_HOST_READY");
+    terminal_ui::output_line("SIGNING_HOST_READY");
     Ok(())
 }
 
@@ -578,7 +776,9 @@ async fn prepare_pairing_response(session: &mut SigningHostSession, deeplink: &s
                         name,
                         period,
                     )?;
-                    println!("SIGNING_HOST_ACCOUNT_EXHAUSTED {name} period={period}");
+                    terminal_ui::output_line(format!(
+                        "SIGNING_HOST_ACCOUNT_EXHAUSTED {name} period={period}"
+                    ));
                 }
                 session.signer = Some(
                     accounts::resolve_signer(ResolveSignerConfig {
@@ -608,7 +808,28 @@ async fn respond_to_deeplink(session: &mut SigningHostSession, deeplink: String)
         .respond_to_pairing(&deeplink)
         .await
         .map_err(|err| anyhow::anyhow!("pairing failed: {}", err.reason))?;
-    println!("SIGNING_HOST_EXIT {exit:?}");
+    terminal_ui::output_line(format!("SIGNING_HOST_EXIT {exit:?}"));
+    Ok(())
+}
+
+async fn start_deeplink_responder(
+    session: &mut SigningHostSession,
+    deeplink: String,
+) -> Result<()> {
+    prepare_pairing_response(session, &deeplink).await?;
+    if let Some(responder) = session.responder.take() {
+        responder.abort();
+    }
+    let runtime = session.runtime.clone();
+    session.responder = Some(tokio::spawn(async move {
+        match runtime.respond_to_pairing(&deeplink).await {
+            Ok(exit) => terminal_ui::output_line(format!("SIGNING_HOST_EXIT {exit:?}")),
+            Err(error) => {
+                terminal_ui::output_line(format!("SIGNING_HOST_ERROR {}", error.reason));
+            }
+        }
+    }));
+    terminal_ui::output_line("SIGNING_HOST_RESPONDER_STARTED");
     Ok(())
 }
 
@@ -657,11 +878,11 @@ async fn register_pairing_allowances(
                 "signing account is not a LitePeople ring member; cannot grant allowance"
             )
         })?;
-    println!(
+    terminal_ui::output_line(format!(
         "SIGNING_HOST_RING ring_index={} members={}",
         ring.ring_index,
         ring.members.len()
-    );
+    ));
 
     let period = alloc::slot::current_period(
         std::time::SystemTime::now()
@@ -671,7 +892,7 @@ async fn register_pairing_allowances(
     );
 
     for (label, target) in [("wallet-sso", wallet_sso), ("device", device)] {
-        println!("SIGNING_HOST_ALLOWANCE {label} checking");
+        terminal_ui::output_line(format!("SIGNING_HOST_ALLOWANCE {label} checking"));
         let outcome = alloc::register_statement_account(
             &rpc,
             &metadata,
@@ -686,9 +907,13 @@ async fn register_pairing_allowances(
         match outcome {
             alloc::RegistrationOutcome::Registered {
                 block_hash, seq, ..
-            } => println!("SIGNING_HOST_ALLOWANCE {label} seq={seq} block={block_hash}"),
+            } => terminal_ui::output_line(format!(
+                "SIGNING_HOST_ALLOWANCE {label} seq={seq} block={block_hash}"
+            )),
             alloc::RegistrationOutcome::AlreadyAllocated { seq } => {
-                println!("SIGNING_HOST_ALLOWANCE {label} already-allocated seq={seq}")
+                terminal_ui::output_line(format!(
+                    "SIGNING_HOST_ALLOWANCE {label} already-allocated seq={seq}"
+                ));
             }
         }
     }
@@ -725,39 +950,155 @@ async fn signing_interactive_loop(
     session: &mut SigningHostSession,
     frame_url: String,
     product_id: String,
+    initial_deeplink: Option<String>,
+    mut ui: ActiveTerminalUi,
+    log_controller: LogController,
 ) -> Result<()> {
-    println!("SIGNING_HOST_INTERACTIVE commands: deeplink <url>, script <path>, quit");
-    let mut lines = BufReader::new(tokio::io::stdin()).lines();
+    if let Some(deeplink) = initial_deeplink {
+        let input = format!("/deeplink {deeplink}");
+        ui.command(input.clone());
+        run_interactive_operation(
+            session,
+            &frame_url,
+            &product_id,
+            ShellCommand::Deeplink(deeplink),
+            input,
+            &mut ui,
+        )
+        .await?;
+    }
+
     loop {
-        print_prompt("signing-host> ").await?;
-        let Some(line) = lines.next_line().await? else {
+        let Some(input) = ui.next_command().await? else {
             return Ok(());
         };
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if is_quit(line) {
-            return Ok(());
-        }
-        if let Some(deeplink) = deeplink_command(line) {
-            if let Err(err) = respond_to_deeplink(session, deeplink).await {
-                println!("DEEPLINK_ERROR {err:#}");
+        ui.command(input.clone());
+        let command = match parse_command(&input) {
+            Ok(command) => command,
+            Err(error) => {
+                ui.error(error);
+                continue;
             }
-            continue;
-        }
-        if let Some(script) = script_command(line) {
-            match ensure_signer(session).await {
-                Ok(()) => match script_runner::run(&frame_url, &product_id, &script).await {
-                    Ok(status) => println!("SCRIPT_EXIT {}", status.code().unwrap_or(1)),
-                    Err(err) => println!("SCRIPT_ERROR {err:#}"),
-                },
-                Err(err) => println!("SIGNER_ERROR {err:#}"),
+        };
+        match command {
+            ShellCommand::Help => ui.system(HELP_TEXT),
+            ShellCommand::Clear => ui.clear(),
+            ShellCommand::Copy => match ui.copy_transcript() {
+                Ok(entries) => ui.system(format!("COPIED {entries} transcript entries")),
+                Err(error) => ui.error(format!("failed to copy transcript: {error}")),
+            },
+            ShellCommand::Log(level) => {
+                if let Err(error) = log_controller.set(level) {
+                    ui.error(format!("failed to set log level: {error}"));
+                } else {
+                    ui.set_log_level(level);
+                    ui.system(format!("LOG_LEVEL {level}"));
+                }
             }
-            continue;
+            ShellCommand::Quit => return Ok(()),
+            command => {
+                run_interactive_operation(
+                    session,
+                    &frame_url,
+                    &product_id,
+                    command,
+                    input,
+                    &mut ui,
+                )
+                .await?;
+            }
         }
-        println!("unknown command; use: deeplink <url>, script <path>, quit");
     }
+}
+
+async fn run_interactive_operation(
+    session: &mut SigningHostSession,
+    frame_url: &str,
+    product_id: &str,
+    command: ShellCommand,
+    label: String,
+    ui: &mut ActiveTerminalUi,
+) -> Result<()> {
+    let handle = ui.handle();
+    let operation = execute_interactive_operation(session, frame_url, product_id, command, handle);
+    match ui.drive(label, operation).await? {
+        DriveResult::Complete(Ok(())) => {}
+        DriveResult::Complete(Err(error)) => ui.error(error.to_string()),
+        DriveResult::Cancelled => ui.error("command cancelled"),
+    }
+    Ok(())
+}
+
+async fn execute_interactive_operation(
+    session: &mut SigningHostSession,
+    frame_url: &str,
+    product_id: &str,
+    command: ShellCommand,
+    ui: UiHandle,
+) -> Result<()> {
+    match command {
+        ShellCommand::Whoami => {
+            ensure_signer(session).await?;
+            let script = script_runner::bundled_script("whoami.ts");
+            let status = script_runner::run_captured(frame_url, product_id, &script, ui).await?;
+            if !status.success() {
+                bail!("WHOAMI_EXIT {}", status.code().unwrap_or(1));
+            }
+        }
+        ShellCommand::Deeplink(deeplink) => start_deeplink_responder(session, deeplink).await?,
+        ShellCommand::Script(script) => {
+            ensure_signer(session).await?;
+            let status = script_runner::run_captured(frame_url, product_id, &script, ui).await?;
+            if !status.success() {
+                bail!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
+            }
+            terminal_ui::output_line("SCRIPT_EXIT 0");
+        }
+        ShellCommand::Help
+        | ShellCommand::Clear
+        | ShellCommand::Copy
+        | ShellCommand::Log(_)
+        | ShellCommand::Quit => {
+            bail!("command must be handled by the terminal UI")
+        }
+    }
+    Ok(())
+}
+
+async fn execute_non_interactive_command(
+    session: &mut SigningHostSession,
+    frame_url: &str,
+    product_id: &str,
+    command: ShellCommand,
+    log_controller: &LogController,
+) -> Result<()> {
+    match command {
+        ShellCommand::Whoami => {
+            ensure_signer(session).await?;
+            let script = script_runner::bundled_script("whoami.ts");
+            let status = script_runner::run(frame_url, product_id, &script).await?;
+            if !status.success() {
+                bail!("WHOAMI_EXIT {}", status.code().unwrap_or(1));
+            }
+        }
+        ShellCommand::Deeplink(deeplink) => respond_to_deeplink(session, deeplink).await?,
+        ShellCommand::Script(script) => {
+            ensure_signer(session).await?;
+            let status = script_runner::run(frame_url, product_id, &script).await?;
+            if !status.success() {
+                bail!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
+            }
+            println!("SCRIPT_EXIT 0");
+        }
+        ShellCommand::Help => println!("{HELP_TEXT}"),
+        ShellCommand::Clear | ShellCommand::Quit => {}
+        ShellCommand::Copy => bail!("/copy is only available in the terminal UI"),
+        ShellCommand::Log(level) => {
+            log_controller.set(level)?;
+            println!("LOG_LEVEL {level}");
+        }
+    }
+    Ok(())
 }
 
 async fn print_prompt(prompt: &str) -> Result<()> {
@@ -778,16 +1119,6 @@ fn script_command(line: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-fn deeplink_command(line: &str) -> Option<String> {
-    if line.starts_with("polkadotapp://pair?") {
-        return Some(line.to_string());
-    }
-    line.strip_prefix("deeplink ")
-        .map(str::trim)
-        .filter(|deeplink| !deeplink.is_empty())
-        .map(str::to_string)
-}
-
 fn default_base_path() -> PathBuf {
     if let Some(path) = std::env::var_os("XDG_STATE_HOME") {
         return PathBuf::from(path).join("truapi-host");
@@ -800,4 +1131,66 @@ fn default_base_path() -> PathBuf {
 
 fn role_state_path(base_path: &std::path::Path, network: NetworkConfig, role: &str) -> PathBuf {
     base_path.join(network.id).join(role)
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn trace_log_level_is_available_before_or_after_the_subcommand() {
+        let before = Cli::try_parse_from(["truapi-host", "--log-level", "trace", "signing-host"])
+            .expect("global log level before subcommand should parse");
+        let after = Cli::try_parse_from(["truapi-host", "signing-host", "--log-level", "trace"])
+            .expect("global log level after subcommand should parse");
+
+        assert_eq!(before.log_level, LogLevel::Trace);
+        assert_eq!(after.log_level, LogLevel::Trace);
+        assert_eq!(LogLevel::Trace.as_filter(), "trace");
+        assert_eq!(
+            LogLevel::Trace.scoped_filter(),
+            "warn,truapi=trace,truapi_host=trace,truapi_platform=trace,truapi_server=trace"
+        );
+    }
+
+    #[test]
+    fn signing_host_exec_accepts_one_slash_command() {
+        let cli = Cli::try_parse_from([
+            "truapi-host",
+            "signing-host",
+            "--auto-accept",
+            "exec",
+            "/whoami",
+        ])
+        .expect("exec slash command should parse");
+        let Command::SigningHost(args) = cli.command else {
+            panic!("expected signing-host command");
+        };
+        let Some(SigningHostAction::Exec { command }) = args.action else {
+            panic!("expected exec action");
+        };
+        assert_eq!(command, "/whoami");
+    }
+
+    #[test]
+    fn signing_host_rejects_script_and_exec_together() {
+        let cli = Cli::try_parse_from([
+            "truapi-host",
+            "signing-host",
+            "--script",
+            "smoke.ts",
+            "exec",
+            "/whoami",
+        ])
+        .expect("clap should parse parent options before exec");
+        let Command::SigningHost(args) = cli.command else {
+            panic!("expected signing-host command");
+        };
+        assert!(
+            validate_signing_args(&args)
+                .unwrap_err()
+                .to_string()
+                .contains("--script cannot be combined")
+        );
+    }
 }

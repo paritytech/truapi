@@ -1,8 +1,9 @@
 //! SSO statement-store channel to the paired remote signing host.
 
 use super::super::authority::{
-    AuthorityCancelError, AuthorityError, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
+    AccountAliasAuthorityRequest, AuthorityCancelError, AuthorityError, BulletinAllowanceKey,
+    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest, SignPayloadAuthorityRequest,
+    SignRawAuthorityRequest, StatementStoreAllowanceKey,
 };
 use super::super::sso_remote::{
     RemoteResponseWait, SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON,
@@ -14,11 +15,11 @@ use super::AuthorityRequestKind;
 use super::PairingHost;
 use crate::host_logic::session::{SessionInfo, SessionState, SsoSessionInfo};
 use crate::host_logic::sso::messages::{
-    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, SsoAllocatedResource,
-    SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement, alias_request_message,
-    build_outgoing_request_statement, create_transaction_message, decode_sso_session_statement,
-    resource_allocation_message, sign_payload_message, sign_raw_message,
-    statement_store_product_sign_message, v1,
+    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, RingVrfError,
+    SsoAllocatedResource, SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement,
+    alias_request_message, build_outgoing_request_statement, create_transaction_message,
+    decode_sso_session_statement, proof_request_message, resource_allocation_message,
+    sign_payload_message, sign_raw_legacy_message, sign_raw_message, v1,
 };
 use crate::host_logic::statement_store::parse_new_statements_result;
 
@@ -29,17 +30,19 @@ use truapi::{CallContext, latest};
 
 const UNEXPECTED_SSO_SIGNING_RESPONSE: &str = "Unexpected SSO response for signing request";
 const UNEXPECTED_SSO_TRANSACTION_RESPONSE: &str = "Unexpected SSO response for transaction request";
+const UNEXPECTED_SSO_ALIAS_RESPONSE: &str = "Unexpected SSO response for account alias request";
+const UNEXPECTED_SSO_PROOF_RESPONSE: &str = "Unexpected SSO response for ring-VRF proof request";
 
 #[derive(Clone, Copy, Debug, derive_more::Display)]
 enum RemoteAction {
     #[display("{_0}")]
     Signing(AuthorityRequestKind),
     #[display("account-alias")]
-    AccountAlias,
+    RingVrfAlias,
+    #[display("ring-vrf-proof")]
+    RingVrfProof,
     #[display("resource-allocation")]
     ResourceAllocation,
-    #[display("statement-store-product-sign")]
-    StatementStoreProductSign,
 }
 
 /// Active peer-disconnect watcher for one SSO session; aborts on drop.
@@ -289,33 +292,38 @@ impl PairingHost {
     ) -> Result<latest::HostSignPayloadResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
         let message_id = sso_message_id();
-        let request = match request {
-            SignRawAuthorityRequest::Product(request) => request,
-            SignRawAuthorityRequest::LegacyAccount {
-                product_account,
-                request,
-            } => latest::HostSignRawRequest {
-                account: product_account,
-                payload: request.payload,
-            },
+        let (message, expects_legacy_response) = match request {
+            SignRawAuthorityRequest::Product(request) => {
+                (sign_raw_message(message_id, request), false)
+            }
+            SignRawAuthorityRequest::LegacyAccount { account, request } => (
+                sign_raw_legacy_message(message_id, account, request.payload),
+                true,
+            ),
         };
-        let message = sign_raw_message(message_id, request);
         let response = self
             .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await
             .map_err(remote_authority_error)?;
-        let SsoRemoteResponse::Sign(response) = response else {
-            return Err(AuthorityError::Unknown {
+        match (expects_legacy_response, response) {
+            (false, SsoRemoteResponse::Sign(response)) => response
+                .payload
+                .map(|payload| latest::HostSignPayloadResponse {
+                    signature: payload.signature,
+                    signed_transaction: payload.signed_transaction,
+                })
+                .map_err(remote_authority_error),
+            (true, SsoRemoteResponse::SignRawLegacy(response)) => response
+                .signature
+                .map(|signature| latest::HostSignPayloadResponse {
+                    signature,
+                    signed_transaction: None,
+                })
+                .map_err(remote_authority_error),
+            _ => Err(AuthorityError::Unknown {
                 reason: UNEXPECTED_SSO_SIGNING_RESPONSE.to_string(),
-            });
-        };
-        response
-            .payload
-            .map(|payload| latest::HostSignPayloadResponse {
-                signature: payload.signature,
-                signed_transaction: payload.signed_transaction,
-            })
-            .map_err(remote_authority_error)
+            }),
+        }
     }
 
     pub(super) async fn remote_create_transaction(
@@ -359,60 +367,51 @@ impl PairingHost {
         &self,
         cx: &CallContext,
         session: &SessionInfo,
-        product_account_id: latest::ProductAccountId,
-        requesting_product_id: String,
-    ) -> Result<latest::HostAccountGetAliasResponse, AuthorityError> {
+        request: AccountAliasAuthorityRequest,
+    ) -> Result<latest::HostAccountGetAliasResponse, RingVrfError> {
         let message_id = sso_message_id();
         let message = alias_request_message(
-            message_id.clone(),
-            product_account_id,
-            requesting_product_id,
+            message_id,
+            request.calling_product_id,
+            request.context,
+            request.ring_location,
         );
         let response = self
-            .submit_remote_message(cx, session, RemoteAction::AccountAlias, message)
+            .submit_remote_message(cx, session, RemoteAction::RingVrfAlias, message)
             .await
             .map_err(remote_authority_error)?;
         let SsoRemoteResponse::RingVrfAlias(response) = response else {
-            return Err(AuthorityError::Unknown {
-                reason: "Unexpected SSO response for account alias request".to_string(),
+            return Err(RingVrfError::Unknown {
+                reason: UNEXPECTED_SSO_ALIAS_RESPONSE.to_string(),
             });
         };
-        response.payload.map_err(remote_authority_error)
+        response.payload
     }
 
-    pub(super) async fn remote_sign_statement_store_product_payload(
+    pub(super) async fn remote_create_proof(
         &self,
         cx: &CallContext,
         session: &SessionInfo,
-        account: latest::ProductAccountId,
-        payload: Vec<u8>,
-    ) -> Result<[u8; 64], AuthorityError> {
+        request: CreateProofAuthorityRequest,
+    ) -> Result<latest::HostAccountCreateProofResponse, RingVrfError> {
         let message_id = sso_message_id();
-        let message = statement_store_product_sign_message(message_id, account, payload);
+        let message = proof_request_message(
+            message_id,
+            request.calling_product_id,
+            request.context,
+            request.ring_location,
+            request.message,
+        );
         let response = self
-            .submit_remote_message(
-                cx,
-                session,
-                RemoteAction::StatementStoreProductSign,
-                message,
-            )
+            .submit_remote_message(cx, session, RemoteAction::RingVrfProof, message)
             .await
             .map_err(remote_authority_error)?;
-        let SsoRemoteResponse::StatementStoreProductSign(response) = response else {
-            return Err(AuthorityError::Unknown {
-                reason: "Unexpected SSO response for statement-store proof signing request"
-                    .to_string(),
+        let SsoRemoteResponse::RingVrfProof(response) = response else {
+            return Err(RingVrfError::Unknown {
+                reason: UNEXPECTED_SSO_PROOF_RESPONSE.to_string(),
             });
         };
-        let signature = response.signature.map_err(remote_authority_error)?;
-        signature
-            .try_into()
-            .map_err(|signature: Vec<u8>| AuthorityError::Unknown {
-                reason: format!(
-                    "Invalid statement-store proof signature length: {}",
-                    signature.len()
-                ),
-            })
+        response.payload
     }
 
     pub(super) async fn remote_allocate_resources(

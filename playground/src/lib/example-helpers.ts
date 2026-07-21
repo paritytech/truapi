@@ -2,6 +2,7 @@ import { Observable } from "rxjs";
 import { err, ok, type Result } from "neverthrow";
 import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
 import {
+  AccountId,
   Blake2128Concat,
   Bytes,
   decAnyMetadata,
@@ -39,6 +40,10 @@ export type WithChainHeadFollow = (opts: {
 export type AccountIdForDotNsUsername = (
   username?: string,
 ) => Promise<Result<HexString, Error>>;
+
+export type Ss58AddressForDotNsUsername = (
+  username?: string,
+) => Promise<Result<string, Error>>;
 
 export type BuildCreateTransactionPayload = (opts: {
   signer: ProductAccountId;
@@ -196,6 +201,21 @@ export function createAccountIdForDotNsUsername(
             ),
         });
     });
+  };
+}
+
+export function createSs58AddressForDotNsUsername(
+  accountIdForDotNsUsername: AccountIdForDotNsUsername,
+): Ss58AddressForDotNsUsername {
+  return async function ss58AddressForDotNsUsername(username) {
+    const accountId = await accountIdForDotNsUsername(username);
+    if (accountId.isErr()) return err(accountId.error);
+
+    try {
+      return ok(AccountId().dec(fromHex(accountId.value)));
+    } catch (error) {
+      return err(toError(error));
+    }
   };
 }
 

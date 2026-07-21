@@ -10,8 +10,9 @@ use parity_scale_codec::{Decode, Encode};
 use super::{
     CreateTransactionLegacyRequest, CreateTransactionRequest, CreateTransactionResponse,
     ResourceAllocationRequest, ResourceAllocationResponse, RingVrfAliasRequest,
-    RingVrfAliasResponse, SignRawLegacyRequest, SignRawLegacyResponse, SigningRequest,
-    SigningResponse, StatementStoreProductSignRequest, StatementStoreProductSignResponse,
+    RingVrfAliasResponse, RingVrfProofRequest, RingVrfProofResponse, SignRawLegacyRequest,
+    SignRawLegacyResponse, SigningRequest, SigningResponse, StatementStoreProductSignRequest,
+    StatementStoreProductSignResponse,
 };
 
 /// v1 messages exchanged with the paired signing host over the encrypted SSO channel.
@@ -32,6 +33,8 @@ pub enum RemoteMessage {
     CreateTransactionLegacyRequest(CreateTransactionLegacyRequest),
     SignRawLegacyRequest(SignRawLegacyRequest),
     SignRawLegacyResponse(SignRawLegacyResponse),
+    RingVrfProofRequest(RingVrfProofRequest),
+    RingVrfProofResponse(RingVrfProofResponse),
     StatementStoreProductSignRequest(StatementStoreProductSignRequest),
     StatementStoreProductSignResponse(StatementStoreProductSignResponse),
 }

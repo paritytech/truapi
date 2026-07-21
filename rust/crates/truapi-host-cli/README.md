@@ -9,8 +9,9 @@ Novasama-operated dependency.
 Either host can be driven by a **product script** you write: a JS/TS file that
 receives a global `truapi` (the `@parity/truapi` client, scoped to a product id)
 and calls it like any product would. With `--script`, the CLI runs the script
-and exits with its status. Without `--script`, the host stays in an interactive
-shell until you quit.
+and exits with its status. Without `--script`, `pairing-host` keeps its line
+prompt while `signing-host` opens a full-screen terminal UI when stdin and
+stdout are TTYs.
 
 One binary, `truapi-host`:
 
@@ -38,6 +39,50 @@ through the identity backend, waits for ring readiness, and rotates when the
 current account exhausts Statement Store slots. Override the product with
 `PRODUCT_ID=...` and the pairing frame port with `FRAME=...`.
 
+### Signing-host terminal UI
+
+In a TTY, `truapi-host signing-host` opens a scrollable transcript above a
+single command bar. Host lifecycle events, tracing logs, every incoming SSO
+request, script stdout/stderr, commands, and approval prompts all use that
+transcript, so background output cannot overwrite input. `--deeplink URL`
+opens the same UI and starts the pairing response after initialization.
+
+Commands always start with `/`:
+
+| Command | Result |
+| --- | --- |
+| `/whoami` | Run the bundled product script that calls `truapi.account.getUserId()`. |
+| `/deeplink <url>` | Validate and answer a `polkadotapp://pair?...` deeplink. |
+| `/script <path>` | Run a JS/TS product script through the public frame endpoint. |
+| `/log <level>` | Change tracing to `error`, `warn`, `info`, `debug`, or `trace`. |
+| `/help` | Show commands and keyboard shortcuts. |
+| `/clear` | Clear the visible transcript. |
+| `/copy` | Copy the retained transcript to the system clipboard. |
+| `/quit` | Shut down cleanly. |
+
+Typing `/` opens autocomplete. Up/Down selects a completion; with the menu
+closed it navigates process-local command history. Tab inserts a completion,
+and `/script` completes filesystem paths. Ctrl-U/Ctrl-D scroll by half a
+viewport, End restores auto-follow, Esc closes autocomplete, and Ctrl-C clears
+input, cancels a running command, or exits when idle. Deeplinks are deliberately
+not persisted in history across processes.
+
+Only one operational command runs at once, but SSO traffic and approvals keep
+flowing while it runs. Without a TTY, use one-shot `exec` mode (parent options
+come first):
+
+```bash
+truapi-host signing-host --auto-accept exec '/whoami'
+truapi-host signing-host --auto-accept exec '/script ./js/scripts/ring-vrf-smoke.ts'
+truapi-host signing-host exec '/deeplink polkadotapp://pair?handshake=...'
+```
+
+`exec` does not enable raw mode or emit terminal controls. Command results go
+to stdout, diagnostics go to stderr, and the process exits when the command
+finishes. Starting `signing-host` without `--script` or `exec` while either
+stdin or stdout is not a TTY is an invocation error. The existing `--script`
+one-shot mode remains supported.
+
 ## Writing a product script
 
 A product script is top-level code (an ES module). The runner injects two
@@ -55,7 +100,10 @@ Write it top-level and `throw` (or reject) to fail the run:
 
 ```ts
 const login = await truapi.account.requestLogin({ reason: undefined });
-if (!login.isOk() || login.value !== "Success") throw new Error("login failed");
+if (
+  !login.isOk() ||
+  (login.value !== "Success" && login.value !== "AlreadyConnected")
+) throw new Error("login failed");
 
 const res = await truapi.signing.signRaw({
   account: host.productAccount(),
@@ -71,10 +119,17 @@ res.match(
 `headless-playground.dot`) scopes product-owned APIs like `truapi.localStorage.*`
 and the accounts `host.productAccount()` returns.
 
-Two scripts ship under `js/scripts/`:
+Six scripts ship under `js/scripts/`:
 
 - `battery.ts` — the curated signer gate (login + raw/payload signing,
   create-transaction, entropy). This is `run.sh`'s default.
+- `whoami.ts` — calls `getUserId` and prints `WHOAMI <primary username>`; this
+  backs the signing host's interactive `whoami` command.
+- `signing-smoke.ts` — a focused product-account signing check.
+- `ring-vrf-smoke.ts` — calls `getAccountAlias` and `createAccountProof`
+  against the Paseo Next v2 LitePeople ring, then verifies both calls return
+  the same contextual alias.
+- `preimage-smoke.ts` — a focused Bulletin preimage flow check.
 - `diagnosis.ts` — runs the playground's own generated example sources
   (`runExample`) and writes a `web.md`-shape report to
   `explorer/diagnosis-reports/headless-pairing.md`, gating on the signer-critical
@@ -98,10 +153,35 @@ Two scripts ship under `js/scripts/`:
 
 ## Confirmations
 
-Both hosts take `--auto-accept`. Without it, every confirmation a web/iOS host
-would show as a modal (sign requests, permission prompts) is printed on the CLI
-and answered `y/n` on stdin. `run.sh` passes `--auto-accept` to both for
-unattended runs.
+Both hosts take `--auto-accept`. Without it, confirmations a web/iOS host would
+show as a modal (sign requests, permission prompts, and cross-product Ring-VRF
+requests) are rendered prominently in the signing-host transcript and answered
+with `y`/`yes` or `n`/`no` in the command bar. The current command draft is
+restored afterward; Esc safely rejects. Concurrent approvals are serialized.
+In non-interactive `exec` mode, a TTY gets a plain yes/no prompt and non-TTY
+stdin safely rejects instead of hanging. Same-product Ring-VRF requests do not
+prompt, matching the iOS signing host. `run.sh` passes `--auto-accept` to both
+for unattended runs. Every auto-approved decision is still printed.
+
+## Logging
+
+Use the global `--log-level` option (`error`, `warn`, `info`, `debug`, or
+`trace`) before or after the subcommand, or `/log <level>` in the terminal UI.
+Every decoded inbound SSO request is visible regardless of the selected level:
+the stable request name plus statement request and remote message ids are
+logged at `info`. `debug` adds the decoded summary and `trace` adds the complete
+decoded payload and transport metadata. Undecodable requests are warnings with
+the available identifiers so protocol-version mismatches can be diagnosed.
+
+```bash
+truapi-host signing-host --log-level trace --deeplink '<deeplink>' --auto-accept
+```
+
+Debug and trace output may contain product signing payloads. `RUST_LOG` takes
+precedence at startup and remains available for module-specific filters.
+Without `RUST_LOG`, `--log-level` and `/log` apply to TrUAPI targets while
+third-party dependencies such as `rustls` and `tungstenite` remain at
+`warn`.
 
 ## Statement-store allowance
 
@@ -110,9 +190,10 @@ signing host grants it on-chain exactly as a real client does: it proves its
 LitePeople ring membership with a bandersnatch ring-VRF and submits an unsigned
 General (v5) `Resources.set_statement_store_account` extrinsic for each account
 that submits statements — its own `//wallet//sso` account and the pairing host's
-per-pairing device key. The shared native allocator in `truapi-server`
-handles metadata-driven signed-extension encoding, ring fetch, slot scan,
-ring-VRF proof, extrinsic assembly, and submit. The signing account must be an attested LitePeople member,
+per-pairing device key. The shared native implementation lives in
+`truapi-server/src/runtime/statement_allowance/` (metadata-driven
+signed-extension encoding, ring fetch, slot scan, ring-VRF proof, extrinsic
+assembly, submit). The signing account must be an attested LitePeople member,
 and may sit in an old ring, so the signing host scans back from the current ring
 index (slow, one-time per pairing). Auto-managed accounts are stored in
 `accounts.json` under `--base-path`; mnemonics are plaintext local test secrets
@@ -146,8 +227,9 @@ no public `--statement-store` flag.
 - **Chain methods** route to real `wss://` nodes from the selected `--network`
   when `E2E_LIVE_CHAIN=1`; off by default. A rustls crypto provider is
   installed at startup for the TLS connections.
-- **Ring-VRF product-account aliases** are implemented natively via the
-  `verifiable` crate (`get_account_alias`); on wasm they remain `Unavailable`.
+- **Ring-VRF product-account aliases and proofs** are implemented by the
+  signing host via the `verifiable` crate (`get_account_alias` and
+  `create_account_proof`).
 - **`get_user_id`** resolves the signing account's username from People-chain
   `Resources.Consumers`. Auto-managed signing accounts register fresh lite
   usernames via the identity backend (`src/attestation.rs`); first registration
