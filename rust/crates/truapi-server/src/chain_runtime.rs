@@ -28,6 +28,7 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
+use derive_more::{Display, Error};
 use futures::channel::mpsc;
 use futures::future::{AbortHandle, Abortable};
 use futures::future::{BoxFuture, Shared};
@@ -130,7 +131,12 @@ pub enum RuntimeFailureKind {
 }
 
 /// Framework-level chain failure with a diagnostic reason.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, Error)]
+#[display(
+    "{method}{}{}",
+    if reason.is_some() { ": " } else { "" },
+    reason.as_deref().unwrap_or_default()
+)]
 pub struct RuntimeFailure {
     kind: RuntimeFailureKind,
     method: &'static str,
@@ -387,10 +393,15 @@ impl ChainRuntime {
         let remote_follow_id = self
             .ensure_follow_context(method, &connection, request.follow_subscription_id, false)
             .await?;
-        for hash in request.hashes {
+        let hashes = request
+            .hashes
+            .iter()
+            .map(|hash| hash_from_bytes(method, hash))
+            .collect::<Result<Vec<_>, _>>()?;
+        for hash in hashes {
             connection
                 .methods
-                .chainhead_v1_unpin(&remote_follow_id, hash_from_bytes(method, &hash)?)
+                .chainhead_v1_unpin(&remote_follow_id, hash)
                 .await
                 .map_err(|err| rpc_failure(method, err))?;
         }
@@ -1723,6 +1734,84 @@ mod tests {
         assert_eq!(sent.len(), 2);
         assert!(sent[0].contains("chainHead_v1_follow"));
         assert!(sent[1].contains("chainHead_v1_header"));
+    }
+
+    #[test]
+    fn unpin_uses_typed_subxt_method_for_each_hash() {
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            if request.contains("chainHead_v1_follow") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-FOLLOW"}}"#
+                ))
+            } else if request.contains("chainHead_v1_unpin") {
+                Some(format!(r#"{{"jsonrpc":"2.0","id":"{id}","result":null}}"#))
+            } else {
+                None
+            }
+        }));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let _follow_stream = runtime.remote_chain_head_follow(
+            "local-follow".to_string(),
+            RemoteChainHeadFollowRequest {
+                genesis_hash: vec![0u8; 32],
+                with_runtime: false,
+            },
+        );
+        let sent = wait_for_sent(&provider, |sent| {
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow"))
+        });
+        assert!(
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow")),
+            "follow setup did not start; sent: {sent:?}",
+        );
+
+        futures::executor::block_on(
+            runtime.remote_chain_head_unpin(RemoteChainHeadUnpinRequest {
+                genesis_hash: vec![0u8; 32],
+                follow_subscription_id: "local-follow".to_string(),
+                hashes: vec![vec![0x11; 32], vec![0x22; 32]],
+            }),
+        )
+        .expect("unpin succeeds");
+
+        let sent = provider.sent.lock().unwrap().clone();
+        let unpin_requests: Vec<_> = sent
+            .iter()
+            .filter(|request| request.contains("chainHead_v1_unpin"))
+            .collect();
+        assert_eq!(
+            unpin_requests.len(),
+            2,
+            "unpin should send each hash through Subxt; sent: {sent:?}",
+        );
+        let params = unpin_requests
+            .iter()
+            .map(|request| {
+                let request: Value = serde_json::from_str(request).expect("json request");
+                assert_eq!(
+                    request.get("method").and_then(Value::as_str),
+                    Some("chainHead_v1_unpin"),
+                );
+                request
+                    .get("params")
+                    .and_then(Value::as_array)
+                    .expect("params array")
+                    .clone()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(params[0][0].as_str(), Some("REMOTE-FOLLOW"));
+        assert_eq!(params[1][0].as_str(), Some("REMOTE-FOLLOW"));
+        assert_eq!(
+            params[0][1][0].as_str(),
+            Some("0x1111111111111111111111111111111111111111111111111111111111111111"),
+        );
+        assert_eq!(
+            params[1][1][0].as_str(),
+            Some("0x2222222222222222222222222222222222222222222222222222222222222222"),
+        );
     }
 
     #[test]

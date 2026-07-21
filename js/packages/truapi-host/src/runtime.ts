@@ -54,27 +54,39 @@ export interface ChainConnection {
  */
 export type LogLevel = string;
 
+/** Configuration for one product runtime hosted by the wasm core. */
 export interface ProductRuntimeConfig {
+  /** Stable identifier used to scope product accounts, permissions, and storage. */
   productId: string;
+  /** Metadata describing the host application. */
   host: {
+    /** Human-readable host name. */
     name: string;
+    /** Host icon URL. */
     icon?: string;
+    /** Host application version. */
     version?: string;
   };
+  /** Metadata describing the platform running the host. */
   platform?: {
+    /** Platform or operating-system name. */
     type?: string;
+    /** Platform or operating-system version. */
     version?: string;
   };
+  /** People-chain configuration used for identity lookup. */
   people: {
+    /** People-chain genesis hash. */
     genesisHash: string | Uint8Array;
   };
-  /**
-   * Bulletin-chain genesis hash used for in-core preimage submission.
-   */
+  /** Bulletin-chain configuration used for in-core preimage submission. */
   bulletin: {
+    /** Bulletin-chain genesis hash. */
     genesisHash: string | Uint8Array;
   };
+  /** Wallet pairing configuration. */
   pairing: {
+    /** URI scheme used for wallet pairing deeplinks. */
     deeplinkScheme: string;
   };
 }

@@ -116,7 +116,7 @@ fn emit_host_callbacks(
         out.push('\n');
     }
 
-    let imports = collect_named_types(definition, local_codec_types)
+    let imports = collect_named_types(definition)
         .into_iter()
         .filter(|name| !codec_imports.contains(name))
         .collect::<BTreeSet<_>>();
@@ -125,11 +125,7 @@ fn emit_host_callbacks(
         out.push('\n');
     }
 
-    for type_def in definition
-        .types
-        .iter()
-        .filter(|ty| local_codec_types.contains(&ty.name))
-    {
+    for type_def in &definition.types {
         let rendered = match &type_def.kind {
             TypeDefKind::Enum(_) => emit_enum_type(type_def)?,
             _ => emit_struct_interface(type_def)?,
@@ -221,6 +217,7 @@ fn emit_wasm_adapter(
                 }
                 PlatformInner::Stream(item) => {
                     support_imports.insert("driveResultStream".to_string());
+                    extra_types.insert("GenericError".to_string());
                     collect_codec_imports(stream_item(item), codec_types, &mut imports);
                     collect_local_codec_names(
                         stream_item(item),
@@ -352,6 +349,7 @@ fn emit_worker_callbacks(
         // subscription payload shape derived from `truapi-platform`.
 
         import type {{ RawCallbacks }} from "./host-callbacks-adapter.js";
+        import type {{ GenericError }} from "@parity/truapi";
 
         "#
     )
@@ -374,6 +372,7 @@ fn emit_worker_callbacks(
     out.push_str("    name: SubscriptionName,\n");
     out.push_str("    payload: Uint8Array | null,\n");
     out.push_str("    sendItem: (value: T) => void,\n");
+    out.push_str("    sendError: (error: GenericError) => void,\n");
     out.push_str("  ): () => void;\n");
     for (trait_def, method) in &trait_object_callbacks {
         writeln!(
@@ -423,6 +422,7 @@ fn emit_worker_callbacks(
           name: SubscriptionName,
           payload: Uint8Array | null,
           sendItem: (value?: unknown) => void,
+          sendError: (error: GenericError) => void,
         ): (() => void) | void {{
         "#
     )
@@ -487,16 +487,10 @@ fn emit_worker_callback_entry(method: &PlatformMethod) -> Result<String> {
         .map(|p| to_camel_case(&p.name))
         .collect::<Vec<_>>()
         .join(", ");
-    let arg_exprs = method
-        .params
-        .iter()
-        .map(|p| to_camel_case(&p.name))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let arg_array = if arg_exprs.is_empty() {
+    let arg_array = if args.is_empty() {
         "[]".to_string()
     } else {
-        format!("[{arg_exprs}]")
+        format!("[{args}]")
     };
     if method.return_shape.is_async {
         Ok(format!(
@@ -530,11 +524,11 @@ fn emit_worker_subscription_factory(methods: &[&PlatformMethod]) -> Result<Strin
         let payload_param = worker_subscription_payload_param(method)?;
         if let Some(param) = payload_param {
             out.push_str(&format!(
-                "    {raw}: ({param}, sendItem) =>\n      bridge.startSubscription(\"{raw}\", {param}, sendItem),\n"
+                "    {raw}: ({param}, sendItem, sendError) =>\n      bridge.startSubscription(\"{raw}\", {param}, sendItem, sendError),\n"
             ));
         } else {
             out.push_str(&format!(
-                "    {raw}: (sendItem) =>\n      bridge.startSubscription(\"{raw}\", null, sendItem),\n"
+                "    {raw}: (sendItem, sendError) =>\n      bridge.startSubscription(\"{raw}\", null, sendItem, sendError),\n"
             ));
         }
     }
@@ -550,11 +544,11 @@ fn emit_start_raw_subscription_switch(methods: &[&PlatformMethod]) -> Result<Str
         let raw = raw_callback_name(method);
         if worker_subscription_payload_param(method)?.is_some() {
             out.push_str(&format!(
-                "    case \"{raw}\":\n      if (payload === null) {{\n        console.warn(`[truapi worker] ${{name}} requires payload`);\n        return undefined;\n      }}\n      return callbacks.{raw}(payload, sendItem);\n"
+                "    case \"{raw}\":\n      if (payload === null) {{\n        console.warn(`[truapi worker] ${{name}} requires payload`);\n        return undefined;\n      }}\n      return callbacks.{raw}(payload, sendItem, sendError);\n"
             ));
         } else {
             out.push_str(&format!(
-                "    case \"{raw}\":\n      return callbacks.{raw}(sendItem);\n"
+                "    case \"{raw}\":\n      return callbacks.{raw}(sendItem, sendError);\n"
             ));
         }
     }
@@ -651,6 +645,7 @@ fn raw_member(
                 })
                 .collect();
             params.push("sendItem: (item?: Uint8Array) => void".to_string());
+            params.push("sendError: (error: GenericError) => void".to_string());
             format!("{name}({}): (() => void) | void;", params.join(", "))
         }
         _ if trait_object_return_name(method, platform_trait_names).is_some() => {
@@ -834,6 +829,8 @@ fn emit_adapter_entry(
     local_codec_types: &BTreeSet<String>,
     platform_trait_names: &BTreeSet<String>,
 ) -> Result<String> {
+    validate_adapter_codec_boundary(method, codec_types, local_codec_types)?;
+
     let raw = raw_callback_wire_name(trait_def, method, platform_trait_names);
     let host_method = format!("callbacks.{}.{}", callback_namespace(&trait_def.name), raw);
     if trait_object_return_name(method, platform_trait_names).is_some() {
@@ -863,6 +860,99 @@ fn emit_adapter_entry(
         PlatformInner::TraitObject(_) => unreachable!("trait-object callbacks are handled above"),
     };
     Ok(format!("{raw}: {impl_expr},"))
+}
+
+fn validate_adapter_codec_boundary(
+    method: &PlatformMethod,
+    codec_types: &BTreeSet<String>,
+    local_codec_types: &BTreeSet<String>,
+) -> Result<()> {
+    for param in &method.params {
+        validate_adapter_codec_boundary_type(
+            &param.type_ref,
+            codec_types,
+            local_codec_types,
+            &format!("parameter `{}`", param.name),
+            &method.name,
+        )?;
+    }
+
+    match &method.return_shape.inner {
+        PlatformInner::Result { ok, .. } | PlatformInner::Plain(ok) => {
+            validate_adapter_codec_boundary_type(
+                ok,
+                codec_types,
+                local_codec_types,
+                "return value",
+                &method.name,
+            )?;
+        }
+        PlatformInner::Stream(item) => {
+            validate_adapter_codec_boundary_type(
+                stream_item(item),
+                codec_types,
+                local_codec_types,
+                "stream item",
+                &method.name,
+            )?;
+        }
+        PlatformInner::Unit | PlatformInner::TraitObject(_) => {}
+    }
+
+    Ok(())
+}
+
+fn validate_adapter_codec_boundary_type(
+    ty: &TypeRef,
+    codec_types: &BTreeSet<String>,
+    local_codec_types: &BTreeSet<String>,
+    position: &str,
+    method_name: &str,
+) -> Result<()> {
+    if contains_non_direct_codec_type(ty, codec_types, local_codec_types) {
+        bail!(
+            "unsupported compound codec type in host callback `{method_name}` {position}: {ty:?}"
+        );
+    }
+    Ok(())
+}
+
+/// The WASM adapter only knows how to translate a direct codec payload:
+/// `Codec` maps to raw `Uint8Array` and the adapter emits `Codec.dec/enc`.
+/// Containers such as `Vec<Codec>`, `Option<Codec>`, or `(Codec, ...)` would
+/// still be declared as raw bytes at the WASM boundary, but no generated code
+/// knows how to encode or decode the container. Reject those shapes at codegen.
+fn contains_non_direct_codec_type(
+    ty: &TypeRef,
+    codec_types: &BTreeSet<String>,
+    local_codec_types: &BTreeSet<String>,
+) -> bool {
+    fn walk(
+        ty: &TypeRef,
+        nested: bool,
+        codec_types: &BTreeSet<String>,
+        local_codec_types: &BTreeSet<String>,
+    ) -> bool {
+        match ty {
+            TypeRef::Named { name, args } => {
+                if codec_types.contains(name) || local_codec_types.contains(name) {
+                    nested
+                } else {
+                    args.iter()
+                        .any(|arg| walk(arg, true, codec_types, local_codec_types))
+                }
+            }
+            TypeRef::Vec(inner) | TypeRef::Option(inner) | TypeRef::Array(inner, _) => {
+                walk(inner, true, codec_types, local_codec_types)
+            }
+            TypeRef::Tuple(items) => items
+                .iter()
+                .any(|item| walk(item, true, codec_types, local_codec_types)),
+            TypeRef::Primitive(_) | TypeRef::Generic(_) | TypeRef::Unit => false,
+        }
+    }
+
+    walk(ty, false, codec_types, local_codec_types)
 }
 
 /// The adapter implementation expression for a unary callback: decode codec
@@ -928,10 +1018,11 @@ fn adapter_stream_impl(
         .map(|p| to_camel_case(&p.name))
         .collect();
     names.push("sendItem".to_string());
+    names.push("sendError".to_string());
     let params = names.join(", ");
     let call = format!("{host_method}({args})");
     Ok(format!(
-        "({params}) => driveResultStream({call}, {item_expr})"
+        "({params}) => driveResultStream({call}, {item_expr}, sendError)"
     ))
 }
 
@@ -1428,10 +1519,7 @@ fn emit_host_callback_composites(composes: &[String], docs: Option<&str>) -> Str
     }
 }
 
-fn collect_named_types(
-    definition: &PlatformDefinition,
-    local_codec_types: &BTreeSet<String>,
-) -> BTreeSet<String> {
+fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
     let mut out: BTreeSet<String> = BTreeSet::new();
     for trait_def in &definition.traits {
         for method in &trait_def.methods {
@@ -1455,11 +1543,7 @@ fn collect_named_types(
             }
         }
     }
-    for type_def in definition
-        .types
-        .iter()
-        .filter(|ty| local_codec_types.contains(&ty.name))
-    {
+    for type_def in &definition.types {
         collect_from_type_def(type_def, &mut out);
     }
     // Filter out names defined locally (the capability trait interfaces and
@@ -1577,4 +1661,123 @@ fn render_ts_doc_line(line: &str) -> String {
         .replace("`]", "`")
         .replace("Ok(())", "success")
         .replace("None", "`undefined`")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn named(name: &str) -> TypeRef {
+        TypeRef::Named {
+            name: name.to_string(),
+            args: Vec::new(),
+        }
+    }
+
+    fn codec_types() -> BTreeSet<String> {
+        [
+            "GenericError",
+            "HostFeatureSupportedRequest",
+            "HostFeatureSupportedResponse",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
+    fn platform_with_method(method: PlatformMethod) -> PlatformDefinition {
+        PlatformDefinition {
+            traits: vec![PlatformTrait {
+                name: "Features".to_string(),
+                docs: None,
+                methods: vec![method],
+            }],
+            types: Vec::new(),
+            super_trait: None,
+        }
+    }
+
+    fn method_with_return(ok: TypeRef) -> PlatformMethod {
+        PlatformMethod {
+            name: "feature_supported".to_string(),
+            docs: None,
+            params: vec![PlatformParam {
+                name: "request".to_string(),
+                type_ref: named("HostFeatureSupportedRequest"),
+            }],
+            return_shape: PlatformReturn {
+                is_async: true,
+                inner: PlatformInner::Result {
+                    ok,
+                    err: named("GenericError"),
+                },
+            },
+            has_default: false,
+        }
+    }
+
+    fn method_with_param(param: TypeRef) -> PlatformMethod {
+        PlatformMethod {
+            name: "feature_supported".to_string(),
+            docs: None,
+            params: vec![PlatformParam {
+                name: "request".to_string(),
+                type_ref: param,
+            }],
+            return_shape: PlatformReturn {
+                is_async: true,
+                inner: PlatformInner::Result {
+                    ok: named("HostFeatureSupportedResponse"),
+                    err: named("GenericError"),
+                },
+            },
+            has_default: false,
+        }
+    }
+
+    fn assert_rejects_compound_codec(method: PlatformMethod, expected: &str) {
+        let definition = platform_with_method(method);
+        let err = emit_wasm_adapter(&definition, &codec_types(), &BTreeSet::new())
+            .expect_err("compound codec boundary should fail codegen")
+            .to_string();
+        assert!(
+            err.contains("unsupported compound codec type"),
+            "unexpected error: {err}"
+        );
+        assert!(err.contains(expected), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn wasm_adapter_rejects_compound_codec_return_shapes() {
+        let codec = named("HostFeatureSupportedResponse");
+        assert_rejects_compound_codec(
+            method_with_return(TypeRef::Vec(Box::new(codec.clone()))),
+            "return value",
+        );
+        assert_rejects_compound_codec(
+            method_with_return(TypeRef::Option(Box::new(codec.clone()))),
+            "return value",
+        );
+        assert_rejects_compound_codec(
+            method_with_return(TypeRef::Tuple(vec![codec])),
+            "return value",
+        );
+    }
+
+    #[test]
+    fn wasm_adapter_rejects_compound_codec_param_shapes() {
+        let codec = named("HostFeatureSupportedRequest");
+        assert_rejects_compound_codec(
+            method_with_param(TypeRef::Vec(Box::new(codec.clone()))),
+            "parameter `request`",
+        );
+        assert_rejects_compound_codec(
+            method_with_param(TypeRef::Option(Box::new(codec.clone()))),
+            "parameter `request`",
+        );
+        assert_rejects_compound_codec(
+            method_with_param(TypeRef::Tuple(vec![codec])),
+            "parameter `request`",
+        );
+    }
 }

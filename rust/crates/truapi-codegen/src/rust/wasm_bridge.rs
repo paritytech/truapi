@@ -36,10 +36,9 @@ pub fn generate_wasm_bridge(
         use wasm_bindgen::JsValue;
 
         use super::{{
-            WasmPlatform, call_js_function, decode_bytes,
-            decode_js_item, generic, get_function, invoke_bool, invoke_bytes_return,
-            invoke_js_subscription, invoke_optional_bytes_return, invoke_unit,
-            parse_optional_bytes_item,
+            WasmPlatform, call_js_function, decode_bytes, decode_js_item, generic, get_function,
+            invoke_bool, invoke_bytes_return, invoke_js_subscription, invoke_optional_bytes_return,
+            invoke_unit, parse_optional_bytes_item,
         }};
 
         /// JS-side callbacks invoked by the wasm platform bridge. Methods with

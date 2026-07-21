@@ -309,7 +309,9 @@ async fn wait_for_ring_membership(people_ws: &str, entropy: &[u8]) -> Result<()>
 
     let bandersnatch = alloc::bandersnatch_entropy(entropy);
     for attempt in 1..=MAX_ATTEMPTS {
-        let rpc = alloc::rpc::RpcClient::connect(people_ws).await?;
+        let rpc = alloc::rpc::RpcClient::connect(people_ws)
+            .await
+            .map_err(anyhow::Error::msg)?;
         let metadata = alloc::fetch_metadata(&rpc)
             .await
             .map_err(anyhow::Error::msg)?;

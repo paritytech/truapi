@@ -185,9 +185,10 @@ impl PairingHostAdmin for PairingHostRuntime {
 /// Owns the shared services plus signing-host state. There is no pairing flow,
 /// so pairing cancellation is not present here.
 ///
-/// Raw-bytes and extrinsic-payload signing, v4 transaction construction, and
-/// product entropy are implemented; ring-VRF aliases and resource allocation
-/// return an `Unavailable` error pending on-chain support.
+/// Raw-bytes signing, transaction construction, product entropy, and RFC-0004
+/// ring-VRF aliases/proofs are implemented; extrinsic-payload signing and
+/// resource allocation return an `Unavailable` error pending chain-metadata
+/// and on-chain support.
 pub struct SigningHostRuntime {
     services: Arc<RuntimeServices>,
     signing_host: Arc<SigningHostRole>,
@@ -207,7 +208,7 @@ impl SigningHostRuntime {
             config.bulletin_chain_genesis_hash,
             spawner,
         );
-        let signing_host = SigningHostRole::new(platform, services.clone());
+        let signing_host = SigningHostRole::new(services.clone());
         Self {
             services,
             signing_host,
@@ -255,7 +256,7 @@ impl SigningHostRuntime {
 
     /// Activate a wallet-local session from host-held secret material and
     /// attach known identity metadata.
-    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.activate_local_session"))]
+    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.activate_local_session_with_identity"))]
     pub async fn activate_local_session_with_identity(
         &self,
         secret: Vec<u8>,
@@ -270,9 +271,7 @@ impl SigningHostRuntime {
     }
 
     /// Answer a pairing host's handshake deeplink and serve the resulting SSO
-    /// session until it ends (host-spec §B responder half). Requires an
-    /// active local session; sensitive requests consult the platform's
-    /// [`truapi_platform::UserConfirmation`] before signing.
+    /// session until it ends.
     #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.respond_to_pairing"))]
     pub async fn respond_to_pairing(
         &self,

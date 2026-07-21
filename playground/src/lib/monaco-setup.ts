@@ -97,6 +97,8 @@ export function setupMonaco(m: Monaco): void {
       `  }): import("rxjs").Observable<ChainHeadCtx>;`,
       `  /** Resolve a DotNS username to the owning raw AccountId32 hex string. Defaults to truapi.account.getUserId(). */`,
       `  function accountIdForDotNsUsername(username?: string): Promise<import("neverthrow").Result<\`0x\${string}\`, Error>>;`,
+      `  /** Resolve a DotNS username to its owner's generic Substrate SS58 address. Defaults to truapi.account.getUserId(). */`,
+      `  function ss58AddressForDotNsUsername(username?: string): Promise<import("neverthrow").Result<string, Error>>;`,
       `  /** Build a metadata-backed product-account transaction payload for \`truapi.signing.createTransaction\`. */`,
       `  function buildCreateTransactionPayload(opts: {`,
       `    signer: import("@parity/truapi").ProductAccountId;`,

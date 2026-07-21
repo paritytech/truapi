@@ -14,7 +14,6 @@
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
-use blake2_rfc::blake2b::blake2b;
 use hkdf::Hkdf;
 use p256::ecdh::diffie_hellman;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
@@ -293,7 +292,11 @@ pub fn derive_p256_keypair_from_entropy(
         let mut message = Vec::with_capacity(label.len() + 1);
         message.extend_from_slice(label);
         message.push(attempt as u8);
-        let candidate: [u8; 32] = blake2b(32, entropy, &message)
+        let digest = blake2b_simd::Params::new()
+            .hash_length(32)
+            .key(entropy)
+            .hash(&message);
+        let candidate: [u8; 32] = digest
             .as_bytes()
             .try_into()
             .expect("BLAKE2b-256 returns 32 bytes");

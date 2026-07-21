@@ -33,11 +33,13 @@ npm run version-packages     # consumes the changeset, bumps package.json + writ
 The first command writes a markdown file under `.changeset/`; the second
 consumes it, bumps the selected package `package.json`, appends the package
 `CHANGELOG.md`, deletes the changeset file, and then runs
-`scripts/sync-cargo-version.mjs` to keep `rust/crates/truapi/Cargo.toml`
-aligned with `js/packages/truapi/package.json`. A protocol release should
-therefore include the `@parity/truapi` package, its changelog, and the Cargo
-version. A host-runtime-only release can bump `@parity/truapi-host` without
-changing the Rust crate version.
+`scripts/sync-release-versions.mjs`. That script keeps
+`rust/crates/truapi/Cargo.toml` and the host package's `@parity/truapi`
+dependency aligned with `js/packages/truapi/package.json`; the command then
+refreshes `package-lock.json`. A protocol release should therefore include the
+`@parity/truapi` package, its changelog, the Cargo version, the host dependency,
+and the lockfile. A host-runtime-only release can bump
+`@parity/truapi-host` without changing the Rust crate version.
 
 ### 3. Open a release PR
 
@@ -52,7 +54,12 @@ The PR title must start with `release:`. Convention:
 ```
 release: @parity/truapi 0.1.1
 release: @parity/truapi-host 0.1.1
+release: @parity/truapi 0.5.0, @parity/truapi-host 0.2.0
 ```
+
+Separate multiple package/version targets with commas. The workflow validates
+each declared version against its package manifest and publishes every target
+whose version is not already on npm in the same automation run.
 
 ### 4. Get the PR reviewed and merged
 
@@ -69,8 +76,8 @@ say); the tag-already-exists guard makes re-runs safe.
 On merge, CI runs as usual. When CI passes, the `Release` workflow:
 
 1. Confirms the commit subject starts with `release:`.
-2. Reads package versions from `js/packages/truapi/package.json` and
-   `js/packages/truapi-host/package.json`.
+2. Reads each package/version target from the comma-separated release subject
+   and validates it against the corresponding package manifest.
 3. Checks for `@parity/truapi@<version>` and
    `@parity/truapi-host@<version>` tags. Packages whose tag already exists
    are skipped, so re-runs are idempotent.

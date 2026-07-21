@@ -39,6 +39,7 @@ derive_more = { version = "2", features = ["debug", "display", "error"] }
 futures = "0.3"
 futures-timer = "3"
 parity-scale-codec = { version = "3", features = ["derive"] }
+scale-decode = { version = "0.16", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
@@ -46,12 +47,11 @@ unicode-normalization = "0.1"
 url = "2"
 hex = "0.4"
 nanoid = "0.4"
-blake2-rfc = { version = "0.2", default-features = false }
 blake2b_simd = { version = "1", default-features = false }
 sp-crypto-hashing = { version = "0.1", default-features = false }
 schnorrkel = { version = "0.11.5", default-features = false, features = ["alloc", "getrandom"] }
 substrate-bip39 = { version = "0.6", default-features = false }
-zeroize = { version = "1", default-features = false, features = ["alloc"] }
+zeroize = { version = "1", default-features = false, features = ["alloc", "derive"] }
 getrandom = { version = "0.2", features = ["js"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdh"] }
 hkdf = "0.12"
@@ -61,16 +61,13 @@ tracing = "0.1"
 # `registry` + `std` only: pulls the Registry + per-layer filter/reload, but
 # not `env-filter` (which drags in `regex`, heavy on wasm).
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
+verifiable = { git = "https://github.com/paritytech/verifiable.git", rev = "19b03deb89b8dea484b143afc8bbe048a74bc1ff" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 subxt = { version = "0.50.2", default-features = false, features = ["native"] }
 subxt-rpcs = { version = "0.50.1", default-features = false, features = ["native"] }
 frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
 scale-info = { version = "2.11", default-features = false, features = ["decode"] }
-# Bandersnatch ring-VRF for signing-host account aliases. The alias path uses
-# only the thin VRF (no ring/SRS), and only the native signing host needs it,
-# so it is a non-wasm dependency. Pinned to the rev the mobile app references.
-verifiable = { git = "https://github.com/paritytech/verifiable", rev = "f65b39df04f2f9a453d78550438b189c96785285", default-features = false, features = ["std", "prover"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 futures-timer = { version = "3", features = ["wasm-bindgen"] }

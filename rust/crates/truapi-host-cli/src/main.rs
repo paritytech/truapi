@@ -10,7 +10,6 @@
 //! Plus `alloc-check`, a diagnostic for on-chain statement-store allowance.
 
 mod accounts;
-mod alloc;
 mod attestation;
 mod chain;
 mod frame_server;
@@ -29,6 +28,7 @@ use clap::{Args, Parser, Subcommand};
 use futures::future::BoxFuture;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use truapi_platform::{HostInfo, PlatformInfo};
+use truapi_server::statement_allowance as alloc;
 use truapi_server::subscription::Spawner;
 use truapi_server::{PairingHostConfig, PairingHostRuntime, SigningHostConfig, SigningHostRuntime};
 
@@ -219,7 +219,9 @@ async fn run_alloc_check(
         None => [0u8; 32],
     };
 
-    let rpc = alloc::rpc::RpcClient::connect(network.people_ws).await?;
+    let rpc = alloc::rpc::RpcClient::connect(network.people_ws)
+        .await
+        .map_err(anyhow::Error::msg)?;
     let metadata = alloc::fetch_metadata(&rpc)
         .await
         .map_err(anyhow::Error::msg)?;
@@ -349,8 +351,7 @@ async fn run_pairing_host(args: PairingHostArgs) -> Result<()> {
         network.bulletin_genesis,
         DEEPLINK_SCHEME.to_string(),
     )
-    .context("invalid pairing host config")?
-    .with_identity_chain_genesis_hash(network.people_genesis);
+    .context("invalid pairing host config")?;
     let runtime = Arc::new(PairingHostRuntime::new(platform, config, tokio_spawner()));
 
     let listener = frame_server::bind(args.frame_listen).await?;
@@ -633,7 +634,9 @@ async fn register_pairing_allowances(
     let device = proposal.device.statement_account_id;
 
     let bandersnatch = alloc::bandersnatch_entropy(entropy);
-    let rpc = alloc::rpc::RpcClient::connect(statement_store_url).await?;
+    let rpc = alloc::rpc::RpcClient::connect(statement_store_url)
+        .await
+        .map_err(anyhow::Error::msg)?;
     let metadata = alloc::fetch_metadata(&rpc)
         .await
         .map_err(anyhow::Error::msg)?;

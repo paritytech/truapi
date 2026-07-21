@@ -33,6 +33,8 @@ pub use host_core::{
     SigningHostRuntime,
 };
 pub use runtime::ResponderExit;
+#[cfg(not(target_arch = "wasm32"))]
+pub use runtime::statement_allowance;
 pub use truapi_platform::{
     HostRuntimeConfig, PairingHostConfig, PermissionAuthorizationRequest,
     PermissionAuthorizationStatus, Platform, ProductContext, SigningHostConfig,

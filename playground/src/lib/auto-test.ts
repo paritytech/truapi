@@ -15,7 +15,9 @@ export interface TestEntry {
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
 const SSO_TIMEOUT_MS = 60_000;
-const LIVE_ALLOCATION_TIMEOUT_MS = 240_000;
+// Exceeds the runtime's 300s remote-allocation cap and 360s end-to-end
+// preimage cap, leaving time for the result to cross the iframe boundary.
+const LIVE_ALLOCATION_TIMEOUT_MS = 420_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);
@@ -37,7 +39,6 @@ const LONG_TIMEOUT_METHODS = new Set([
 ]);
 
 const METHOD_TIMEOUT_MS = new Map<string, number>([
-  ["Account/get_user_id", SSO_TIMEOUT_MS],
   ["Account/get_account_alias", SSO_TIMEOUT_MS],
   ["Resource Allocation/request", LIVE_ALLOCATION_TIMEOUT_MS],
   ["Preimage/lookup_subscribe", LIVE_ALLOCATION_TIMEOUT_MS],
@@ -54,11 +55,6 @@ type RunOneOpts = {
   onUpdate: (id: string, entry: TestEntry) => void;
 };
 
-type DiagnosisItem = {
-  serviceName: string;
-  method: MethodInfo;
-};
-
 async function runOne({
   serviceName,
   method,
@@ -67,11 +63,17 @@ async function runOne({
   const id = `${serviceName}/${method.name}`;
 
   if (SKIPPED_SERVICES.has(serviceName)) {
-    onUpdate(id, { status: "skipped" });
+    onUpdate(id, {
+      status: "skipped",
+      output: `${serviceName} service not yet wired up by hosts`,
+    });
     return;
   }
   if (SKIPPED_METHODS.has(id)) {
-    onUpdate(id, { status: "skipped" });
+    onUpdate(id, {
+      status: "skipped",
+      output: "host surface intentionally deferred",
+    });
     return;
   }
   if (!method.exampleSource) {
@@ -148,48 +150,19 @@ export async function runSingleTest(
   await runOne({ serviceName, method, onUpdate });
 }
 
-// Full diagnosis: run every method one at a time. Methods that prompt the user
-// (signing, permission/resource requests) block on their host dialog before
-// the run continues. Produces a complete worked / failed / not-wired matrix
-// suitable for the copy-pasteable report.
+// Full diagnosis: run every method one at a time, in service order. Methods
+// that prompt the user (signing, permission/resource requests) block on their
+// host dialog before the run continues. Produces a complete worked / failed /
+// not-wired matrix suitable for the copy-pasteable report.
 export async function runDiagnosis(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const items = diagnosisRunItems(services);
-  for (const item of items) {
-    if (signal?.aborted) return;
-    await runOne({ ...item, onUpdate });
+  for (const svc of services) {
+    for (const method of svc.methods) {
+      if (signal?.aborted) return;
+      await runOne({ serviceName: svc.name, method, onUpdate });
+    }
   }
-}
-
-function diagnosisRunItems(services: ServiceInfo[]): DiagnosisItem[] {
-  const items = services.flatMap((svc) =>
-    svc.methods.map((method) => ({ serviceName: svc.name, method })),
-  );
-  moveBefore(items, "Resource Allocation/request", "Preimage/lookup_subscribe");
-  return items;
-}
-
-function moveBefore(
-  items: DiagnosisItem[],
-  itemId: string,
-  beforeId: string,
-): void {
-  const currentIndex = items.findIndex(
-    (item) => diagnosisItemId(item) === itemId,
-  );
-  const beforeIndex = items.findIndex(
-    (item) => diagnosisItemId(item) === beforeId,
-  );
-  if (currentIndex < 0 || beforeIndex < 0 || currentIndex < beforeIndex) {
-    return;
-  }
-  const [item] = items.splice(currentIndex, 1);
-  items.splice(beforeIndex, 0, item);
-}
-
-function diagnosisItemId(item: DiagnosisItem): string {
-  return `${item.serviceName}/${item.method.name}`;
 }

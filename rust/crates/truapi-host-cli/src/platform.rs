@@ -295,6 +295,7 @@ impl truapi_platform::AuthPresenter for CliPlatform {
         // Machine-readable lines for orchestrators to observe pairing.
         match &state {
             AuthState::Pairing { deeplink } => println!("PAIRING_DEEPLINK {deeplink}"),
+            AuthState::Authenticating => println!("PAIRING_AUTHENTICATING"),
             AuthState::Connected(_) => println!("PAIRING_CONNECTED"),
             AuthState::Disconnected => println!("PAIRING_DISCONNECTED"),
             AuthState::LoginFailed { reason } => println!("PAIRING_FAILED {reason}"),

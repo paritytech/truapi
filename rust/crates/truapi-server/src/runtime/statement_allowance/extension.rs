@@ -15,7 +15,6 @@
 
 use std::collections::HashMap;
 
-use blake2_rfc::blake2b::blake2b;
 use frame_metadata::RuntimeMetadata;
 use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::{Compact, Decode, Encode};
@@ -329,7 +328,9 @@ pub fn build_proof_message(
 
 /// BLAKE2b-256 of `message`.
 pub fn blake2b256(message: &[u8]) -> [u8; 32] {
-    blake2b(32, &[], message)
+    blake2b_simd::Params::new()
+        .hash_length(32)
+        .hash(message)
         .as_bytes()
         .try_into()
         .expect("BLAKE2b-256 returns 32 bytes")

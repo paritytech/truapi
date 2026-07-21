@@ -22,6 +22,7 @@ pub trait Preimage: Send + Sync {
     /// const item = await firstValueFrom(
     ///   from(truapi.preimage.lookupSubscribe({ request: { key: submitted.value } })),
     /// );
+    /// assert(item.value === "0xdeadbeef", "preimage lookup returned the wrong value:", item);
     /// console.log("preimage lookup received:", item);
     /// ```
     #[wire(start_id = 64)]

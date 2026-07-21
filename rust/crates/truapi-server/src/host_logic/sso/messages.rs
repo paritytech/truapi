@@ -21,9 +21,9 @@
 
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
-    AccountId, AllocatableResource, HostAccountGetAliasResponse, HostSignPayloadRequest,
-    HostSignRawRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload,
-    RawPayload,
+    AccountId, AllocatableResource, HostAccountCreateProofResponse, HostAccountGetAliasResponse,
+    HostSignPayloadRequest, HostSignRawRequest, LegacyAccountTxPayload, ProductAccountId,
+    ProductAccountTxPayload, ProductProofContext, RawPayload, RingLocation,
 };
 
 use crate::host_logic::session::SsoSessionInfo;
@@ -137,31 +137,6 @@ impl SigningPayloadRequest {
     }
 }
 
-impl From<SigningPayloadRequest> for truapi::v01::HostSignPayloadRequest {
-    fn from(value: SigningPayloadRequest) -> Self {
-        Self {
-            account: value.product_account_id,
-            payload: truapi::v01::HostSignPayloadData {
-                block_hash: value.block_hash,
-                block_number: value.block_number,
-                era: value.era,
-                genesis_hash: value.genesis_hash,
-                method: value.method,
-                nonce: value.nonce,
-                spec_version: value.spec_version,
-                tip: value.tip,
-                transaction_version: value.transaction_version,
-                signed_extensions: value.signed_extensions,
-                version: value.version,
-                asset_id: value.asset_id,
-                metadata_hash: value.metadata_hash,
-                mode: value.mode,
-                with_signed_transaction: value.with_signed_transaction.0,
-            },
-        }
-    }
-}
-
 /// Request sent when a product asks the paired signing host to sign raw bytes or a
 /// string message with a product-derived account.
 ///
@@ -214,24 +189,6 @@ impl From<RawPayload> for SigningRawPayload {
     }
 }
 
-impl From<SigningRawPayload> for RawPayload {
-    fn from(value: SigningRawPayload) -> Self {
-        match value {
-            SigningRawPayload::Bytes(bytes) => Self::Bytes { bytes },
-            SigningRawPayload::Payload(payload) => Self::Payload { payload },
-        }
-    }
-}
-
-impl From<SigningRawRequest> for truapi::v01::HostSignRawRequest {
-    fn from(value: SigningRawRequest) -> Self {
-        Self {
-            account: value.product_account_id,
-            payload: value.data.into(),
-        }
-    }
-}
-
 /// Response returned by the signing host for a product-account signing request.
 ///
 /// Decoded from [`v1::RemoteMessage::SignResponse`] while the runtime is waiting
@@ -259,42 +216,60 @@ pub struct SignRawLegacyResponse {
     pub signature: Result<Vec<u8>, String>,
 }
 
-/// Request sent when a product asks the paired signing host to sign exact
-/// statement-store proof bytes with a product-derived account.
+/// Failure returned by the Account Holder for a ring-VRF proof or alias request.
 ///
-/// This cannot reuse raw signing: raw-signing requests apply the public
-/// `<Bytes>...</Bytes>` payload convention, while statement proofs sign the
-/// unsigned statement payload bytes directly.
+/// Mirrors the identical error sets of `Account::create_account_proof` and
+/// `Account::get_account_alias` (RFC 0004): the two operations perform the same
+/// ring resolution and member-key selection, so they share these failure modes.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct StatementStoreProductSignRequest {
-    pub product_account_id: ProductAccountId,
-    pub payload: Vec<u8>,
+pub enum RingVrfError {
+    /// The `RingLocation` did not resolve to a known ring.
+    RingNotFound,
+    /// The selected member key is not a member of the requested ring.
+    NotMember,
+    /// User or Account Holder rejected the request.
+    Rejected,
+    /// Catch-all failure, carrying a diagnostic reason.
+    Unknown { reason: String },
 }
 
-/// Response returned by the signing host for exact statement-store proof
-/// signing.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct StatementStoreProductSignResponse {
-    pub responding_to: String,
-    pub signature: Result<Vec<u8>, String>,
-}
-
-/// Request sent when a product asks the signing host for a ring-VRF alias.
+/// Request sent when a product asks the Account Holder for a contextual alias.
 ///
-/// Used by `Account::get_account_alias`; the product account identifies the
-/// alias target, while `product_id` identifies the caller that the signing host is
-/// authorizing over the SSO channel.
+/// Used by `Account::get_account_alias`; `calling_product_id` names the caller
+/// so the Account Holder can scope context derivation, while `context` and
+/// `ring_location` select the member key and bind the derived alias (RFC 0004).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasRequest {
-    pub product_account_id: ProductAccountId,
-    pub product_id: String,
+    pub calling_product_id: String,
+    pub context: ProductProofContext,
+    pub ring_location: RingLocation,
 }
 
-/// Response returned by the signing host for a ring-VRF alias request.
+/// Response returned by the Account Holder for a ring-VRF alias request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasResponse {
     pub responding_to: String,
-    pub payload: Result<HostAccountGetAliasResponse, String>,
+    pub payload: Result<HostAccountGetAliasResponse, RingVrfError>,
+}
+
+/// Request sent when a product asks the Account Holder for a ring-VRF proof.
+///
+/// Used by `Account::create_account_proof`; carries the same `(context,
+/// ring_location)` as the alias request plus the opaque `message` bound into
+/// the proof (RFC 0004).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RingVrfProofRequest {
+    pub calling_product_id: String,
+    pub context: ProductProofContext,
+    pub ring_location: RingLocation,
+    pub message: Vec<u8>,
+}
+
+/// Response returned by the Account Holder for a ring-VRF proof request.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RingVrfProofResponse {
+    pub responding_to: String,
+    pub payload: Result<HostAccountCreateProofResponse, RingVrfError>,
 }
 
 /// Request sent when a product asks the signing host to allocate SSO-backed
@@ -417,8 +392,8 @@ pub enum SsoSessionStatement {
 pub enum SsoRemoteResponse {
     Sign(SigningResponse),
     SignRawLegacy(SignRawLegacyResponse),
-    StatementStoreProductSign(StatementStoreProductSignResponse),
     RingVrfAlias(RingVrfAliasResponse),
+    RingVrfProof(RingVrfProofResponse),
     ResourceAllocation(ResourceAllocationResponse),
     CreateTransaction(CreateTransactionResponse),
 }
@@ -512,15 +487,15 @@ fn remote_response_for_message(
         {
             Some(SsoRemoteResponse::RingVrfAlias(response))
         }
+        v1::RemoteMessage::RingVrfProofResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::RingVrfProof(response))
+        }
         v1::RemoteMessage::SignRawLegacyResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
             Some(SsoRemoteResponse::SignRawLegacy(response))
-        }
-        v1::RemoteMessage::StatementStoreProductSignResponse(response)
-            if response.responding_to == expected_remote_message_id =>
-        {
-            Some(SsoRemoteResponse::StatementStoreProductSign(response))
         }
         v1::RemoteMessage::ResourceAllocationResponse(response)
             if response.responding_to == expected_remote_message_id =>
@@ -533,23 +508,6 @@ fn remote_response_for_message(
             Some(SsoRemoteResponse::CreateTransaction(response))
         }
         _ => None,
-    }
-}
-
-/// Build a signing-host exact statement-store proof signing request message.
-pub fn statement_store_product_sign_message(
-    message_id: String,
-    product_account_id: ProductAccountId,
-    payload: Vec<u8>,
-) -> RemoteMessage {
-    RemoteMessage {
-        message_id,
-        data: RemoteMessageData::V1(v1::RemoteMessage::StatementStoreProductSignRequest(
-            StatementStoreProductSignRequest {
-                product_account_id,
-                payload,
-            },
-        )),
     }
 }
 
@@ -590,18 +548,41 @@ pub fn sign_raw_legacy_message(
     }
 }
 
-/// Build a signing-host account-alias request message.
+/// Build an Account Holder contextual-alias request message.
 pub fn alias_request_message(
     message_id: String,
-    product_account_id: ProductAccountId,
-    product_id: String,
+    calling_product_id: String,
+    context: ProductProofContext,
+    ring_location: RingLocation,
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasRequest(
             RingVrfAliasRequest {
-                product_account_id,
-                product_id,
+                calling_product_id,
+                context,
+                ring_location,
+            },
+        )),
+    }
+}
+
+/// Build an Account Holder ring-VRF proof request message.
+pub fn proof_request_message(
+    message_id: String,
+    calling_product_id: String,
+    context: ProductProofContext,
+    ring_location: RingLocation,
+    message: Vec<u8>,
+) -> RemoteMessage {
+    RemoteMessage {
+        message_id,
+        data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofRequest(
+            RingVrfProofRequest {
+                calling_product_id,
+                context,
+                ring_location,
+                message,
             },
         )),
     }
@@ -657,20 +638,17 @@ pub fn create_transaction_legacy_message(
 }
 
 /// Inbound request decoded from a peer-signed session statement.
-///
-/// `request_id` identifies the statement for the transport-level ack;
-/// `messages` are the application messages batched into it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IncomingSsoRequest {
+    /// Statement-level request id used by the transport acknowledgement.
     pub request_id: String,
+    /// Application messages batched into the request.
     pub messages: Vec<RemoteMessage>,
 }
 
-/// Decode an inbound session statement into the peer's request batch.
+/// Decode a peer request for a signing-host responder.
 ///
-/// Returns `Ok(None)` for statements that carry no peer request: own echoes,
-/// transport-level acks, and expired statements. Used by the signing-host
-/// responder, which serves peer requests instead of matching pending ones.
+/// Own echoes, response acknowledgements, and expired statements are ignored.
 pub fn decode_incoming_sso_request(
     session: &SsoSessionInfo,
     statement: &[u8],
@@ -707,8 +685,7 @@ pub fn decode_incoming_sso_request(
     }
 }
 
-/// Build the signed transport-level ack for a peer-initiated request
-/// statement: topic `session_id_peer`, channel [`peer_response_channel`].
+/// Build the signed transport acknowledgement for a peer-initiated request.
 pub fn build_signed_session_response_statement(
     session: &SsoSessionInfo,
     request_id: String,
@@ -803,6 +780,7 @@ mod tests {
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
     use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
+    use truapi::v01::RingLocationJunction;
 
     fn account() -> ProductAccountId {
         ProductAccountId {
@@ -891,6 +869,37 @@ mod tests {
 
         assert_eq!(legacy_tx[..3], [0, 0, 9]);
         assert_eq!(legacy_raw[..3], [0, 0, 10]);
+    }
+
+    #[test]
+    fn ring_vrf_variants_match_ios_host_order() {
+        let context = ProductProofContext {
+            product_id: "voting.dot".to_string(),
+            suffix: vec![0, 1, 2, 3],
+        };
+        let ring_location = RingLocation {
+            chain_id: [1; 32],
+            junctions: vec![RingLocationJunction::PalletInstance(67)],
+        };
+
+        let alias = alias_request_message(
+            String::new(),
+            "voting.dot".to_string(),
+            context.clone(),
+            ring_location.clone(),
+        )
+        .encode();
+        let proof = proof_request_message(
+            String::new(),
+            "voting.dot".to_string(),
+            context,
+            ring_location,
+            b"vote".to_vec(),
+        )
+        .encode();
+
+        assert_eq!(alias[..3], [0, 0, 3]);
+        assert_eq!(proof[..3], [0, 0, 12]);
     }
 
     fn sequential_bytes<const N: usize>(start: u8) -> [u8; N] {
@@ -1152,187 +1161,6 @@ mod tests {
             decode_sso_session_statement(&session, &statement, "statement-1", "remote-1").unwrap();
 
         assert_eq!(decoded, None);
-    }
-
-    fn host_and_responder_sessions() -> (SsoSessionInfo, SsoSessionInfo) {
-        use crate::host_logic::sso::pairing::{
-            ResponderIdentity, create_pairing_bootstrap, derive_p256_keypair_from_entropy,
-            establish_responder_session_info, establish_sso_session_info,
-        };
-        use truapi_platform::{HostInfo, PairingHostConfig, PlatformInfo};
-
-        let config = PairingHostConfig::new(
-            HostInfo {
-                name: "Test Host".to_string(),
-                icon: None,
-                version: None,
-            },
-            PlatformInfo::default(),
-            [0; 32],
-            [0xbb; 32],
-            "polkadotapp".to_string(),
-        )
-        .expect("test pairing config is valid");
-        let bootstrap = create_pairing_bootstrap(&config).unwrap();
-        let statement_keypair = MiniSecretKey::from_bytes(&[7; 32])
-            .unwrap()
-            .expand_to_keypair(ExpansionMode::Ed25519);
-        let (encryption_secret_key, encryption_public_key) =
-            derive_p256_keypair_from_entropy(&[0xAB; 16], b"sso-encryption").unwrap();
-        let responder = ResponderIdentity {
-            statement_secret: statement_keypair.secret.to_bytes(),
-            statement_public_key: statement_keypair.public.to_bytes(),
-            encryption_secret_key,
-            encryption_public_key,
-        };
-        let responder_session = establish_responder_session_info(
-            &responder,
-            bootstrap.statement_store_public_key,
-            bootstrap.encryption_public_key,
-        )
-        .unwrap();
-        let host_session = establish_sso_session_info(
-            &bootstrap,
-            responder.statement_public_key,
-            responder.encryption_public_key,
-        )
-        .unwrap();
-        (host_session, responder_session)
-    }
-
-    /// A host-built request statement decodes on the responder side into the
-    /// batched remote messages, and the responder's ack plus response
-    /// statements resolve the host's pending wait.
-    #[test]
-    fn host_request_round_trips_through_responder_statements() {
-        let (host_session, responder_session) = host_and_responder_sessions();
-        let request = sign_raw_message(
-            "remote-1".to_string(),
-            HostSignRawRequest {
-                account: account(),
-                payload: RawPayload::Payload {
-                    payload: "<Bytes>hello</Bytes>".to_string(),
-                },
-            },
-        );
-        let host_statement = build_outgoing_request_statement(
-            &host_session,
-            "statement-1".to_string(),
-            vec![request.clone()],
-            fresh_expiry(),
-        )
-        .unwrap();
-
-        let incoming = decode_incoming_sso_request(&responder_session, &host_statement)
-            .unwrap()
-            .expect("responder should surface the host request");
-        assert_eq!(
-            incoming,
-            IncomingSsoRequest {
-                request_id: "statement-1".to_string(),
-                messages: vec![request],
-            }
-        );
-
-        let ack = build_signed_session_response_statement(
-            &responder_session,
-            incoming.request_id.clone(),
-            0,
-            fresh_expiry(),
-        )
-        .unwrap();
-        assert_eq!(
-            decode_sso_session_statement(&host_session, &ack, "statement-1", "remote-1").unwrap(),
-            Some(SsoSessionStatement::RequestAccepted)
-        );
-
-        let response = RemoteMessage {
-            message_id: "resp-1".to_string(),
-            data: RemoteMessageData::V1(v1::RemoteMessage::SignResponse(SigningResponse {
-                responding_to: "remote-1".to_string(),
-                payload: Ok(SigningPayloadResponseData {
-                    signature: vec![9; 64],
-                    signed_transaction: None,
-                }),
-            })),
-        };
-        let response_statement = build_outgoing_request_statement(
-            &responder_session,
-            "resp-statement-1".to_string(),
-            vec![response],
-            fresh_expiry(),
-        )
-        .unwrap();
-        let decoded = decode_sso_session_statement(
-            &host_session,
-            &response_statement,
-            "statement-1",
-            "remote-1",
-        )
-        .unwrap();
-        assert_eq!(
-            decoded,
-            Some(SsoSessionStatement::RemoteResponse(
-                SsoRemoteResponse::Sign(SigningResponse {
-                    responding_to: "remote-1".to_string(),
-                    payload: Ok(SigningPayloadResponseData {
-                        signature: vec![9; 64],
-                        signed_transaction: None,
-                    }),
-                })
-            ))
-        );
-    }
-
-    #[test]
-    fn responder_ignores_own_echo_and_transport_acks() {
-        let (host_session, responder_session) = host_and_responder_sessions();
-        let own_statement = build_outgoing_request_statement(
-            &responder_session,
-            "resp-statement-1".to_string(),
-            vec![RemoteMessage {
-                message_id: "resp-1".to_string(),
-                data: RemoteMessageData::V1(v1::RemoteMessage::Disconnected),
-            }],
-            fresh_expiry(),
-        )
-        .unwrap();
-        assert_eq!(
-            decode_incoming_sso_request(&responder_session, &own_statement).unwrap(),
-            None
-        );
-
-        let host_ack = build_signed_session_response_statement(
-            &host_session,
-            "resp-statement-1".to_string(),
-            0,
-            fresh_expiry(),
-        )
-        .unwrap();
-        assert_eq!(
-            decode_incoming_sso_request(&responder_session, &host_ack).unwrap(),
-            None
-        );
-    }
-
-    #[test]
-    fn responder_ignores_expired_host_request() {
-        let (host_session, responder_session) = host_and_responder_sessions();
-        let stale_statement = build_outgoing_request_statement(
-            &host_session,
-            "statement-1".to_string(),
-            vec![RemoteMessage {
-                message_id: "remote-1".to_string(),
-                data: RemoteMessageData::V1(v1::RemoteMessage::Disconnected),
-            }],
-            elapsed_expiry(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            decode_incoming_sso_request(&responder_session, &stale_statement).unwrap(),
-            None
-        );
     }
 
     fn response_ack_statement(session: &SsoSessionInfo, expiry: u64) -> Vec<u8> {

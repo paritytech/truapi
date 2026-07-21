@@ -22,7 +22,8 @@ use truapi::latest::{
     HostRequestResourceAllocationRequest, HostSignPayloadRequest,
     HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
     HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
-    ProductAccountTxPayload, RemotePermissionRequest, RemotePermissionResponse, ThemeVariant,
+    ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest,
+    RemotePermissionResponse, RingLocation, ThemeVariant,
 };
 use url::Url;
 
@@ -47,13 +48,6 @@ pub struct PairingHostConfig {
     pub host: HostRuntimeConfig,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
-    /// Optional distinct genesis for People-chain identity (username) lookups.
-    ///
-    /// In production this equals `people_chain_genesis_hash` (SSO and identity
-    /// share the People chain). It can be set separately so a host can run SSO
-    /// over one transport (e.g. a local relay) while resolving usernames from
-    /// the real People chain. `None` falls back to `people_chain_genesis_hash`.
-    pub identity_chain_genesis_hash: Option<[u8; 32]>,
     /// Bulletin-chain genesis hash used for in-core preimage submission.
     pub bulletin_chain_genesis_hash: [u8; 32],
     /// Deeplink URI scheme used in pairing QR payloads, without `://`.
@@ -158,24 +152,10 @@ impl PairingHostConfig {
         let config = Self {
             host: HostRuntimeConfig::new(host_info, platform_info)?,
             people_chain_genesis_hash,
-            identity_chain_genesis_hash: None,
             bulletin_chain_genesis_hash,
             pairing_deeplink_scheme,
         };
         Ok(config)
-    }
-
-    /// Resolve usernames from a People chain distinct from the SSO transport.
-    pub fn with_identity_chain_genesis_hash(mut self, genesis_hash: [u8; 32]) -> Self {
-        self.identity_chain_genesis_hash = Some(genesis_hash);
-        self
-    }
-
-    /// Genesis used for People-chain identity lookups (falls back to the SSO
-    /// People-chain genesis when no distinct identity chain is configured).
-    pub fn identity_lookup_genesis_hash(&self) -> [u8; 32] {
-        self.identity_chain_genesis_hash
-            .unwrap_or(self.people_chain_genesis_hash)
     }
 }
 
@@ -529,6 +509,10 @@ pub enum AuthState {
         /// Human-readable failure reason.
         reason: String,
     },
+    /// The wallet accepted the pairing request and the core is resolving and
+    /// persisting the session. Hosts should replace the pairing QR with an
+    /// in-progress presentation until a terminal state is emitted.
+    Authenticating,
 }
 
 /// Host auth UI driven by core-owned [`AuthState`] transitions.
@@ -568,13 +552,28 @@ pub enum CreateTransactionReview {
     LegacyAccount(LegacyAccountTxPayload),
 }
 
-/// Review shown before a product asks to alias another product account.
+/// Review shown before a product derives a contextual alias (RFC 0004).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct AccountAliasReview {
-    /// Product currently handling the request.
-    pub requesting_product_id: String,
-    /// Product whose account is being requested.
-    pub target_product_id: String,
+    /// Product requesting the alias.
+    pub calling_product_id: String,
+    /// Product-scoped context the alias is bound to.
+    pub context: ProductProofContext,
+    /// Ring the alias is derived against.
+    pub ring_location: RingLocation,
+}
+
+/// Review shown before a product creates a ring-VRF proof (RFC 0004).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct CreateProofReview {
+    /// Product requesting the proof.
+    pub calling_product_id: String,
+    /// Product-scoped context the proof's alias is bound to.
+    pub context: ProductProofContext,
+    /// Ring the proof is generated against.
+    pub ring_location: RingLocation,
+    /// Opaque message bound into the proof.
+    pub message: Vec<u8>,
 }
 
 /// Review shown before a product asks to access another product account.
@@ -610,8 +609,10 @@ pub enum UserConfirmationReview {
     SignRaw(SignRawReview),
     /// Create a transaction with a product or legacy account.
     CreateTransaction(CreateTransactionReview),
-    /// Allow a product to request another product account alias.
+    /// Allow a product to derive a contextual alias for a ring.
     AccountAlias(AccountAliasReview),
+    /// Allow a product to create a ring-VRF proof for a ring.
+    CreateProof(CreateProofReview),
     /// Allow a product to learn the user's primary identity.
     IdentityDisclosure(IdentityDisclosureReview),
     /// Allocate resources for the requesting product.
@@ -636,44 +637,6 @@ pub trait UserConfirmation: Send + Sync {
 pub trait ThemeHost: Send + Sync {
     /// Emits current theme immediately, then future changes.
     fn subscribe_theme(&self) -> BoxStream<'static, Result<ThemeVariant, GenericError>>;
-}
-
-/// Secret key allocated for Bulletin preimage submission.
-///
-/// The core is the sole holder: the secret never crosses the host boundary.
-/// Zeroized on drop, and its `Debug` redacts the material.
-#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop, derive_more::Debug)]
-pub struct BulletinAllowanceKey {
-    #[debug("\"<redacted>\"")]
-    secret: [u8; 64],
-}
-
-impl BulletinAllowanceKey {
-    /// Build a Bulletin allowance key from raw secret bytes.
-    pub fn from_secret_bytes(secret: Vec<u8>) -> Result<Self, BulletinAllowanceKeyError> {
-        let secret: [u8; 64] = secret.try_into().map_err(|secret: Vec<u8>| {
-            BulletinAllowanceKeyError::InvalidLength {
-                actual: secret.len(),
-            }
-        })?;
-        Ok(Self { secret })
-    }
-
-    /// Borrow the raw secret bytes for in-core signing.
-    pub fn as_secret_bytes(&self) -> &[u8; 64] {
-        &self.secret
-    }
-}
-
-/// Invalid Bulletin allowance key material.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
-pub enum BulletinAllowanceKeyError {
-    /// Secret material was not a 64-byte sr25519 secret key.
-    #[display("bulletin allowance key must be 64 bytes, got {actual}")]
-    InvalidLength {
-        /// Actual secret byte length.
-        actual: usize,
-    },
 }
 
 /// Host preimage backend. The core builds, signs, and submits the Bulletin

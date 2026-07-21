@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { ok } from "neverthrow";
+import { err, ok } from "neverthrow";
 
 import {
   HostDevicePermissionRequest,
@@ -12,7 +12,7 @@ import {
   RemotePermissionResponse,
   ThemeVariant,
 } from "@parity/truapi";
-import type { HostSignPayloadData } from "@parity/truapi";
+import type { GenericError, HostSignPayloadData } from "@parity/truapi";
 
 import { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
 import {
@@ -31,6 +31,14 @@ const GENESIS = `0x${"11".repeat(32)}` as `0x${string}`;
 const PRODUCT_ACCOUNT = {
   dotNsIdentifier: "playground.dot",
   derivationIndex: 0,
+};
+const PROOF_CONTEXT = {
+  productId: "playground.dot",
+  suffix: "0x00" as const,
+};
+const RING_LOCATION = {
+  chainId: GENESIS,
+  junctions: [{ tag: "PalletInstance" as const, value: 67 }],
 };
 const SIGN_PAYLOAD: HostSignPayloadData = {
   blockHash: GENESIS,
@@ -186,8 +194,16 @@ describe("createWasmRawCallbacks", () => {
                 );
               case "AccountAlias":
                 return (
-                  review.value.requestingProductId === "playground.dot" &&
-                  review.value.targetProductId === "wallet.dot"
+                  review.value.callingProductId === "playground.dot" &&
+                  review.value.context.productId === "playground.dot" &&
+                  review.value.ringLocation.junctions[0]?.tag ===
+                    "PalletInstance"
+                );
+              case "CreateProof":
+                return (
+                  review.value.callingProductId === "playground.dot" &&
+                  review.value.context.suffix === "0x00" &&
+                  review.value.message[0] === 7
                 );
               case "AccountAccess":
                 return (
@@ -286,8 +302,22 @@ describe("createWasmRawCallbacks", () => {
         UserConfirmationReview.enc({
           tag: "AccountAlias",
           value: {
-            requestingProductId: "playground.dot",
-            targetProductId: "wallet.dot",
+            callingProductId: "playground.dot",
+            context: PROOF_CONTEXT,
+            ringLocation: RING_LOCATION,
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      await raw.confirmUserAction?.(
+        UserConfirmationReview.enc({
+          tag: "CreateProof",
+          value: {
+            callingProductId: "playground.dot",
+            context: PROOF_CONTEXT,
+            ringLocation: RING_LOCATION,
+            message: new Uint8Array([7, 8]),
           },
         }),
       ),
@@ -322,7 +352,6 @@ describe("createWasmRawCallbacks", () => {
       ),
     ).toBe(true);
 
-    await settle();
     await settle();
 
     expect(preimageEvents).toEqual([null, [4, 5, 6]]);
@@ -359,9 +388,62 @@ describe("createWasmRawCallbacks", () => {
     );
 
     await settle();
-    await settle();
 
     expect(seen).toEqual(["Dark", "Light"]);
+    dispose?.();
+  });
+
+  it("propagates typed result subscription errors", async () => {
+    async function* themes() {
+      yield ok<ThemeVariant>("Dark");
+      yield err<ThemeVariant, GenericError>({ reason: "theme stream failed" });
+    }
+
+    const raw = createWasmRawCallbacks(
+      makeHostCallbacks({
+        theme: {
+          subscribeTheme: () => themes(),
+        },
+      }),
+    );
+    const seen: ThemeVariant[] = [];
+    const errors: GenericError[] = [];
+    const dispose = raw.subscribeTheme?.(
+      (theme) => seen.push(ThemeVariant.dec(theme!)),
+      (error) => errors.push(error),
+    );
+
+    await settle();
+
+    expect(seen).toEqual(["Dark"]);
+    expect(errors).toEqual([{ reason: "theme stream failed" }]);
+    dispose?.();
+  });
+
+  it("propagates thrown subscription iterator errors", async () => {
+    async function* themes() {
+      yield ok<ThemeVariant>("Dark");
+      throw new Error("theme iterator failed");
+    }
+
+    const raw = createWasmRawCallbacks(
+      makeHostCallbacks({
+        theme: {
+          subscribeTheme: () => themes(),
+        },
+      }),
+    );
+    const seen: ThemeVariant[] = [];
+    const errors: GenericError[] = [];
+    const dispose = raw.subscribeTheme?.(
+      (theme) => seen.push(ThemeVariant.dec(theme!)),
+      (error) => errors.push(error),
+    );
+
+    await settle();
+
+    expect(seen).toEqual(["Dark"]);
+    expect(errors).toEqual([{ reason: "theme iterator failed" }]);
     dispose?.();
   });
 

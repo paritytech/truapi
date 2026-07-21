@@ -3,9 +3,11 @@ import type { Subscription, TrUApiClient } from "@parity/truapi";
 import {
   createAccountIdForDotNsUsername,
   createBuildCreateTransactionPayload,
+  createSs58AddressForDotNsUsername,
   createWithChainHeadFollow,
   type AccountIdForDotNsUsername,
   type BuildCreateTransactionPayload,
+  type Ss58AddressForDotNsUsername,
   type WithChainHeadFollow,
 } from "./example-helpers";
 
@@ -69,6 +71,7 @@ const AsyncFunction = Object.getPrototypeOf(async function () {})
   __rxjs: unknown,
   withChainHeadFollow: WithChainHeadFollow,
   accountIdForDotNsUsername: AccountIdForDotNsUsername,
+  ss58AddressForDotNsUsername: Ss58AddressForDotNsUsername,
   buildCreateTransactionPayload: BuildCreateTransactionPayload,
   __truapi: unknown,
   assert: typeof exampleAssert,
@@ -109,6 +112,7 @@ export async function runExample(opts: {
     rxjs: unknown,
     withChainHeadFollow: WithChainHeadFollow,
     accountIdForDotNsUsername: AccountIdForDotNsUsername,
+    ss58AddressForDotNsUsername: Ss58AddressForDotNsUsername,
     buildCreateTransactionPayload: BuildCreateTransactionPayload,
     truapiPkg: unknown,
     assert: typeof exampleAssert,
@@ -120,6 +124,7 @@ export async function runExample(opts: {
       "__rxjs",
       "withChainHeadFollow",
       "accountIdForDotNsUsername",
+      "ss58AddressForDotNsUsername",
       "buildCreateTransactionPayload",
       "__truapi",
       "assert",
@@ -159,6 +164,9 @@ export async function runExample(opts: {
   const accountIdForDotNsUsername = createAccountIdForDotNsUsername(
     trackingClient as TrUApiClient,
   );
+  const ss58AddressForDotNsUsername = createSs58AddressForDotNsUsername(
+    accountIdForDotNsUsername,
+  );
   const buildCreateTransactionPayload = createBuildCreateTransactionPayload(
     trackingClient as TrUApiClient,
   );
@@ -168,6 +176,7 @@ export async function runExample(opts: {
     rxjs,
     withChainHeadFollow,
     accountIdForDotNsUsername,
+    ss58AddressForDotNsUsername,
     buildCreateTransactionPayload,
     truapiPkg,
     exampleAssert,

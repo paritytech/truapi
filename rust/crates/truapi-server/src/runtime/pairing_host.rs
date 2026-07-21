@@ -15,9 +15,10 @@ use sso_channel::SsoDisconnectMonitor;
 use super::allowances::{self, AllowanceCacheKey, AllowanceResource};
 use super::auth_state::AuthStateMachine;
 use super::authority::{
-    AuthorityError, AuthoritySession, BulletinAllowanceKey, CreateTransactionAuthorityRequest,
-    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
-    StatementStoreAllowanceKey, authority_session, require_current_session,
+    AccountAliasAuthorityRequest, AuthorityError, AuthoritySession, BulletinAllowanceKey,
+    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest, ProductAuthority,
+    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
+    authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use super::identity::resolve_session_identity_with_chain;
@@ -29,6 +30,7 @@ use crate::chain_runtime::ChainRuntime;
 use crate::host_logic::entropy::derive_product_entropy_from_source;
 use crate::host_logic::session::{SessionInfo, SessionState, encode_persisted_session};
 use crate::host_logic::session_store::SessionStoreChangeNotifier;
+use crate::host_logic::sso::messages::RingVrfError;
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
@@ -215,7 +217,7 @@ impl PairingHost {
                             Ok(session) => {
                                 let resolved = resolve_session_identity_with_chain(
                                     &pairing_host.chain,
-                                    pairing_host.host_config.identity_lookup_genesis_hash(),
+                                    pairing_host.host_config.people_chain_genesis_hash,
                                     session,
                                 )
                                 .await;
@@ -463,14 +465,13 @@ impl PairingHost {
 
     async fn refresh_current_session_identity(&self) -> Option<AuthoritySession> {
         let current = self.session_state.current()?;
-        let identity_genesis_hash = self.host_config.identity_lookup_genesis_hash();
-        if current.has_username() || identity_genesis_hash == [0; 32] {
+        if current.has_username() || self.host_config.people_chain_genesis_hash == [0; 32] {
             return Some(authority_session(&current));
         }
 
         let resolved = resolve_session_identity_with_chain(
             &self.chain,
-            identity_genesis_hash,
+            self.host_config.people_chain_genesis_hash,
             current.clone(),
         )
         .await;
@@ -740,12 +741,20 @@ impl PairingHost {
         &self,
         cx: &CallContext,
         session: &AuthoritySession,
-        product_account_id: v01::ProductAccountId,
-        requesting_product_id: String,
-    ) -> Result<v01::HostAccountGetAliasResponse, AuthorityError> {
+        request: AccountAliasAuthorityRequest,
+    ) -> Result<v01::ContextualAlias, RingVrfError> {
         let session = self.current_private_session(session)?;
-        self.remote_account_alias(cx, &session, product_account_id, requesting_product_id)
-            .await
+        self.remote_account_alias(cx, &session, request).await
+    }
+
+    async fn create_proof(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: CreateProofAuthorityRequest,
+    ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
+        let session = self.current_private_session(session)?;
+        self.remote_create_proof(cx, &session, request).await
     }
 
     async fn allocate_resources(
@@ -795,14 +804,17 @@ impl PairingHost {
 
     async fn sign_statement_store_product_payload(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         session: &AuthoritySession,
-        account: v01::ProductAccountId,
-        payload: Vec<u8>,
+        _account: v01::ProductAccountId,
+        _payload: Vec<u8>,
     ) -> Result<[u8; 64], AuthorityError> {
-        let session = self.current_private_session(session)?;
-        self.remote_sign_statement_store_product_payload(cx, &session, account, payload)
-            .await
+        self.current_private_session(session)?;
+        Err(AuthorityError::Unavailable {
+            reason: "pairing host: exact statement proof signing is not supported over the \
+                     current SSO raw-signing protocol"
+                .to_string(),
+        })
     }
 
     fn derive_entropy(
@@ -897,11 +909,18 @@ impl ProductAuthority for PairingHost {
         &self,
         cx: &CallContext,
         session: &AuthoritySession,
-        product_account_id: v01::ProductAccountId,
-        requesting_product_id: String,
-    ) -> Result<v01::HostAccountGetAliasResponse, AuthorityError> {
-        PairingHost::account_alias(self, cx, session, product_account_id, requesting_product_id)
-            .await
+        request: AccountAliasAuthorityRequest,
+    ) -> Result<v01::ContextualAlias, RingVrfError> {
+        PairingHost::account_alias(self, cx, session, request).await
+    }
+
+    async fn create_proof(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: CreateProofAuthorityRequest,
+    ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
+        PairingHost::create_proof(self, cx, session, request).await
     }
 
     async fn allocate_resources(

@@ -55,7 +55,10 @@ Write it top-level and `throw` (or reject) to fail the run:
 
 ```ts
 const login = await truapi.account.requestLogin({ reason: undefined });
-if (!login.isOk() || login.value !== "Success") throw new Error("login failed");
+if (
+  !login.isOk() ||
+  (login.value !== "Success" && login.value !== "AlreadyConnected")
+) throw new Error("login failed");
 
 const res = await truapi.signing.signRaw({
   account: host.productAccount(),
@@ -71,10 +74,13 @@ res.match(
 `headless-playground.dot`) scopes product-owned APIs like `truapi.localStorage.*`
 and the accounts `host.productAccount()` returns.
 
-Two scripts ship under `js/scripts/`:
+Three scripts ship under `js/scripts/`:
 
 - `battery.ts` — the curated signer gate (login + raw/payload signing,
   create-transaction, entropy). This is `run.sh`'s default.
+- `ring-vrf-smoke.ts` — calls `getAccountAlias` and `createAccountProof`
+  against the Paseo Next v2 LitePeople ring, then verifies both calls return
+  the same contextual alias.
 - `diagnosis.ts` — runs the playground's own generated example sources
   (`runExample`) and writes a `web.md`-shape report to
   `explorer/diagnosis-reports/headless.md`, gating on the signer-critical
@@ -98,10 +104,11 @@ Two scripts ship under `js/scripts/`:
 
 ## Confirmations
 
-Both hosts take `--auto-accept`. Without it, every confirmation a web/iOS host
-would show as a modal (sign requests, permission prompts) is printed on the CLI
-and answered `y/n` on stdin. `run.sh` passes `--auto-accept` to both for
-unattended runs.
+Both hosts take `--auto-accept`. Without it, confirmations a web/iOS host would
+show as a modal (sign requests, permission prompts, and cross-product Ring-VRF
+requests) are printed on the CLI and answered `y/n` on stdin. Same-product
+Ring-VRF requests do not prompt, matching the iOS signing host. `run.sh` passes
+`--auto-accept` to both for unattended runs.
 
 ## Statement-store allowance
 
@@ -110,7 +117,8 @@ signing host grants it on-chain exactly as a real client does: it proves its
 LitePeople ring membership with a bandersnatch ring-VRF and submits an unsigned
 General (v5) `Resources.set_statement_store_account` extrinsic for each account
 that submits statements — its own `//wallet//sso` account and the pairing host's
-per-pairing device key. The port lives in `src/alloc/` (metadata-driven
+per-pairing device key. The shared native implementation lives in
+`truapi-server/src/runtime/statement_allowance/` (metadata-driven
 signed-extension encoding, ring fetch, slot scan, ring-VRF proof, extrinsic
 assembly, submit). The signing account must be an attested LitePeople member,
 and may sit in an old ring, so the signing host scans back from the current ring
@@ -146,8 +154,9 @@ no public `--statement-store` flag.
 - **Chain methods** route to real `wss://` nodes from the selected `--network`
   when `E2E_LIVE_CHAIN=1`; off by default. A rustls crypto provider is
   installed at startup for the TLS connections.
-- **Ring-VRF product-account aliases** are implemented natively via the
-  `verifiable` crate (`get_account_alias`); on wasm they remain `Unavailable`.
+- **Ring-VRF product-account aliases and proofs** are implemented by the
+  signing host via the `verifiable` crate (`get_account_alias` and
+  `create_account_proof`).
 - **`get_user_id`** resolves the signing account's username from People-chain
   `Resources.Consumers`. Auto-managed signing accounts register fresh lite
   usernames via the identity backend (`src/attestation.rs`); first registration

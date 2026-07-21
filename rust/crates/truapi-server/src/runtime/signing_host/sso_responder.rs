@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument, warn};
-use truapi::latest::HostAccountGetAliasResponse;
-use truapi::{CallContext, v01};
+use truapi::CallContext;
+use truapi::latest as api;
 use truapi_platform::{
     CreateTransactionReview, SignPayloadReview, SignRawReview, UserConfirmationReview,
 };
@@ -26,15 +26,17 @@ use super::SigningHost;
 use crate::host_logic::entropy::root_entropy_source;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::host_logic::product_account::ProductAccountError;
-use crate::host_logic::product_account::derive_sr25519_hard_path;
+use crate::host_logic::product_account::{
+    derive_root_keypair_from_entropy, derive_sr25519_hard_path,
+};
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
     self, CreateTransactionPayload, IncomingSsoRequest, OnExistingAllowancePolicy, RemoteMessage,
-    RemoteMessageData, ResourceAllocationResponse, RingVrfAliasResponse, SignRawLegacyResponse,
-    SigningPayloadResponseData, SigningRequest, SigningResponse, SsoAllocatableResource,
-    SsoAllocatedResource, SsoAllocationOutcome, StatementStoreProductSignResponse,
-    build_outgoing_request_statement, build_signed_session_response_statement,
-    decode_incoming_sso_request, v1,
+    RemoteMessageData, ResourceAllocationResponse, RingVrfAliasResponse, RingVrfError,
+    RingVrfProofResponse, SignRawLegacyResponse, SigningPayloadRequest, SigningPayloadResponseData,
+    SigningRawPayload, SigningRawRequest, SigningRequest, SigningResponse, SsoAllocatableResource,
+    SsoAllocatedResource, SsoAllocationOutcome, build_outgoing_request_statement,
+    build_signed_session_response_statement, decode_incoming_sso_request, v1,
 };
 use crate::host_logic::sso::pairing::{
     ResponderIdentity, VersionedHandshakeProposal, bootstrap_topic, decode_pairing_deeplink,
@@ -43,8 +45,8 @@ use crate::host_logic::sso::pairing::{
 };
 use crate::host_logic::statement_store::{build_signed_statement, parse_new_statements_result};
 use crate::runtime::authority::{
-    CreateTransactionAuthorityRequest, ProductAuthority, SignPayloadAuthorityRequest,
-    SignRawAuthorityRequest,
+    AccountAliasAuthorityRequest, CreateProofAuthorityRequest, CreateTransactionAuthorityRequest,
+    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
 };
 use crate::runtime::services::RuntimeServices;
 use crate::runtime::sso_remote::fresh_statement_expiry;
@@ -75,13 +77,10 @@ pub(crate) async fn respond_to_pairing(
     let entropy = signing_host
         .root_entropy()
         .map_err(|err| format!("signing host has no active local session: {err}"))?;
-    // `//wallet` is the user's main account (host-spec C.0): it backs
-    // product-account derivation and is `rootUserAccountId`. The
-    // statement/identity account is `//wallet//sso`. Usernames may be
-    // registered on either (mobile registers `//wallet`, the bot
-    // `//wallet//sso`); the paired host's lookup tries identity then root.
-    let wallet = derive_sr25519_hard_path(&entropy, &["wallet"])
-        .map_err(|err| format!("//wallet derivation failed: {err}"))?;
+    // Product accounts derive from the canonical root key. The SSO statement
+    // identity keeps its dedicated hard-derived key.
+    let root = derive_root_keypair_from_entropy(&entropy)
+        .map_err(|err| format!("root account derivation failed: {err}"))?;
     let statement = derive_sr25519_hard_path(&entropy, &["wallet", "sso"])
         .map_err(|err| format!("//wallet//sso derivation failed: {err}"))?;
     let (encryption_secret_key, encryption_public_key) =
@@ -103,7 +102,7 @@ pub(crate) async fn respond_to_pairing(
 
     let success = v2::EncryptedResponse::Success(Box::new(v2::Success {
         identity_account_id: identity.statement_public_key,
-        root_account_id: wallet.public.to_bytes(),
+        root_account_id: root.public.to_bytes(),
         identity_chat_private_key,
         sso_enc_pub_key: identity.encryption_public_key,
         device_enc_pub_key: identity.encryption_public_key,
@@ -235,6 +234,13 @@ async fn answer_remote_message(
                 payload,
             })
         }
+        v1::RemoteMessage::RingVrfProofRequest(request) => {
+            let payload = create_proof_response(signing_host, request).await;
+            v1::RemoteMessage::RingVrfProofResponse(RingVrfProofResponse {
+                responding_to: message_id,
+                payload,
+            })
+        }
         v1::RemoteMessage::ResourceAllocationRequest(request) => {
             let payload = resource_allocation_response(services, signing_host, request).await;
             if let Err(reason) = &payload {
@@ -275,22 +281,13 @@ async fn answer_remote_message(
                 ),
             })
         }
-        v1::RemoteMessage::StatementStoreProductSignRequest(request) => {
-            let signature = statement_store_product_sign_response(signing_host, request).await;
-            v1::RemoteMessage::StatementStoreProductSignResponse(
-                StatementStoreProductSignResponse {
-                    responding_to: message_id,
-                    signature,
-                },
-            )
-        }
         v1::RemoteMessage::Disconnected
         | v1::RemoteMessage::SignResponse(_)
         | v1::RemoteMessage::RingVrfAliasResponse(_)
+        | v1::RemoteMessage::RingVrfProofResponse(_)
         | v1::RemoteMessage::ResourceAllocationResponse(_)
         | v1::RemoteMessage::CreateTransactionResponse(_)
-        | v1::RemoteMessage::SignRawLegacyResponse(_)
-        | v1::RemoteMessage::StatementStoreProductSignResponse(_) => return None,
+        | v1::RemoteMessage::SignRawLegacyResponse(_) => return None,
     };
     Some(RemoteMessage {
         message_id: response_id,
@@ -303,38 +300,69 @@ async fn resource_allocation_response(
     signing_host: &Arc<SigningHost>,
     request: messages::ResourceAllocationRequest,
 ) -> Result<Vec<SsoAllocationOutcome>, String> {
+    confirm(
+        services,
+        UserConfirmationReview::ResourceAllocation(api::HostRequestResourceAllocationRequest {
+            resources: request
+                .resources
+                .iter()
+                .map(public_allocatable_resource)
+                .collect(),
+        }),
+    )
+    .await?;
+
     let mut outcomes = Vec::with_capacity(request.resources.len());
     for resource in request.resources {
         let outcome = match resource {
-            SsoAllocatableResource::StatementStoreAllowance => {
-                let slot_account_key = allocate_statement_store_allowance(
-                    services,
-                    signing_host,
-                    &request.calling_product_id,
-                )
-                .await?;
+            SsoAllocatableResource::StatementStoreAllowance => allocate_statement_store_allowance(
+                services,
+                signing_host,
+                &request.calling_product_id,
+            )
+            .await
+            .map(|slot_account_key| {
                 SsoAllocationOutcome::Allocated(SsoAllocatedResource::StatementStoreAllowance {
                     slot_account_key,
                 })
-            }
-            SsoAllocatableResource::BulletinAllowance => {
-                let slot_account_key = allocate_bulletin_allowance(
-                    services,
-                    signing_host,
-                    &request.calling_product_id,
-                    request.on_existing,
-                )
-                .await?;
+            }),
+            SsoAllocatableResource::BulletinAllowance => allocate_bulletin_allowance(
+                services,
+                signing_host,
+                &request.calling_product_id,
+                request.on_existing,
+            )
+            .await
+            .map(|slot_account_key| {
                 SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
                     slot_account_key,
                 })
-            }
+            }),
             SsoAllocatableResource::SmartContractAllowance(_)
-            | SsoAllocatableResource::AutoSigning => SsoAllocationOutcome::NotAvailable,
+            | SsoAllocatableResource::AutoSigning => Ok(SsoAllocationOutcome::NotAvailable),
         };
-        outcomes.push(outcome);
+        match outcome {
+            Ok(outcome) => outcomes.push(outcome),
+            Err(reason) => {
+                warn!(%reason, "resource allocation item failed");
+                outcomes.push(SsoAllocationOutcome::Rejected);
+            }
+        }
     }
     Ok(outcomes)
+}
+
+fn public_allocatable_resource(resource: &SsoAllocatableResource) -> api::AllocatableResource {
+    match resource {
+        SsoAllocatableResource::StatementStoreAllowance => {
+            api::AllocatableResource::StatementStoreAllowance
+        }
+        SsoAllocatableResource::BulletinAllowance => api::AllocatableResource::BulletinAllowance,
+        SsoAllocatableResource::SmartContractAllowance(index) => {
+            api::AllocatableResource::SmartContractAllowance(*index)
+        }
+        SsoAllocatableResource::AutoSigning => api::AllocatableResource::AutoSigning,
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -557,7 +585,7 @@ async fn serve_sign_request(
     let cx = CallContext::new();
     let response = match request {
         SigningRequest::Payload(request) => {
-            let request: v01::HostSignPayloadRequest = (*request).into();
+            let request = host_sign_payload_request(*request);
             confirm(
                 services,
                 UserConfirmationReview::SignPayload(SignPayloadReview::Product(request.clone())),
@@ -568,7 +596,7 @@ async fn serve_sign_request(
                 .await
         }
         SigningRequest::Raw(request) => {
-            let request: v01::HostSignRawRequest = request.into();
+            let request = host_sign_raw_request(request);
             confirm(
                 services,
                 UserConfirmationReview::SignRaw(SignRawReview::Product(request.clone())),
@@ -584,26 +612,6 @@ async fn serve_sign_request(
         signature: response.signature,
         signed_transaction: response.signed_transaction,
     })
-}
-
-async fn statement_store_product_sign_response(
-    signing_host: &Arc<SigningHost>,
-    request: messages::StatementStoreProductSignRequest,
-) -> Result<Vec<u8>, String> {
-    let session = signing_host
-        .current_session()
-        .ok_or_else(|| "signing host session is not active".to_string())?;
-    let cx = CallContext::new();
-    signing_host
-        .sign_statement_store_product_payload(
-            &cx,
-            &session,
-            request.product_account_id,
-            request.payload,
-        )
-        .await
-        .map(|signature| signature.to_vec())
-        .map_err(|err| err.reason())
 }
 
 /// Confirm and serve a transaction-creation request.
@@ -628,20 +636,84 @@ async fn create_transaction_response(
 async fn account_alias_response(
     signing_host: &Arc<SigningHost>,
     request: messages::RingVrfAliasRequest,
-) -> Result<HostAccountGetAliasResponse, String> {
+) -> Result<api::HostAccountGetAliasResponse, RingVrfError> {
     let session = signing_host
         .current_session()
-        .ok_or_else(|| "signing host session is not active".to_string())?;
+        .ok_or_else(disconnected_ring_vrf)?;
     let cx = CallContext::new();
     signing_host
         .account_alias(
             &cx,
             &session,
-            request.product_account_id,
-            request.product_id,
+            AccountAliasAuthorityRequest {
+                calling_product_id: request.calling_product_id,
+                context: request.context,
+                ring_location: request.ring_location,
+            },
         )
         .await
-        .map_err(|err| err.reason())
+}
+
+async fn create_proof_response(
+    signing_host: &Arc<SigningHost>,
+    request: messages::RingVrfProofRequest,
+) -> Result<api::HostAccountCreateProofResponse, RingVrfError> {
+    let session = signing_host
+        .current_session()
+        .ok_or_else(disconnected_ring_vrf)?;
+    let cx = CallContext::new();
+    signing_host
+        .create_proof(
+            &cx,
+            &session,
+            CreateProofAuthorityRequest {
+                calling_product_id: request.calling_product_id,
+                context: request.context,
+                ring_location: request.ring_location,
+                message: request.message,
+            },
+        )
+        .await
+}
+
+fn disconnected_ring_vrf() -> RingVrfError {
+    RingVrfError::Unknown {
+        reason: "signing host session is not active".to_string(),
+    }
+}
+
+fn host_sign_payload_request(request: SigningPayloadRequest) -> api::HostSignPayloadRequest {
+    api::HostSignPayloadRequest {
+        account: request.product_account_id,
+        payload: api::HostSignPayloadData {
+            block_hash: request.block_hash,
+            block_number: request.block_number,
+            era: request.era,
+            genesis_hash: request.genesis_hash,
+            method: request.method,
+            nonce: request.nonce,
+            spec_version: request.spec_version,
+            tip: request.tip,
+            transaction_version: request.transaction_version,
+            signed_extensions: request.signed_extensions,
+            version: request.version,
+            asset_id: request.asset_id,
+            metadata_hash: request.metadata_hash,
+            mode: request.mode,
+            with_signed_transaction: request.with_signed_transaction.0,
+        },
+    }
+}
+
+fn host_sign_raw_request(request: SigningRawRequest) -> api::HostSignRawRequest {
+    let payload = match request.data {
+        SigningRawPayload::Bytes(bytes) => api::RawPayload::Bytes { bytes },
+        SigningRawPayload::Payload(payload) => api::RawPayload::Payload { payload },
+    };
+    api::HostSignRawRequest {
+        account: request.product_account_id,
+        payload,
+    }
 }
 
 /// Run the platform confirmation seam; rejection and failure both refuse the

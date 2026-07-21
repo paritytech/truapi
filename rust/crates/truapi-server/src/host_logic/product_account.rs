@@ -9,6 +9,7 @@
 use parity_scale_codec::Encode;
 use schnorrkel::derive::{ChainCode, Derivation};
 use schnorrkel::{ExpansionMode, Keypair, PublicKey};
+use std::str::FromStr;
 use thiserror::Error;
 
 const JUNCTION_ID_LEN: usize = 32;
@@ -91,19 +92,20 @@ pub fn product_public_key_to_address(public_key: [u8; 32]) -> String {
     subxt::utils::AccountId32(public_key).to_string()
 }
 
+/// Decode a Substrate SS58 account address into its raw public key.
+pub fn public_key_from_address(address: &str) -> Option<[u8; 32]> {
+    Some(subxt::utils::AccountId32::from_str(address).ok()?.0)
+}
+
 /// Derive an sr25519 keypair down a path of hard string junctions from the
-/// BIP-39 entropy, e.g. `["wallet", "sso"]` for `//wallet//sso`.
-///
-/// Matches Substrate hard derivation (schnorrkel `SchnorrRistrettoHDKD`), the
-/// same path the mobile/bot signing hosts use for their statement identity
-/// account.
+/// canonical BIP-39 root key.
 pub fn derive_sr25519_hard_path(
     entropy: &[u8],
     junctions: &[&str],
 ) -> Result<Keypair, ProductAccountError> {
     let mut keypair = derive_root_keypair_from_entropy(entropy)?;
     for junction in junctions {
-        let chain_code = schnorrkel::derive::ChainCode(create_chain_code(junction)?);
+        let chain_code = ChainCode(create_chain_code(junction)?);
         let (mini_secret, _) = keypair
             .secret
             .hard_derive_mini_secret_key(Some(chain_code), b"");
@@ -180,6 +182,15 @@ mod tests {
             product_public_key_to_address(derived),
             "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1"
         );
+    }
+
+    #[test]
+    fn ss58_address_round_trips_to_public_key() {
+        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+        let address = product_public_key_to_address(derived);
+
+        assert_eq!(public_key_from_address(&address), Some(derived));
+        assert_eq!(public_key_from_address("not-an-address"), None);
     }
 
     #[test]

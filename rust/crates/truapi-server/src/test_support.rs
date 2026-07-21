@@ -30,7 +30,7 @@ use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
 use truapi::v01;
-use truapi::versioned::account::HostAccountGetAliasRequest;
+use truapi::versioned::account::{HostAccountCreateProofRequest, HostAccountGetAliasRequest};
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi_platform::{
     AccountAccessReview, AuthPresenter, AuthState, ChainProvider,
@@ -72,6 +72,8 @@ pub(crate) struct StubPlatform {
     pub(crate) remote_permission_denied: bool,
     pub(crate) account_alias_confirmed: bool,
     pub(crate) account_alias_error: Option<&'static str>,
+    pub(crate) create_proof_confirmed: bool,
+    pub(crate) create_proof_error: Option<&'static str>,
     pub(crate) account_access_confirmed: bool,
     pub(crate) account_access_error: Option<&'static str>,
     pub(crate) account_access_reviews: Arc<Mutex<Vec<AccountAccessReview>>>,
@@ -101,6 +103,8 @@ pub(crate) struct StubPlatform {
     /// Set when the pending theme stream is dropped.
     pub(crate) theme_stream_dropped: Arc<AtomicBool>,
     pub(crate) pairing_success_response: bool,
+    /// Deliver an authenticated wallet pending status and then stay open.
+    pub(crate) pairing_pending_response: bool,
     /// Deliver a wallet failure status on the pairing subscription.
     pub(crate) pairing_failure_response: bool,
     /// Deliver the pairing success statement only through a snapshot
@@ -497,6 +501,14 @@ pub(crate) fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
     )
 }
 
+fn pending_wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
+    wallet_handshake_statement_with_response(
+        deeplink,
+        pairing::v2::EncryptedResponse::Pending(pairing::v2::Status::AllowanceAllocation),
+        0x43,
+    )
+}
+
 pub(crate) fn failed_wallet_handshake_statement(deeplink: &str, reason: &str) -> Vec<u8> {
     wallet_handshake_statement_with_response(
         deeplink,
@@ -582,6 +594,24 @@ pub(crate) fn sign_response_message(
     }
 }
 
+/// SSO legacy-account raw signing response for the given request id.
+pub(crate) fn sign_raw_legacy_response_message(
+    message_id: &str,
+    signature: Vec<u8>,
+) -> crate::host_logic::sso::messages::RemoteMessage {
+    crate::host_logic::sso::messages::RemoteMessage {
+        message_id: format!("wallet-{message_id}"),
+        data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+            crate::host_logic::sso::messages::v1::RemoteMessage::SignRawLegacyResponse(
+                crate::host_logic::sso::messages::SignRawLegacyResponse {
+                    responding_to: message_id.to_string(),
+                    signature: Ok(signature),
+                },
+            ),
+        ),
+    }
+}
+
 /// Product account id fixture for `identifier` and derivation slot.
 pub(crate) fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
     v01::ProductAccountId {
@@ -590,18 +620,44 @@ pub(crate) fn account_id(identifier: &str, derivation_index: u32) -> v01::Produc
     }
 }
 
-/// Account-alias request fixture for a product identifier.
-pub(crate) fn account_alias_request(identifier: &str) -> HostAccountGetAliasRequest {
-    HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
-        product_account_id: account_id(identifier, 0),
-    })
-}
-
 /// Raw signing payload fixture.
 pub(crate) fn raw_payload() -> v01::RawPayload {
     v01::RawPayload::Bytes {
         bytes: b"hello".to_vec(),
     }
+}
+
+/// Product-scoped proof context fixture for `product_id`.
+pub(crate) fn product_proof_context(product_id: &str) -> v01::ProductProofContext {
+    v01::ProductProofContext {
+        product_id: product_id.to_string(),
+        suffix: vec![7],
+    }
+}
+
+/// Ring-location fixture addressing a single pallet-instance ring.
+pub(crate) fn ring_location_fixture() -> v01::RingLocation {
+    v01::RingLocation {
+        chain_id: [1; 32],
+        junctions: vec![v01::RingLocationJunction::PalletInstance(42)],
+    }
+}
+
+/// Contextual-alias request fixture for `product_id`.
+pub(crate) fn account_alias_request(product_id: &str) -> HostAccountGetAliasRequest {
+    HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
+        context: product_proof_context(product_id),
+        ring_location: ring_location_fixture(),
+    })
+}
+
+/// Ring-VRF proof request fixture for `product_id`.
+pub(crate) fn create_proof_request(product_id: &str) -> HostAccountCreateProofRequest {
+    HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
+        context: product_proof_context(product_id),
+        ring_location: ring_location_fixture(),
+        message: vec![4, 5, 6],
+    })
 }
 
 /// Structured signing payload fixture.
@@ -869,6 +925,7 @@ struct RecordingConnection {
     sso_response_script: Option<SsoResponseScript>,
     auth_states: Arc<Mutex<Vec<AuthState>>>,
     pairing_success_response: bool,
+    pairing_pending_response: bool,
     pairing_failure_response: bool,
     pairing_success_via_query: bool,
 }
@@ -910,6 +967,9 @@ fn retarget_sso_response(mut response: RemoteMessage, message_id: &str) -> Remot
         RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasResponse(response)) => {
             response.responding_to = message_id.to_string();
         }
+        RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
         RemoteMessageData::V1(v1::RemoteMessage::SignRawLegacyResponse(response)) => {
             response.responding_to = message_id.to_string();
         }
@@ -917,9 +977,6 @@ fn retarget_sso_response(mut response: RemoteMessage, message_id: &str) -> Remot
             response.responding_to = message_id.to_string();
         }
         RemoteMessageData::V1(v1::RemoteMessage::CreateTransactionResponse(response)) => {
-            response.responding_to = message_id.to_string();
-        }
-        RemoteMessageData::V1(v1::RemoteMessage::StatementStoreProductSignResponse(response)) => {
             response.responding_to = message_id.to_string();
         }
         _ => {}
@@ -1102,6 +1159,38 @@ impl JsonRpcConnection for RecordingConnection {
                 }
             }));
         }
+        if self.pairing_pending_response {
+            let auth_states = self.auth_states.clone();
+            let sent = self.sent.clone();
+            return Box::pin(stream::unfold(0, move |state| {
+                let auth_states = auth_states.clone();
+                let sent = sent.clone();
+                async move {
+                    match state {
+                        0 => {
+                            let id = wait_for_statement_subscribe_id(sent.clone(), 0).await;
+                            Some((subscribe_ack_frame(&id, "pairing-sub"), 1))
+                        }
+                        1 => {
+                            for _ in 0..100 {
+                                if let Some(deeplink) = first_pairing_deeplink(&auth_states) {
+                                    return Some((
+                                        new_statements_frame(
+                                            "pairing-sub",
+                                            vec![pending_wallet_handshake_statement(&deeplink)],
+                                        ),
+                                        2,
+                                    ));
+                                }
+                                futures_timer::Delay::new(Duration::from_millis(1)).await;
+                            }
+                            panic!("pairing deeplink was not presented");
+                        }
+                        _ => futures::future::pending().await,
+                    }
+                }
+            }));
+        }
         if self.pairing_success_response {
             let auth_states = self.auth_states.clone();
             let sent = self.sent.clone();
@@ -1216,6 +1305,7 @@ impl ChainProvider for StubPlatform {
             sso_response_script: self.sso_response_script.clone(),
             auth_states: self.auth_states.clone(),
             pairing_success_response: self.pairing_success_response,
+            pairing_pending_response: self.pairing_pending_response,
             pairing_failure_response: self.pairing_failure_response,
             pairing_success_via_query: self.pairing_success_via_query,
         }))
@@ -1256,6 +1346,9 @@ impl UserConfirmation for StubPlatform {
             ),
             UserConfirmationReview::AccountAlias(_) => {
                 (self.account_alias_error, self.account_alias_confirmed)
+            }
+            UserConfirmationReview::CreateProof(_) => {
+                (self.create_proof_error, self.create_proof_confirmed)
             }
             UserConfirmationReview::AccountAccess(review) => {
                 self.account_access_reviews

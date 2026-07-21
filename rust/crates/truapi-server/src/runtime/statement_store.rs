@@ -384,7 +384,7 @@ mod tests {
     use super::super::{LocalActivation, RuntimeServices, SigningHostRole};
     use super::*;
     use crate::host_logic::product_account::{
-        SR25519_SIGNING_CONTEXT, derive_product_keypair, derive_sr25519_hard_path,
+        SR25519_SIGNING_CONTEXT, derive_product_keypair, derive_root_keypair_from_entropy,
     };
     use crate::test_support::{
         StubPlatform, account_id, new_statements_frame, runtime_config, signed_statement,
@@ -420,7 +420,7 @@ mod tests {
     fn signing_host_runtime(product_id: &str) -> (ProductRuntimeHost, Arc<SigningHostRole>) {
         let platform: Arc<dyn truapi_platform::Platform> = Arc::new(StubPlatform::default());
         let services = RuntimeServices::new(platform.clone(), [0; 32], [0xbb; 32], test_spawner());
-        let signing_host = SigningHostRole::new(platform, services.clone());
+        let signing_host = SigningHostRole::new(services.clone());
         futures::executor::block_on(signing_host.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let host = ProductRuntimeHost::from_services(
@@ -432,70 +432,27 @@ mod tests {
     }
 
     #[test]
-    fn statement_store_create_proof_pairing_host_routes_exact_signing_over_sso() {
-        let mut session = sso_session_info();
-        let wallet = derive_sr25519_hard_path(&ENTROPY, &["wallet"]).unwrap();
-        session.public_key = wallet.public.to_bytes();
-        let statement = statement();
-        let payload = statement_payload(statement.clone());
-        let product_keypair = derive_product_keypair(&wallet, "myapp.dot", 0).unwrap();
-        let expected_signer = product_keypair.public.to_bytes();
-        let signature = product_keypair
-            .secret
-            .sign_simple(SR25519_SIGNING_CONTEXT, &payload, &product_keypair.public)
-            .to_bytes();
-        let platform = Arc::new(StubPlatform {
-            sso_response_script: Some(sso_success_response_script(
-                &session,
-                crate::host_logic::sso::messages::RemoteMessage {
-                    message_id: "wallet-proof-1".to_string(),
-                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
-                        crate::host_logic::sso::messages::v1::RemoteMessage::StatementStoreProductSignResponse(
-                            crate::host_logic::sso::messages::StatementStoreProductSignResponse {
-                                responding_to: "proof-1".to_string(),
-                                signature: Ok(signature.to_vec()),
-                            },
-                        ),
-                    ),
-                },
-            )),
-            ..Default::default()
-        });
-        let host = ProductRuntimeHost::new(
-            platform.clone(),
-            runtime_config("myapp.dot"),
-            test_spawner(),
-        );
-        host.test_session_state().set_session(session.clone());
+    fn statement_store_create_proof_pairing_host_does_not_use_session_key() {
+        let host =
+            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.test_session_state().set_session(sso_session_info());
         let cx = CallContext::new();
         let request = RemoteStatementStoreCreateProofRequest::V1(
             v01::RemoteStatementStoreCreateProofRequest {
                 product_account_id: account_id("myapp.dot", 0),
-                statement,
+                statement: statement(),
             },
         );
 
-        let response =
-            futures::executor::block_on(StatementStore::create_proof(&host, &cx, request)).unwrap();
+        let err = futures::executor::block_on(StatementStore::create_proof(&host, &cx, request))
+            .unwrap_err();
 
-        let RemoteStatementStoreCreateProofResponse::V1(inner) = response;
-        let v01::StatementProof::Sr25519 { signer, signature } = inner.proof else {
-            panic!("expected sr25519 statement proof");
-        };
-        assert_eq!(signer, expected_signer);
-        assert_sr25519_signature(signer, signature, &payload);
-
-        let message = submitted_remote_message(&platform, &session);
-        let crate::host_logic::sso::messages::RemoteMessageData::V1(
-            crate::host_logic::sso::messages::v1::RemoteMessage::StatementStoreProductSignRequest(
-                request,
-            ),
-        ) = message.data
-        else {
-            panic!("expected statement-store product sign request");
-        };
-        assert_eq!(request.product_account_id, account_id("myapp.dot", 0));
-        assert_eq!(request.payload, payload);
+        assert!(matches!(
+            err,
+            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
+                v01::RemoteStatementStoreCreateProofError::UnableToSign
+            ))
+        ));
     }
 
     #[test]
@@ -503,8 +460,8 @@ mod tests {
         let (host, _signing_host) = signing_host_runtime("myapp.dot");
         let statement = statement();
         let payload = statement_payload(statement.clone());
-        let wallet = derive_sr25519_hard_path(&ENTROPY, &["wallet"]).unwrap();
-        let product_keypair = derive_product_keypair(&wallet, "myapp.dot", 0).unwrap();
+        let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
+        let product_keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
         let expected_signer = product_keypair.public.to_bytes();
         let cx = CallContext::new();
         let request = RemoteStatementStoreCreateProofRequest::V1(

@@ -34,6 +34,11 @@ export interface IframeHost {
 const DEFAULT_IFRAME_SANDBOX = "allow-forms allow-same-origin allow-scripts";
 type CredentiallessIframe = HTMLIFrameElement & { credentialless?: boolean };
 
+function sandboxCreatesOpaqueOrigin(sandbox: string): boolean {
+  // Sandbox tokens are matched ASCII case-insensitively by the browser.
+  return !sandbox.toLowerCase().split(/\s+/).includes("allow-same-origin");
+}
+
 function resolveAllowedOrigin(
   iframeUrl: string,
   allowedOrigin?: string,
@@ -99,9 +104,10 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
   iframe.setAttribute("sandbox", sandbox);
   iframe.referrerPolicy = "no-referrer";
   iframe.src = iframeUrl;
-  const initTargetOrigin = credentiallessIframe.credentialless
-    ? "*"
-    : targetOrigin;
+  const acceptsOpaqueOrigin = sandboxCreatesOpaqueOrigin(sandbox);
+  // Opaque sandbox origins cannot be addressed by URL origin. Use "*" only
+  // for that explicit sandbox mode; otherwise pin the capability port transfer.
+  const initTargetOrigin = acceptsOpaqueOrigin ? "*" : targetOrigin;
 
   let initSent = false;
   const sendInit = (): void => {
@@ -116,7 +122,12 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
 
   const onWindowMessage = (event: MessageEvent): void => {
     if (event.source !== iframe.contentWindow) return;
-    if (event.origin !== targetOrigin && event.origin !== "null") return;
+    if (
+      event.origin !== targetOrigin &&
+      !(acceptsOpaqueOrigin && event.origin === "null")
+    ) {
+      return;
+    }
     if (event.data?.type === "truapi-ready") {
       sendInit();
     }
