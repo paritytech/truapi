@@ -5,11 +5,12 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const TRANSIENT = new Set([502, 503, 504]);
 
-// Per-attempt request timeout. First-time pair can include user creation and
-// People-chain attestation, so give the one-shot handshake room to finish
-// instead of aborting and retrying the same QR payload.
+// Per-attempt request timeout. First-time pair can include user creation,
+// People-chain attestation, and V2 pairing-time device allowance finalization.
+// Give the one-shot handshake room to finish instead of aborting and retrying
+// the same QR payload.
 const PAIR_REQUEST_TIMEOUT_MS = Number(
-  process.env.SIGNER_BOT_PAIR_TIMEOUT_MS ?? "120000",
+  process.env.SIGNER_BOT_PAIR_TIMEOUT_MS ?? "240000",
 );
 const HEALTH_REQUEST_TIMEOUT_MS = 5_000;
 
@@ -86,6 +87,7 @@ async function fetchTextRetry(
       );
     } catch (e) {
       last = e;
+      if ((e as Error).name === "AbortError") throw e;
       if (i === attempts) throw e;
       console.warn(
         `[bot] ${init.method ?? "GET"} ${url} threw "${(e as Error).message}" (attempt ${i}/${attempts})`,
@@ -131,9 +133,9 @@ export interface PairResult {
  *
  * The Nova bot's `/api/pair` is one-shot: given a handshake, it
  * (a) creates the user if `username` is new, (b) attests the account on
- * People chain so it has Statement Store allowance, (c) completes the
- * SSO handshake, (d) starts auto-signing future SignRequests for that
- * session. No separate provisioning / poll step needed.
+ * People chain so it has Statement Store allowance, (c) submits V2
+ * pairing-time device allowance, (d) completes the SSO handshake, and
+ * (e) starts auto-signing future SignRequests for that session.
  *
  * `network` should match dot.li's default network (`paseo-next-v2` at time
  * of writing). The bot's `/api/networks` endpoint lists supported IDs.
