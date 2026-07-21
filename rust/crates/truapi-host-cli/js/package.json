@@ -1,0 +1,8 @@
+{
+  "name": "truapi-host-cli-js",
+  "private": true,
+  "dependencies": {
+    "@happy-dom/global-registrator": "20.11.0",
+    "happy-dom": "20.11.0"
+  }
+}
