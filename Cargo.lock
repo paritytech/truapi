@@ -3641,7 +3641,7 @@ dependencies = [
 
 [[package]]
 name = "truapi"
-version = "0.4.1"
+version = "0.5.1"
 dependencies = [
  "derive_more 2.1.1",
  "futures",

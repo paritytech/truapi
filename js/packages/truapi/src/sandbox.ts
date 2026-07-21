@@ -13,11 +13,13 @@
 import { createMessagePortProvider, type WireProvider } from "./transport.js";
 import { createTransport } from "./client.js";
 import { createClient, type TrUApiClient } from "./generated/index.js";
+import { tryCreateLegacyIframeProvider } from "./sandbox-legacy.js";
 
 /**
  * Connection lifecycle state. {@link subscribeConnectionStatus} emits
- * `"connected"` / `"disconnected"`; `"connecting"` is reserved for consumers
- * that want to render an indeterminate state before the first status is known.
+ * `"connecting"` while the client waits for the host channel, `"connected"`
+ * once the channel is established, and `"disconnected"` outside a host or
+ * after the channel closes.
  */
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
@@ -76,33 +78,6 @@ function resolveHostOrigin(): string | null {
 }
 
 const HOST_PORT_TIMEOUT_MS = 20_000;
-let iframePortPromise: Promise<MessagePort> | null = null;
-
-function withAbort<T>(
-  promise: Promise<T>,
-  signal: AbortSignal | undefined,
-  message: string,
-): Promise<T> {
-  if (!signal) return promise;
-  if (signal.aborted) return Promise.reject(new Error(message));
-
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => {
-      reject(new Error(message));
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(error);
-      },
-    );
-  });
-}
 
 /**
  * Resolve the host-injected `MessagePort`, polling `window.__HOST_API_PORT__`
@@ -130,75 +105,127 @@ async function waitForWebviewPort(
 }
 
 /**
- * Resolve the iframe `MessagePort` transferred by `createIframeHost`.
+ * Create an iframe provider that negotiates the transport from the first valid
+ * parent message: modern hosts answer `truapi-ready` with a transferred
+ * `MessagePort`; legacy hosts are handled by one removable fallback below.
+ * Outbound frames are queued until one path wins.
+ * `onEstablished` fires once, when the inner provider is adopted.
  */
-function waitForIframePort(
-  signal?: AbortSignal,
-  timeoutMs = HOST_PORT_TIMEOUT_MS,
-): Promise<MessagePort> {
-  const existing = hostWindow()?.__HOST_API_PORT__;
-  if (existing) return Promise.resolve(existing);
+function createIframeCompatibilityProvider(
+  onEstablished: () => void,
+): WireProvider {
+  const maybeWin = hostWindow();
+  if (!maybeWin) throw new Error("window is unavailable");
+  const win = maybeWin;
 
-  iframePortPromise ??= new Promise<MessagePort>((resolve, reject) => {
-    const win = hostWindow();
-    if (!win) {
-      reject(new Error("window is unavailable"));
-      return;
-    }
+  const target = win.parent;
+  const hostOrigin = resolveHostOrigin();
+  let inner: WireProvider | null = null;
+  let unsubscribeInner: (() => void) | null = null;
+  let unsubscribeInnerClose: (() => void) | null = null;
+  let closedError: Error | null = null;
+  const queued: Uint8Array[] = [];
+  const listeners = new Set<(message: Uint8Array) => void>();
+  const closeListeners = new Set<(error: Error) => void>();
 
-    const hostOrigin = resolveHostOrigin();
-    let done = false;
-    const cleanup = (): void => {
-      win.removeEventListener("message", onMessage);
-      clearTimeout(timer);
-    };
-    const finish = (result: MessagePort | Error): void => {
-      if (done) return;
-      done = true;
-      cleanup();
-      if (result instanceof Error) {
-        reject(result);
-      } else {
-        win.__HOST_API_PORT__ = result;
-        resolve(result);
-      }
-    };
-    const onMessage = (event: MessageEvent): void => {
-      if (event.source !== win.parent) return;
-      if (hostOrigin !== null && event.origin !== hostOrigin) return;
-      if (event.data?.type !== "truapi-init") return;
+  const close = (error: Error): void => {
+    if (closedError) return;
+    closedError = error;
+    win.removeEventListener("message", onMessage);
+    unsubscribeInner?.();
+    unsubscribeInnerClose?.();
+    for (const listener of [...closeListeners]) listener(error);
+    listeners.clear();
+    closeListeners.clear();
+    queued.length = 0;
+  };
+  const deliver = (message: Uint8Array): void => {
+    if (closedError) return;
+    for (const listener of [...listeners]) listener(message);
+  };
+  const adopt = (provider: WireProvider): void => {
+    inner = provider;
+    win.removeEventListener("message", onMessage);
+    unsubscribeInner = provider.subscribe(deliver);
+    unsubscribeInnerClose = provider.subscribeClose?.(close) ?? null;
+    for (const message of queued.splice(0)) provider.postMessage(message);
+    onEstablished();
+  };
+  const adoptPort = (port: MessagePort): void => {
+    win.__HOST_API_PORT__ = port;
+    adopt(createMessagePortProvider(port));
+  };
+  function onMessage(event: MessageEvent): void {
+    if (inner !== null || closedError !== null) return;
+    if (event.source !== target) return;
+    if (hostOrigin !== null && event.origin !== hostOrigin) return;
+
+    if (event.data?.type === "truapi-init") {
       const [port] = event.ports;
       if (!port) {
-        finish(new Error("truapi-init did not include a MessagePort"));
+        close(new Error("truapi-init did not include a MessagePort"));
         return;
       }
-      finish(port);
-    };
-    const timer = setTimeout(() => {
-      finish(
-        new Error(`Timed out waiting for iframe MessagePort (${timeoutMs}ms)`),
-      );
-    }, timeoutMs);
+      adoptPort(port);
+      return;
+    }
+    // TODO(remove-legacy-host): Delete this fallback and its import once all
+    // iframe hosts transfer a MessagePort in `truapi-init`. The modern path
+    // above is otherwise independent of legacy transport details.
+    const legacy = tryCreateLegacyIframeProvider(win, target, event);
+    if (legacy) {
+      adopt(legacy.provider);
+      deliver(legacy.initialMessage);
+    }
+  }
 
+  const existing = win.__HOST_API_PORT__;
+  if (existing) {
+    adoptPort(existing);
+  } else {
     win.addEventListener("message", onMessage);
-    // This readiness ping carries no MessagePort or account data. When the
-    // browser hides the parent origin, `*` is required so the parent can answer
-    // with the actual capability transfer, which is still source-checked above.
-    win.parent.postMessage({ type: "truapi-ready" }, hostOrigin ?? "*");
-  }).catch((error: unknown) => {
-    iframePortPromise = null;
-    throw error;
-  });
+    // This carries no MessagePort or account data. When the browser hides the
+    // parent origin, `*` lets the parent answer; every response is source-checked
+    // above and the first valid response pins the transport and origin.
+    target.postMessage({ type: "truapi-ready" }, hostOrigin ?? "*");
+  }
 
-  return withAbort(iframePortPromise, signal, "waitForIframePort aborted");
+  return {
+    postMessage(message) {
+      if (closedError) throw closedError;
+      if (inner) inner.postMessage(message);
+      else queued.push(message);
+    },
+    subscribe(callback) {
+      if (closedError) return () => {};
+      listeners.add(callback);
+      return () => listeners.delete(callback);
+    },
+    subscribeClose(callback) {
+      if (closedError) {
+        callback(closedError);
+        return () => {};
+      }
+      closeListeners.add(callback);
+      return () => closeListeners.delete(callback);
+    },
+    dispose() {
+      inner?.dispose();
+      close(new Error("iframe provider disposed"));
+    },
+  };
 }
 
-/** Build the {@link WireProvider} matching the detected environment (iframe or webview). */
-function createSandboxProvider(): WireProvider {
+/**
+ * Build the {@link WireProvider} matching the detected environment (iframe or
+ * webview). `onEstablished` fires once the host channel is live.
+ */
+function createSandboxProvider(onEstablished: () => void): WireProvider {
+  if (isIframe()) return createIframeCompatibilityProvider(onEstablished);
+
   const portController = new AbortController();
-  const portPromise = isIframe()
-    ? waitForIframePort(portController.signal)
-    : waitForWebviewPort(portController.signal);
+  const portPromise = waitForWebviewPort(portController.signal);
+  portPromise.then(onEstablished, () => {});
   const provider = createMessagePortProvider(portPromise);
   const baseDispose = provider.dispose;
   provider.dispose = () => {
@@ -226,7 +253,7 @@ export function getClientSync(): TrUApiClient | null {
   if (cachedClient) return cachedClient;
   if (!isCorrectEnvironment()) return null;
   try {
-    const provider = createSandboxProvider();
+    const provider = createSandboxProvider(() => setStatus("connected"));
     cachedClient = createClient(createTransport(provider));
     provider.subscribeClose?.(() => setStatus("disconnected"));
     return cachedClient;
@@ -237,9 +264,11 @@ export function getClientSync(): TrUApiClient | null {
 
 /**
  * Subscribe to connection-status changes. The callback fires immediately with
- * the current status and on every transition. Status is `"connected"` once the
- * client is built inside a host container, and `"disconnected"` otherwise (or
- * when the provider reports the pipe closed). Returns an unsubscribe function.
+ * the current status and on every transition. Status is `"connecting"` while
+ * the client waits for the host channel, `"connected"` once the channel is
+ * established (`truapi-init` MessagePort handover, first legacy frame, or
+ * webview port), and `"disconnected"` outside a host container or when the
+ * provider reports the pipe closed. Returns an unsubscribe function.
  */
 export function subscribeConnectionStatus(
   callback: (status: ConnectionStatus) => void,
@@ -252,7 +281,12 @@ export function subscribeConnectionStatus(
   statusListeners.add(listener);
 
   if (status === "disconnected") {
-    setStatus(getClientSync() ? "connected" : "disconnected");
+    // Building the client may establish the channel synchronously (an already
+    // injected port), in which case the status is already "connected" here.
+    const client = getClientSync();
+    if (client && status === "disconnected") {
+      setStatus("connecting");
+    }
   }
   if (!emitted) {
     callback(status);
