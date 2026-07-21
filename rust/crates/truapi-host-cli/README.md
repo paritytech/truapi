@@ -178,10 +178,10 @@ truapi-host signing-host --log-level trace --deeplink '<deeplink>' --auto-accept
 ```
 
 Debug and trace output may contain product signing payloads. `RUST_LOG` takes
-precedence at startup and remains available for module-specific filters.
+precedence at startup and remains available for module-specific filters, except
+that the noisy `rustls` tracing target is always excluded from CLI log output.
 Without `RUST_LOG`, `--log-level` and `/log` apply to TrUAPI targets while
-third-party dependencies such as `rustls` and `tungstenite` remain at
-`warn`.
+other third-party dependencies such as `tungstenite` remain at `warn`.
 
 ## Statement-store allowance
 

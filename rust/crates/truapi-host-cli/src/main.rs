@@ -272,7 +272,7 @@ async fn main() -> Result<()> {
         .with_writer(terminal_ui::LogWriter::default)
         .with_filter(filter)
         .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
-            metadata.target() != terminal_ui::INCOMING_SSO_TARGET
+            log_target_is_visible(metadata.target())
         }));
     tracing_subscriber::registry()
         .with(terminal_ui::IncomingSsoLayer)
@@ -296,6 +296,12 @@ async fn main() -> Result<()> {
             submit,
         } => run_alloc_check(mnemonic, network.config(), target, lookback, submit).await,
     }
+}
+
+fn log_target_is_visible(target: &str) -> bool {
+    target != terminal_ui::INCOMING_SSO_TARGET
+        && target != "rustls"
+        && !target.starts_with("rustls::")
 }
 
 /// Check statement-store allowance for a mnemonic: ring membership, the chosen
@@ -1151,6 +1157,13 @@ mod cli_tests {
             LogLevel::Trace.scoped_filter(),
             "warn,truapi=trace,truapi_host=trace,truapi_platform=trace,truapi_server=trace"
         );
+    }
+
+    #[test]
+    fn rustls_targets_are_always_excluded_from_cli_logs() {
+        assert!(!log_target_is_visible("rustls"));
+        assert!(!log_target_is_visible("rustls::client::tls13"));
+        assert!(log_target_is_visible("truapi_server::runtime"));
     }
 
     #[test]
