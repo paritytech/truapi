@@ -14,7 +14,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 use truapi_server::{
     FrameSink, PairingHostRuntime, ProductContext, ProductRuntime, SigningHostRuntime,
 };
@@ -108,7 +108,7 @@ pub async fn accept_loop(
     listener: TcpListener,
 ) -> Result<()> {
     let bound = listener.local_addr()?;
-    info!(%bound, %product_id, "product frame server listening");
+    debug!(%bound, %product_id, "product frame server listening");
     loop {
         let (stream, peer) = match listener.accept().await {
             Ok(accepted) => accepted,

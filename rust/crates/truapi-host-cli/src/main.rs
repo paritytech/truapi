@@ -31,7 +31,6 @@ use std::sync::Arc;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures::future::BoxFuture;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -44,8 +43,12 @@ use crate::accounts::{ResolveSignerConfig, ResolvedSigner};
 use crate::network::{Network, NetworkConfig};
 use crate::platform::{ApprovalPolicy, CliPlatform};
 use crate::sessions::{DEFAULT_SESSION_NAME, SessionCatalog, SessionProfile};
-use crate::signing_shell::{HELP_TEXT, SessionCommand, ShellCommand, parse_command};
-use crate::terminal_ui::{ActiveTerminalUi, DriveResult, TerminalUi, UiHandle};
+use crate::signing_shell::{
+    HELP_TEXT, PAIRING_HELP_TEXT, SessionCommand, ShellCommand, parse_command,
+};
+use crate::terminal_ui::{
+    ActiveTerminalUi, ActivityState, DriveResult, SystemEvent, TerminalUi, UiHandle,
+};
 
 /// Default product served by the pairing host's frame endpoint. Product ids
 /// must be a `.dot` name or a `localhost` identifier (host-spec product id).
@@ -140,7 +143,7 @@ enum Command {
     /// Run a seedless pairing host for product scripts or interactive pairing.
     ///
     /// With `--script`, exits with the script's status. Without it, stays in an
-    /// interactive shell where scripts can be run repeatedly.
+    /// interactive terminal UI where scripts can be run repeatedly.
     PairingHost(PairingHostArgs),
     /// Run a wallet-local signing host for scripts or pairing deeplinks.
     ///
@@ -274,6 +277,9 @@ async fn main() -> Result<()> {
     };
     let log_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
+        .without_time()
+        .with_target(false)
+        .with_level(false)
         .with_writer(terminal_ui::LogWriter::default)
         .with_filter(filter)
         .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
@@ -285,7 +291,7 @@ async fn main() -> Result<()> {
         .init();
 
     match cli.command {
-        Command::PairingHost(args) => run_pairing_host(args).await,
+        Command::PairingHost(args) => run_pairing_host(args, cli.log_level, log_controller).await,
         Command::SigningHost(args) => run_signing_host(args, cli.log_level, log_controller).await,
         Command::IdentityCheck { mnemonic, network } => {
             let entropy = bip39::Mnemonic::parse(mnemonic.trim())
@@ -452,16 +458,35 @@ fn platform_info() -> PlatformInfo {
     }
 }
 
-async fn run_pairing_host(args: PairingHostArgs) -> Result<()> {
+async fn run_pairing_host(
+    args: PairingHostArgs,
+    initial_log_level: LogLevel,
+    log_controller: LogController,
+) -> Result<()> {
+    let interactive = args.script.is_none();
+    if interactive && !terminal_ui::is_interactive_terminal() {
+        invalid_invocation(
+            "interactive pairing-host requires a TTY; use pairing-host --script <path>",
+        );
+    }
     let network = args.network.config();
     let base_path = args.base_path.unwrap_or_else(default_base_path);
     let product_id = args.product_id;
+    let pairing_state_path = role_state_path(&base_path, network, "pairing-host");
+    let scratch_script_directory = pairing_state_path.join("scripts");
+    let (terminal_ui, ui_handle) = if interactive {
+        let (ui, handle) =
+            TerminalUi::new_pairing(network.id, product_id.clone(), initial_log_level);
+        (Some(ui.enter()?), Some(handle))
+    } else {
+        (None, None)
+    };
     let platform = CliPlatform::new(
         network.people_ws,
         network.live_chain_endpoints,
-        Some(role_state_path(&base_path, network, "pairing-host")),
+        Some(pairing_state_path),
         approval_policy(args.auto_accept),
-        None,
+        ui_handle,
     );
     // SSO and identity both run over the real People chain, so usernames always
     // resolve from `Resources.Consumers` (host-spec G).
@@ -477,7 +502,9 @@ async fn run_pairing_host(args: PairingHostArgs) -> Result<()> {
 
     let listener = frame_server::bind(args.frame_listen).await?;
     let frame_url = format!("ws://{}", listener.local_addr()?);
-    println!("FRAMES_LISTENING {frame_url}");
+    terminal_ui::output_event(SystemEvent::FramesListening {
+        url: frame_url.clone(),
+    });
     let runtime: Arc<dyn frame_server::ProductRuntimeFactory> = runtime;
 
     if let Some(script) = args.script {
@@ -487,11 +514,21 @@ async fn run_pairing_host(args: PairingHostArgs) -> Result<()> {
             script_runner::run(&script_frame_url, &script_product_id, &script).await
         })
         .await?;
-        std::process::exit(status.code().unwrap_or(1));
+        let code = status.code().unwrap_or(1);
+        terminal_ui::output_event(SystemEvent::ScriptExit { code });
+        std::process::exit(code);
     }
 
+    let terminal_ui = terminal_ui.context("interactive terminal was not initialized")?;
     with_frame_server(runtime, product_id.clone(), listener, async move {
-        pairing_interactive_loop(frame_url, product_id).await
+        pairing_interactive_loop(
+            frame_url,
+            product_id,
+            scratch_script_directory,
+            terminal_ui,
+            log_controller,
+        )
+        .await
     })
     .await
 }
@@ -546,12 +583,9 @@ async fn run_signing_host(
     .await?;
     let listener = frame_server::bind(args.frame_listen).await?;
     let frame_url = format!("ws://{}", listener.local_addr()?);
-    if let Some(ui) = &ui_handle {
-        ui.system(format!("FRAMES_LISTENING {frame_url}"));
-        ui.system("Type /help to list commands");
-    } else {
-        println!("FRAMES_LISTENING {frame_url}");
-    }
+    terminal_ui::output_event(SystemEvent::FramesListening {
+        url: frame_url.clone(),
+    });
     let runtime_for_frames: Arc<dyn frame_server::ProductRuntimeFactory> =
         session.runtime_factory.clone();
 
@@ -567,8 +601,12 @@ async fn run_signing_host(
                 let runtime = session.runtime.clone();
                 responder = Some(tokio::spawn(async move {
                     match runtime.respond_to_pairing(&deeplink).await {
-                        Ok(exit) => println!("SIGNING_HOST_EXIT {exit:?}"),
-                        Err(err) => eprintln!("SIGNING_HOST_ERROR {}", err.reason),
+                        Ok(exit) => terminal_ui::output_event(SystemEvent::SigningHostExit {
+                            outcome: format!("{exit:?}"),
+                        }),
+                        Err(err) => terminal_ui::output_event(SystemEvent::SigningHostError {
+                            reason: err.reason,
+                        }),
                     }
                 }));
             }
@@ -580,7 +618,9 @@ async fn run_signing_host(
             Ok::<ExitStatus, anyhow::Error>(status)
         })
         .await?;
-        std::process::exit(status.code().unwrap_or(1));
+        let code = status.code().unwrap_or(1);
+        terminal_ui::output_event(SystemEvent::ScriptExit { code });
+        std::process::exit(code);
     }
 
     let product_id = args.product_id.clone();
@@ -596,8 +636,12 @@ async fn run_signing_host(
                     let runtime = session.runtime.clone();
                     Some(tokio::spawn(async move {
                         match runtime.respond_to_pairing(&deeplink).await {
-                            Ok(exit) => println!("SIGNING_HOST_EXIT {exit:?}"),
-                            Err(err) => eprintln!("SIGNING_HOST_ERROR {}", err.reason),
+                            Ok(exit) => terminal_ui::output_event(SystemEvent::SigningHostExit {
+                                outcome: format!("{exit:?}"),
+                            }),
+                            Err(err) => terminal_ui::output_event(SystemEvent::SigningHostError {
+                                reason: err.reason,
+                            }),
                         }
                     }))
                 } else {
@@ -719,7 +763,7 @@ async fn start_signing_host(
             catalog.store_user_id(profile, user_id)?;
             cached_user_id = Some(user_id.clone());
         }
-        terminal_ui::output_line("SIGNING_HOST_READY");
+        terminal_ui::output_event(SystemEvent::SigningHostReady);
         signer = Some(cached_signer);
     }
 
@@ -892,7 +936,7 @@ async fn activate_current_signer(session: &mut SigningHostSession) -> Result<()>
         session.catalog.store_user_id(profile, user_id)?;
         session.cached_user_id = Some(user_id.clone());
     }
-    terminal_ui::output_line("SIGNING_HOST_READY");
+    terminal_ui::output_event(SystemEvent::SigningHostReady);
     Ok(())
 }
 
@@ -927,9 +971,10 @@ async fn prepare_pairing_response(session: &mut SigningHostSession, deeplink: &s
                         name,
                         period,
                     )?;
-                    terminal_ui::output_line(format!(
-                        "SIGNING_HOST_ACCOUNT_EXHAUSTED {name} period={period}"
-                    ));
+                    terminal_ui::output_event(SystemEvent::SigningHostAccountExhausted {
+                        name: name.clone(),
+                        period,
+                    });
                 }
                 let account_base_path = current_account_base_path(session)?;
                 let session_name = session
@@ -968,7 +1013,9 @@ async fn respond_to_deeplink(session: &mut SigningHostSession, deeplink: String)
         .respond_to_pairing(&deeplink)
         .await
         .map_err(|err| anyhow::anyhow!("pairing failed: {}", err.reason))?;
-    terminal_ui::output_line(format!("SIGNING_HOST_EXIT {exit:?}"));
+    terminal_ui::output_event(SystemEvent::SigningHostExit {
+        outcome: format!("{exit:?}"),
+    });
     Ok(())
 }
 
@@ -983,17 +1030,21 @@ async fn start_deeplink_responder(
     let runtime = session.runtime.clone();
     session.responder = Some(tokio::spawn(async move {
         match runtime.respond_to_pairing(&deeplink).await {
-            Ok(exit) => terminal_ui::output_line(format!("SIGNING_HOST_EXIT {exit:?}")),
+            Ok(exit) => terminal_ui::output_event(SystemEvent::SigningHostExit {
+                outcome: format!("{exit:?}"),
+            }),
             Err(error) => {
-                terminal_ui::output_line(format!("SIGNING_HOST_ERROR {}", error.reason));
+                terminal_ui::output_event(SystemEvent::SigningHostError {
+                    reason: error.reason,
+                });
             }
         }
     }));
-    terminal_ui::output_line("SIGNING_HOST_RESPONDER_STARTED");
+    terminal_ui::output_event(SystemEvent::SigningHostResponderStarted);
     Ok(())
 }
 
-fn session_status(session: &SigningHostSession) -> String {
+fn session_status_event(session: &SigningHostSession) -> SystemEvent {
     let name = session
         .profile
         .as_ref()
@@ -1008,7 +1059,15 @@ fn session_status(session: &SigningHostSession) -> String {
         .and_then(|signer| signer.lite_username.as_deref())
         .or(session.cached_user_id.as_deref())
         .unwrap_or("<not provisioned>");
-    format!("Current session\nname={name}\npath={path}\nuser.id={user_id}")
+    SystemEvent::SessionStatus {
+        name: name.to_string(),
+        path,
+        user_id: user_id.to_string(),
+    }
+}
+
+fn session_status(session: &SigningHostSession) -> String {
+    session_status_event(session).human()
 }
 
 fn session_list(session: &SigningHostSession) -> Result<String> {
@@ -1038,7 +1097,7 @@ async fn switch_session(session: &mut SigningHostSession, name: String) -> Resul
         .as_ref()
         .is_some_and(|profile| profile.name == name)
     {
-        terminal_ui::output_line(session_status(session));
+        terminal_ui::output_event(session_status_event(session));
         return Ok(());
     }
 
@@ -1049,9 +1108,12 @@ async fn switch_session(session: &mut SigningHostSession, name: String) -> Resul
         .map_or(DEFAULT_SESSION_NAME, |profile| profile.name.as_str())
         .to_string();
     if existed {
-        terminal_ui::output_line(format!("Switching session {old_name} -> {name}"));
+        terminal_ui::output_event(SystemEvent::SessionSwitching {
+            from: old_name.clone(),
+            to: name.clone(),
+        });
     } else {
-        terminal_ui::output_line(format!("Session {name:?} does not exist; creating it"));
+        terminal_ui::output_event(SystemEvent::SessionCreating { name: name.clone() });
     }
 
     // Resolve and provision the target completely while the old runtime keeps
@@ -1102,8 +1164,8 @@ async fn switch_session(session: &mut SigningHostSession, name: String) -> Resul
     if let Some(ui) = &session.ui {
         ui.session(name, available_sessions);
     }
-    terminal_ui::output_line("PRODUCT_CONNECTIONS_RESET reconnect required");
-    terminal_ui::output_line(session_status(session));
+    terminal_ui::output_event(SystemEvent::ProductConnectionsReset);
+    terminal_ui::output_event(session_status_event(session));
     Ok(())
 }
 
@@ -1152,11 +1214,10 @@ async fn register_pairing_allowances(
                 "signing account is not a LitePeople ring member; cannot grant allowance"
             )
         })?;
-    terminal_ui::output_line(format!(
-        "SIGNING_HOST_RING ring_index={} members={}",
-        ring.ring_index,
-        ring.members.len()
-    ));
+    terminal_ui::output_event(SystemEvent::RingInfo {
+        ring_index: ring.ring_index,
+        members: ring.members.len(),
+    });
 
     let period = alloc::slot::current_period(
         std::time::SystemTime::now()
@@ -1166,7 +1227,9 @@ async fn register_pairing_allowances(
     );
 
     for (label, target) in [("wallet-sso", wallet_sso), ("device", device)] {
-        terminal_ui::output_line(format!("SIGNING_HOST_ALLOWANCE {label} checking"));
+        terminal_ui::output_event(SystemEvent::AllowanceChecking {
+            target: label.to_string(),
+        });
         let outcome = alloc::register_statement_account(
             &rpc,
             &metadata,
@@ -1181,43 +1244,112 @@ async fn register_pairing_allowances(
         match outcome {
             alloc::RegistrationOutcome::Registered {
                 block_hash, seq, ..
-            } => terminal_ui::output_line(format!(
-                "SIGNING_HOST_ALLOWANCE {label} seq={seq} block={block_hash}"
-            )),
+            } => terminal_ui::output_event(SystemEvent::AllowanceReady {
+                target: label.to_string(),
+                sequence: seq,
+                block_hash: Some(block_hash),
+                already_allocated: false,
+            }),
             alloc::RegistrationOutcome::AlreadyAllocated { seq } => {
-                terminal_ui::output_line(format!(
-                    "SIGNING_HOST_ALLOWANCE {label} already-allocated seq={seq}"
-                ));
+                terminal_ui::output_event(SystemEvent::AllowanceReady {
+                    target: label.to_string(),
+                    sequence: seq,
+                    block_hash: None,
+                    already_allocated: true,
+                });
             }
         }
     }
     Ok(())
 }
 
-async fn pairing_interactive_loop(frame_url: String, product_id: String) -> Result<()> {
-    println!("PAIRING_HOST_INTERACTIVE commands: script <path>, quit");
-    let mut lines = BufReader::new(tokio::io::stdin()).lines();
+async fn pairing_interactive_loop(
+    frame_url: String,
+    product_id: String,
+    scratch_script_directory: PathBuf,
+    mut ui: ActiveTerminalUi,
+    log_controller: LogController,
+) -> Result<()> {
     loop {
-        print_prompt("pairing-host> ").await?;
-        let Some(line) = lines.next_line().await? else {
+        let Some(input) = ui.next_command().await? else {
             return Ok(());
         };
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if is_quit(line) {
-            return Ok(());
-        }
-        let Some(script) = script_command(line) else {
-            println!("unknown command; use: script <path>, quit");
-            continue;
+        ui.command(input.clone());
+        let command = match parse_command(&input) {
+            Ok(command) => command,
+            Err(error) => {
+                ui.error(error);
+                continue;
+            }
         };
-        match script_runner::run(&frame_url, &product_id, &script).await {
-            Ok(status) => println!("SCRIPT_EXIT {}", status.code().unwrap_or(1)),
-            Err(err) => println!("SCRIPT_ERROR {err:#}"),
+        match command {
+            ShellCommand::Help => ui.system(PAIRING_HELP_TEXT),
+            ShellCommand::Clear => ui.clear(),
+            ShellCommand::Copy => match ui.copy_transcript() {
+                Ok(entries) => ui.event(SystemEvent::CopiedTranscript { entries }),
+                Err(error) => ui.error(format!("failed to copy transcript: {error}")),
+            },
+            ShellCommand::Log(level) => {
+                if let Err(error) = log_controller.set(level) {
+                    ui.error(format!("failed to set log level: {error}"));
+                } else {
+                    ui.set_log_level(level);
+                    ui.event(SystemEvent::LogLevelChanged { level });
+                }
+            }
+            ShellCommand::Quit => return Ok(()),
+            ShellCommand::Script(script) => {
+                let script = match script {
+                    Some(script) => Ok(script),
+                    None => edit_new_script_in(&scratch_script_directory, &mut ui).await,
+                };
+                match script {
+                    Ok(script) => {
+                        run_pairing_script(&frame_url, &product_id, &script, input, &mut ui)
+                            .await?;
+                    }
+                    Err(error) => ui.error(error.to_string()),
+                }
+            }
+            ShellCommand::Deeplink(_) | ShellCommand::Session(_) => {
+                ui.error("command is only available on the signing host");
+            }
         }
     }
+}
+
+async fn run_pairing_script(
+    frame_url: &str,
+    product_id: &str,
+    script: &std::path::Path,
+    label: String,
+    ui: &mut ActiveTerminalUi,
+) -> Result<()> {
+    let activity_checkpoint = ui.activity_checkpoint();
+    let handle = ui.handle();
+    let operation = async {
+        let status = script_runner::run_captured(frame_url, product_id, script, handle).await?;
+        terminal_ui::output_event(SystemEvent::ScriptExit {
+            code: status.code().unwrap_or(1),
+        });
+        Ok::<(), anyhow::Error>(())
+    };
+    match ui.drive(label, operation).await? {
+        DriveResult::Complete(Ok(())) => {}
+        DriveResult::Complete(Err(error)) => {
+            ui.finish_activities_since(
+                activity_checkpoint,
+                ActivityState::Failed,
+                "Stopped after an error",
+            );
+            ui.error(error.to_string());
+        }
+        DriveResult::Cancelled => {
+            ui.finish_activities_since(activity_checkpoint, ActivityState::Cancelled, "Cancelled");
+            ui.error("command cancelled");
+        }
+    }
+    Ok(())
 }
 
 async fn signing_interactive_loop(
@@ -1258,7 +1390,7 @@ async fn signing_interactive_loop(
             ShellCommand::Help => ui.system(HELP_TEXT),
             ShellCommand::Clear => ui.clear(),
             ShellCommand::Copy => match ui.copy_transcript() {
-                Ok(entries) => ui.system(format!("COPIED {entries} transcript entries")),
+                Ok(entries) => ui.event(SystemEvent::CopiedTranscript { entries }),
                 Err(error) => ui.error(format!("failed to copy transcript: {error}")),
             },
             ShellCommand::Log(level) => {
@@ -1266,11 +1398,11 @@ async fn signing_interactive_loop(
                     ui.error(format!("failed to set log level: {error}"));
                 } else {
                     ui.set_log_level(level);
-                    ui.system(format!("LOG_LEVEL {level}"));
+                    ui.event(SystemEvent::LogLevelChanged { level });
                 }
             }
             ShellCommand::Session(SessionCommand::Current) => {
-                ui.system(session_status(session));
+                ui.event(session_status_event(session));
             }
             ShellCommand::Session(SessionCommand::List) => match session_list(session) {
                 Ok(sessions) => ui.system(sessions),
@@ -1314,12 +1446,23 @@ async fn run_interactive_operation(
     label: String,
     ui: &mut ActiveTerminalUi,
 ) -> Result<()> {
+    let activity_checkpoint = ui.activity_checkpoint();
     let handle = ui.handle();
     let operation = execute_interactive_operation(session, frame_url, product_id, command, handle);
     match ui.drive(label, operation).await? {
         DriveResult::Complete(Ok(())) => {}
-        DriveResult::Complete(Err(error)) => ui.error(error.to_string()),
-        DriveResult::Cancelled => ui.error("command cancelled"),
+        DriveResult::Complete(Err(error)) => {
+            ui.finish_activities_since(
+                activity_checkpoint,
+                ActivityState::Failed,
+                "Stopped after an error",
+            );
+            ui.error(error.to_string());
+        }
+        DriveResult::Cancelled => {
+            ui.finish_activities_since(activity_checkpoint, ActivityState::Cancelled, "Cancelled");
+            ui.error("command cancelled");
+        }
     }
     Ok(())
 }
@@ -1336,10 +1479,9 @@ async fn execute_interactive_operation(
         ShellCommand::Script(Some(script)) => {
             ensure_signer(session).await?;
             let status = script_runner::run_captured(frame_url, product_id, &script, ui).await?;
-            if !status.success() {
-                bail!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
-            }
-            terminal_ui::output_line("SCRIPT_EXIT 0");
+            terminal_ui::output_event(SystemEvent::ScriptExit {
+                code: status.code().unwrap_or(1),
+            });
         }
         ShellCommand::Script(None) => bail!("new scripts must be edited by the terminal UI"),
         ShellCommand::Session(SessionCommand::Switch(name)) => {
@@ -1373,17 +1515,18 @@ async fn execute_non_interactive_command(
             };
             ensure_signer(session).await?;
             let status = script_runner::run(frame_url, product_id, &script).await?;
+            let code = status.code().unwrap_or(1);
+            terminal_ui::output_event(SystemEvent::ScriptExit { code });
             if !status.success() {
-                bail!("SCRIPT_EXIT {}", status.code().unwrap_or(1));
+                bail!("script exited with code {code}");
             }
-            println!("SCRIPT_EXIT 0");
         }
         ShellCommand::Help => println!("{HELP_TEXT}"),
         ShellCommand::Clear | ShellCommand::Quit => {}
         ShellCommand::Copy => bail!("/copy is only available in the terminal UI"),
         ShellCommand::Log(level) => {
             log_controller.set(level)?;
-            println!("LOG_LEVEL {level}");
+            terminal_ui::output_event(SystemEvent::LogLevelChanged { level });
         }
         ShellCommand::Session(SessionCommand::Current) => {
             println!("{}", session_status(session));
@@ -1409,8 +1552,15 @@ async fn edit_new_script(
     session: &SigningHostSession,
     ui: &mut ActiveTerminalUi,
 ) -> Result<PathBuf> {
-    let script = script_runner::create_scratch_script(&scratch_script_directory(session))?;
-    ui.system(format!("Opening editor for {}", script.display()));
+    edit_new_script_in(&scratch_script_directory(session), ui).await
+}
+
+async fn edit_new_script_in(
+    scratch_script_directory: &std::path::Path,
+    ui: &mut ActiveTerminalUi,
+) -> Result<PathBuf> {
+    let script = script_runner::create_scratch_script(scratch_script_directory)?;
+    ui.system(format!("Opening {} in your editor", script.display()));
     ui.suspend()?;
     let edit_result = script_runner::edit(&script).await;
     let resume_result = ui.resume();
@@ -1425,7 +1575,7 @@ async fn edit_new_script(
             script.display()
         );
     }
-    ui.system(format!("Saved script {}", script.display()));
+    ui.success("Script saved", Some(script.display().to_string()));
     Ok(script)
 }
 
@@ -1445,24 +1595,6 @@ async fn edit_new_script_plain(session: &SigningHostSession) -> Result<PathBuf> 
     }
     eprintln!("SAVED_SCRIPT {}", script.display());
     Ok(script)
-}
-
-async fn print_prompt(prompt: &str) -> Result<()> {
-    let mut stdout = tokio::io::stdout();
-    stdout.write_all(prompt.as_bytes()).await?;
-    stdout.flush().await?;
-    Ok(())
-}
-
-fn is_quit(line: &str) -> bool {
-    matches!(line, "quit" | "exit" | "q")
-}
-
-fn script_command(line: &str) -> Option<PathBuf> {
-    line.strip_prefix("script ")
-        .map(str::trim)
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
 }
 
 fn default_base_path() -> PathBuf {

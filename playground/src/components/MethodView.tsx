@@ -9,7 +9,7 @@ import { methodTestId, revealInRail, serviceTestId } from "@/src/lib/rail";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
-const CALL_TIMEOUT_MS = 30_000;
+const CALL_TIMEOUT_MS = 45_000;
 
 const CARGO_DOC_BASE =
   process.env.NEXT_PUBLIC_CARGO_DOC_BASE ??

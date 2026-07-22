@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use bip39::Mnemonic;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::{debug, warn};
 use truapi_server::host_logic::product_account::{
     derive_sr25519_hard_path, product_public_key_to_address,
 };
@@ -341,7 +341,7 @@ async fn create_auto_account(
         store.upsert(record.clone());
         store.save()?;
 
-        info!(
+        debug!(
             account = %record.name,
             network = %record.network,
             lite_username = %record.lite_username,
@@ -384,7 +384,7 @@ async fn attest_record(network: NetworkConfig, record: &AccountRecord) -> Result
     })
     .await
     .with_context(|| format!("attest account {}", record.name))?;
-    info!(
+    debug!(
         account = %record.name,
         lite_username = %record.lite_username,
         registered,
@@ -400,6 +400,14 @@ async fn wait_for_ring_membership(people_ws: &str, entropy: &[u8]) -> Result<()>
     let bandersnatch = alloc::bandersnatch_entropy(entropy);
     let mut metadata = None;
     for attempt in 1..=MAX_ATTEMPTS {
+        crate::terminal_ui::update_activity(
+            "signer",
+            "Setting up signer",
+            Some(format!(
+                "Waiting for LitePeople ring membership · attempt {attempt}/{MAX_ATTEMPTS}"
+            )),
+            crate::terminal_ui::ActivityState::Running,
+        );
         let rpc = match alloc::rpc::RpcClient::connect(people_ws).await {
             Ok(rpc) => rpc,
             Err(err) => {
@@ -443,7 +451,15 @@ async fn wait_for_ring_membership(people_ws: &str, entropy: &[u8]) -> Result<()>
             }
         };
         match alloc::find_including_ring(&rpc, metadata_ref, bandersnatch, current).await {
-            Ok(Some(_)) => return Ok(()),
+            Ok(Some(_)) => {
+                crate::terminal_ui::update_activity(
+                    "signer",
+                    "Setting up signer",
+                    Some("LitePeople ring membership ready".to_string()),
+                    crate::terminal_ui::ActivityState::Running,
+                );
+                return Ok(());
+            }
             Ok(None) => {}
             Err(err) => {
                 warn!(
@@ -461,7 +477,7 @@ async fn wait_for_ring_membership(people_ws: &str, entropy: &[u8]) -> Result<()>
 
 async fn sleep_ring_poll(attempt: usize, max_attempts: usize, sleep: Duration) {
     if attempt < max_attempts {
-        warn!(
+        debug!(
             attempt,
             max_attempts, "signer account not in a LitePeople ring yet"
         );

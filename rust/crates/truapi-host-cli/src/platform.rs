@@ -25,7 +25,7 @@ use truapi_platform::{
 };
 
 use crate::chain::WsChainProvider;
-use crate::terminal_ui::UiHandle;
+use crate::terminal_ui::{SystemEvent, UiHandle};
 
 /// How the host answers confirmation prompts (the web/iOS "sign?" modals).
 #[derive(Clone, Copy)]
@@ -127,9 +127,12 @@ impl CliPlatform {
         match self.approval {
             ApprovalPolicy::AutoAccept => {
                 if let Some(ui) = &self.ui {
-                    ui.system(format!("Auto-approved {action}\n{detail}"));
+                    ui.success(format!("Approved {action} automatically"), Some(detail));
                 } else {
-                    eprintln!("[auto-accept] {action}: {detail}");
+                    crate::terminal_ui::output_success(
+                        format!("Approved {action} automatically"),
+                        Some(detail),
+                    );
                 }
                 true
             }
@@ -282,20 +285,26 @@ impl Notifications for CliPlatform {
 impl Permissions for CliPlatform {
     async fn device_permission(
         &self,
-        request: api::HostDevicePermissionRequest,
+        _request: api::HostDevicePermissionRequest,
     ) -> Result<api::HostDevicePermissionResponse, api::GenericError> {
         let granted = self
-            .decide("device permission", format!("{request:?}"))
+            .decide(
+                "device permission",
+                "A product requested access to a device capability.".to_string(),
+            )
             .await;
         Ok(api::HostDevicePermissionResponse { granted })
     }
 
     async fn remote_permission(
         &self,
-        request: api::RemotePermissionRequest,
+        _request: api::RemotePermissionRequest,
     ) -> Result<api::RemotePermissionResponse, api::GenericError> {
         let granted = self
-            .decide("remote permission", format!("{request:?}"))
+            .decide(
+                "remote permission",
+                "A paired product requested a remote capability.".to_string(),
+            )
             .await;
         Ok(api::RemotePermissionResponse { granted })
     }
@@ -313,34 +322,50 @@ impl Features for CliPlatform {
 
 impl truapi_platform::AuthPresenter for CliPlatform {
     fn auth_state_changed(&self, state: AuthState) {
-        let (connection, line) = match &state {
+        let (connection, event) = match &state {
             AuthState::Pairing { deeplink } => (
                 "pairing".to_string(),
-                format!("PAIRING_DEEPLINK {deeplink}"),
+                SystemEvent::PairingDeeplink {
+                    url: deeplink.clone(),
+                },
             ),
             AuthState::Authenticating => (
                 "authenticating".to_string(),
-                "PAIRING_AUTHENTICATING".to_string(),
+                SystemEvent::PairingAuthenticating,
             ),
-            AuthState::Connected(info) => (connected_label(info), "PAIRING_CONNECTED".to_string()),
-            AuthState::Disconnected => (
-                "disconnected".to_string(),
-                "PAIRING_DISCONNECTED".to_string(),
+            AuthState::Connected(info) => (
+                connected_label(info),
+                SystemEvent::PairingConnected {
+                    user_id: connected_user_id(info).map(str::to_string),
+                },
             ),
-            AuthState::LoginFailed { reason } => {
-                ("failed".to_string(), format!("PAIRING_FAILED {reason}"))
+            AuthState::Disconnected => {
+                ("disconnected".to_string(), SystemEvent::PairingDisconnected)
             }
+            AuthState::LoginFailed { reason } => (
+                "failed".to_string(),
+                SystemEvent::PairingFailed {
+                    reason: reason.clone(),
+                },
+            ),
         };
         if let Some(ui) = &self.ui {
             ui.connection(connection);
-            ui.system(line);
+            ui.event(event);
         } else {
-            println!("{line}");
+            crate::terminal_ui::output_event(event);
         }
     }
 }
 
 fn connected_label(info: &SessionUiInfo) -> String {
+    connected_user_id(info).map_or_else(
+        || "connected".to_string(),
+        |user_id| format!("connected · {user_id}"),
+    )
+}
+
+fn connected_user_id(info: &SessionUiInfo) -> Option<&str> {
     info.full_username
         .as_deref()
         .filter(|value| !value.is_empty())
@@ -349,10 +374,6 @@ fn connected_label(info: &SessionUiInfo) -> String {
                 .as_deref()
                 .filter(|value| !value.is_empty())
         })
-        .map_or_else(
-            || "connected".to_string(),
-            |user_id| format!("connected · {user_id}"),
-        )
 }
 
 #[async_trait]
@@ -361,7 +382,65 @@ impl UserConfirmation for CliPlatform {
         &self,
         review: UserConfirmationReview,
     ) -> Result<bool, api::GenericError> {
-        Ok(self.decide("sign request", format!("{review:?}")).await)
+        let (action, detail) = approval_summary(&review);
+        Ok(self.decide(action, detail).await)
+    }
+}
+
+fn approval_summary(review: &UserConfirmationReview) -> (&'static str, String) {
+    match review {
+        UserConfirmationReview::SignPayload(_) => (
+            "sign payload",
+            "A product requested a SCALE payload signature.".to_string(),
+        ),
+        UserConfirmationReview::SignRaw(_) => (
+            "sign raw data",
+            "A product requested a raw-data signature. The payload is hidden here.".to_string(),
+        ),
+        UserConfirmationReview::CreateTransaction(_) => (
+            "create transaction",
+            "A product requested a transaction from one of your accounts.".to_string(),
+        ),
+        UserConfirmationReview::AccountAlias(review) => (
+            "derive account alias",
+            format!(
+                "Product {} requested a contextual account alias.",
+                review.calling_product_id
+            ),
+        ),
+        UserConfirmationReview::CreateProof(review) => (
+            "create account proof",
+            format!(
+                "Product {} requested a contextual proof bound to {} bytes.",
+                review.calling_product_id,
+                review.message.len()
+            ),
+        ),
+        UserConfirmationReview::IdentityDisclosure(review) => (
+            "share identity",
+            format!(
+                "Product {} requested your primary identity.",
+                review.product_id
+            ),
+        ),
+        UserConfirmationReview::ResourceAllocation(_) => (
+            "allocate resources",
+            "A product requested host-managed resources.".to_string(),
+        ),
+        UserConfirmationReview::PreimageSubmit(review) => (
+            "submit preimage",
+            format!(
+                "A product requested submission of a {}-byte preimage.",
+                review.size
+            ),
+        ),
+        UserConfirmationReview::AccountAccess(review) => (
+            "access another product account",
+            format!(
+                "Product {} requested access to the {} account.",
+                review.requesting_product_id, review.target_product_id
+            ),
+        ),
     }
 }
 
@@ -461,5 +540,22 @@ mod tests {
         };
         assert_eq!(connected_label(&info), "connected · alice.dot");
         assert_eq!(connected_label(&SessionUiInfo::default()), "connected");
+    }
+
+    #[test]
+    fn approval_summaries_are_concise_and_do_not_dump_payloads() {
+        let review =
+            UserConfirmationReview::PreimageSubmit(truapi_platform::PreimageSubmitReview {
+                size: 4_096,
+            });
+
+        let (action, detail) = approval_summary(&review);
+
+        assert_eq!(action, "submit preimage");
+        assert_eq!(
+            detail,
+            "A product requested submission of a 4096-byte preimage."
+        );
+        assert!(!detail.contains("["));
     }
 }

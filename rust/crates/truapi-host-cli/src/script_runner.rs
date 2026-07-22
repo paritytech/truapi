@@ -20,9 +20,18 @@ use tokio::process::Command;
 
 use crate::terminal_ui::UiHandle;
 
-const SCRATCH_TEMPLATE: &str = r#"const result = await truapi.account.getUserId();
-assert(result.isOk(), "getUserId failed:", result);
-console.log("user id:", result.value);
+const SCRATCH_TEMPLATE: &str = r#"#!/usr/bin/env bun
+
+// Import any npm package you need - Bun installs missing dependencies automatically.
+import chalk from "chalk";
+
+console.log(chalk.cyan.bold("\n🚀 TrUAPI script\n"));
+
+const result = await truapi.account.getUserId();
+if (!result.isOk()) {
+  throw new Error(`getUserId failed: ${JSON.stringify(result.error)}`);
+}
+console.log(chalk.green("user id:"), result.value);
 "#;
 
 /// Locate `js/runner.ts`, shipped alongside the crate.
@@ -143,14 +152,14 @@ pub async fn run_captured(
     let stdout_task = async move {
         let mut lines = BufReader::new(stdout).lines();
         while let Some(line) = lines.next_line().await? {
-            stdout_ui.script(line);
+            stdout_ui.script_stdout(line);
         }
         Ok::<(), std::io::Error>(())
     };
     let stderr_task = async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Some(line) = lines.next_line().await? {
-            ui.script(format!("[stderr] {line}"));
+            ui.script_stderr(line);
         }
         Ok::<(), std::io::Error>(())
     };
@@ -174,6 +183,7 @@ fn command(frame_url: &str, product_id: &str, script: &Path) -> Result<Command> 
 
     let mut command = Command::new("bun");
     command
+        .arg("run")
         .arg(&runner)
         .env("TRUAPI_FRAME_URL", frame_url)
         .env("TRUAPI_PRODUCT_ID", product_id)
@@ -186,12 +196,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scratch_script_contains_the_public_api_template() -> Result<()> {
+    fn scratch_script_starts_as_a_bun_script_with_dependency_examples() -> Result<()> {
         let temporary = tempfile::tempdir()?;
 
         let script = create_scratch_script(temporary.path())?;
+        let contents = fs::read_to_string(script)?;
 
-        assert_eq!(fs::read_to_string(script)?, SCRATCH_TEMPLATE);
+        assert!(contents.starts_with("#!/usr/bin/env bun\n"));
+        assert!(contents.contains("import chalk from \"chalk\";"));
+        assert!(contents.contains("truapi.account.getUserId()"));
+        assert_eq!(contents, SCRATCH_TEMPLATE);
+        Ok(())
+    }
+
+    #[test]
+    fn host_scripts_are_run_by_bun() -> Result<()> {
+        let temporary = tempfile::tempdir()?;
+        let script = temporary.path().join("script.ts");
+        fs::write(&script, "console.log('hello');\n")?;
+
+        let command = command("ws://127.0.0.1:1234", "example.dot", &script)?;
+        let command = command.as_std();
+        let arguments = command.get_args().collect::<Vec<_>>();
+
+        assert_eq!(command.get_program(), std::ffi::OsStr::new("bun"));
+        assert_eq!(arguments[0], std::ffi::OsStr::new("run"));
+        assert_eq!(arguments[1], runner_path());
         Ok(())
     }
 

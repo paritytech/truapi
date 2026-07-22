@@ -83,9 +83,9 @@ fn startup_session_is_reported_and_restored() {
         .expect("run signing-host in alice session");
     assert!(first.status.success());
     let first_stdout = String::from_utf8_lossy(&first.stdout);
-    assert!(first_stdout.contains("name=alice"));
+    assert!(first_stdout.contains("Session alice"));
     assert!(first_stdout.contains("signing-host/sessions/alice"));
-    assert!(first_stdout.contains("user.id=<not provisioned>"));
+    assert!(first_stdout.contains("User <not provisioned>"));
 
     let restored = command()
         .args(["signing-host", "--frame-listen", "127.0.0.1:0"])
@@ -135,8 +135,8 @@ fn existing_local_signer_is_activated_and_cached_at_startup() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("SIGNING_HOST_READY"));
-    assert!(stdout.contains("user.id=cachedalice"));
+    assert!(stdout.contains("Signing host ready"));
+    assert!(stdout.contains("User cachedalice"));
     let metadata =
         std::fs::read_to_string(base_path.join("paseo-next-v2/signing-host/session.json"))
             .expect("read persisted session identity");

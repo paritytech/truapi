@@ -13,6 +13,7 @@
 //   TRUAPI_PRODUCT_ID  product id the host serves (scopes storage etc.)
 //   TRUAPI_SCRIPT      absolute path to the user script
 import { pathToFileURL } from "node:url";
+import { inspect } from "node:util";
 import {
   createClient,
   createTransport,
@@ -37,6 +38,13 @@ declare global {
   var truapi: TrUApiClient;
   // eslint-disable-next-line no-var
   var host: HostContext;
+  // Playground examples receive this helper from `runExample`; expose the
+  // same contract to directly imported CLI scripts.
+  // eslint-disable-next-line no-var
+  var assert: (
+    condition: unknown,
+    ...message: unknown[]
+  ) => asserts condition;
 }
 
 const OPEN_TIMEOUT_MS = 15_000;
@@ -61,6 +69,17 @@ async function main() {
   };
   globalThis.truapi = client;
   globalThis.host = context;
+  globalThis.assert = (condition: unknown, ...message: unknown[]) => {
+    if (condition) return;
+    const detail = message
+      .map((value) =>
+        typeof value === "string"
+          ? value
+          : inspect(value, { colors: false, depth: 5 }),
+      )
+      .join(" ");
+    throw new Error(detail || "assertion failed");
+  };
 
   const timer = setTimeout(() => {
     console.error(`[runner] timed out connecting to ${frameUrl}`);

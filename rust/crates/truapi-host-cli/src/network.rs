@@ -34,18 +34,21 @@ const PASEO_NEXT_V2_CHAIN_ENDPOINTS: &[ChainEndpoint] = &[
             "bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
         ),
         ws: "wss://paseo-asset-hub-next-rpc.polkadot.io",
+        required_for_host: false,
     },
     ChainEndpoint {
         genesis: hex_literal_genesis(
             "c5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5",
         ),
         ws: "wss://paseo-people-next-system-rpc.polkadot.io",
+        required_for_host: true,
     },
     ChainEndpoint {
         genesis: hex_literal_genesis(
             "8cfe6717dc4becfda2e13c488a1e2061ff2dfee96e7d031157f72d36716c0a22",
         ),
         ws: "wss://paseo-bulletin-next-rpc.polkadot.io",
+        required_for_host: true,
     },
 ];
 
@@ -66,6 +69,9 @@ pub struct NetworkConfig {
 pub struct ChainEndpoint {
     pub genesis: [u8; 32],
     pub ws: &'static str,
+    /// Whether host internals require this route even when optional product
+    /// Chain calls are disabled.
+    pub required_for_host: bool,
 }
 
 /// Decode a 64-char hex genesis at compile time.

@@ -6,6 +6,9 @@ host-spec §B roles and pair over the **real People-chain statement store** (the
 same node an iOS/web client uses), so tests run against a real signer with no
 Novasama-operated dependency.
 
+See [SPEC.md](SPEC.md) for the implementation contract, completion criteria,
+and agent work packages.
+
 Either host can be driven by a **product script** you write: a JS/TS file that
 receives a global `truapi` (the `@parity/truapi` client, scoped to a product id)
 and calls it like any product would. With `--script`, the CLI runs the script
@@ -39,25 +42,25 @@ through the identity backend, waits for ring readiness, and rotates when the
 current account exhausts Statement Store slots. Override the product with
 `PRODUCT_ID=...` and the pairing frame port with `FRAME=...`.
 
-### Signing-host terminal UI
+### Interactive terminal UI
 
-In a TTY, `truapi-host signing-host` opens a scrollable transcript above a
-single command bar. Host lifecycle events, tracing logs, every incoming SSO
-request, script stdout/stderr, commands, and approval prompts all use that
-transcript, so background output cannot overwrite input. `--deeplink URL`
-opens the same UI and starts the pairing response after initialization.
+In a TTY, both hosts open the same scrollable transcript above a single command
+bar. Host lifecycle events, tracing logs, every incoming SSO request, script
+stdout/stderr, commands, and approval prompts all use that transcript, so
+background output cannot overwrite input. On `signing-host`, `--deeplink URL`
+opens the UI and starts the pairing response after initialization.
 
 Commands always start with `/`:
 
 | Command | Result |
 | --- | --- |
-| `/deeplink <url>` | Validate and answer a `polkadotapp://pair?...` deeplink. |
+| `/deeplink <url>` | Validate and answer a `polkadotapp://pair?...` deeplink (signing host). |
 | `/script` | Open a new TypeScript scratch script in the terminal editor, then run it. |
 | `/script <path>` | Run an existing JS/TS product script through the public frame endpoint. |
 | `/log <level>` | Change tracing to `error`, `warn`, `info`, `debug`, or `trace`. |
-| `/session` | Show the current session name, path, and user id. |
-| `/session <name>` | Switch to an existing session or create an isolated one. |
-| `/session --list` | List sessions for the current network. |
+| `/session` | Show the current session name, path, and user id (signing host). |
+| `/session <name>` | Switch to or create an isolated signing-host session. |
+| `/session --list` | List signing-host sessions for the current network. |
 | `/help` | Show commands and keyboard shortcuts. |
 | `/clear` | Clear the visible transcript. |
 | `/copy` | Copy the retained transcript to the system clipboard. |
@@ -70,8 +73,26 @@ viewport, End restores auto-follow, Esc closes autocomplete, and Ctrl-C clears
 input, cancels a running command, or exits when idle. Deeplinks are deliberately
 not persisted in history across processes.
 
-Bare `/script` creates a durable scratch file under the active session's
-`scripts/` directory, seeded with a `truapi.account.getUserId()` example.
+Both `pairing-host` and `signing-host` use the same interactive UI and command
+bar. It uses a quiet, command-centered transcript: submitted
+commands have a cyan rail, script stdout keeps the terminal's normal foreground,
+stderr has a small error gutter, and lifecycle work updates sentence-case
+status rows in place. Pairing state stays visible in the compact header. A
+borderless, subtly backgrounded composer anchors autocomplete, the `›` prompt,
+and contextual key hints at the bottom while keeping the native cursor after
+the input. Set `NO_COLOR=1` to remove semantic colors and the surface fill
+without losing spacing, status symbols, or wording.
+
+Non-interactive `--script` and `exec` runs use the same sentence-case event
+copy and status symbols without the full-screen chrome. This keeps captured
+logs readable while pairing URLs remain directly extractable by automation.
+`/copy` copies readable transcript text without UI chrome or complete pairing
+links.
+
+Bare `/script` creates a durable Bun TypeScript file under the active host
+state's `scripts/` directory. Its starter imports `chalk` to demonstrate that
+scripts can import npm packages directly and let Bun install missing
+dependencies automatically, then calls `truapi.account.getUserId()`.
 The TUI temporarily yields the terminal to `$VISUAL`, then `$EDITOR`, or
 `vi` when neither is set. After the editor exits successfully, the TUI is
 restored and the saved script runs through the public frame endpoint. Editor
@@ -125,8 +146,9 @@ one-shot mode remains supported.
 
 ## Writing a product script
 
-A product script is top-level code (an ES module). The runner injects two
-globals before running it:
+A product script is top-level JavaScript or TypeScript (an ES module) run by
+Bun. It can import npm dependencies directly; Bun installs missing packages
+automatically. The runner injects two globals before running it:
 
 - **`truapi`** — the `@parity/truapi` client connected to the pairing host and
   scoped to the host's `--product-id`. Call `truapi.account.requestLogin(...)`,
@@ -196,7 +218,9 @@ Six scripts ship under `js/scripts/`:
 Both hosts take `--auto-accept`. Without it, confirmations a web/iOS host would
 show as a modal (sign requests, permission prompts, and cross-product Ring-VRF
 requests) are rendered prominently in the signing-host transcript and answered
-with `y`/`yes` or `n`/`no` in the command bar. The current command draft is
+directly with `y` or `n` (typed `yes`/`no` plus Enter also works). Approval
+cards summarize and redact signing payloads rather than dumping debug objects.
+The current command draft is
 restored afterward; Esc safely rejects. Concurrent approvals are serialized.
 In non-interactive `exec` mode, a TTY gets a plain yes/no prompt and non-TTY
 stdin safely rejects instead of hanging. Same-product Ring-VRF requests do not
@@ -248,7 +272,7 @@ membership and can submit a test registration.
 ```bash
 make headless install
 
-# Terminal 1 — pairing host runs a product script and prints PAIRING_DEEPLINK:
+# Terminal 1 — pairing host runs a product script and prints its pairing link:
 truapi-host pairing-host --product-id myapp.dot --script js/scripts/battery.ts --auto-accept
 
 # Terminal 2 — hand the deeplink to a signing host (registers allowance, signs).

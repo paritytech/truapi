@@ -28,9 +28,8 @@ const INBOUND_CHANNEL_CAPACITY: usize = 1024;
 /// Chain provider that maps a requested genesis hash to a WebSocket endpoint.
 ///
 /// The all-zero genesis (the headless SSO sentinel) and any unmapped genesis
-/// fall back to the People-chain statement store; the Asset Hub and Bulletin
-/// genesis hashes route to their own nodes (opt-in) for live playground
-/// examples.
+/// fall back to the People-chain statement store. Host-required routes such as
+/// Bulletin are always enabled; optional product Chain routes remain opt-in.
 pub struct WsChainProvider {
     fallback_url: String,
     by_genesis: HashMap<[u8; 32], String>,
@@ -38,19 +37,23 @@ pub struct WsChainProvider {
 
 impl WsChainProvider {
     pub fn new(fallback_url: impl Into<String>, live_chain_endpoints: &[ChainEndpoint]) -> Self {
-        // The fallback is the People-chain statement store, which serves the
-        // SSO/identity path directly. Asset Hub routing (for the `Chain/*`
-        // examples) is opt-in; when off, those genesis requests fall back to the
-        // People node, which does not serve Asset Hub chainHead, so they fail
-        // cleanly without disturbing the SSO/signer path.
-        let by_genesis = if std::env::var("E2E_LIVE_CHAIN").as_deref() == Ok("1") {
-            live_chain_endpoints
-                .iter()
-                .map(|endpoint| (endpoint.genesis, endpoint.ws.to_string()))
-                .collect()
-        } else {
-            HashMap::new()
-        };
+        let live_chain_routing = std::env::var("E2E_LIVE_CHAIN").as_deref() == Ok("1");
+        Self::with_live_chain_routing(fallback_url, live_chain_endpoints, live_chain_routing)
+    }
+
+    fn with_live_chain_routing(
+        fallback_url: impl Into<String>,
+        live_chain_endpoints: &[ChainEndpoint],
+        live_chain_routing: bool,
+    ) -> Self {
+        // People remains the fallback for the SSO sentinel. Bulletin is a
+        // required host dependency for preimage submission and must never be
+        // gated by the product-facing Chain/* test switch.
+        let by_genesis = live_chain_endpoints
+            .iter()
+            .filter(|endpoint| endpoint.required_for_host || live_chain_routing)
+            .map(|endpoint| (endpoint.genesis, endpoint.ws.to_string()))
+            .collect();
         Self {
             fallback_url: fallback_url.into(),
             by_genesis,
@@ -161,5 +164,46 @@ impl JsonRpcConnection for WsJsonRpcConnection {
 
     fn close(&self) {
         self.closed.store(true, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::Network;
+
+    #[test]
+    fn required_bulletin_route_is_enabled_without_optional_live_chains() {
+        let network = Network::PaseoNextV2.config();
+        let provider = WsChainProvider::with_live_chain_routing(
+            network.people_ws,
+            network.live_chain_endpoints,
+            false,
+        );
+
+        assert_eq!(
+            provider.url_for(&network.bulletin_genesis),
+            network.bulletin_ws
+        );
+        assert_eq!(provider.url_for(&network.people_genesis), network.people_ws);
+        assert_eq!(
+            provider.url_for(&network.live_chain_endpoints[0].genesis),
+            network.people_ws
+        );
+    }
+
+    #[test]
+    fn optional_live_chain_routes_are_enabled_by_the_test_switch() {
+        let network = Network::PaseoNextV2.config();
+        let provider = WsChainProvider::with_live_chain_routing(
+            network.people_ws,
+            network.live_chain_endpoints,
+            true,
+        );
+
+        assert_eq!(
+            provider.url_for(&network.live_chain_endpoints[0].genesis),
+            network.live_chain_endpoints[0].ws
+        );
     }
 }

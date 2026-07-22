@@ -27,7 +27,7 @@ futures-util = "0.3"
 fs2 = "0.4"
 hex = "0.4"
 parity-scale-codec = { version = "3", features = ["derive"] }
-ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"] }
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "unstable-rendered-line-info"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1", features = ["derive"] }
@@ -37,11 +37,9 @@ subxt-rpcs = { version = "0.50.1", default-features = false, features = ["jsonrp
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "io-std", "net", "time", "signal", "process"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-tungstenite = { version = "0.24", features = ["connect", "rustls-tls-webpki-roots"] }
-# TLS is compiled in so the pairing host *can* reach real `wss://` chain nodes
-# for the `Chain/*` playground methods. Live-chain routing is opt-in
-# (`E2E_LIVE_CHAIN=1`); it is off by default because streaming chainHead from a
-# live node over the shared product connection is not yet robust and can drop
-# that connection mid-run. See src/chain.rs.
+# TLS is compiled in for required People/Bulletin host traffic and optional
+# `Chain/*` playground methods. Product live-chain routing is opt-in
+# (`E2E_LIVE_CHAIN=1`); required host routes remain enabled. See src/chain.rs.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 unicode-width = "0.2"

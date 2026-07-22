@@ -59,6 +59,10 @@ use crate::runtime::statement_store_rpc;
 const SSO_ENCRYPTION_KEY_LABEL: &[u8] = b"sso-encryption";
 /// Domain label for the identity chat key shared in the handshake payload.
 const CHAT_KEY_LABEL: &[u8] = b"chat-encryption";
+/// Leave the product runtime one minute to receive and process the SSO response
+/// before its 300-second remote-authority deadline expires.
+#[cfg(not(target_arch = "wasm32"))]
+const BULLETIN_AUTHORIZATION_WAIT: std::time::Duration = std::time::Duration::from_secs(240);
 
 /// Terminal outcome of one responder serve loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,6 +183,8 @@ async fn serve_session(
                     target: "truapi_server::sso_transcript",
                     tracing::Level::INFO,
                     cli_summary = cli_summary.as_str(),
+                    cli_event = "request_received",
+                    request = remote_message_name(&message.data),
                     statement_request_id = %incoming.request_id,
                     remote_message_id = %message.message_id,
                     remote_message = remote_message_name(&message.data),
@@ -234,19 +240,23 @@ async fn serve_request(
         let request_name = remote_v1_message_name(&request);
         let responding_to = message.message_id.clone();
         let started = Instant::now();
-        let Some(response) =
+        let Some(answer) =
             answer_remote_message(services, signing_host, message.message_id, request).await
         else {
             continue;
         };
+        let response = answer.response;
         let response_message_id = response.message_id.clone();
-        let response_result = remote_response_result(&response.data);
+        let response_result = answer
+            .response_result
+            .unwrap_or_else(|| remote_response_result(&response.data));
         debug!(
             statement_request_id = %incoming.request_id,
             responding_to = %responding_to,
             %response_message_id,
             response = remote_message_name(&response.data),
             outcome = response_result.outcome,
+            reason = response_result.reason.as_deref().unwrap_or_default(),
             "prepared SSO response"
         );
         trace!(
@@ -283,12 +293,14 @@ async fn serve_request(
                     target: "truapi_server::sso_transcript",
                     tracing::Level::INFO,
                     cli_summary = cli_summary.as_str(),
+                    cli_event = "response_sent",
                     request = request_name,
                     statement_request_id = %incoming.request_id,
                     responding_to = %responding_to,
                     %response_message_id,
                     outcome = response_result.outcome,
-                    elapsed_ms = %elapsed_ms,
+                    reason = response_result.reason.as_deref().unwrap_or_default(),
+                    elapsed_ms = elapsed_ms as u64,
                 );
             }
             Err(reason) => {
@@ -309,13 +321,14 @@ async fn serve_request(
                     target: "truapi_server::sso_transcript",
                     tracing::Level::WARN,
                     cli_summary = cli_summary.as_str(),
+                    cli_event = "response_failed",
                     request = request_name,
                     statement_request_id = %incoming.request_id,
                     responding_to = %responding_to,
                     %response_message_id,
                     outcome = failure.outcome,
                     reason = %reason,
-                    elapsed_ms = %elapsed_ms,
+                    elapsed_ms = elapsed_ms as u64,
                 );
                 return Err(reason);
             }
@@ -358,8 +371,21 @@ struct ResponseResult {
     reason: Option<String>,
 }
 
+struct AnsweredRemoteMessage {
+    response: RemoteMessage,
+    response_result: Option<ResponseResult>,
+}
+
+struct ResourceAllocationAnswer {
+    payload: Result<Vec<SsoAllocationOutcome>, String>,
+    item_failures: Vec<String>,
+}
+
 fn remote_response_result(message: &RemoteMessageData) -> ResponseResult {
     let RemoteMessageData::V1(message) = message;
+    if let v1::RemoteMessage::ResourceAllocationResponse(response) = message {
+        return resource_allocation_payload_result(&response.payload, &[]);
+    }
     let error = match message {
         v1::RemoteMessage::SignResponse(response) => response.payload.as_ref().err().cloned(),
         v1::RemoteMessage::RingVrfAliasResponse(response) => {
@@ -368,9 +394,7 @@ fn remote_response_result(message: &RemoteMessageData) -> ResponseResult {
         v1::RemoteMessage::RingVrfProofResponse(response) => {
             response.payload.as_ref().err().map(ring_vrf_error_reason)
         }
-        v1::RemoteMessage::ResourceAllocationResponse(response) => {
-            response.payload.as_ref().err().cloned()
-        }
+        v1::RemoteMessage::ResourceAllocationResponse(_) => unreachable!(),
         v1::RemoteMessage::CreateTransactionResponse(response) => {
             response.signed_transaction.as_ref().err().cloned()
         }
@@ -386,6 +410,105 @@ fn remote_response_result(message: &RemoteMessageData) -> ResponseResult {
         outcome: if error.is_some() { "error" } else { "ok" },
         reason: error,
     }
+}
+
+fn resource_allocation_payload_result(
+    payload: &Result<Vec<SsoAllocationOutcome>, String>,
+    item_failures: &[String],
+) -> ResponseResult {
+    let outcomes = match payload {
+        Ok(outcomes) => outcomes,
+        Err(reason) => {
+            return ResponseResult {
+                outcome: "error",
+                reason: Some(reason.clone()),
+            };
+        }
+    };
+    if outcomes.is_empty() {
+        return ResponseResult {
+            outcome: "ok",
+            reason: None,
+        };
+    }
+
+    let allocated = outcomes
+        .iter()
+        .filter(|outcome| matches!(outcome, SsoAllocationOutcome::Allocated(_)))
+        .count();
+    let rejected = outcomes
+        .iter()
+        .filter(|outcome| matches!(outcome, SsoAllocationOutcome::Rejected))
+        .count();
+    let unavailable = outcomes
+        .iter()
+        .filter(|outcome| matches!(outcome, SsoAllocationOutcome::NotAvailable))
+        .count();
+    let total = outcomes.len();
+
+    if allocated == total {
+        return ResponseResult {
+            outcome: "ok",
+            reason: None,
+        };
+    }
+    if allocated > 0 {
+        let mut reason = format!("{allocated} of {total} requested resources allocated");
+        if rejected > 0 {
+            reason.push_str(&format!("; {rejected} rejected"));
+        }
+        if unavailable > 0 {
+            reason.push_str(&format!("; {unavailable} unavailable"));
+        }
+        return allocation_result_with_failures(
+            ResponseResult {
+                outcome: "partial",
+                reason: Some(reason),
+            },
+            item_failures,
+        );
+    }
+    if rejected > 0 {
+        let reason = if rejected == total {
+            if total == 1 {
+                "Requested resource was rejected".to_string()
+            } else {
+                format!("All {total} requested resources were rejected")
+            }
+        } else {
+            format!("No resources allocated; {rejected} rejected; {unavailable} unavailable")
+        };
+        return allocation_result_with_failures(
+            ResponseResult {
+                outcome: "rejected",
+                reason: Some(reason),
+            },
+            item_failures,
+        );
+    }
+
+    ResponseResult {
+        outcome: "not_available",
+        reason: Some(if total == 1 {
+            "Requested resource is not available".to_string()
+        } else {
+            format!("None of the {total} requested resources are available")
+        }),
+    }
+}
+
+fn allocation_result_with_failures(
+    mut result: ResponseResult,
+    item_failures: &[String],
+) -> ResponseResult {
+    if !item_failures.is_empty() {
+        let details = item_failures.join("; ").replace(['\r', '\n'], " ");
+        result.reason = Some(match result.reason {
+            Some(summary) => format!("{summary}: {details}"),
+            None => details,
+        });
+    }
+    result
 }
 
 fn ring_vrf_error_reason(error: &RingVrfError) -> String {
@@ -424,8 +547,9 @@ async fn answer_remote_message(
     signing_host: &Arc<SigningHost>,
     message_id: String,
     request: v1::RemoteMessage,
-) -> Option<RemoteMessage> {
+) -> Option<AnsweredRemoteMessage> {
     let response_id = format!("{message_id}:response");
+    let mut response_result = None;
     let data = match request {
         v1::RemoteMessage::SignRequest(request) => v1::RemoteMessage::SignResponse(
             sign_response(services, signing_host, &message_id, *request).await,
@@ -445,13 +569,17 @@ async fn answer_remote_message(
             })
         }
         v1::RemoteMessage::ResourceAllocationRequest(request) => {
-            let payload = resource_allocation_response(services, signing_host, request).await;
-            if let Err(reason) = &payload {
+            let answer = resource_allocation_response(services, signing_host, request).await;
+            if let Err(reason) = &answer.payload {
                 warn!(%reason, "resource allocation request failed");
             }
+            response_result = Some(resource_allocation_payload_result(
+                &answer.payload,
+                &answer.item_failures,
+            ));
             v1::RemoteMessage::ResourceAllocationResponse(ResourceAllocationResponse {
                 responding_to: message_id,
-                payload,
+                payload: answer.payload,
             })
         }
         v1::RemoteMessage::CreateTransactionRequest(request) => {
@@ -503,9 +631,12 @@ async fn answer_remote_message(
         | v1::RemoteMessage::SignRawLegacyResponse(_)
         | v1::RemoteMessage::StatementStoreProductSignResponse(_) => return None,
     };
-    Some(RemoteMessage {
-        message_id: response_id,
-        data: RemoteMessageData::V1(data),
+    Some(AnsweredRemoteMessage {
+        response: RemoteMessage {
+            message_id: response_id,
+            data: RemoteMessageData::V1(data),
+        },
+        response_result,
     })
 }
 
@@ -513,8 +644,8 @@ async fn resource_allocation_response(
     services: &Arc<RuntimeServices>,
     signing_host: &Arc<SigningHost>,
     request: messages::ResourceAllocationRequest,
-) -> Result<Vec<SsoAllocationOutcome>, String> {
-    confirm(
+) -> ResourceAllocationAnswer {
+    if let Err(reason) = confirm(
         services,
         UserConfirmationReview::ResourceAllocation(api::HostRequestResourceAllocationRequest {
             resources: request
@@ -524,9 +655,16 @@ async fn resource_allocation_response(
                 .collect(),
         }),
     )
-    .await?;
+    .await
+    {
+        return ResourceAllocationAnswer {
+            payload: Err(reason),
+            item_failures: Vec::new(),
+        };
+    }
 
     let mut outcomes = Vec::with_capacity(request.resources.len());
+    let mut item_failures = Vec::new();
     for resource in request.resources {
         let outcome = match resource {
             SsoAllocatableResource::StatementStoreAllowance => allocate_statement_store_allowance(
@@ -559,11 +697,15 @@ async fn resource_allocation_response(
             Ok(outcome) => outcomes.push(outcome),
             Err(reason) => {
                 warn!(%reason, "resource allocation item failed");
+                item_failures.push(reason);
                 outcomes.push(SsoAllocationOutcome::Rejected);
             }
         }
     }
-    Ok(outcomes)
+    ResourceAllocationAnswer {
+        payload: Ok(outcomes),
+        item_failures,
+    }
 }
 
 fn public_allocatable_resource(resource: &SsoAllocatableResource) -> api::AllocatableResource {
@@ -658,8 +800,6 @@ pub(super) async fn allocate_bulletin_allowance(
         find_including_ring, wait_bulletin_authorization,
     };
 
-    const AUTHORIZATION_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
-
     let entropy = signing_host.root_entropy().map_err(|err| err.reason())?;
     let allowance = derive_sr25519_hard_path(&entropy, &["allowance", "bulletin", product_id])
         .map_err(product_account_error)?;
@@ -727,7 +867,7 @@ pub(super) async fn allocate_bulletin_allowance(
         &bulletin_rpc,
         &target,
         current_allowance,
-        AUTHORIZATION_WAIT,
+        BULLETIN_AUTHORIZATION_WAIT,
     )
     .await?;
     info!(
@@ -1003,8 +1143,8 @@ mod tests {
         .expect("valid statement payload")
     }
 
-    fn response_payload(response: RemoteMessage) -> v1::RemoteMessage {
-        let RemoteMessageData::V1(data) = response.data;
+    fn response_payload(answer: AnsweredRemoteMessage) -> v1::RemoteMessage {
+        let RemoteMessageData::V1(data) = answer.response.data;
         data
     }
 
@@ -1116,6 +1256,43 @@ mod tests {
              response_message_id=alias-1:response\n\
              elapsed_ms=42\n\
             reason=Unknown: chain RPC timed out"
+        );
+    }
+
+    #[test]
+    fn resource_allocation_summary_reflects_per_resource_outcomes() {
+        let result = resource_allocation_payload_result(
+            &Ok(vec![SsoAllocationOutcome::Rejected]),
+            &["timed out waiting for Bulletin authorization".to_string()],
+        );
+        assert_eq!(result.outcome, "rejected");
+        assert_eq!(
+            result.reason.as_deref(),
+            Some("Requested resource was rejected: timed out waiting for Bulletin authorization")
+        );
+
+        let result = resource_allocation_payload_result(
+            &Ok(vec![
+                SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
+                    slot_account_key: vec![1; 64],
+                }),
+                SsoAllocationOutcome::Rejected,
+                SsoAllocationOutcome::NotAvailable,
+            ]),
+            &[],
+        );
+        assert_eq!(result.outcome, "partial");
+        assert_eq!(
+            result.reason.as_deref(),
+            Some("1 of 3 requested resources allocated; 1 rejected; 1 unavailable")
+        );
+
+        let result =
+            resource_allocation_payload_result(&Ok(vec![SsoAllocationOutcome::NotAvailable]), &[]);
+        assert_eq!(result.outcome, "not_available");
+        assert_eq!(
+            result.reason.as_deref(),
+            Some("Requested resource is not available")
         );
     }
 

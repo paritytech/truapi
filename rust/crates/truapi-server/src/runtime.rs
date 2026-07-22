@@ -1980,7 +1980,7 @@ impl Preimage for ProductRuntimeHost {
                 .bulletin_allowance_key(&authority_cx, &session, self.product_id()),
         )
         .await
-        .map_err(|err| preimage_submit_error(err.reason()))?;
+        .map_err(|err| preimage_submit_error(bulletin_allowance_error_reason(err)))?;
 
         let key = match bulletin
             .submit_preimage(cx, submission_deadline, &allowance, &value)
@@ -2005,7 +2005,7 @@ impl Preimage for ProductRuntimeHost {
                     ),
                 )
                 .await
-                .map_err(|err| preimage_submit_error(err.reason()))?;
+                .map_err(|err| preimage_submit_error(bulletin_allowance_error_reason(err)))?;
                 bulletin
                     .submit_preimage(cx, submission_deadline, &allowance, &value)
                     .await
@@ -2035,6 +2035,18 @@ fn preimage_submit_error(reason: String) -> CallError<RemotePreimageSubmitError>
     CallError::Domain(RemotePreimageSubmitError::V1(
         v01::PreimageSubmitError::Unknown { reason },
     ))
+}
+
+fn bulletin_allowance_error_reason(err: AuthorityError) -> String {
+    match err {
+        AuthorityError::Rejected => {
+            "Bulletin allowance allocation was rejected by the signing host".to_string()
+        }
+        AuthorityError::Disconnected => {
+            "Signing host disconnected while allocating Bulletin allowance".to_string()
+        }
+        other => other.reason(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2124,6 +2136,14 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "{message}");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn preimage_reports_bulletin_allocation_rejection_with_context() {
+        assert_eq!(
+            bulletin_allowance_error_reason(AuthorityError::Rejected),
+            "Bulletin allowance allocation was rejected by the signing host"
+        );
     }
 
     fn recorded_rpc_methods(sent_rpc: &Mutex<Vec<String>>) -> Vec<String> {

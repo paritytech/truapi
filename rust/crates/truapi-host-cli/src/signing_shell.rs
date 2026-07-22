@@ -113,7 +113,7 @@ pub struct Completion {
     pub description: &'static str,
 }
 
-const COMMANDS: &[(&str, &str)] = &[
+const SIGNING_COMMANDS: &[(&str, &str)] = &[
     ("/deeplink ", "answer a Polkadot Mobile pairing URL"),
     ("/script", "edit a new or run an existing product script"),
     ("/log ", "set error, warn, info, debug, or trace"),
@@ -124,12 +124,33 @@ const COMMANDS: &[(&str, &str)] = &[
     ("/quit", "shut down the signing host"),
 ];
 
-/// Compute slash-command or `/script` filesystem completions for `input`.
-pub fn completions(input: &str, session_names: &[String]) -> Vec<Completion> {
+const PAIRING_COMMANDS: &[(&str, &str)] = &[
+    ("/script", "edit a new or run an existing product script"),
+    ("/log ", "set error, warn, info, debug, or trace"),
+    ("/help", "show commands and keyboard shortcuts"),
+    ("/clear", "clear the visible transcript"),
+    ("/copy", "copy the transcript to the clipboard"),
+    ("/quit", "shut down the pairing host"),
+];
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum CommandScope {
+    PairingHost,
+    #[default]
+    SigningHost,
+}
+
+fn completions_for_scope(
+    input: &str,
+    session_names: &[String],
+    scope: CommandScope,
+) -> Vec<Completion> {
     if let Some(path) = input.strip_prefix("/script ") {
         return path_completions(path);
     }
-    if let Some(prefix) = input.strip_prefix("/session ") {
+    if scope == CommandScope::SigningHost
+        && let Some(prefix) = input.strip_prefix("/session ")
+    {
         if prefix.contains(char::is_whitespace) {
             return Vec::new();
         }
@@ -155,7 +176,11 @@ pub fn completions(input: &str, session_names: &[String]) -> Vec<Completion> {
     if !input.starts_with('/') || input.contains(char::is_whitespace) {
         return Vec::new();
     }
-    COMMANDS
+    let commands = match scope {
+        CommandScope::PairingHost => PAIRING_COMMANDS,
+        CommandScope::SigningHost => SIGNING_COMMANDS,
+    };
+    commands
         .iter()
         .filter(|(command, _)| command.trim_end().starts_with(input))
         .map(|(command, description)| Completion {
@@ -210,7 +235,7 @@ fn path_completions(input: &str) -> Vec<Completion> {
 }
 
 /// Editable command input with completion selection and in-memory history.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CommandEditor {
     chars: Vec<char>,
     cursor: usize,
@@ -220,9 +245,34 @@ pub struct CommandEditor {
     completion_index: usize,
     completions_dismissed: bool,
     session_names: Vec<String>,
+    scope: CommandScope,
+}
+
+impl Default for CommandEditor {
+    fn default() -> Self {
+        Self {
+            chars: Vec::new(),
+            cursor: 0,
+            history: Vec::new(),
+            history_index: None,
+            history_draft: String::new(),
+            completion_index: 0,
+            completions_dismissed: false,
+            session_names: Vec::new(),
+            scope: CommandScope::SigningHost,
+        }
+    }
 }
 
 impl CommandEditor {
+    /// Build an editor exposing only commands supported by the pairing host.
+    pub fn pairing_host() -> Self {
+        Self {
+            scope: CommandScope::PairingHost,
+            ..Self::default()
+        }
+    }
+
     /// Return the current command text.
     pub fn text(&self) -> String {
         self.chars.iter().collect()
@@ -302,7 +352,7 @@ impl CommandEditor {
         if self.completions_dismissed {
             Vec::new()
         } else {
-            completions(&self.text(), &self.session_names)
+            completions_for_scope(&self.text(), &self.session_names, self.scope)
         }
     }
 
@@ -414,8 +464,8 @@ pub fn parse_approval(input: &str) -> Option<bool> {
 /// Text displayed by `/help` in either presentation mode.
 pub const HELP_TEXT: &str = "\
 /deeplink <url>         answer a Polkadot Mobile pairing URL
-/script                 edit and run a new TypeScript product script
-/script <path>          run an existing JS/TS product script
+/script                 edit and run a new Bun TypeScript product script
+/script <path>          run an existing JS/TS product script with Bun
 /log <level>            set error, warn, info, debug, or trace
 /session                show the current session and path
 /session <name>         switch to or create a session
@@ -427,6 +477,19 @@ pub const HELP_TEXT: &str = "\
 
 Keys: Up/Down completion or history, Tab complete, Ctrl-U/Ctrl-D scroll,
 Esc close completion or reject approval, Ctrl-C clear/cancel/quit";
+
+/// Help shown by the pairing-host command bar.
+pub const PAIRING_HELP_TEXT: &str = "\
+/script                 edit and run a new Bun TypeScript product script
+/script <path>          run an existing JS/TS product script with Bun
+/log <level>            set error, warn, info, debug, or trace
+/help                   show this help
+/clear                  clear the visible transcript
+/copy                   copy the transcript to the clipboard
+/quit                   shut down the pairing host
+
+Keys: Up/Down completion or history, Tab complete, Ctrl-U/Ctrl-D scroll,
+Esc close completion, Ctrl-C clear/cancel/quit";
 
 #[cfg(test)]
 mod tests {
@@ -517,14 +580,18 @@ mod tests {
 
     #[test]
     fn script_completion_lists_matching_filesystem_paths() {
-        let command = completions("/script", &[]);
+        let command = completions_for_scope("/script", &[], CommandScope::SigningHost);
         assert_eq!(command.len(), 1);
         assert_eq!(command[0].value, "/script");
 
         let prefix = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("signing_s");
-        let matches = completions(&format!("/script {}", prefix.display()), &[]);
+        let matches = completions_for_scope(
+            &format!("/script {}", prefix.display()),
+            &[],
+            CommandScope::SigningHost,
+        );
 
         assert!(
             matches
@@ -535,9 +602,35 @@ mod tests {
 
     #[test]
     fn session_completion_lists_existing_names() {
-        let matches = completions("/session a", &["alice".to_string(), "bob".to_string()]);
+        let matches = completions_for_scope(
+            "/session a",
+            &["alice".to_string(), "bob".to_string()],
+            CommandScope::SigningHost,
+        );
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].value, "/session alice");
+    }
+
+    #[test]
+    fn pairing_host_completions_only_offer_shared_commands() {
+        let matches = completions_for_scope("/", &[], CommandScope::PairingHost);
+        let commands = matches
+            .into_iter()
+            .map(|completion| completion.value)
+            .collect::<Vec<_>>();
+
+        assert!(commands.contains(&"/script".to_string()));
+        assert!(commands.contains(&"/copy".to_string()));
+        assert!(
+            !commands
+                .iter()
+                .any(|command| command.starts_with("/deeplink"))
+        );
+        assert!(
+            !commands
+                .iter()
+                .any(|command| command.starts_with("/session"))
+        );
     }
 }

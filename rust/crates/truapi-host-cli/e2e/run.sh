@@ -54,7 +54,7 @@ PAIR_PID=$!
 
 deeplink=""
 for _ in $(seq 1 600); do
-  deeplink="$(grep -m1 -oE 'PAIRING_DEEPLINK .+' "$LOG" | cut -d' ' -f2- || true)"
+  deeplink="$(grep -m1 -oE 'polkadotapp://pair\?handshake=[[:xdigit:]]+' "$LOG" || true)"
   [ -n "$deeplink" ] && break
   kill -0 "$PAIR_PID" 2>/dev/null || break
   sleep 0.5
@@ -63,7 +63,7 @@ done
 
 # The signing host reads HOST_CLI_SIGNER_MNEMONIC from the env when set.
 # Otherwise it auto-selects or creates an attested account under its base path.
-"$BIN" signing-host --deeplink "$deeplink" --auto-accept &
+"$BIN" signing-host --auto-accept exec "/deeplink $deeplink" &
 SIGNER_PID=$!
 
 pid_running() {

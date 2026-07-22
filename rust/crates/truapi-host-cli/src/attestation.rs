@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use subxt_rpcs::client::{RpcClient, rpc_params};
-use tracing::{info, warn};
+use tracing::{debug, warn};
 use truapi_server::host_logic::attestation::build_lite_registration;
 use truapi_server::host_logic::identity::{
     decode_people_identity, resources_consumers_storage_key,
@@ -69,7 +69,7 @@ pub async fn attest(config: &AttestConfig) -> Result<String> {
     let verifier = fetch_verifier(&client, &config.backend_base).await?;
     let registration = build_lite_registration(&config.entropy, verifier, &config.username_base)
         .map_err(|reason| anyhow::anyhow!("failed to build registration params: {reason}"))?;
-    info!(
+    debug!(
         candidate = %registration.candidate_account_id,
         "attesting lite username '{}'",
         config.username_base
@@ -90,7 +90,7 @@ pub async fn attest(config: &AttestConfig) -> Result<String> {
         ))
     );
     wait_for_consumer_record(&config.people_ws, &storage_key).await?;
-    info!("lite username registered and confirmed on-chain");
+    debug!("lite username registered and confirmed on-chain");
     Ok(registration.candidate_account_id)
 }
 
@@ -178,7 +178,7 @@ async fn submit_registration(
     let status = response.status();
     if status.is_success() {
         let text = response.text().await.unwrap_or_default();
-        info!(%status, body = %text, "POST /usernames accepted");
+        debug!(%status, body = %text, "POST /usernames accepted");
         return Ok(());
     }
     let text = response.text().await.unwrap_or_default();
@@ -202,8 +202,26 @@ async fn wait_for_consumer_record(people_ws: &str, storage_key: &str) -> Result<
     const MAX_ATTEMPTS: usize = 90;
     for attempt in 1..=MAX_ATTEMPTS {
         match query_storage(people_ws, storage_key).await {
-            Ok(Some(_)) => return Ok(()),
-            Ok(None) => info!("Resources.Consumers poll {attempt}/{MAX_ATTEMPTS}: empty"),
+            Ok(Some(_)) => {
+                crate::terminal_ui::update_activity(
+                    "signer",
+                    "Setting up signer",
+                    Some("People-chain identity ready".to_string()),
+                    crate::terminal_ui::ActivityState::Running,
+                );
+                return Ok(());
+            }
+            Ok(None) => {
+                crate::terminal_ui::update_activity(
+                    "signer",
+                    "Setting up signer",
+                    Some(format!(
+                        "Waiting for People-chain identity · attempt {attempt}/{MAX_ATTEMPTS}"
+                    )),
+                    crate::terminal_ui::ActivityState::Running,
+                );
+                debug!("Resources.Consumers poll {attempt}/{MAX_ATTEMPTS}: empty");
+            }
             Err(err) => warn!(%err, "Resources.Consumers poll attempt {attempt} failed"),
         }
         if attempt < MAX_ATTEMPTS {
