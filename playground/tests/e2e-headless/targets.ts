@@ -27,3 +27,7 @@ export const FAILED_COUNT_SELECTOR = '[data-testid="diagnosis-summary"]';
 // to the literal attribute value "true").
 export const REPORT_READY_SELECTOR =
   '[data-testid="diagnosis-report-markdown"][data-report-ready="true"]';
+
+// A single Diagnosis result row in the failed state (DiagnosisView.tsx:207-208:
+// data-testid="diagnosis-row" with data-status={r.status}, status "fail").
+export const FAILED_ROW_SELECTOR = '[data-testid="diagnosis-row"][data-status="fail"]';

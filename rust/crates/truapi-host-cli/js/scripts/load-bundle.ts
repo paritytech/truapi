@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 import {
   DIAGNOSIS_PATH,
   FAILED_COUNT_SELECTOR,
+  FAILED_ROW_SELECTOR,
   REPORT_READY_SELECTOR,
   RUN_ALL_SELECTOR,
 } from "../../../../../playground/tests/e2e-headless/targets";
@@ -135,9 +136,19 @@ while (Date.now() < deadline) {
   if (document.querySelector(REPORT_READY_SELECTOR)) {
     const failed = Number(/(\d+)\s+failed\b/.exec(lastSummary)?.[1] ?? NaN);
     const ok = failed <= 1; // parity with the known baseline: 43 passed, 1 failed
+    if (!ok) printFailedRows();
     console.log(`SHIM_RESULT ${ok ? "ok" : "fail"} (summary: ${lastSummary})`);
     process.exit(ok ? 0 : 1);
   }
 }
+printFailedRows();
 console.log(`SHIM_RESULT fail (deadline; last summary: ${lastSummary})`);
 process.exit(1);
+
+// Which rows failed, so a red run is interpretable from stdout alone.
+function printFailedRows(): void {
+  for (const row of Array.from(document.querySelectorAll(FAILED_ROW_SELECTOR))) {
+    const text = (row.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+    console.log("SHIM_FAILED_ROW", text);
+  }
+}
