@@ -700,12 +700,13 @@ mod tests {
     use p256::SecretKey as P256SecretKey;
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
+    use truapi::latest::DerivationIndex;
     use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
 
     fn account() -> ProductAccountId {
         ProductAccountId {
             dot_ns_identifier: "myapp.dot".to_string(),
-            derivation_suffix: b"7".to_vec(),
+            derivation_index: DerivationIndex::Left(7),
         }
     }
 
@@ -829,7 +830,7 @@ mod tests {
             ProductAccountTxPayload {
                 signer: ProductAccountId {
                     dot_ns_identifier: "truapi-playground.dot".to_string(),
-                    derivation_suffix: b"0".to_vec(),
+                    derivation_index: DerivationIndex::Left(0),
                 },
                 genesis_hash: sequential_bytes(32),
                 call_data: vec![0, 0],
@@ -844,7 +845,7 @@ mod tests {
 
         assert_host_papp_0_8_8_fixture(
             message,
-            "0x306d2d70726f647563742d7478000700547472756170692d706c617967726f756e642e646f740430202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
+            "0x306d2d70726f647563742d7478000700547472756170692d706c617967726f756e642e646f740000000000202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
         );
     }
 
@@ -855,7 +856,7 @@ mod tests {
             ProductAccountTxPayload {
                 signer: ProductAccountId {
                     dot_ns_identifier: "truapi-playground.dot".to_string(),
-                    derivation_suffix: b"0".to_vec(),
+                    derivation_index: DerivationIndex::Left(0),
                 },
                 genesis_hash: [
                     0xbf, 0x04, 0x88, 0xdb, 0xe9, 0xda, 0xa1, 0xde, 0x1c, 0x08, 0xc5, 0xf7, 0x43,
@@ -870,7 +871,7 @@ mod tests {
 
         assert_host_papp_0_8_8_fixture(
             message,
-            "0x506372656174652d7472616e73616374696f6e2d31000700547472756170692d706c617967726f756e642e646f740430bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f0800000000",
+            "0x506372656174652d7472616e73616374696f6e2d31000700547472756170692d706c617967726f756e642e646f740000000000bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f0800000000",
         );
     }
 

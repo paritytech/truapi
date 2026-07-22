@@ -44,7 +44,7 @@ const transport = createTransport(createMessagePortProvider(port));
 const truapi = createClient(transport);
 
 const result = await truapi.accountManagement.accountGet({
-  productAccountId: { dotNsIdentifier: "my-product.dot", derivationSuffix: "0x30" },
+  productAccountId: { dotNsIdentifier: "my-product.dot", derivationIndex: { tag: "Left", value: 0 } },
 });
 ```
 

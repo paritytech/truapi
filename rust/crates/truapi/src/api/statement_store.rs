@@ -80,7 +80,7 @@ pub trait StatementStore: Send + Sync {
     /// const result = await truapi.statementStore.createProof({
     ///   productAccountId: {
     ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationSuffix: "0x30",
+    ///     derivationIndex: { tag: "Left", value: 0 },
     ///   },
     ///   statement,
     /// });

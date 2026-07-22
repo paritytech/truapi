@@ -30,7 +30,7 @@ import { makeHostCallbacks, settle } from "./test-support.js";
 const GENESIS = `0x${"11".repeat(32)}` as `0x${string}`;
 const PRODUCT_ACCOUNT = {
   dotNsIdentifier: "playground.dot",
-  derivationSuffix: "0x30",
+  derivationIndex: { tag: "Left" as const, value: 0 },
 };
 const PROOF_CONTEXT = {
   productId: "playground.dot",
@@ -189,7 +189,7 @@ describe("createWasmRawCallbacks", () => {
               case "CreateTransaction":
                 return (
                   review.value.tag === "Product" &&
-                  review.value.value.signer.derivationSuffix === "0x30" &&
+                  review.value.value.signer.derivationIndex.tag === "Left" &&
                   review.value.value.callData === "0x0506"
                 );
               case "AccountAlias":

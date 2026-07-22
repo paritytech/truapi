@@ -33,7 +33,9 @@ use crate::host_logic::bulletin::preimage_key;
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::PermissionsService;
-use crate::host_logic::product_account::{derive_product_public_key, public_key_from_address};
+use crate::host_logic::product_account::{
+    derivation_index_bytes, derive_product_public_key, index_bytes, public_key_from_address,
+};
 use crate::host_logic::session::SessionInfo;
 #[cfg(test)]
 use crate::host_logic::session::SessionState;
@@ -419,7 +421,7 @@ impl ProductRuntimeHost {
         Ok(v01::ProductAccountId {
             dot_ns_identifier: normalize_product_identifier(&product_account_id.dot_ns_identifier)
                 .map_err(|_| ())?,
-            derivation_suffix: product_account_id.derivation_suffix,
+            derivation_index: product_account_id.derivation_index,
         })
     }
 
@@ -428,7 +430,7 @@ impl ProductRuntimeHost {
     }
 
     fn legacy_slot_zero_public_key(&self, session: &AuthoritySession) -> Result<[u8; 32], String> {
-        derive_product_public_key(session.public_key, &self.product_id(), b"0")
+        derive_product_public_key(session.public_key, &self.product_id(), index_bytes(0))
             .map_err(|err| err.to_string())
     }
 
@@ -837,7 +839,7 @@ impl Account for ProductRuntimeHost {
         let public_key = derive_product_public_key(
             session.public_key,
             &product_account_id.dot_ns_identifier,
-            &product_account_id.derivation_suffix,
+            derivation_index_bytes(&product_account_id.derivation_index),
         )
         .map_err(|err| {
             CallError::Domain(HostAccountGetError::V1(v01::HostAccountGetError::Unknown {
@@ -979,8 +981,8 @@ impl Account for ProductRuntimeHost {
 
         let product_id = self.product_id();
 
-        let public_key =
-            derive_product_public_key(session.public_key, &product_id, b"0").map_err(|err| {
+        let public_key = derive_product_public_key(session.public_key, &product_id, index_bytes(0))
+            .map_err(|err| {
                 CallError::Domain(HostGetLegacyAccountsError::V1(
                     v01::HostAccountGetError::Unknown {
                         reason: err.to_string(),
@@ -1348,7 +1350,7 @@ impl Signing for ProductRuntimeHost {
                 SignPayloadAuthorityRequest::LegacyAccount {
                     product_account: v01::ProductAccountId {
                         dot_ns_identifier: self.product_id(),
-                        derivation_suffix: b"0".to_vec(),
+                        derivation_index: v01::DerivationIndex::Left(0),
                     },
                     request: inner,
                 },
@@ -1403,7 +1405,7 @@ impl Signing for ProductRuntimeHost {
             LegacySigner::Product => SignRawAuthorityRequest::Product(v01::HostSignRawRequest {
                 account: v01::ProductAccountId {
                     dot_ns_identifier: self.product_id(),
-                    derivation_suffix: b"0".to_vec(),
+                    derivation_index: v01::DerivationIndex::Left(0),
                 },
                 payload: inner.payload,
             }),
@@ -1486,7 +1488,7 @@ impl Signing for ProductRuntimeHost {
                 CreateTransactionAuthorityRequest::LegacyAccount {
                     product_account: v01::ProductAccountId {
                         dot_ns_identifier: self.product_id(),
-                        derivation_suffix: b"0".to_vec(),
+                        derivation_index: v01::DerivationIndex::Left(0),
                     },
                     request: inner,
                 },
@@ -2320,7 +2322,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
@@ -2341,7 +2343,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "example.com".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
@@ -2366,7 +2368,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
@@ -2402,7 +2404,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
@@ -2427,14 +2429,14 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
         let HostAccountGetResponse::V1(inner) = response;
         assert_eq!(
             inner.account.public_key,
-            derive_product_public_key(session.public_key, "other.dot", b"0")
+            derive_product_public_key(session.public_key, "other.dot", index_bytes(0))
                 .unwrap()
                 .to_vec()
         );
@@ -2449,14 +2451,14 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
         let HostAccountGetResponse::V1(inner) = response;
         assert_eq!(
             hex::encode(inner.account.public_key),
-            "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
+            "0c7da1b57ade0827b6518174da49945b24d79541ee5e5403f646537e5746c80b"
         );
     }
 
@@ -2469,14 +2471,14 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "MyApp.DOT".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
         let HostAccountGetResponse::V1(inner) = response;
         assert_eq!(
             hex::encode(inner.account.public_key),
-            "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
+            "0c7da1b57ade0827b6518174da49945b24d79541ee5e5403f646537e5746c80b"
         );
     }
 
@@ -2495,14 +2497,14 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
         let HostAccountGetResponse::V1(inner) = response;
         assert_eq!(
             hex::encode(inner.account.public_key),
-            "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
+            "0c7da1b57ade0827b6518174da49945b24d79541ee5e5403f646537e5746c80b"
         );
     }
 
@@ -2712,7 +2714,7 @@ mod tests {
         assert_eq!(inner.accounts[0].name.as_deref(), Some("alice"));
         assert_eq!(
             hex::encode(&inner.accounts[0].public_key),
-            "1c822b488297fde8c60d9cbc5585839f70a69fb2c5c69daa66b6043c75184467"
+            "b8de3e1888d4f0c37313a1fc8309b3c0fbaee7dd09346173ede41c5a507cc049"
         );
     }
 
@@ -3671,7 +3673,7 @@ mod tests {
         let cx = CallContext::new();
         let request =
             HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
-                signer: "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1".to_string(),
+                signer: "5CM5kaayBqheti7ugSEty5ptuzFhaP16fVm3ujAMVEtZqnKy".to_string(),
                 payload: raw_payload(),
             });
         let err = futures::executor::block_on(host.sign_raw_with_legacy_account(&cx, request))
@@ -3704,7 +3706,7 @@ mod tests {
         let cx = CallContext::with_request_id("legacy-sign-raw-1".to_string());
         let request =
             HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
-                signer: "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1".to_string(),
+                signer: "5CM5kaayBqheti7ugSEty5ptuzFhaP16fVm3ujAMVEtZqnKy".to_string(),
                 payload: raw_payload(),
             });
         let response =
@@ -3726,7 +3728,7 @@ mod tests {
             request.product_account_id,
             v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             }
         );
         assert!(matches!(
@@ -3739,7 +3741,8 @@ mod tests {
     #[test]
     fn legacy_sign_raw_accepts_derived_hex_then_returns_sso_response() {
         let session = sso_session_info();
-        let signer = derive_product_public_key(session.public_key, "myapp.dot", b"0").unwrap();
+        let signer =
+            derive_product_public_key(session.public_key, "myapp.dot", index_bytes(0)).unwrap();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
@@ -3779,7 +3782,7 @@ mod tests {
             request.product_account_id,
             v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             }
         );
     }
@@ -3879,7 +3882,8 @@ mod tests {
     #[test]
     fn legacy_create_transaction_accepts_derived_key_then_returns_sso_response() {
         let session = sso_session_info();
-        let signer = derive_product_public_key(session.public_key, "myapp.dot", b"0").unwrap();
+        let signer =
+            derive_product_public_key(session.public_key, "myapp.dot", index_bytes(0)).unwrap();
         let platform = Arc::new(StubPlatform {
             create_transaction_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
@@ -3933,7 +3937,7 @@ mod tests {
             payload.signer,
             v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_suffix: b"0".to_vec(),
+                derivation_index: v01::DerivationIndex::Left(0),
             }
         );
     }

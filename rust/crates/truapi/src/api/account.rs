@@ -38,7 +38,7 @@ pub trait Account: Send + Sync {
     /// const result = await truapi.account.getAccount({
     ///   productAccountId: {
     ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationSuffix: "0x30",
+    ///     derivationIndex: { tag: "Left", value: 0 },
     ///   },
     /// });
     /// assert(result.isOk(), "getAccount failed:", result);
@@ -47,7 +47,7 @@ pub trait Account: Send + Sync {
     /// const otherProduct = await truapi.account.getAccount({
     ///   productAccountId: {
     ///     dotNsIdentifier: "other-product.dot",
-    ///     derivationSuffix: "0x30",
+    ///     derivationIndex: { tag: "Left", value: 0 },
     ///   },
     /// });
     /// assert(otherProduct.isOk(), "cross-product getAccount was denied or failed:", otherProduct);

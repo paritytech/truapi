@@ -10,7 +10,7 @@ use super::{
     ProductRuntimeHost, REMOTE_PERMISSION_DENIED_REASON, remote_authority_call,
     remote_authority_context,
 };
-use crate::host_logic::product_account::derive_product_public_key;
+use crate::host_logic::product_account::{derivation_index_bytes, derive_product_public_key};
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
     parse_new_statements_result, sign_statement_fields, signed_statement_to_scale,
@@ -274,7 +274,7 @@ impl ProductRuntimeHost {
         let signer = derive_product_public_key(
             session.public_key,
             &product_account_id.dot_ns_identifier,
-            &product_account_id.derivation_suffix,
+            derivation_index_bytes(&product_account_id.derivation_index),
         )
         .map_err(|err| StatementProofFailure::UnableToSign(err.to_string()))?;
         let fields = statement_fields_from_v01(statement)
@@ -385,6 +385,7 @@ mod tests {
     use super::*;
     use crate::host_logic::product_account::{
         SR25519_SIGNING_CONTEXT, derive_product_keypair, derive_root_keypair_from_entropy,
+        index_bytes,
     };
     use crate::test_support::{
         StubPlatform, account_id, new_statements_frame, runtime_config, signed_statement,
@@ -461,7 +462,7 @@ mod tests {
         let statement = statement();
         let payload = statement_payload(statement.clone());
         let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
-        let product_keypair = derive_product_keypair(&root, "myapp.dot", b"0").unwrap();
+        let product_keypair = derive_product_keypair(&root, "myapp.dot", index_bytes(0)).unwrap();
         let expected_signer = product_keypair.public.to_bytes();
         let cx = CallContext::new();
         let request = RemoteStatementStoreCreateProofRequest::V1(

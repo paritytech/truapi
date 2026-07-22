@@ -615,7 +615,7 @@ pub(crate) fn sign_raw_legacy_response_message(
 pub(crate) fn account_id(identifier: &str, index: u32) -> v01::ProductAccountId {
     v01::ProductAccountId {
         dot_ns_identifier: identifier.to_string(),
-        derivation_suffix: index.to_string().into_bytes(),
+        derivation_index: v01::DerivationIndex::Left(index),
     }
 }
 
