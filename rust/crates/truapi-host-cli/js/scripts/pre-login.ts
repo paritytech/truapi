@@ -1,3 +1,4 @@
+/// <reference path="../runner.ts" />
 // Establishes the host session before the main driver runs: the pairing host
 // emits its deeplink on the first requestLogin, and the runtime holds the
 // resulting session for every later product connection. Mirrors how the dotli

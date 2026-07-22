@@ -11,7 +11,11 @@
 #   FRAME                    frame-server address (default 127.0.0.1:9955)
 #   METRICS_JSONL            metrics sink (default /tmp/full-bundle-metrics.jsonl)
 #   SKIP_BUILD               set to reuse an existing playground/out
-#   HOST_CLI_SIGNER_MNEMONIC / TRUAPI_HOST_BASE_PATH  as in run.sh (e2e/.env supported)
+#   PLAYGROUND_OUT           static export dir the shim serves (default playground/out)
+#   FULL_BUNDLE_DEADLINE_MS  shim deadline ms (default 1200000 -- TS-side default)
+#   E2E_LIVE_CHAIN           live-chain routing for Chain/* (default 1)
+#   HOST_CLI_SIGNER_MNEMONIC as in run.sh (e2e/.env supported)
+#   TRUAPI_HOST_BASE_PATH    signing host only -- the pairing host always gets a fresh temp path
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -46,7 +50,6 @@ KEEPALIVE_PID=""
 # base path on purpose, to reuse its attested account across runs.
 PAIR_BASE="$(mktemp -d)"
 cleanup() {
-  rm -rf "$PAIR_BASE"
   rm -f "$LOG.signerlog"
   [ -n "$WATCHER_PID" ] && kill "$WATCHER_PID" 2>/dev/null || true
   [ -n "$SIGNER_PID" ] && kill "$SIGNER_PID" 2>/dev/null || true
@@ -60,10 +63,14 @@ cleanup() {
   if [ -n "$PAIR_PID" ]; then
     pkill -TERM -P "$PAIR_PID" 2>/dev/null || true
     kill -TERM "$PAIR_PID" 2>/dev/null || true
+    sleep 0.5
+    pkill -KILL -P "$PAIR_PID" 2>/dev/null || true
+    kill -KILL "$PAIR_PID" 2>/dev/null || true
   fi
+  rm -rf "$PAIR_BASE"
   # The keepalive tail runs under a process-substitution wrapper shell; kill
   # the wrapper's children before the wrapper itself (killing only the wrapper
-  # reparents the tail to init and leaks it — verified empirically).
+  # reparents the tail to init and leaks it).
   if [ -n "$KEEPALIVE_PID" ]; then
     pkill -TERM -P "$KEEPALIVE_PID" 2>/dev/null || true
     kill -TERM "$KEEPALIVE_PID" 2>/dev/null || true
@@ -79,7 +86,7 @@ trap cleanup EXIT
 
 : > "$METRICS_JSONL"
 # stdin keepalive: with </dev/null the interactive loop sees EOF, returns, and
-# with_frame_server aborts the frame server (verified in Task 3). tail -f
+# with_frame_server aborts the frame server. tail -f
 # keeps stdin open without ever writing to it. The substitution is exec'd onto
 # fd 3 instead of inlined on the host command so its pid lands in $! and the
 # EXIT trap can reap it — inlined, the tail outlives cleanup as an orphan.
@@ -134,8 +141,7 @@ grep -q "SIGNING_HOST_ALLOWANCE device seq=" "$LOG.signerlog" 2>/dev/null \
 
 STATUS=0
 (cd "$ROOT/rust/crates/truapi-host-cli/js" && { [ -d node_modules ] || bun install; } \
-  && TRUAPI_FRAME_URL="ws://$FRAME" FULL_BUNDLE_DEADLINE_MS="${FULL_BUNDLE_DEADLINE_MS:-1200000}" \
-     bun scripts/load-bundle.ts) || STATUS=$?
+  && TRUAPI_FRAME_URL="ws://$FRAME" bun scripts/load-bundle.ts) || STATUS=$?
 [ -f "$LOG.signer" ] && SIGNER_PID="$(cat "$LOG.signer")" && rm -f "$LOG.signer"
 
 [ "$STATUS" -eq 0 ] || exit "$STATUS"
