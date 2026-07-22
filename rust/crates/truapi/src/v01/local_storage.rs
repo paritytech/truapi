@@ -15,7 +15,10 @@ pub enum HostLocalStorageReadError {
     /// Storage quota exceeded.
     Full,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Request to read a local storage value.

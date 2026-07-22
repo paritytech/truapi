@@ -4,5 +4,6 @@ use parity_scale_codec::{Decode, Encode};
 /// methods as a catch-all error type.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct GenericError {
+    /// Human-readable failure reason.
     pub reason: String,
 }

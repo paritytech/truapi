@@ -8,15 +8,21 @@
 //! `CallError::unavailable()`.
 
 mod allowances;
+/// Core-owned auth/session UI state machine.
 pub(crate) mod auth_state;
 mod authority;
+/// In-core Bulletin preimage submission over the shared Subxt client.
 pub(crate) mod bulletin_rpc;
 mod identity;
 mod pairing_host;
+/// Role-neutral runtime services shared by product-facing runtimes.
 pub(crate) mod services;
 mod signing_host;
+/// SSO pairing (login) flow over the statement store bootstrap topic.
 pub(crate) mod sso_pairing;
+/// SSO remote request/response messaging over the statement store.
 pub(crate) mod sso_remote;
+/// `StatementStore` surface: proofs plus submit and subscribe flows.
 pub(crate) mod statement_store;
 mod statement_store_rpc;
 
@@ -146,6 +152,7 @@ use truapi_platform::{
     UserConfirmationReview, normalize_product_identifier,
 };
 
+/// Error reason surfaced to products when a remote permission is not granted.
 pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
 /// Host-spec B.6.2 recommends timing out unanswered SSO application requests
 /// after 180 seconds:
@@ -298,6 +305,7 @@ impl ProductRuntimeHost {
         }
     }
 
+    /// Test constructor building a standalone pairing-host runtime.
     #[cfg(test)]
     pub fn new<P>(
         platform: Arc<P>,
@@ -506,6 +514,8 @@ impl ProductRuntimeHost {
             .map_err(|err| format!("permission storage failed: {err:?}"))
     }
 
+    /// Gate a remote call on `permission`, prompting the user when it is
+    /// undetermined. Anything short of `Authorized` fails with `denied_error`.
     pub(super) async fn require_remote_permission<E>(
         &self,
         permission: v01::RemotePermission,
@@ -1854,7 +1864,7 @@ impl ResourceAllocation for ProductRuntimeHost {
         .map_err(|err| {
             CallError::Domain(HostRequestResourceAllocationError::V1(
                 v01::ResourceAllocationError::Unknown {
-                    reason: err.reason(),
+                    reason: err.to_string(),
                 },
             ))
         })
@@ -1885,7 +1895,7 @@ impl Entropy for ProductRuntimeHost {
             .map_err(|err| {
                 CallError::Domain(HostDeriveEntropyError::V1(
                     v01::HostDeriveEntropyError::Unknown {
-                        reason: err.reason(),
+                        reason: err.to_string(),
                     },
                 ))
             })?;
@@ -2012,7 +2022,7 @@ impl Preimage for ProductRuntimeHost {
                 .bulletin_allowance_key(&authority_cx, &session, self.product_id()),
         )
         .await
-        .map_err(|err| preimage_submit_error(err.reason()))?;
+        .map_err(|err| preimage_submit_error(err.to_string()))?;
 
         let key = match bulletin
             .submit_preimage(cx, submission_deadline, &allowance, &value)
@@ -2037,7 +2047,7 @@ impl Preimage for ProductRuntimeHost {
                     ),
                 )
                 .await
-                .map_err(|err| preimage_submit_error(err.reason()))?;
+                .map_err(|err| preimage_submit_error(err.to_string()))?;
                 bulletin
                     .submit_preimage(cx, submission_deadline, &allowance, &value)
                     .await

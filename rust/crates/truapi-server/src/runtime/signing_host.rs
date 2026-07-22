@@ -46,6 +46,7 @@ pub(crate) struct SigningHost {
 }
 
 impl SigningHost {
+    /// Build a signing host with no active session.
     pub(crate) fn new(platform: Arc<dyn Platform>) -> Arc<Self> {
         Arc::new(Self {
             session_state: SessionState::new(),
@@ -54,6 +55,7 @@ impl SigningHost {
         })
     }
 
+    /// Shared session holder for connection-status subscriptions.
     pub(super) fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }

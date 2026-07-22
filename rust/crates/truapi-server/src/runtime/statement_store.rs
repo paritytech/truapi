@@ -345,7 +345,7 @@ enum StatementProofFailure {
 fn statement_authority_failure(err: AuthorityError) -> StatementProofFailure {
     match err {
         AuthorityError::Disconnected => StatementProofFailure::NoSession,
-        err => StatementProofFailure::UnableToSign(err.reason()),
+        err => StatementProofFailure::UnableToSign(err.to_string()),
     }
 }
 

@@ -1,3 +1,6 @@
+//! Wasm-target vectors pinning product-account derivation and SSO pairing
+//! crypto (P-256 ECDH, HKDF, AES-GCM) to the values dotli produces.
+
 #![cfg(target_arch = "wasm32")]
 
 use aes_gcm::aead::{Aead, KeyInit};

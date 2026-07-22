@@ -81,11 +81,13 @@ impl Drop for AbandonedPairingGuard {
     }
 }
 
+/// One pairing (login) attempt driven on behalf of a pairing host.
 pub(super) struct SsoPairingFlow<'a> {
     host: &'a PairingHost,
 }
 
 impl<'a> SsoPairingFlow<'a> {
+    /// Bind a pairing attempt to its host.
     pub(super) fn new(host: &'a PairingHost) -> Self {
         Self { host }
     }

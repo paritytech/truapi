@@ -18,7 +18,10 @@ pub enum HostNavigateToError {
     /// User denied the navigation prompt.
     PermissionDenied,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Error from [`crate::api::System::handshake`] (RFC 0009).

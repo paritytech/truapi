@@ -114,7 +114,10 @@ pub enum HostPaymentBalanceSubscribeError {
     /// User denied the balance disclosure request.
     PermissionDenied,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Error from [`crate::api::Payment::top_up`].
@@ -134,7 +137,10 @@ pub enum HostPaymentTopUpError {
         credited: Balance,
     },
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Error from [`crate::api::Payment::request`].
@@ -149,7 +155,10 @@ pub enum HostPaymentError {
     /// User's available balance is not sufficient for the requested amount.
     InsufficientBalance,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Error from [`crate::api::Payment::status_subscribe`].
@@ -162,7 +171,10 @@ pub enum HostPaymentStatusSubscribeError {
     /// Payment ID was not found or does not belong to the current product.
     PaymentNotFound,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Request to subscribe to a payment status.
