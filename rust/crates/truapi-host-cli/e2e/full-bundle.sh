@@ -71,7 +71,9 @@ cleanup() {
   # Success path removes $LOG itself before this trap runs; if it's still
   # here, this exit was a failure -- keep it for post-mortem instead of
   # silently deleting the only evidence.
-  [ -f "$LOG" ] && echo "host log preserved: $LOG" >&2
+  # `|| true`: as the trap's last command, a false [ -f ] would otherwise
+  # become the script's exit status and turn every SUCCESSFUL run into exit 1.
+  [ -f "$LOG" ] && echo "host log preserved: $LOG" >&2 || true
 }
 trap cleanup EXIT
 
