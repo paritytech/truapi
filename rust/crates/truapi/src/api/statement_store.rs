@@ -37,18 +37,23 @@ pub trait StatementStore: Send + Sync {
     /// assert(submitted.isOk(), "failed to submit statement:", submitted);
     /// console.log("statement submitted");
     ///
-    /// const page = await firstValueFrom(
-    ///   from(
-    ///     truapi.statementStore.subscribe({
-    ///       request: { tag: "MatchAll", value: [topic] },
-    ///     }),
-    ///   ),
-    /// );
-    /// assert(
-    ///   page.statements.some((item) => item.topics.includes(topic)),
-    ///   "subscription did not return the submitted statement:",
-    ///   page,
-    /// );
+    /// const waitForStatement = async () => {
+    ///   for (let attempt = 0; attempt < 15; attempt++) {
+    ///     const page = await firstValueFrom(
+    ///       from(
+    ///         truapi.statementStore.subscribe({
+    ///           request: { tag: "MatchAll", value: [topic] },
+    ///         }),
+    ///       ),
+    ///     );
+    ///     if (page.statements.some((item) => item.topics.includes(topic))) {
+    ///       return page;
+    ///     }
+    ///     await new Promise((resolve) => setTimeout(resolve, 1_000));
+    ///   }
+    ///   throw new Error("submitted statement was not visible after 15 seconds");
+    /// };
+    /// const page = await waitForStatement();
     /// console.log("subscribe received", page);
     /// ```
     #[wire(start_id = 56)]

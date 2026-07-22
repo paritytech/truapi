@@ -8,9 +8,12 @@
 
 use std::sync::Arc;
 
+use core::time::Duration;
 use serde_json::{Value, json};
+
 use subxt_rpcs::RpcClient;
 use subxt_rpcs::client::{RpcSubscription, rpc_params};
+use tracing::warn;
 use truapi_platform::{JsonRpcConnection, Platform};
 
 use crate::host_logic::statement_store::{
@@ -19,6 +22,9 @@ use crate::host_logic::statement_store::{
 };
 use crate::host_rpc_client::HostRpcClient;
 use crate::subscription::Spawner;
+
+const SSO_NO_ALLOWANCE_RETRY_ATTEMPTS: usize = 5;
+const SSO_NO_ALLOWANCE_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 /// People-chain statement-store RPC client factory.
 #[derive(Clone)]
@@ -60,6 +66,18 @@ impl StatementStoreRpc {
     ) -> Result<(), String> {
         let rpc_client = self.client(label).await?;
         submit(&rpc_client, statement).await
+    }
+
+    /// Submit an SSO statement, tolerating the short propagation window after
+    /// an allowance registration is included but not yet visible to the
+    /// Statement Store RPC backend.
+    pub(super) async fn submit_sso(
+        &self,
+        statement: Vec<u8>,
+        label: &'static str,
+    ) -> Result<(), String> {
+        let rpc_client = self.client(label).await?;
+        submit_sso(&rpc_client, statement, label).await
     }
 
     /// Submit a SCALE-encoded statement without waiting for the JSON-RPC ack.
@@ -129,6 +147,36 @@ pub(super) async fn submit(rpc_client: &RpcClient, statement: Vec<u8>) -> Result
     }
 }
 
+pub(super) async fn submit_sso(
+    rpc_client: &RpcClient,
+    statement: Vec<u8>,
+    label: &'static str,
+) -> Result<(), String> {
+    for attempt in 1..=SSO_NO_ALLOWANCE_RETRY_ATTEMPTS {
+        match submit(rpc_client, statement.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(reason)
+                if is_transient_no_allowance(&reason)
+                    && attempt < SSO_NO_ALLOWANCE_RETRY_ATTEMPTS =>
+            {
+                warn!(
+                    label,
+                    attempt,
+                    max_attempts = SSO_NO_ALLOWANCE_RETRY_ATTEMPTS,
+                    "SSO allowance not visible yet; retrying statement submission"
+                );
+                futures_timer::Delay::new(SSO_NO_ALLOWANCE_RETRY_DELAY).await;
+            }
+            Err(reason) => return Err(reason),
+        }
+    }
+    unreachable!("the bounded SSO submit loop always returns")
+}
+
+fn is_transient_no_allowance(reason: &str) -> bool {
+    reason.contains("noAllowance")
+}
+
 /// Statement-store topic filter encoded as JSON-RPC params.
 pub(super) fn filter(kind: TopicFilterKind, topics: &[[u8; 32]]) -> Value {
     let topics = topics.iter().map(hex_topic).collect::<Vec<_>>();
@@ -144,5 +192,20 @@ pub(super) fn rpc_error_message(error: subxt_rpcs::Error) -> String {
     match error {
         subxt_rpcs::Error::User(error) => error.message,
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_transient_no_allowance;
+
+    #[test]
+    fn identifies_no_allowance_submit_rejections_for_retry() {
+        assert!(is_transient_no_allowance(
+            r#"statement_submit not accepted: {"reason":"noAllowance","status":"rejected"}"#
+        ));
+        assert!(!is_transient_no_allowance(
+            r#"statement_submit not accepted: {"reason":"badProof","status":"rejected"}"#
+        ));
     }
 }

@@ -20,6 +20,22 @@ use tokio::process::Command;
 
 use crate::terminal_ui::UiHandle;
 
+/// Host topology serving the product script.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScriptHostRole {
+    PairingHost,
+    SigningHost,
+}
+
+impl ScriptHostRole {
+    fn as_env_value(self) -> &'static str {
+        match self {
+            Self::PairingHost => "pairing-host",
+            Self::SigningHost => "signing-host",
+        }
+    }
+}
+
 const SCRATCH_TEMPLATE: &str = r#"#!/usr/bin/env bun
 
 // Import any npm package you need - Bun installs missing dependencies automatically.
@@ -124,8 +140,13 @@ fn parse_editor(specification: &str) -> Result<(String, Vec<String>)> {
 /// Run `script` against the host serving frames at `frame_url`, as product
 /// `product_id`. Inherits stdio so the script's output and any CLI confirmation
 /// prompts share the terminal. Returns the child's exit status.
-pub async fn run(frame_url: &str, product_id: &str, script: &Path) -> Result<ExitStatus> {
-    command(frame_url, product_id, script)?
+pub async fn run(
+    frame_url: &str,
+    product_id: &str,
+    script: &Path,
+    host_role: ScriptHostRole,
+) -> Result<ExitStatus> {
+    command(frame_url, product_id, script, host_role)?
         .status()
         .await
         .context("failed to spawn `bun` for the host script (is bun installed?)")
@@ -137,8 +158,9 @@ pub async fn run_captured(
     product_id: &str,
     script: &Path,
     ui: UiHandle,
+    host_role: ScriptHostRole,
 ) -> Result<ExitStatus> {
-    let mut command = command(frame_url, product_id, script)?;
+    let mut command = command(frame_url, product_id, script, host_role)?;
     command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -169,7 +191,12 @@ pub async fn run_captured(
     status.context("wait for host script")
 }
 
-fn command(frame_url: &str, product_id: &str, script: &Path) -> Result<Command> {
+fn command(
+    frame_url: &str,
+    product_id: &str,
+    script: &Path,
+    host_role: ScriptHostRole,
+) -> Result<Command> {
     let runner = runner_path();
     if !runner.exists() {
         anyhow::bail!(
@@ -187,7 +214,8 @@ fn command(frame_url: &str, product_id: &str, script: &Path) -> Result<Command> 
         .arg(&runner)
         .env("TRUAPI_FRAME_URL", frame_url)
         .env("TRUAPI_PRODUCT_ID", product_id)
-        .env("TRUAPI_SCRIPT", &script);
+        .env("TRUAPI_SCRIPT", &script)
+        .env("TRUAPI_CLI_HOST_ROLE", host_role.as_env_value());
     Ok(command)
 }
 
@@ -215,13 +243,24 @@ mod tests {
         let script = temporary.path().join("script.ts");
         fs::write(&script, "console.log('hello');\n")?;
 
-        let command = command("ws://127.0.0.1:1234", "example.dot", &script)?;
+        let command = command(
+            "ws://127.0.0.1:1234",
+            "example.dot",
+            &script,
+            ScriptHostRole::SigningHost,
+        )?;
         let command = command.as_std();
         let arguments = command.get_args().collect::<Vec<_>>();
 
         assert_eq!(command.get_program(), std::ffi::OsStr::new("bun"));
         assert_eq!(arguments[0], std::ffi::OsStr::new("run"));
         assert_eq!(arguments[1], runner_path());
+        assert_eq!(
+            command
+                .get_envs()
+                .find_map(|(key, value)| { (key == "TRUAPI_CLI_HOST_ROLE").then_some(value) }),
+            Some(Some(std::ffi::OsStr::new("signing-host")))
+        );
         Ok(())
     }
 

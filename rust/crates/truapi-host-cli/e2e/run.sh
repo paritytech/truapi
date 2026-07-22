@@ -3,7 +3,7 @@
 # signing host, pairing over the real People-chain statement store.
 #
 #   make headless                  # build once
-#   e2e/run.sh                     # runs js/scripts/battery.ts (default)
+#   e2e/run.sh                     # generates pairing-host-cli.md (default)
 #   e2e/run.sh path/to/script.ts   # runs a custom product script
 #
 # Env:

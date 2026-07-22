@@ -29,7 +29,7 @@ One binary, `truapi-host`:
 
 ```bash
 make headless install                        # build deps + install truapi-host (once)
-rust/crates/truapi-host-cli/e2e/run.sh       # run js/scripts/battery.ts end-to-end
+rust/crates/truapi-host-cli/e2e/run.sh       # generate pairing-host-cli.md end-to-end
 rust/crates/truapi-host-cli/e2e/run.sh path/to/my-script.ts   # or a custom script
 ```
 
@@ -178,20 +178,35 @@ res.match(
 ```
 
 `--product-id` (a `.dot` name or `localhost` identifier; default
-`headless-playground.dot`) scopes product-owned APIs like `truapi.localStorage.*`
+`truapi-playground.dot`) scopes product-owned APIs like `truapi.localStorage.*`
 and the accounts `host.productAccount()` returns.
 
-Six scripts ship under `js/scripts/`:
+Five scripts ship under `js/scripts/`:
 
 - `battery.ts` — the generated full-surface gate. It discovers every method
   from the same code-generated example manifest as the playground Diagnosis,
   attempts all examples (including APIs the browser diagnosis classifies as
   intentionally unsupported), prints test-reporter rows with timings and clean
   failure details, writes the browser-shaped result matrix to
-  `explorer/diagnosis-reports/cli.md`, and exits nonzero if any example fails.
-  Override the artifact path with `TRUAPI_BATTERY_REPORT_PATH`. This is
-  `run.sh`'s default and therefore uses the generated examples'
-  `truapi-playground.dot` product id.
+  the role-specific report under `explorer/diagnosis-reports/`, and exits
+  nonzero if any example fails. A paired run writes `pairing-host-cli.md`; a
+  direct signing-host run writes `signing-host-cli.md`. Override the artifact
+  path with `TRUAPI_BATTERY_REPORT_PATH`. `run.sh` exercises the paired
+  topology and therefore generates the pairing-host report:
+
+  ```bash
+  rust/crates/truapi-host-cli/e2e/run.sh
+  ```
+
+  Generate the direct signing-host report separately:
+
+  ```bash
+  target/debug/truapi-host signing-host \
+    --product-id truapi-playground.dot \
+    --script rust/crates/truapi-host-cli/js/scripts/battery.ts \
+    --auto-accept
+  ```
+
 - `whoami.ts` — calls `getUserId` and prints `WHOAMI <primary username>`; this
   remains available as an explicit `/script <path>` example.
 - `signing-smoke.ts` — a focused product-account signing check.
@@ -199,27 +214,16 @@ Six scripts ship under `js/scripts/`:
   against the Paseo Next v2 LitePeople ring, then verifies both calls return
   the same contextual alias.
 - `preimage-smoke.ts` — a focused Bulletin preimage flow check.
-- `diagnosis.ts` — runs the same generated example sources with the playground's
-  intentional skip policy
-  (`runExample`) and writes a `web.md`-shape report to
-  `explorer/diagnosis-reports/headless-pairing.md`, gating on the signer-critical
-  methods. The generated examples are baked to the `truapi-playground.dot`
-  product, so run it with that product id:
 
-  ```bash
-  PRODUCT_ID=truapi-playground.dot E2E_LIVE_CHAIN=1 \
-    rust/crates/truapi-host-cli/e2e/run.sh rust/crates/truapi-host-cli/js/scripts/diagnosis.ts
-  ```
-
-  With live routing enabled, `Chain/stop_transaction` uses host-owned operation
-  ids and treats already-finished provider operations as stopped. `Preimage/*`
-  also uses the real Bulletin Next chain and asks the signing host to claim
-  People-chain long-term storage before returning the product-scoped Bulletin
-  allowance key. It needs the playground's deps
-  (`cd playground && bun install`). Repeated live runs can exhaust the
-  signer's per-period Statement Store or Bulletin allocation slots; the
-  signing host now rotates auto-managed signer accounts when Statement Store
-  slots are exhausted.
+The generated examples are baked to the `truapi-playground.dot` product. With
+live routing enabled, `Chain/stop_transaction` uses host-owned operation ids and
+treats already-finished provider operations as stopped. `Preimage/*` also uses
+the real Bulletin Next chain and asks the signing host to claim People-chain
+long-term storage before returning the product-scoped Bulletin allowance key.
+It needs the playground's deps (`cd playground && bun install`). Repeated live
+runs can exhaust the signer's per-period Statement Store or Bulletin allocation
+slots; the signing host rotates auto-managed signer accounts when Statement
+Store slots are exhausted.
 
 ## Confirmations
 

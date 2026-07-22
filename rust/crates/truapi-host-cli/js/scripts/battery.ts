@@ -11,11 +11,18 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BatteryReporter } from "../battery-reporter.ts";
-import { renderDiagnosisReport } from "../diagnosis-report.ts";
+import {
+  cliDiagnosisReportMetadata,
+  renderDiagnosisReport,
+} from "../diagnosis-report.ts";
 import { createDiagnosisPlan, runDiagnosis } from "../diagnosis.ts";
 
+const report = cliDiagnosisReportMetadata(process.env.TRUAPI_CLI_HOST_ROLE);
 const DEFAULT_REPORT_PATH = fileURLToPath(
-  new URL("../../../../../explorer/diagnosis-reports/cli.md", import.meta.url),
+  new URL(
+    `../../../../../explorer/diagnosis-reports/${report.filename}`,
+    import.meta.url,
+  ),
 );
 const REPORT_PATH =
   process.env.TRUAPI_BATTERY_REPORT_PATH || DEFAULT_REPORT_PATH;
@@ -49,7 +56,7 @@ const rows = await runDiagnosis(truapi, {
 });
 reporter.finish(rows, Math.round(performance.now() - startedAt));
 mkdirSync(dirname(REPORT_PATH), { recursive: true });
-writeFileSync(REPORT_PATH, renderDiagnosisReport("Truapi CLI Diagnosis", rows));
+writeFileSync(REPORT_PATH, renderDiagnosisReport(report.title, rows));
 reporter.reportSaved(REPORT_PATH);
 
 const failures = rows.filter((row) => row.status === "fail");

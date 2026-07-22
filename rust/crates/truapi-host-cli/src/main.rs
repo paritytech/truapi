@@ -511,7 +511,13 @@ async fn run_pairing_host(
         let script_product_id = product_id.clone();
         let script_frame_url = frame_url.clone();
         let status = with_frame_server(runtime, product_id, listener, async move {
-            script_runner::run(&script_frame_url, &script_product_id, &script).await
+            script_runner::run(
+                &script_frame_url,
+                &script_product_id,
+                &script,
+                script_runner::ScriptHostRole::PairingHost,
+            )
+            .await
         })
         .await?;
         let code = status.code().unwrap_or(1);
@@ -611,7 +617,13 @@ async fn run_signing_host(
                 }));
             }
             ensure_signer(&mut session).await?;
-            let status = script_runner::run(&script_frame_url, &script_product_id, &script).await?;
+            let status = script_runner::run(
+                &script_frame_url,
+                &script_product_id,
+                &script,
+                script_runner::ScriptHostRole::SigningHost,
+            )
+            .await?;
             if let Some(responder) = responder {
                 responder.abort();
             }
@@ -1328,7 +1340,14 @@ async fn run_pairing_script(
     let activity_checkpoint = ui.activity_checkpoint();
     let handle = ui.handle();
     let operation = async {
-        let status = script_runner::run_captured(frame_url, product_id, script, handle).await?;
+        let status = script_runner::run_captured(
+            frame_url,
+            product_id,
+            script,
+            handle,
+            script_runner::ScriptHostRole::PairingHost,
+        )
+        .await?;
         terminal_ui::output_event(SystemEvent::ScriptExit {
             code: status.code().unwrap_or(1),
         });
@@ -1478,7 +1497,14 @@ async fn execute_interactive_operation(
         ShellCommand::Deeplink(deeplink) => start_deeplink_responder(session, deeplink).await?,
         ShellCommand::Script(Some(script)) => {
             ensure_signer(session).await?;
-            let status = script_runner::run_captured(frame_url, product_id, &script, ui).await?;
+            let status = script_runner::run_captured(
+                frame_url,
+                product_id,
+                &script,
+                ui,
+                script_runner::ScriptHostRole::SigningHost,
+            )
+            .await?;
             terminal_ui::output_event(SystemEvent::ScriptExit {
                 code: status.code().unwrap_or(1),
             });
@@ -1514,7 +1540,13 @@ async fn execute_non_interactive_command(
                 None => edit_new_script_plain(session).await?,
             };
             ensure_signer(session).await?;
-            let status = script_runner::run(frame_url, product_id, &script).await?;
+            let status = script_runner::run(
+                frame_url,
+                product_id,
+                &script,
+                script_runner::ScriptHostRole::SigningHost,
+            )
+            .await?;
             let code = status.code().unwrap_or(1);
             terminal_ui::output_event(SystemEvent::ScriptExit { code });
             if !status.success() {

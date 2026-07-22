@@ -785,18 +785,20 @@ Live tests are opt-in and MUST clearly identify the selected preset. They MUST
 cover:
 
 1. `battery.ts` in paired mode, covering every generated playground example
-   and writing `explorer/diagnosis-reports/cli.md`;
-2. focused direct signing-host product-account flows;
-3. focused signing, ring-VRF, and preimage scripts;
-4. diagnosis for both headless roles;
+   and writing `explorer/diagnosis-reports/pairing-host-cli.md`;
+2. `battery.ts` in direct signing-host mode, covering the same generated
+   examples and writing `explorer/diagnosis-reports/signing-host-cli.md`;
+3. focused direct signing-host product-account flows;
+4. focused signing, ring-VRF, and preimage scripts;
 5. account onboarding and cached restart;
 6. Statement Store slot exhaustion and auto-account rotation; and
 7. one cancellation/restart recovery scenario.
 
-The target diagnosis baseline is the checked-in intentional capability set:
-`44 passed, 0 failed, 20 skipped` for both headless reports. A changed method
-count MUST be reviewed against the canonical generated API rather than updating
-the expected number blindly.
+The two reports MUST be measured independently. The paired report exercises
+remote SSO allocation and signing, while the direct signing-host report uses
+the same native allocation and signing implementations locally. Their supported
+method sets should agree; a changed method count MUST be reviewed against the
+canonical generated API rather than updating the expected number blindly.
 
 Live failures MUST preserve logs and reports with secrets redacted. CI MAY mark
 a known external network outage separately from a product failure, but it MUST

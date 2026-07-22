@@ -228,7 +228,7 @@ async fn serve_request(
     )?;
     services
         .statement_store
-        .submit(ack, "sso-responder ack")
+        .submit_sso(ack, "sso-responder ack")
         .await?;
 
     for message in incoming.messages {
@@ -275,7 +275,7 @@ async fn serve_request(
         )?;
         let publish_result = services
             .statement_store
-            .submit(statement, "sso-responder response")
+            .submit_sso(statement, "sso-responder response")
             .await;
         let elapsed_ms = started.elapsed().as_millis();
         match publish_result {

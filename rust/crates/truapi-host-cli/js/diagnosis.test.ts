@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { services } from "../../../../js/packages/truapi/src/playground/codegen/services.ts";
 import { BatteryReporter } from "./battery-reporter.ts";
-import { renderDiagnosisReport } from "./diagnosis-report.ts";
+import {
+  cliDiagnosisReportMetadata,
+  renderDiagnosisReport,
+} from "./diagnosis-report.ts";
 import {
   createDiagnosisPlan,
   type DiagnosisCase,
@@ -9,6 +12,20 @@ import {
 } from "./diagnosis.ts";
 
 describe("generated-example battery", () => {
+  test("uses a distinct committed report for each CLI host role", () => {
+    expect(cliDiagnosisReportMetadata("pairing-host")).toEqual({
+      filename: "pairing-host-cli.md",
+      title: "Truapi Pairing Host CLI Diagnosis",
+    });
+    expect(cliDiagnosisReportMetadata("signing-host")).toEqual({
+      filename: "signing-host-cli.md",
+      title: "Truapi Signing Host CLI Diagnosis",
+    });
+    expect(() => cliDiagnosisReportMetadata(undefined)).toThrow(
+      "TRUAPI_CLI_HOST_ROLE must be pairing-host or signing-host",
+    );
+  });
+
   test("derives every case from the generated playground manifest", () => {
     const generatedIds = services.flatMap((service) =>
       service.methods.map((method) => `${service.name}/${method.name}`),

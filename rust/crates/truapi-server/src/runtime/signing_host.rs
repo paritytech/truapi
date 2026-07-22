@@ -36,7 +36,7 @@ use crate::host_logic::product_account::{
     derive_root_keypair_from_entropy, derive_sr25519_hard_path,
 };
 use crate::host_logic::session::SessionState;
-use crate::host_logic::sso::messages::RingVrfError;
+use crate::host_logic::sso::messages::{OnExistingAllowancePolicy, RingVrfError};
 use crate::host_logic::transaction::extrinsic_payload_preimage;
 use crate::runtime::auth_state::AuthStateMachine;
 use ring_vrf::{
@@ -57,6 +57,7 @@ const BYTES_WRAP_SUFFIX: &[u8] = b"</Bytes>";
 
 /// Wallet-local account authority for a signing host.
 pub(crate) struct SigningHost {
+    services: Arc<RuntimeServices>,
     platform: Arc<dyn Platform>,
     session_state: Arc<SessionState>,
     auth_state: AuthStateMachine,
@@ -70,6 +71,7 @@ impl SigningHost {
         let platform = services.platform.clone();
         let ring_resolver = ChainRingResolver::new(services.chain.clone());
         Arc::new(Self {
+            services,
             platform: platform.clone(),
             session_state: SessionState::new(),
             auth_state: AuthStateMachine::new(platform),
@@ -83,7 +85,14 @@ impl SigningHost {
         platform: Arc<dyn Platform>,
         ring_resolver: Arc<dyn RingResolver>,
     ) -> Arc<Self> {
+        let services = RuntimeServices::new(
+            platform.clone(),
+            [0; 32],
+            [0xbb; 32],
+            crate::test_support::test_spawner(),
+        );
         Arc::new(Self {
+            services,
             platform: platform.clone(),
             session_state: SessionState::new(),
             auth_state: AuthStateMachine::new(platform),
@@ -380,50 +389,95 @@ impl ProductAuthority for SigningHost {
     async fn allocate_resources(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _product_id: String,
-        _request: v01::HostRequestResourceAllocationRequest,
+        session: &AuthoritySession,
+        product_id: String,
+        request: v01::HostRequestResourceAllocationRequest,
     ) -> Result<v01::HostRequestResourceAllocationResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: on-chain resource allocation not yet implemented".to_string(),
-        })
+        require_current_session(&self.session_state, session)?;
+        let mut outcomes = Vec::with_capacity(request.resources.len());
+        for resource in request.resources {
+            let outcome = match resource {
+                v01::AllocatableResource::StatementStoreAllowance => {
+                    sso_responder::allocate_statement_store_allowance(
+                        &self.services,
+                        self,
+                        &product_id,
+                    )
+                    .await
+                    .map(|_| v01::AllocationOutcome::Allocated)
+                }
+                v01::AllocatableResource::BulletinAllowance => {
+                    sso_responder::allocate_bulletin_allowance(
+                        &self.services,
+                        self,
+                        &product_id,
+                        OnExistingAllowancePolicy::Ignore,
+                    )
+                    .await
+                    .map(|_| v01::AllocationOutcome::Allocated)
+                }
+                v01::AllocatableResource::SmartContractAllowance(_)
+                | v01::AllocatableResource::AutoSigning => Ok(v01::AllocationOutcome::NotAvailable),
+            };
+            match outcome {
+                Ok(outcome) => outcomes.push(outcome),
+                Err(reason) => {
+                    tracing::warn!(%product_id, %reason, "direct resource allocation item failed");
+                    outcomes.push(v01::AllocationOutcome::Rejected);
+                }
+            }
+        }
+        Ok(v01::HostRequestResourceAllocationResponse { outcomes })
     }
 
     async fn statement_store_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: statement-store allowance allocation not yet implemented"
-                .to_string(),
-        })
+        let secret =
+            sso_responder::allocate_statement_store_allowance(&self.services, self, &product_id)
+                .await
+                .map_err(allocation_authority_error)?;
+        StatementStoreAllowanceKey::from_secret_bytes(secret)
     }
 
     async fn bulletin_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: bulletin allowance allocation not yet implemented".to_string(),
-        })
+        let secret = sso_responder::allocate_bulletin_allowance(
+            &self.services,
+            self,
+            &product_id,
+            OnExistingAllowancePolicy::Ignore,
+        )
+        .await
+        .map_err(allocation_authority_error)?;
+        BulletinAllowanceKey::from_secret_bytes(secret)
     }
 
     async fn refresh_bulletin_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: bulletin allowance allocation not yet implemented".to_string(),
-        })
+        let secret = sso_responder::allocate_bulletin_allowance(
+            &self.services,
+            self,
+            &product_id,
+            OnExistingAllowancePolicy::Increase,
+        )
+        .await
+        .map_err(allocation_authority_error)?;
+        BulletinAllowanceKey::from_secret_bytes(secret)
     }
 
     async fn sign_statement_store_product_payload(
@@ -484,6 +538,10 @@ fn product_authority_error(err: ProductAccountError) -> AuthorityError {
     AuthorityError::Unavailable {
         reason: err.to_string(),
     }
+}
+
+fn allocation_authority_error(reason: String) -> AuthorityError {
+    AuthorityError::Unavailable { reason }
 }
 
 /// Assemble and sign a transaction locally from caller-supplied, pre-encoded
@@ -1265,20 +1323,40 @@ mod tests {
     }
 
     #[test]
-    fn deferred_operations_return_unavailable() {
+    fn direct_allocation_handles_empty_and_optional_resource_batches() {
         let (_services, authority) = signing_runtime();
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation");
         let session = authority.current_session().expect("connected");
         let cx = CallContext::new();
 
-        let alloc = futures::executor::block_on(authority.allocate_resources(
+        let empty = futures::executor::block_on(authority.allocate_resources(
             &cx,
             &session,
             "myapp.dot".to_string(),
             v01::HostRequestResourceAllocationRequest { resources: vec![] },
         ))
-        .expect_err("allocation deferred");
-        assert!(matches!(alloc, AuthorityError::Unavailable { .. }));
+        .expect("empty allocation succeeds");
+        assert!(empty.outcomes.is_empty());
+
+        let optional = futures::executor::block_on(authority.allocate_resources(
+            &cx,
+            &session,
+            "myapp.dot".to_string(),
+            v01::HostRequestResourceAllocationRequest {
+                resources: vec![
+                    v01::AllocatableResource::SmartContractAllowance(0),
+                    v01::AllocatableResource::AutoSigning,
+                ],
+            },
+        ))
+        .expect("optional allocation succeeds");
+        assert_eq!(
+            optional.outcomes,
+            vec![
+                v01::AllocationOutcome::NotAvailable,
+                v01::AllocationOutcome::NotAvailable,
+            ]
+        );
     }
 }

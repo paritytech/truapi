@@ -1,4 +1,4 @@
-## Truapi CLI Diagnosis
+## Truapi Signing Host CLI Diagnosis
 
 | Method | Status | Details |
 | --- | --- | --- |

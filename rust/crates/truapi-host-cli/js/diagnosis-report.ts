@@ -1,5 +1,36 @@
 import type { DiagnosisRow } from "./diagnosis.ts";
 
+export type CliHostRole = "pairing-host" | "signing-host";
+
+export interface CliDiagnosisReportMetadata {
+  filename: "pairing-host-cli.md" | "signing-host-cli.md";
+  title:
+    | "Truapi Pairing Host CLI Diagnosis"
+    | "Truapi Signing Host CLI Diagnosis";
+}
+
+/** Select the committed report identity from the host that serves the script. */
+export function cliDiagnosisReportMetadata(
+  role: string | undefined,
+): CliDiagnosisReportMetadata {
+  switch (role) {
+    case "pairing-host":
+      return {
+        filename: "pairing-host-cli.md",
+        title: "Truapi Pairing Host CLI Diagnosis",
+      };
+    case "signing-host":
+      return {
+        filename: "signing-host-cli.md",
+        title: "Truapi Signing Host CLI Diagnosis",
+      };
+    default:
+      throw new Error(
+        `TRUAPI_CLI_HOST_ROLE must be pairing-host or signing-host; received ${JSON.stringify(role)}`,
+      );
+  }
+}
+
 /** Render the same Markdown matrix used by the playground diagnosis reports. */
 export function renderDiagnosisReport(
   title: string,
