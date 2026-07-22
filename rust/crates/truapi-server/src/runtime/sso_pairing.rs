@@ -575,7 +575,7 @@ mod tests {
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
         let host = Arc::new(host);
         cancel_on_pairing(&platform, pairing_host);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
@@ -614,7 +614,7 @@ mod tests {
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
         let host = Arc::new(host);
         cancel_on_pairing(&platform, pairing_host);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
 
         let first = futures::executor::block_on(host.request_login(&cx, request.clone())).unwrap();
@@ -679,7 +679,7 @@ mod tests {
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
         let host = Arc::new(host);
         cancel_on_pairing(&platform, pairing_host);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
 
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
@@ -740,7 +740,7 @@ mod tests {
             ..Default::default()
         });
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
 
@@ -795,7 +795,7 @@ mod tests {
             )
         );
 
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
@@ -881,7 +881,7 @@ mod tests {
             }
         }));
 
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
@@ -912,7 +912,7 @@ mod tests {
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
 
@@ -962,7 +962,7 @@ mod tests {
             cancel_host.cancel_login();
         }));
 
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
@@ -1007,7 +1007,7 @@ mod tests {
             }
         }));
 
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
@@ -1120,7 +1120,7 @@ mod tests {
             ..Default::default()
         });
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
 
@@ -1147,7 +1147,7 @@ mod tests {
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
         let host = Arc::new(host);
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let mut first_login = Box::pin(host.request_login(&cx, request.clone()));
         let waker = futures::task::noop_waker();
         let mut task_cx = Context::from_waker(&waker);
@@ -1176,7 +1176,7 @@ mod tests {
         );
 
         cancel_on_pairing(&platform, pairing_host);
-        let second_cx = CallContext::new();
+        let second_cx = CallContext::default();
         let mut second_login = Box::pin(host.request_login(&second_cx, request));
         let second = match second_login.as_mut().poll(&mut task_cx) {
             Poll::Ready(result) => result.expect("second login should complete after cancellation"),
@@ -1201,7 +1201,7 @@ mod tests {
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
         let host = Arc::new(host);
         cancel_on_pairing(&platform, pairing_host);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
@@ -1224,7 +1224,7 @@ mod tests {
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
         let host = Arc::new(host);
         cancel_on_pairing(&platform, pairing_host);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
@@ -1246,7 +1246,7 @@ mod tests {
             ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
         let host = Arc::new(host);
         cancel_on_pairing(&platform, pairing_host);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
@@ -1261,7 +1261,7 @@ mod tests {
     fn request_login_returns_already_connected_when_session_exists() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
         assert_eq!(

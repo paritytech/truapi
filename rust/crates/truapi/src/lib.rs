@@ -214,11 +214,6 @@ impl fmt::Debug for CancellationToken {
 }
 
 impl CancellationToken {
-    /// Create a token in the non-cancelled state.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Mark the token as cancelled.
     pub fn cancel(&self) {
         self.cancel_with_reason(CancellationReason::Cancelled);
@@ -316,16 +311,11 @@ pub struct CallContext {
 }
 
 impl CallContext {
-    /// Construct an empty context with a fresh cancellation token.
-    pub fn new() -> Self {
-        Self::with_request_id(String::new())
-    }
-
     /// Construct a context bound to the given `request_id` with a fresh cancellation token.
     pub fn with_request_id(request_id: RequestId) -> Self {
         Self {
             request_id,
-            cancel: CancellationToken::new(),
+            cancel: CancellationToken::default(),
             timeout: None,
         }
     }
@@ -411,7 +401,7 @@ mod tests {
 
     #[test]
     fn cancellation_token_clones_share_cancellation() {
-        let token = CancellationToken::new();
+        let token = CancellationToken::default();
         let cloned = token.clone();
         let wait = cloned.cancelled();
 

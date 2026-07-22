@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn sso_remote_response_waiter_reports_timeout_cancellation() {
         let session = sso_session_info();
-        let cancel = CancellationToken::new();
+        let cancel = CancellationToken::default();
         cancel.cancel_with_reason(CancellationReason::TimedOut {
             timeout: Duration::from_millis(1),
         });
@@ -493,7 +493,7 @@ mod tests {
             session: session.sso.as_ref().unwrap(),
             statement_request_id: "request-1",
             remote_message_id: "request-1",
-            cancel: &CancellationToken::new(),
+            cancel: &CancellationToken::default(),
             disconnect: None,
         }))
         .unwrap_err();
@@ -518,7 +518,7 @@ mod tests {
             session: session.sso.as_ref().unwrap(),
             statement_request_id: "request-1",
             remote_message_id: "request-1",
-            cancel: &CancellationToken::new(),
+            cancel: &CancellationToken::default(),
             disconnect: Some(rx),
         }))
         .unwrap_err();
@@ -538,7 +538,7 @@ mod tests {
             session: session.sso.as_ref().unwrap(),
             statement_request_id: "request-1",
             remote_message_id: "request-1",
-            cancel: &CancellationToken::new(),
+            cancel: &CancellationToken::default(),
             disconnect: Some(rx),
         }))
         .unwrap_err();
@@ -549,7 +549,7 @@ mod tests {
     #[test]
     fn sso_remote_response_waiter_stops_on_call_cancellation() {
         let session = sso_session_info();
-        let cancel = CancellationToken::new();
+        let cancel = CancellationToken::default();
         let wait = wait_for_sso_remote_response(RemoteResponseWait {
             own_statements: stream::pending().boxed(),
             peer_statements: stream::pending().boxed(),
