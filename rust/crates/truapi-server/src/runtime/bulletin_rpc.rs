@@ -19,11 +19,15 @@ use crate::host_logic::bulletin::{
 use crate::host_logic::extrinsic::Sr25519Signer;
 use crate::runtime::BulletinAllowanceKey;
 use futures::{FutureExt, pin_mut};
+use subxt::OnlineClient;
 use subxt::client::{Block, Blocks, OnlineClientAtBlockImpl};
+use subxt::config::HashFor;
 use subxt::config::substrate::SubstrateConfig;
 use subxt::error::{
     DispatchError, TransactionEventsError, TransactionProgressError, TransactionStatusError,
 };
+use subxt::extrinsics::ExtrinsicEvents;
+use subxt::metadata::ArcMetadata;
 use subxt::tx::{
     SubmittableTransaction, TransactionInBlock, TransactionInvalid, TransactionStatus,
     TransactionUnknown, ValidationResult,
@@ -44,6 +48,16 @@ const ALLOWANCE_DRY_RUN_PROPAGATION_BLOCKS: usize = 3;
 const ALLOWANCE_DRY_RUN_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(20);
 #[cfg(test)]
 const ALLOWANCE_DRY_RUN_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_millis(25);
+/// Finalized blocks to inspect for the already-broadcast transaction after
+/// the watch is interrupted (for example when `chainHead_follow` emits a
+/// `stop` event mid-submission).
+const INCLUSION_RECHECK_BLOCKS: usize = 3;
+/// Bound each wait for the next finalized block during the inclusion
+/// re-check.
+#[cfg(not(test))]
+const INCLUSION_RECHECK_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(test)]
+const INCLUSION_RECHECK_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_millis(25);
 /// Budget for the best-block stream to replay the current chain head.
 const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(10);
 /// Quiet window after which the newest replayed block is taken as the head.
@@ -262,10 +276,29 @@ impl BulletinRpc {
         drop(best_blocks);
 
         self.enter_phase(SubmissionPhase::Watch);
-        let in_block = watch_until_included(&signed).await?;
-
-        self.enter_phase(SubmissionPhase::Events);
-        require_dispatch_success(&in_block).await?;
+        match watch_until_included(&signed).await {
+            Ok(in_block) => {
+                self.enter_phase(SubmissionPhase::Events);
+                require_dispatch_success(&in_block).await?;
+            }
+            Err(watch_error) => {
+                // An interrupted watch (for example `chainHead_follow`
+                // emitting `stop`) says nothing about the already-broadcast
+                // transaction. Look for it in the next finalized blocks
+                // before failing: when it is on chain, re-broadcasting
+                // would only double-store the preimage.
+                if !is_watch_interrupted(&watch_error) {
+                    return Err(watch_error);
+                }
+                match finalized_inclusion_outcome(&client, &signed).await {
+                    Some(outcome) => {
+                        self.enter_phase(SubmissionPhase::Events);
+                        outcome?;
+                    }
+                    None => return Err(watch_error),
+                }
+            }
+        }
 
         Ok(key.to_vec())
     }
@@ -459,6 +492,120 @@ async fn watch_until_included(
     Err(BulletinSubmitError::Subxt(Box::new(
         TransactionProgressError::UnexpectedEndOfTransactionStatusStream.into(),
     )))
+}
+
+/// Whether the watch died without learning the transaction's fate: progress
+/// updates stopped (for example `chainHead_follow` emitted `stop`), as
+/// opposed to the node definitively reporting the transaction invalid or
+/// dropped.
+fn is_watch_interrupted(error: &BulletinSubmitError) -> bool {
+    match error {
+        BulletinSubmitError::Subxt(error) => {
+            matches!(error.as_ref(), subxt::Error::TransactionProgressError(_))
+        }
+        _ => false,
+    }
+}
+
+/// Look for the already-broadcast transaction in the next few finalized
+/// blocks after an interrupted watch and classify its dispatch outcome from
+/// the inclusion block's events.
+///
+/// `None` means the transaction was not seen (or the scan itself failed);
+/// the caller keeps the interrupted-watch error and its retry semantics. A
+/// found transaction always yields a definitive outcome, never a retry.
+async fn finalized_inclusion_outcome(
+    client: &OnlineClient<SubstrateConfig>,
+    signed: &SignedStore,
+) -> Option<Result<(), BulletinSubmitError>> {
+    let target_hash = signed.hash();
+    let mut blocks = match client.stream_blocks().await {
+        Ok(blocks) => blocks,
+        Err(error) => {
+            warn!(%error, "Bulletin inclusion re-check could not stream finalized blocks");
+            return None;
+        }
+    };
+    for _ in 0..INCLUSION_RECHECK_BLOCKS {
+        let timeout = futures_timer::Delay::new(INCLUSION_RECHECK_BLOCK_WAIT_TIMEOUT).fuse();
+        let next = blocks.next().fuse();
+        pin_mut!(timeout, next);
+        let block = futures::select! {
+            block = next => match block {
+                Some(Ok(block)) => block,
+                Some(Err(error)) => {
+                    warn!(%error, "Bulletin inclusion re-check finalized stream failed");
+                    return None;
+                }
+                None => return None,
+            },
+            () = timeout => return None,
+        };
+        match block_inclusion_outcome(&block, target_hash).await {
+            Ok(Some(outcome)) => return Some(outcome),
+            Ok(None) => {}
+            Err(error) => {
+                warn!(%error, "Bulletin inclusion re-check could not inspect a finalized block");
+                return None;
+            }
+        }
+    }
+    None
+}
+
+/// Search one finalized block for the transaction; when present, classify
+/// its dispatch outcome fail-closed, mirroring [`require_dispatch_success`].
+async fn block_inclusion_outcome(
+    block: &Block<SubstrateConfig>,
+    target_hash: HashFor<SubstrateConfig>,
+) -> Result<Option<Result<(), BulletinSubmitError>>, subxt::Error> {
+    let at_block = block.at().await?;
+    let extrinsics = at_block.extrinsics().fetch().await?;
+    for extrinsic in extrinsics.iter() {
+        let extrinsic = extrinsic?;
+        if extrinsic.hash() != target_hash {
+            continue;
+        }
+        let events = extrinsic.events().await?;
+        return Ok(Some(dispatch_outcome_from_events(
+            &events,
+            at_block.metadata(),
+        )));
+    }
+    Ok(None)
+}
+
+/// Classify a found transaction's dispatch outcome from its events.
+/// Failure wins over success and inclusion without an explicit
+/// `System.ExtrinsicSuccess` stays unverified, mirroring
+/// [`require_dispatch_success`].
+fn dispatch_outcome_from_events(
+    events: &ExtrinsicEvents<SubstrateConfig>,
+    metadata: ArcMetadata,
+) -> Result<(), BulletinSubmitError> {
+    for event in events.iter() {
+        let event = event.map_err(|error| BulletinSubmitError::Subxt(Box::new(error.into())))?;
+        if event.pallet_name() == "System" && event.event_name() == "ExtrinsicFailed" {
+            let dispatch_error = DispatchError::decode_from(event.field_bytes(), metadata.clone())
+                .map_err(|error| {
+                    BulletinSubmitError::Subxt(Box::new(
+                        TransactionEventsError::CannotDecodeDispatchError {
+                            error,
+                            bytes: event.field_bytes().to_vec(),
+                        }
+                        .into(),
+                    ))
+                })?;
+            return Err(classify_dispatch_error(dispatch_error));
+        }
+    }
+    for event in events.iter() {
+        let event = event.map_err(|error| BulletinSubmitError::Subxt(Box::new(error.into())))?;
+        if event.pallet_name() == "System" && event.event_name() == "ExtrinsicSuccess" {
+            return Ok(());
+        }
+    }
+    Err(BulletinSubmitError::DispatchOutcomeMissing)
 }
 
 /// Require a successful dispatch outcome from the inclusion block's events.
@@ -674,6 +821,8 @@ mod tests {
             IncludedWithMissingBody,
             Invalid,
             Dropped,
+            FollowStop,
+            FollowStopWithMissingBody,
         }
 
         #[derive(Clone, Copy, PartialEq, Eq)]
@@ -731,6 +880,11 @@ mod tests {
                     receiver: Mutex::new(Some(receiver)),
                     events: format!("0x{}", hex::encode(success_events())),
                 }
+            }
+
+            fn with_failed_events(mut self) -> Self {
+                self.events = format!("0x{}", hex::encode(failed_events()));
+                self
             }
 
             fn with_validation_outcomes(
@@ -938,6 +1092,18 @@ mod tests {
                         TransactionOutcome::Dropped => {
                             json!({"event": "dropped", "error": "scripted dropped"})
                         }
+                        TransactionOutcome::FollowStop
+                        | TransactionOutcome::FollowStopWithMissingBody => {
+                            // The chainHead follow dies mid-watch instead of the
+                            // watch reporting a transaction status.
+                            if matches!(outcome, TransactionOutcome::FollowStopWithMissingBody) {
+                                state.omit_transaction_from_next_body = true;
+                            }
+                            return vec![
+                                response(json!(subscription_id)),
+                                follow_event(json!({"event": "stop"})),
+                            ];
+                        }
                     };
                     vec![
                         response(json!(subscription_id)),
@@ -1058,13 +1224,21 @@ mod tests {
         }
 
         fn success_events() -> Vec<u8> {
+            system_events("ExtrinsicSuccess")
+        }
+
+        fn failed_events() -> Vec<u8> {
+            system_events("ExtrinsicFailed")
+        }
+
+        fn system_events(event_name: &str) -> Vec<u8> {
             let metadata = ArcMetadata::from(bulletin_metadata());
             let system = metadata.pallet_by_name("System").unwrap();
             let event = system
                 .event_variants()
                 .unwrap()
                 .iter()
-                .find(|event| event.name == "ExtrinsicSuccess")
+                .find(|event| event.name == event_name)
                 .unwrap();
             let values = ScaleValue::unnamed_composite(
                 event
@@ -1229,6 +1403,80 @@ mod tests {
                 2
             );
             assert_eq!(provider.method_count("chainHead_v1_body"), 2);
+        }
+
+        #[test]
+        fn submit_preimage_recovers_finalized_inclusion_after_watch_stop() {
+            let provider = Arc::new(BulletinScriptedProvider::new([
+                TransactionOutcome::FollowStop,
+                TransactionOutcome::FollowStop,
+            ]));
+            let value = b"scripted watch stop recovery";
+            let result = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
+                &CallContext::new(),
+                Instant::now() + Duration::from_secs(2),
+                &allowance_fixture(),
+                value,
+            ))
+            .unwrap();
+
+            assert_eq!(result, preimage_key(value));
+            assert_eq!(
+                provider.method_count("transactionWatch_v1_submitAndWatch"),
+                1
+            );
+            assert!(provider.method_count("chainHead_v1_body") >= 1);
+        }
+
+        #[test]
+        fn submit_preimage_reports_failed_dispatch_found_by_inclusion_recheck() {
+            let provider = Arc::new(
+                BulletinScriptedProvider::new([TransactionOutcome::FollowStop])
+                    .with_failed_events(),
+            );
+            let error = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
+                &CallContext::new(),
+                Instant::now() + Duration::from_secs(2),
+                &allowance_fixture(),
+                b"scripted watch stop failed dispatch",
+            ))
+            .unwrap_err();
+
+            let BulletinSubmitError::Subxt(error) = error else {
+                panic!("found-but-failed dispatch must surface the dispatch error, got {error}");
+            };
+            assert!(matches!(
+                error.as_ref(),
+                subxt::Error::TransactionEventsError(TransactionEventsError::ExtrinsicFailed(_))
+            ));
+            // The transaction is on chain; a failed dispatch must never
+            // trigger a re-broadcast.
+            assert_eq!(
+                provider.method_count("transactionWatch_v1_submitAndWatch"),
+                1
+            );
+        }
+
+        #[test]
+        fn submit_preimage_rebroadcasts_when_inclusion_recheck_finds_nothing() {
+            let provider = Arc::new(BulletinScriptedProvider::new([
+                TransactionOutcome::FollowStopWithMissingBody,
+                TransactionOutcome::Included,
+            ]));
+            let value = b"scripted watch stop rebroadcast";
+            let result = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
+                &CallContext::new(),
+                Instant::now() + Duration::from_secs(2),
+                &allowance_fixture(),
+                value,
+            ))
+            .unwrap();
+
+            assert_eq!(result, preimage_key(value));
+            assert_eq!(
+                provider.method_count("transactionWatch_v1_submitAndWatch"),
+                2
+            );
         }
 
         #[test]
