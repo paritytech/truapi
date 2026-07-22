@@ -35,7 +35,13 @@ PAIR_PID=""
 SIGNER_PID=""
 WATCHER_PID=""
 KEEPALIVE_PID=""
+# Fresh pairing-host state per run: the host persists its paired session under
+# the base path, so a reused path silently restores the previous run's session
+# and the run is not reproducible. The signing host keeps its own (default)
+# base path on purpose, to reuse its attested account across runs.
+PAIR_BASE="$(mktemp -d)"
 cleanup() {
+  rm -rf "$PAIR_BASE"
   [ -n "$WATCHER_PID" ] && kill "$WATCHER_PID" 2>/dev/null || true
   [ -n "$SIGNER_PID" ] && kill "$SIGNER_PID" 2>/dev/null || true
   # Independent of $SIGNER_PID: if the script exits before the main flow
@@ -72,6 +78,7 @@ trap cleanup EXIT
 exec 3< <(tail -f /dev/null)
 KEEPALIVE_PID=$!
 "$BIN" pairing-host --product-id "$PRODUCT_ID" --frame-listen "$FRAME" \
+  --base-path "$PAIR_BASE" \
   --auto-accept <&3 > >(tee "$LOG") 2>&1 &
 PAIR_PID=$!
 
