@@ -12,6 +12,9 @@ truapi_macros::versioned_type! {
     pub enum HostAccountCreateProofRequest { V1 => v01::HostAccountCreateProofRequest }
     pub enum HostAccountCreateProofResponse { V1 => v01::HostAccountCreateProofResponse }
     pub enum HostAccountCreateProofError { V1 => v01::HostAccountCreateProofError }
+    pub enum HostAccountSignVrfRequest { V1 => v01::HostAccountSignVrfRequest }
+    pub enum HostAccountSignVrfResponse { V1 => v01::VrfSignature }
+    pub enum HostAccountSignVrfError { V1 => v01::HostAccountSignVrfError }
     pub enum HostGetLegacyAccountsRequest { V1 }
     pub enum HostGetLegacyAccountsResponse { V1 => v01::HostGetLegacyAccountsResponse }
     pub enum HostGetLegacyAccountsError { V1 => v01::HostAccountGetError }

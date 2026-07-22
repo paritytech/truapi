@@ -215,3 +215,44 @@ pub struct HostGetLegacyAccountsResponse {
     /// Legacy accounts.
     pub accounts: Vec<LegacyAccount>,
 }
+
+/// One `append_message` call replayed against the signing transcript.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct VrfTranscriptItem {
+    /// Merlin `append_message` label.
+    pub label: Vec<u8>,
+    /// Merlin `append_message` value.
+    pub value: Vec<u8>,
+}
+
+/// Request to produce an sr25519 VRF signature from a product account over a
+/// caller-supplied Merlin transcript.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostAccountSignVrfRequest {
+    /// Account whose key signs the VRF.
+    pub account: ProductAccountId,
+    /// Root domain-separation label: `Transcript::new(transcript_label)`.
+    pub transcript_label: Vec<u8>,
+    /// Transcript items replayed in order as `append_message(label, value)`.
+    pub items: Vec<VrfTranscriptItem>,
+}
+
+/// An sr25519 (schnorrkel) VRF signature: the VRF pre-output and its proof.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct VrfSignature {
+    /// schnorrkel `VRFPreOut` — the 32-byte VRF output point.
+    pub pre_output: [u8; 32],
+    /// schnorrkel `VRFProof` — the 64-byte DLEQ proof.
+    pub proof: [u8; 64],
+}
+
+/// Error returned when VRF signing fails.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostAccountSignVrfError {
+    /// User is not logged in.
+    NotConnected,
+    /// User or host rejected the signing confirmation.
+    Rejected,
+    /// Catch-all.
+    Unknown { reason: String },
+}

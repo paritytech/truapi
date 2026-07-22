@@ -9,12 +9,12 @@ owner: "@valentunn"
 | --------------- | -------------------------------------------------------------------------------------------------------- |
 | **RFC Number**  | 23                                                                                                       |
 | **Start Date**  | 2026-07-21                                                                                               |
-| **Description** | Add a general-purpose `account_sign_vrf` method producing an sr25519 VRF signature from a product account. |
+| **Description** | Add a general-purpose `sign_vrf` method producing an sr25519 VRF signature from a product account. |
 | **Authors**     | Valentin Sergeev                                                                                         |
 
 ## Summary
 
-Add one method to the `Account` trait, `account_sign_vrf`, producing an
+Add one method to the `Account` trait, `sign_vrf`, producing an
 **sr25519 (schnorrkel) VRF signature** from a product account. The caller
 supplies the signing transcript as a structured recipe — a root label plus an
 ordered list of `(label, value)` items — which the host replays into a Merlin
@@ -90,7 +90,7 @@ Added to the `Account` trait:
 /// Authorized like `sign_raw`: local when `AutoSigning` covers the account,
 /// otherwise a per-call user confirmation.
 #[wire(request_id = 164)]
-async fn account_sign_vrf(
+async fn sign_vrf(
     &self,
     _cx: &CallContext,
     _request: HostAccountSignVrfRequest,
