@@ -553,20 +553,29 @@ async fn finalized_inclusion_outcome(
     None
 }
 
+/// Box any subxt error so scan results stay small on the stack.
+fn boxed_subxt_error(error: impl Into<subxt::Error>) -> Box<subxt::Error> {
+    Box::new(error.into())
+}
+
 /// Search one finalized block for the transaction; when present, classify
 /// its dispatch outcome fail-closed, mirroring [`require_dispatch_success`].
 async fn block_inclusion_outcome(
     block: &Block<SubstrateConfig>,
     target_hash: HashFor<SubstrateConfig>,
-) -> Result<Option<Result<(), BulletinSubmitError>>, subxt::Error> {
-    let at_block = block.at().await?;
-    let extrinsics = at_block.extrinsics().fetch().await?;
+) -> Result<Option<Result<(), BulletinSubmitError>>, Box<subxt::Error>> {
+    let at_block = block.at().await.map_err(boxed_subxt_error)?;
+    let extrinsics = at_block
+        .extrinsics()
+        .fetch()
+        .await
+        .map_err(boxed_subxt_error)?;
     for extrinsic in extrinsics.iter() {
-        let extrinsic = extrinsic?;
+        let extrinsic = extrinsic.map_err(boxed_subxt_error)?;
         if extrinsic.hash() != target_hash {
             continue;
         }
-        let events = extrinsic.events().await?;
+        let events = extrinsic.events().await.map_err(boxed_subxt_error)?;
         return Ok(Some(dispatch_outcome_from_events(
             &events,
             at_block.metadata(),
