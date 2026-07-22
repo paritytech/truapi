@@ -135,6 +135,17 @@ pub enum SystemEvent {
         block_hash: Option<String>,
         already_allocated: bool,
     },
+    AllowanceRenewalFailed {
+        target: String,
+        reason: String,
+    },
+    AllowanceRenewalReport {
+        period: u32,
+        renewed: usize,
+        fresh: usize,
+        failed: usize,
+        skipped: usize,
+    },
     NotificationDelivered {
         id: u32,
         text: String,
@@ -281,7 +292,7 @@ pub fn output_success(title: impl Into<String>, detail: Option<String>) {
 }
 
 fn write_human_stdout(text: &str) {
-    let styled = io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    let styled = styled_output(io::stdout().is_terminal());
     let mut stdout = io::stdout().lock();
     for line in text.lines() {
         if !styled {
@@ -342,7 +353,7 @@ impl Drop for LogWriter {
         for line in text.lines().filter(|line| !line.is_empty()) {
             if !send_to_active(UiEvent::Log(sanitize_terminal_text(line))) {
                 let mut stderr = io::stderr();
-                if stderr.is_terminal() && std::env::var_os("NO_COLOR").is_none() {
+                if styled_output(stderr.is_terminal()) {
                     let _ = writeln!(stderr, "\x1b[2m{line}\x1b[0m");
                 } else {
                     let _ = writeln!(stderr, "{line}");
@@ -381,7 +392,7 @@ fn sso_event_text(event: SsoEvent) -> String {
 }
 
 fn write_human_stderr(text: &str) {
-    let styled = io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    let styled = styled_output(io::stderr().is_terminal());
     let mut stderr = io::stderr().lock();
     for line in text.lines() {
         if !styled {
@@ -402,6 +413,17 @@ fn write_human_stderr(text: &str) {
             let _ = writeln!(stderr, "{color}{line}\x1b[0m");
         }
     }
+}
+
+fn styled_output(is_terminal: bool) -> bool {
+    let no_color = std::env::var_os("NO_COLOR").is_some();
+    let force_color =
+        std::env::var_os("FORCE_COLOR").is_some_and(|value| !value.is_empty() && value != "0");
+    should_style_output(is_terminal, no_color, force_color)
+}
+
+fn should_style_output(is_terminal: bool, no_color: bool, force_color: bool) -> bool {
+    !no_color && (is_terminal || force_color)
 }
 
 #[derive(Default)]
@@ -1247,6 +1269,40 @@ impl App {
                 }),
                 ActivityState::Succeeded,
             ),
+            SystemEvent::AllowanceRenewalFailed { target, reason } => self.activity(
+                format!("allowance:{target}"),
+                format!("{} renewal failed", allowance_name(&target)),
+                Some(reason),
+                ActivityState::Failed,
+            ),
+            SystemEvent::AllowanceRenewalReport {
+                period,
+                renewed,
+                fresh,
+                failed,
+                skipped,
+            } => {
+                if renewed + fresh + failed + skipped == 0 {
+                    self.notice(
+                        NoticeTone::Info,
+                        "No tracked allowance targets".to_string(),
+                        Some(format!("Statement period {period}")),
+                    );
+                } else {
+                    let tone = if failed + skipped > 0 {
+                        NoticeTone::Warning
+                    } else {
+                        NoticeTone::Success
+                    };
+                    self.notice(
+                        tone,
+                        "Allowance renewal finished".to_string(),
+                        Some(format!(
+                            "Period {period} · {renewed} renewed · {fresh} fresh · {failed} failed · {skipped} skipped"
+                        )),
+                    );
+                }
+            }
             SystemEvent::NotificationDelivered { id, text, deeplink } => self.notice(
                 NoticeTone::Info,
                 format!("Notification #{id}"),
@@ -2814,6 +2870,14 @@ mod tests {
         assert_eq!(ansi256_to_rgb(16), Some((0, 0, 0)));
         assert_eq!(ansi256_to_rgb(231), Some((255, 255, 255)));
         assert_eq!(rgb_to_ansi256(255, 255, 255), 231);
+    }
+
+    #[test]
+    fn forced_color_styles_redirected_output_but_never_overrides_no_color() {
+        assert!(should_style_output(true, false, false));
+        assert!(should_style_output(false, false, true));
+        assert!(!should_style_output(false, false, false));
+        assert!(!should_style_output(true, true, true));
     }
 
     fn render_app(app: &mut App, width: u16, height: u16) -> Result<(String, Position)> {

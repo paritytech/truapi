@@ -726,6 +726,7 @@ pub(super) async fn allocate_statement_store_allowance(
     signing_host: &SigningHost,
     product_id: &str,
 ) -> Result<Vec<u8>, String> {
+    use super::allowance_renewal::{self, StatementRenewalTarget};
     use crate::runtime::statement_allowance::{
         self, fetch_chain_state, fetch_metadata, find_including_ring, register_statement_account,
     };
@@ -752,16 +753,19 @@ pub(super) async fn allocate_statement_store_allowance(
                 .to_string()
         })?;
     let period = statement_allowance::slot::current_period(current_unix_secs()?);
-    let outcome = register_statement_account(
-        &rpc,
-        &metadata,
-        &chain_state,
-        bandersnatch,
-        &target,
-        period,
-        &ring,
-    )
-    .await?;
+    let outcome = {
+        let _guard = signing_host.renewal.registration_lock().lock().await;
+        register_statement_account(
+            &rpc,
+            &metadata,
+            &chain_state,
+            bandersnatch,
+            &target,
+            period,
+            &ring,
+        )
+        .await?
+    };
     match outcome {
         statement_allowance::RegistrationOutcome::Registered {
             block_hash,
@@ -783,6 +787,16 @@ pub(super) async fn allocate_statement_store_allowance(
                 "statement-store allowance already allocated"
             );
         }
+    }
+    if let Err(reason) = allowance_renewal::track_targets(
+        signing_host.platform.as_ref(),
+        vec![StatementRenewalTarget::ProductStatementAllowance {
+            product_id: product_id.to_string(),
+        }],
+    )
+    .await
+    {
+        warn!(%product_id, %reason, "failed to record statement-store renewal target");
     }
     Ok(allowance.secret.to_bytes().to_vec())
 }
@@ -898,7 +912,7 @@ pub(super) async fn allocate_bulletin_allowance(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn current_unix_secs() -> Result<u64, String> {
+pub(super) fn current_unix_secs() -> Result<u64, String> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())

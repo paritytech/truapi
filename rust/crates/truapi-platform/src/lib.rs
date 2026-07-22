@@ -453,6 +453,8 @@ pub enum CoreStorageKey {
     },
     /// Last processed SSO pairing response statement for the pairing device.
     LastProcessedPairingStatement,
+    /// Statement-store allowance targets the signing host keeps renewed.
+    StatementRenewalTargets,
 }
 
 /// Host-private persistence for core-owned state.

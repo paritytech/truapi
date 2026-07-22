@@ -282,6 +282,54 @@ impl SigningHostRuntime {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+impl SigningHostRuntime {
+    /// Record statement-store accounts the host must keep renewed across
+    /// allowance periods.
+    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.track_statement_renewal_targets"))]
+    pub async fn track_statement_renewal_targets(
+        &self,
+        targets: Vec<crate::runtime::StatementRenewalTarget>,
+    ) -> Result<(), v01::GenericError> {
+        self.signing_host
+            .track_statement_renewal_targets(targets)
+            .await
+            .map_err(|reason| v01::GenericError { reason })
+    }
+
+    /// Run one statement-store renewal pass now and return per-target
+    /// outcomes. This is the primary entry point; hosts whose process cannot
+    /// stay alive (mobile) call it from an OS scheduler instead of
+    /// [`Self::start_statement_allowance_renewal`].
+    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.renew_statement_allowances"))]
+    pub async fn renew_statement_allowances(
+        &self,
+    ) -> Result<crate::statement_allowance::renewal::StatementRenewalReport, v01::GenericError>
+    {
+        self.signing_host
+            .renew_statement_allowances()
+            .await
+            .map_err(|reason| v01::GenericError { reason })
+    }
+
+    /// Start the periodic statement-store renewal loop (hourly, plus a tick
+    /// just after each period boundary). Idempotent; the loop stops when this
+    /// runtime is dropped.
+    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.start_statement_allowance_renewal"))]
+    pub fn start_statement_allowance_renewal(&self) {
+        self.signing_host.start_statement_allowance_renewal();
+    }
+
+    /// Delay until the next renewal pass is due, for hosts that schedule
+    /// wake-ups through an OS scheduler instead of the in-process loop.
+    pub fn next_statement_renewal_delay(&self) -> std::time::Duration {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|now| crate::statement_allowance::renewal::next_tick_delay(now.as_secs()))
+            .unwrap_or(std::time::Duration::from_secs(3_600))
+    }
+}
+
 /// Product-scoped administration handle for host UI.
 ///
 /// Host UI should use this when it needs to inspect or update core-owned state
