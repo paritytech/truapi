@@ -27,7 +27,7 @@ use crate::host_logic::entropy::root_entropy_source;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::host_logic::product_account::ProductAccountError;
 use crate::host_logic::product_account::{
-    derive_root_keypair_from_entropy, derive_sr25519_hard_path,
+    derive_root_keypair_from_entropy, derive_sr25519_hard_path, product_public_key_to_address,
 };
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
@@ -604,12 +604,11 @@ async fn answer_remote_message(
                 ),
             })
         }
-        v1::RemoteMessage::SignRawLegacyRequest(_) => {
+        v1::RemoteMessage::SignRawLegacyRequest(request) => {
+            let signature = sign_raw_legacy_response(services, signing_host, request).await;
             v1::RemoteMessage::SignRawLegacyResponse(SignRawLegacyResponse {
                 responding_to: message_id,
-                signature: Err(
-                    "signing host: legacy-account raw signing is not supported".to_string()
-                ),
+                signature,
             })
         }
         v1::RemoteMessage::StatementStoreProductSignRequest(request) => {
@@ -966,6 +965,37 @@ async fn serve_sign_request(
         signature: response.signature,
         signed_transaction: response.signed_transaction,
     })
+}
+
+async fn sign_raw_legacy_response(
+    services: &Arc<RuntimeServices>,
+    signing_host: &Arc<SigningHost>,
+    request: messages::SignRawLegacyRequest,
+) -> Result<Vec<u8>, String> {
+    let public_request = api::HostSignRawWithLegacyAccountRequest {
+        signer: product_public_key_to_address(request.account),
+        payload: request.data.into(),
+    };
+    confirm(
+        services,
+        UserConfirmationReview::SignRaw(SignRawReview::LegacyAccount(public_request.clone())),
+    )
+    .await?;
+    let session = signing_host
+        .current_session()
+        .ok_or_else(|| "signing host session is not active".to_string())?;
+    signing_host
+        .sign_raw(
+            &CallContext::new(),
+            &session,
+            SignRawAuthorityRequest::LegacyAccount {
+                account: request.account,
+                request: public_request,
+            },
+        )
+        .await
+        .map(|response| response.signature)
+        .map_err(|err| err.reason())
 }
 
 async fn statement_store_product_sign_response(

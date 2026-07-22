@@ -10,7 +10,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use futures::stream::{self, BoxStream};
@@ -44,6 +46,9 @@ pub struct CliPlatform {
     product_storage_path: Option<PathBuf>,
     core_storage_path: Option<PathBuf>,
     preimages: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
+    next_notification_id: AtomicU32,
+    scheduled_notifications:
+        Arc<Mutex<HashMap<api::NotificationId, api::HostPushNotificationRequest>>>,
     approval: ApprovalPolicy,
     ui: Option<UiHandle>,
     /// Serializes interactive CLI prompts so concurrent confirmations don't
@@ -89,6 +94,8 @@ impl CliPlatform {
             product_storage_path,
             core_storage_path,
             preimages: Mutex::new(HashMap::new()),
+            next_notification_id: AtomicU32::new(1),
+            scheduled_notifications: Arc::new(Mutex::new(HashMap::new())),
             approval,
             ui,
             prompt_lock: AsyncMutex::new(()),
@@ -275,9 +282,84 @@ impl Notifications for CliPlatform {
         &self,
         notification: api::HostPushNotificationRequest,
     ) -> Result<api::HostPushNotificationResponse, api::GenericError> {
-        Err(api::GenericError {
-            reason: format!("push notifications are unavailable in the CLI host: {notification:?}"),
-        })
+        let id = self.next_notification_id.fetch_add(1, Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        if let Some(scheduled_at) = notification.scheduled_at.filter(|at| *at > now) {
+            {
+                let mut pending = self
+                    .scheduled_notifications
+                    .lock()
+                    .expect("notification mutex poisoned");
+                if pending.len() >= 64 {
+                    return Err(api::GenericError {
+                        reason: "the CLI notification schedule is full (64 pending notifications)"
+                            .to_string(),
+                    });
+                }
+                pending.insert(id, notification.clone());
+            }
+            emit_notification_event(
+                self.ui.as_ref(),
+                SystemEvent::NotificationScheduled {
+                    id,
+                    text: notification.text.clone(),
+                    scheduled_at,
+                },
+            );
+            let pending = self.scheduled_notifications.clone();
+            let ui = self.ui.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(scheduled_at.saturating_sub(now))).await;
+                let notification = pending
+                    .lock()
+                    .expect("notification mutex poisoned")
+                    .remove(&id);
+                if let Some(notification) = notification {
+                    emit_notification_event(
+                        ui.as_ref(),
+                        SystemEvent::NotificationDelivered {
+                            id,
+                            text: notification.text,
+                            deeplink: notification.deeplink,
+                        },
+                    );
+                }
+            });
+        } else {
+            emit_notification_event(
+                self.ui.as_ref(),
+                SystemEvent::NotificationDelivered {
+                    id,
+                    text: notification.text,
+                    deeplink: notification.deeplink,
+                },
+            );
+        }
+        Ok(api::HostPushNotificationResponse { id })
+    }
+
+    async fn cancel_notification(&self, id: api::NotificationId) -> Result<(), api::GenericError> {
+        if self
+            .scheduled_notifications
+            .lock()
+            .expect("notification mutex poisoned")
+            .remove(&id)
+            .is_some()
+        {
+            emit_notification_event(self.ui.as_ref(), SystemEvent::NotificationCancelled { id });
+        }
+        Ok(())
+    }
+}
+
+fn emit_notification_event(ui: Option<&UiHandle>, event: SystemEvent) {
+    if let Some(ui) = ui {
+        ui.event(event);
+    } else {
+        crate::terminal_ui::output_event(event);
     }
 }
 
@@ -557,5 +639,33 @@ mod tests {
             "A product requested submission of a 4096-byte preimage."
         );
         assert!(!detail.contains("["));
+    }
+
+    #[test]
+    fn cli_notifications_return_stable_ids_and_cancel_idempotently() {
+        let platform = CliPlatform::new("", &[], None, ApprovalPolicy::AutoAccept, None);
+        let first = futures::executor::block_on(platform.push_notification(
+            api::HostPushNotificationRequest {
+                text: "Hello".to_string(),
+                deeplink: None,
+                scheduled_at: None,
+            },
+        ))
+        .expect("immediate notification");
+        let second = futures::executor::block_on(platform.push_notification(
+            api::HostPushNotificationRequest {
+                text: "Again".to_string(),
+                deeplink: Some("polkadot://example".to_string()),
+                scheduled_at: None,
+            },
+        ))
+        .expect("second notification");
+
+        assert_eq!(first.id, 1);
+        assert_eq!(second.id, 2);
+        futures::executor::block_on(platform.cancel_notification(first.id))
+            .expect("already-fired cancellation is idempotent");
+        futures::executor::block_on(platform.cancel_notification(999))
+            .expect("unknown cancellation is idempotent");
     }
 }

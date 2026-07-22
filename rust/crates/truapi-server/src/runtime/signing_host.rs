@@ -33,10 +33,11 @@ use crate::host_logic::entropy::derive_product_entropy;
 use crate::host_logic::extrinsic::{Sr25519Signer, build_signed_extrinsic_v4};
 use crate::host_logic::product_account::{
     ProductAccountError, SR25519_SIGNING_CONTEXT, derive_product_keypair,
-    derive_root_keypair_from_entropy,
+    derive_root_keypair_from_entropy, derive_sr25519_hard_path,
 };
 use crate::host_logic::session::SessionState;
 use crate::host_logic::sso::messages::RingVrfError;
+use crate::host_logic::transaction::extrinsic_payload_preimage;
 use crate::runtime::auth_state::AuthStateMachine;
 use ring_vrf::{
     ChainRingResolver, MemberCandidate, PersonKey, RingResolver, alias_from_entropy, context_bytes,
@@ -214,14 +215,20 @@ impl ProductAuthority for SigningHost {
     async fn sign_payload(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _request: SignPayloadAuthorityRequest,
+        session: &AuthoritySession,
+        request: SignPayloadAuthorityRequest,
     ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: extrinsic-payload signing needs chain-metadata payload \
-                     assembly (not yet implemented)"
-                .to_string(),
-        })
+        require_current_session(&self.session_state, session)?;
+        let (keypair, payload) = match request {
+            SignPayloadAuthorityRequest::Product(request) => {
+                (self.product_keypair(&request.account)?, request.payload)
+            }
+            SignPayloadAuthorityRequest::LegacyAccount {
+                product_account,
+                request,
+            } => (self.product_keypair(&product_account)?, request.payload),
+        };
+        sign_extrinsic_payload(&keypair, payload)
     }
 
     async fn sign_raw(
@@ -230,15 +237,26 @@ impl ProductAuthority for SigningHost {
         session: &AuthoritySession,
         request: SignRawAuthorityRequest,
     ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
-        let SignRawAuthorityRequest::Product(request) = request else {
-            return Err(AuthorityError::Unavailable {
-                reason: "signing host: legacy-account raw signing is not yet implemented"
-                    .to_string(),
-            });
+        let (keypair, payload) = match request {
+            SignRawAuthorityRequest::Product(request) => {
+                (self.product_keypair(&request.account)?, request.payload)
+            }
+            SignRawAuthorityRequest::LegacyAccount { account, request } => {
+                let entropy = self.root_entropy()?;
+                let keypair = derive_sr25519_hard_path(&entropy, &["wallet", "sso"])
+                    .map_err(product_authority_error)?;
+                if keypair.public.to_bytes() != account {
+                    return Err(AuthorityError::Unavailable {
+                        reason: "signing host: the requested legacy account is not available in \
+                                 this CLI wallet"
+                            .to_string(),
+                    });
+                }
+                (keypair, request.payload)
+            }
         };
         require_current_session(&self.session_state, session)?;
-        let keypair = self.product_keypair(&request.account)?;
-        let message = raw_payload_bytes(request.payload)?;
+        let message = raw_payload_bytes(payload)?;
         let signature = keypair
             .secret
             .sign_simple(SR25519_SIGNING_CONTEXT, &message, &keypair.public)
@@ -439,6 +457,29 @@ impl ProductAuthority for SigningHost {
     }
 }
 
+fn sign_extrinsic_payload(
+    keypair: &schnorrkel::Keypair,
+    payload: v01::HostSignPayloadData,
+) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
+    if payload.version != 4 {
+        return Err(AuthorityError::NotSupported {
+            reason: format!(
+                "signing host: unsupported extrinsic payload version {}; only version 4 is supported",
+                payload.version
+            ),
+        });
+    }
+    let preimage = extrinsic_payload_preimage(&payload);
+    let signature = keypair
+        .secret
+        .sign_simple(SR25519_SIGNING_CONTEXT, &preimage, &keypair.public)
+        .to_bytes();
+    Ok(v01::HostSignPayloadResponse {
+        signature: signature.to_vec(),
+        signed_transaction: None,
+    })
+}
+
 fn product_authority_error(err: ProductAccountError) -> AuthorityError {
     AuthorityError::Unavailable {
         reason: err.to_string(),
@@ -510,19 +551,21 @@ mod tests {
 
     use super::super::authority::{
         AccountAliasAuthorityRequest, AuthorityError, CreateProofAuthorityRequest,
-        CreateTransactionAuthorityRequest, SignRawAuthorityRequest,
+        CreateTransactionAuthorityRequest, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
     };
     use super::super::{ProductAuthority, ProductRuntimeHost, RuntimeServices, SigningHostRole};
     use super::ring_vrf::{
         MemberCandidate, PersonKey, ResolvedRing, RingResolver, member_from_entropy, person_entropy,
     };
     use super::{
-        BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, RingVrfError, raw_payload_bytes,
+        BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, RingVrfError,
+        SR25519_SIGNING_CONTEXT, raw_payload_bytes,
     };
     use crate::host_logic::extrinsic::tests::split_v4;
     use crate::host_logic::product_account::{
-        derive_product_keypair, derive_root_keypair_from_entropy,
+        derive_product_keypair, derive_root_keypair_from_entropy, derive_sr25519_hard_path,
     };
+    use crate::host_logic::transaction::extrinsic_payload_preimage;
     use crate::test_support::{StubPlatform, test_spawner};
     use truapi::api::{Account, Entropy, Signing};
     use truapi::versioned::account::{HostAccountGetError, HostAccountGetRequest};
@@ -753,6 +796,95 @@ mod tests {
                 .is_ok(),
             "signature verifies over the <Bytes>-wrapped message",
         );
+    }
+
+    #[test]
+    fn sign_payload_product_and_legacy_use_the_substrate_preimage() {
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = authority.current_session().expect("active session");
+        let cx = CallContext::new();
+        let payload = crate::test_support::sign_payload_data();
+        let preimage = extrinsic_payload_preimage(&payload);
+
+        let product_response = futures::executor::block_on(authority.sign_payload(
+            &cx,
+            &session,
+            SignPayloadAuthorityRequest::Product(v01::HostSignPayloadRequest {
+                account: product_account(0),
+                payload: payload.clone(),
+            }),
+        ))
+        .expect("product payload signing succeeds");
+
+        let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let signature = schnorrkel::Signature::from_bytes(&product_response.signature).unwrap();
+        assert!(
+            keypair
+                .public
+                .verify_simple(SR25519_SIGNING_CONTEXT, &preimage, &signature)
+                .is_ok()
+        );
+
+        let legacy_response = futures::executor::block_on(authority.sign_payload(
+            &cx,
+            &session,
+            SignPayloadAuthorityRequest::LegacyAccount {
+                product_account: product_account(0),
+                request: v01::HostSignPayloadWithLegacyAccountRequest {
+                    signer: format!("0x{}", hex::encode(keypair.public.to_bytes())),
+                    payload,
+                },
+            },
+        ))
+        .expect("legacy payload signing succeeds");
+        let signature = schnorrkel::Signature::from_bytes(&legacy_response.signature).unwrap();
+        assert!(
+            keypair
+                .public
+                .verify_simple(SR25519_SIGNING_CONTEXT, &preimage, &signature)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn sign_raw_legacy_accepts_only_the_wallet_identity_key() {
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = authority.current_session().expect("active session");
+        let cx = CallContext::new();
+        let identity = derive_sr25519_hard_path(&ENTROPY, &["wallet", "sso"]).unwrap();
+        let request = |account| SignRawAuthorityRequest::LegacyAccount {
+            account,
+            request: v01::HostSignRawWithLegacyAccountRequest {
+                signer: String::new(),
+                payload: v01::RawPayload::Bytes {
+                    bytes: b"hello".to_vec(),
+                },
+            },
+        };
+
+        let response = futures::executor::block_on(authority.sign_raw(
+            &cx,
+            &session,
+            request(identity.public.to_bytes()),
+        ))
+        .expect("identity raw signing succeeds");
+        let signature = schnorrkel::Signature::from_bytes(&response.signature).unwrap();
+        assert!(
+            identity
+                .public
+                .verify_simple(SR25519_SIGNING_CONTEXT, b"<Bytes>hello</Bytes>", &signature)
+                .is_ok()
+        );
+
+        let error =
+            futures::executor::block_on(authority.sign_raw(&cx, &session, request([0xff; 32])))
+                .expect_err("unknown legacy account is rejected");
+        assert!(matches!(error, AuthorityError::Unavailable { .. }));
     }
 
     #[test]

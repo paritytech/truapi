@@ -17,3 +17,4 @@ pub mod session;
 pub mod session_store;
 pub mod sso;
 pub mod statement_store;
+pub mod transaction;

@@ -88,11 +88,15 @@ pub trait Signing: Send + Sync {
     /// Sign raw bytes with a non-product account.
     ///
     /// ```ts
-    /// const identityResult = await ss58AddressForDotNsUsername();
-    /// assert(identityResult.isOk(), "DotNS identity lookup failed:", identityResult);
+    /// const accountsResult = await truapi.account.getLegacyAccounts();
+    /// assert(accountsResult.isOk(), "getLegacyAccounts failed:", accountsResult);
+    /// const identityAccount =
+    ///   accountsResult.value.accounts.find((account) => account.name === "Identity") ??
+    ///   accountsResult.value.accounts[0];
+    /// assert(identityAccount, "no legacy accounts available");
     ///
     /// const result = await truapi.signing.signRawWithLegacyAccount({
-    ///   signer: identityResult.value,
+    ///   signer: identityAccount.publicKey,
     ///   payload: {
     ///     tag: "Bytes",
     ///     value: { bytes: "0x48656c6c6f" },

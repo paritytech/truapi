@@ -15,14 +15,14 @@ pub trait Preimage: Send + Sync {
     /// import { firstValueFrom, from } from "rxjs";
     ///
     /// // Submit a preimage first so the lookup resolves to a value.
-    /// const value = crypto.getRandomValues(new Uint8Array(4)).toHex() as `0x${string}`;
+    /// const value = `0x${crypto.getRandomValues(new Uint8Array(4)).toHex()}` as `0x${string}`;
     /// const submitted = await truapi.preimage.submit(value);
     /// assert(submitted.isOk(), "submit failed:", submitted);
     ///
     /// const item = await firstValueFrom(
     ///   from(truapi.preimage.lookupSubscribe({ request: { key: submitted.value } })),
     /// );
-    /// assert(item.value === "0xdeadbeef", "preimage lookup returned the wrong value:", item);
+    /// assert(item.value === value, "preimage lookup returned the wrong value:", item);
     /// console.log("preimage lookup received:", item);
     /// ```
     #[wire(start_id = 64)]
@@ -37,7 +37,7 @@ pub trait Preimage: Send + Sync {
     /// Submit a preimage. Returns the preimage key (hash) on success.
     ///
     /// ```ts
-    /// const value = crypto.getRandomValues(new Uint8Array(4)).toHex() as `0x${string}`;
+    /// const value = `0x${crypto.getRandomValues(new Uint8Array(4)).toHex()}` as `0x${string}`;
     /// const result = await truapi.preimage.submit(value);
     /// assert(result.isOk(), "submit failed:", result);
     /// console.log("preimage submitted:", result.value);

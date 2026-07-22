@@ -1,145 +1,60 @@
 /// <reference path="../runner.ts" />
-// Curated signer battery, as a product script for the pairing host.
+// Runs every example emitted by TrUAPI codegen for the playground. The battery
+// contains no hand-maintained method list: adding an exposed API example to the
+// generated service manifest automatically adds it to this suite.
 //
-// Run via: truapi-host pairing-host --product-id <p> --script js/scripts/battery.ts
-// The runner injects `truapi` (the @parity/truapi client, scoped to the product)
-// and `host` (`productId`, `productAccount(i)`). This is top-level product code:
-// it logs in with the paired signing host, exercises the signer-backed methods
-// the playground diagnosis covers, and throws on any failure so the host command
-// exits non-zero.
+// Run via:
+//   truapi-host pairing-host --product-id truapi-playground.dot \
+//     --auto-accept --script js/scripts/battery.ts
 
-export {}; // module marker so top-level `await` is allowed
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { BatteryReporter } from "../battery-reporter.ts";
+import { renderDiagnosisReport } from "../diagnosis-report.ts";
+import { createDiagnosisPlan, runDiagnosis } from "../diagnosis.ts";
 
-const GENESIS_HASH = `0x${"11".repeat(32)}` as const;
-const account = host.productAccount();
-
-interface Case {
-  name: string;
-  ok: boolean;
-  detail: string;
-}
-
-const results: Case[] = [];
-
-async function record(name: string, fn: () => Promise<{ ok: boolean; detail: string }>) {
-  try {
-    results.push({ name, ...(await fn()) });
-  } catch (error) {
-    results.push({ name, ok: false, detail: `threw: ${String(error)}` });
-  }
-}
+const DEFAULT_REPORT_PATH = fileURLToPath(
+  new URL("../../../../../explorer/diagnosis-reports/cli.md", import.meta.url),
+);
+const REPORT_PATH =
+  process.env.TRUAPI_BATTERY_REPORT_PATH || DEFAULT_REPORT_PATH;
+const options = { runKnownUnsupported: true } as const;
+const plan = createDiagnosisPlan(options);
+const reporter = new BatteryReporter();
+reporter.start(plan);
 
 const login = await truapi.account.requestLogin({ reason: undefined });
-results.push({
-  name: "account.requestLogin",
-  ok: login.isOk() && ["Success", "AlreadyConnected"].includes(String(login.value)),
-  detail: login.isOk() ? String(login.value) : JSON.stringify(login.error),
-});
-if (!(login.isOk() && ["Success", "AlreadyConnected"].includes(String(login.value)))) {
-  report();
-  throw new Error("login did not succeed");
+if (
+  !login.isOk() ||
+  !["Success", "AlreadyConnected"].includes(String(login.value))
+) {
+  throw new Error(
+    `battery pairing failed: ${login.isOk() ? login.value : JSON.stringify(login.error)}`,
+  );
 }
+reporter.paired(login.value);
 
-await record("account.getAccount", async () => {
-  const result = await truapi.account.getAccount({ productAccountId: account });
-  return result.match(
-    (value) => ({
-      ok: value.account.publicKey.startsWith("0x") && value.account.publicKey.length > 4,
-      detail: value.account.publicKey.slice(0, 18),
-    }),
-    (error) => ({ ok: false, detail: JSON.stringify(error) }),
-  );
+// Pairing completes before the signing host has necessarily finished preparing
+// its wallet/ring state and started its SSO responder. Give that responder a
+// small readiness window so the first remote example cannot race startup.
+const HOST_READINESS_DELAY_MS = 3_000;
+reporter.waitingForHost(HOST_READINESS_DELAY_MS);
+await new Promise((resolve) => setTimeout(resolve, HOST_READINESS_DELAY_MS));
+
+const startedAt = performance.now();
+const rows = await runDiagnosis(truapi, {
+  ...options,
+  onResult: (row) => reporter.result(row),
 });
+reporter.finish(rows, Math.round(performance.now() - startedAt));
+mkdirSync(dirname(REPORT_PATH), { recursive: true });
+writeFileSync(REPORT_PATH, renderDiagnosisReport("Truapi CLI Diagnosis", rows));
+reporter.reportSaved(REPORT_PATH);
 
-await record("signing.signRaw(bytes)", async () => {
-  const result = await truapi.signing.signRaw({
-    account,
-    payload: { tag: "Bytes", value: { bytes: "0xdeadbeef" } },
-  });
-  return result.match(
-    (value) => ({
-      ok: value.signature.length === 130 || value.signature.length === 132,
-      detail: value.signature.slice(0, 18),
-    }),
-    (error) => ({ ok: false, detail: JSON.stringify(error) }),
-  );
-});
-
-await record("signing.signRaw(message)", async () => {
-  const result = await truapi.signing.signRaw({
-    account,
-    payload: { tag: "Payload", value: { payload: "hello from the headless battery" } },
-  });
-  return result.match(
-    (value) => ({ ok: value.signature.startsWith("0x"), detail: value.signature.slice(0, 18) }),
-    (error) => ({ ok: false, detail: JSON.stringify(error) }),
-  );
-});
-
-await record("signing.signPayload", async () => {
-  const result = await truapi.signing.signPayload({
-    account,
-    payload: {
-      blockHash: GENESIS_HASH,
-      blockNumber: "0x01",
-      era: "0x00",
-      genesisHash: GENESIS_HASH,
-      method: "0x0400",
-      nonce: "0x00",
-      specVersion: "0x01000000",
-      tip: "0x00",
-      transactionVersion: "0x01000000",
-      signedExtensions: [],
-      version: 4,
-      assetId: undefined,
-      metadataHash: undefined,
-      mode: undefined,
-      withSignedTransaction: undefined,
-    },
-  });
-  return result.match(
-    (value) => ({ ok: value.signature.startsWith("0x"), detail: value.signature.slice(0, 18) }),
-    (error) => ({ ok: false, detail: JSON.stringify(error) }),
-  );
-});
-
-await record("signing.createTransaction", async () => {
-  const result = await truapi.signing.createTransaction({
-    signer: account,
-    genesisHash: GENESIS_HASH,
-    callData: "0x0000",
-    extensions: [{ id: "CheckNonce", extra: "0x04", additionalSigned: "0x" }],
-    txExtVersion: 0,
-  });
-  return result.match(
-    (value) => ({
-      ok: value.transaction.startsWith("0x") && value.transaction.length > 4,
-      detail: `${value.transaction.length} chars`,
-    }),
-    (error) => ({ ok: false, detail: JSON.stringify(error) }),
-  );
-});
-
-await record("entropy.derive", async () => {
-  const result = await truapi.entropy.derive({ context: "0x6d792d6b6579" });
-  return result.match(
-    (value) => ({ ok: value.entropy.startsWith("0x"), detail: value.entropy.slice(0, 18) }),
-    (error) => ({ ok: false, detail: JSON.stringify(error) }),
-  );
-});
-
-report();
-const failures = results.filter((r) => !r.ok);
+const failures = rows.filter((row) => row.status === "fail");
 if (failures.length > 0) {
-  throw new Error(`GATE FAILED: ${failures.map((r) => r.name).join(", ")}`);
-}
-console.log(`GATE PASSED: ${results.length} signer-critical cases`);
-
-function report() {
-  console.log("\n=== Headless host signer battery ===");
-  for (const r of results) {
-    console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name.padEnd(28)} ${r.detail}`);
-  }
-  const pass = results.filter((r) => r.ok).length;
-  console.log(`--------------------------------\n${pass}/${results.length} passed`);
+  throw new Error(
+    `TrUAPI battery failed: ${failures.length} of ${rows.length} generated examples failed`,
+  );
 }

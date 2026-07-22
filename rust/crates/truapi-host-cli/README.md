@@ -183,8 +183,15 @@ and the accounts `host.productAccount()` returns.
 
 Six scripts ship under `js/scripts/`:
 
-- `battery.ts` — the curated signer gate (login + raw/payload signing,
-  create-transaction, entropy). This is `run.sh`'s default.
+- `battery.ts` — the generated full-surface gate. It discovers every method
+  from the same code-generated example manifest as the playground Diagnosis,
+  attempts all examples (including APIs the browser diagnosis classifies as
+  intentionally unsupported), prints test-reporter rows with timings and clean
+  failure details, writes the browser-shaped result matrix to
+  `explorer/diagnosis-reports/cli.md`, and exits nonzero if any example fails.
+  Override the artifact path with `TRUAPI_BATTERY_REPORT_PATH`. This is
+  `run.sh`'s default and therefore uses the generated examples'
+  `truapi-playground.dot` product id.
 - `whoami.ts` — calls `getUserId` and prints `WHOAMI <primary username>`; this
   remains available as an explicit `/script <path>` example.
 - `signing-smoke.ts` — a focused product-account signing check.
@@ -192,7 +199,8 @@ Six scripts ship under `js/scripts/`:
   against the Paseo Next v2 LitePeople ring, then verifies both calls return
   the same contextual alias.
 - `preimage-smoke.ts` — a focused Bulletin preimage flow check.
-- `diagnosis.ts` — runs the playground's own generated example sources
+- `diagnosis.ts` — runs the same generated example sources with the playground's
+  intentional skip policy
   (`runExample`) and writes a `web.md`-shape report to
   `explorer/diagnosis-reports/headless-pairing.md`, gating on the signer-critical
   methods. The generated examples are baked to the `truapi-playground.dot`

@@ -135,6 +135,19 @@ pub enum SystemEvent {
         block_hash: Option<String>,
         already_allocated: bool,
     },
+    NotificationDelivered {
+        id: u32,
+        text: String,
+        deeplink: Option<String>,
+    },
+    NotificationScheduled {
+        id: u32,
+        text: String,
+        scheduled_at: u64,
+    },
+    NotificationCancelled {
+        id: u32,
+    },
     PairingDeeplink {
         url: String,
     },
@@ -1233,6 +1246,28 @@ impl App {
                     )
                 }),
                 ActivityState::Succeeded,
+            ),
+            SystemEvent::NotificationDelivered { id, text, deeplink } => self.notice(
+                NoticeTone::Info,
+                format!("Notification #{id}"),
+                Some(match deeplink {
+                    Some(deeplink) => format!("{text}\n{deeplink}"),
+                    None => text,
+                }),
+            ),
+            SystemEvent::NotificationScheduled {
+                id,
+                text,
+                scheduled_at,
+            } => self.notice(
+                NoticeTone::Info,
+                format!("Notification #{id} scheduled"),
+                Some(format!("{text}\nUnix time {scheduled_at} ms")),
+            ),
+            SystemEvent::NotificationCancelled { id } => self.notice(
+                NoticeTone::Info,
+                format!("Notification #{id} cancelled"),
+                None,
             ),
             SystemEvent::PairingDeeplink { url } => {
                 self.start_activity(

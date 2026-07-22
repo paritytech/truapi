@@ -956,16 +956,24 @@ impl Account for ProductRuntimeHost {
                 ))
             })?;
 
+        let mut accounts = vec![v01::LegacyAccount {
+            public_key: public_key.to_vec(),
+            // TODO(#266): gate this legacy display name on
+            // IdentityDisclosure while keeping the public key for
+            // compatibility.
+            name: session.lite_username.clone(),
+        }];
+        if let Some(identity_account_id) = session.identity_account_id
+            && identity_account_id != public_key
+        {
+            accounts.push(v01::LegacyAccount {
+                public_key: identity_account_id.to_vec(),
+                name: Some("Identity".to_string()),
+            });
+        }
+
         Ok(HostGetLegacyAccountsResponse::V1(
-            v01::HostGetLegacyAccountsResponse {
-                accounts: vec![v01::LegacyAccount {
-                    public_key: public_key.to_vec(),
-                    // TODO(#266): gate this legacy display name on
-                    // IdentityDisclosure while keeping the public key for
-                    // compatibility.
-                    name: session.lite_username.clone(),
-                }],
-            },
+            v01::HostGetLegacyAccountsResponse { accounts },
         ))
     }
 
@@ -1693,9 +1701,9 @@ impl Chain for ProductRuntimeHost {
     ) -> Result<RemoteChainTransactionStopResponse, CallError<RemoteChainTransactionStopError>>
     {
         let RemoteChainTransactionStopRequest::V1(inner) = request;
-        // We intentionally forward the provider operation id here. Transaction
-        // operation ids are node-assigned and short-lived, so cross-product
-        // collision or guessing is not worth local id indirection yet.
+        // ChainRuntime resolves this product-visible host handle to the
+        // provider's short-lived operation id and makes stopping an operation
+        // that completed between broadcast and stop idempotent.
         self.services
             .chain
             .remote_chain_transaction_stop(inner)
@@ -2675,11 +2683,16 @@ mod tests {
         )
         .unwrap();
         let HostGetLegacyAccountsResponse::V1(inner) = response;
-        assert_eq!(inner.accounts.len(), 1);
+        assert_eq!(inner.accounts.len(), 2);
         assert_eq!(inner.accounts[0].name.as_deref(), Some("alice"));
         assert_eq!(
             hex::encode(&inner.accounts[0].public_key),
             "1c822b488297fde8c60d9cbc5585839f70a69fb2c5c69daa66b6043c75184467"
+        );
+        assert_eq!(inner.accounts[1].name.as_deref(), Some("Identity"));
+        assert_eq!(
+            inner.accounts[1].public_key,
+            session_info().identity_account_id.unwrap()
         );
     }
 

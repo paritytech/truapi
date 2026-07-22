@@ -23,16 +23,16 @@ pub trait ResourceAllocation: Send + Sync {
     /// assert(result.isOk(), "request failed:", result);
     /// assert(result.value.outcomes.length === 4, "missing allocation outcomes:", result.value);
     /// assert(
-    ///   result.value.outcomes.slice(0, 3).every((outcome) => outcome === "Allocated"),
-    ///   "one or more on-chain allowances are unavailable:",
+    ///   result.value.outcomes.slice(0, 2).every((outcome) => outcome === "Allocated"),
+    ///   "statement-store or bulletin allowance was not allocated:",
     ///   result.value,
     /// );
     /// assert(
-    ///   result.value.outcomes[3] === "NotAvailable",
-    ///   "AutoSigning support changed; update this example:",
+    ///   result.value.outcomes.slice(2).every((outcome) => outcome !== "Rejected"),
+    ///   "an optional allocation was rejected:",
     ///   result.value,
     /// );
-    /// console.log("statement-store, bulletin, and smart-contract allowances allocated");
+    /// console.log("resource allocation outcomes:", result.value.outcomes);
     /// ```
     #[wire(request_id = 130)]
     async fn request(
