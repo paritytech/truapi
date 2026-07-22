@@ -22,6 +22,11 @@ ENV_FILE="$(dirname "$0")/.env"
 PRODUCT_ID="${PRODUCT_ID:-truapi-playground.dot}"
 FRAME="${FRAME:-127.0.0.1:9955}"
 export METRICS_JSONL="${METRICS_JSONL:-/tmp/full-bundle-metrics.jsonl}"
+# Live-chain routing for the Chain/* methods, matching the dotli baseline.
+# Upstream keeps this opt-in because live chainHead streaming over the shared
+# product connection can still drop mid-run (see src/chain.rs) — expect the
+# head-subscription methods to be the flaky tail.
+export E2E_LIVE_CHAIN="${E2E_LIVE_CHAIN:-1}"
 
 [ -x "$BIN" ] || { echo "missing $BIN — run: make headless" >&2; exit 2; }
 
@@ -42,6 +47,7 @@ KEEPALIVE_PID=""
 PAIR_BASE="$(mktemp -d)"
 cleanup() {
   rm -rf "$PAIR_BASE"
+  rm -f "$LOG.signerlog"
   [ -n "$WATCHER_PID" ] && kill "$WATCHER_PID" 2>/dev/null || true
   [ -n "$SIGNER_PID" ] && kill "$SIGNER_PID" 2>/dev/null || true
   # Independent of $SIGNER_PID: if the script exits before the main flow
@@ -92,13 +98,14 @@ for _ in $(seq 1 120); do
 done
 grep -q '^FRAMES_LISTENING' "$LOG" || { echo "pairing host: no FRAMES_LISTENING within 60s" >&2; exit 1; }
 
-# The deeplink appears only once the bundle calls requestLogin, so watch for
-# it concurrently with the shim run and answer with the signing host.
+# The deeplink appears on the first requestLogin, so watch for it concurrently
+# and answer with the signing host (its output goes to $LOG.signerlog so the
+# allowance wait below can grep it).
 (
   for _ in $(seq 1 600); do
     deeplink="$(grep -m1 -oE 'PAIRING_DEEPLINK .+' "$LOG" | cut -d' ' -f2- || true)"
     if [ -n "$deeplink" ]; then
-      "$BIN" signing-host --deeplink "$deeplink" --auto-accept &
+      "$BIN" signing-host --deeplink "$deeplink" --auto-accept > >(tee "$LOG.signerlog") 2>&1 &
       echo "$!" > "$LOG.signer"
       exit 0
     fi
@@ -107,6 +114,21 @@ grep -q '^FRAMES_LISTENING' "$LOG" || { echo "pairing host: no FRAMES_LISTENING 
   echo "watcher: no deeplink within 300s" >&2
 ) &
 WATCHER_PID=$!
+
+# Login-first, like the dotli baseline and the fleet: a minimal requestLogin
+# script triggers pairing, then we wait for the device-key statement-store
+# allowance — submits race the allowance registration otherwise.
+echo "pre-login: requesting session"
+(cd "$ROOT/rust/crates/truapi-host-cli/js" && TRUAPI_FRAME_URL="ws://$FRAME" \
+  TRUAPI_PRODUCT_ID="$PRODUCT_ID" \
+  TRUAPI_SCRIPT="$ROOT/rust/crates/truapi-host-cli/js/scripts/pre-login.ts" \
+  bun runner.ts) || { echo "pre-login failed" >&2; exit 1; }
+for _ in $(seq 1 240); do
+  grep -q "SIGNING_HOST_ALLOWANCE device seq=" "$LOG.signerlog" 2>/dev/null && break
+  sleep 0.5
+done
+grep -q "SIGNING_HOST_ALLOWANCE device seq=" "$LOG.signerlog" 2>/dev/null \
+  || echo "pre-login: device allowance not confirmed within 120s; continuing" >&2
 
 STATUS=0
 (cd "$ROOT/rust/crates/truapi-host-cli/js" && { [ -d node_modules ] || bun install; } \
