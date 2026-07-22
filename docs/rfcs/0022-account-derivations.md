@@ -28,7 +28,8 @@ account:
   `//{domain}`.
 
 It amends `ProductAccountId` (`derivation_index: u32` →
-`derivation_index: Either<u32, [u8; 32]>`), adds one Accounts Protocol request
+`derivation_index: Either<u32, [u8; 32]>`) and `ProductProofContext.suffix`
+(arbitrary bytes → the same `Either`), adds one Accounts Protocol request
 for fetching a product's subtree public key, collapses RFC-0010's
 `AutoSigning` payload to a single product-root secret key, and assigns product
 identities to built-in app features. No truAPI methods are added or removed.
@@ -129,12 +130,6 @@ parsing or normalization is involved. The string segments (`product`,
 
 A product's default account is index `0`, i.e. `index_bytes(0)`.
 
-The same 32-byte index format applies to RFC-0004 contextual-alias suffixes:
-`ProductProofContext.suffix` carries the same value, and the alias ↔ account
-mapping is the identity on it. This obsoletes RFC-0004's
-`product_account_id_for_proof_context` convention (4-byte suffixes packed into
-a `u32`).
-
 #### `ProductAccountId`
 
 The wire-level `ProductAccountId` lets products choose between the two index
@@ -152,6 +147,26 @@ ProductAccountId {
 
 Hosts map `Left(n)` to `index_bytes(n)` and pass `Right(bytes)` through
 unchanged; past the host API boundary only the 32-byte form exists.
+
+#### `ProductProofContext` (RFC-0004)
+
+The contextual-alias suffix is the same selector. `ProductProofContext` is
+amended to:
+
+```rust
+ProductProofContext {
+    /// dotNS product identifier (e.g. `"my-product.dot"`) scoping the context.
+    product_id: String,
+    /// Selector distinguishing contexts within the product; expands to the
+    /// same 32-byte derivation index as `ProductAccountId.derivation_index`.
+    suffix: Either<u32, [u8; 32]>,
+}
+```
+
+The suffix expands to the same 32-byte value as an account's derivation
+index, so the alias ↔ account mapping is the identity on it. This obsoletes
+RFC-0004's `product_account_id_for_proof_context` convention (4-byte suffixes
+packed into a `u32`).
 
 #### Fetching the product subtree
 

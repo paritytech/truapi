@@ -34,7 +34,7 @@ const PRODUCT_ACCOUNT = {
 };
 const PROOF_CONTEXT = {
   productId: "playground.dot",
-  suffix: "0x00" as const,
+  suffix: { tag: "Left" as const, value: 0 },
 };
 const RING_LOCATION = {
   chainId: GENESIS,
@@ -202,7 +202,7 @@ describe("createWasmRawCallbacks", () => {
               case "CreateProof":
                 return (
                   review.value.callingProductId === "playground.dot" &&
-                  review.value.context.suffix === "0x00" &&
+                  review.value.context.suffix.tag === "Left" &&
                   review.value.message[0] === 7
                 );
               case "AccountAccess":

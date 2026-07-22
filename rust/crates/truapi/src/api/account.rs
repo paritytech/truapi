@@ -71,7 +71,7 @@ pub trait Account: Send + Sync {
     ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
     ///
     /// const result = await truapi.account.getAccountAlias({
-    ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
+    ///   context: { productId: "truapi-playground.dot", suffix: { tag: "Left", value: 0 } },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
     ///     junctions: [
@@ -101,7 +101,7 @@ pub trait Account: Send + Sync {
     ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
     ///
     /// const result = await truapi.account.createAccountProof({
-    ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
+    ///   context: { productId: "truapi-playground.dot", suffix: { tag: "Left", value: 0 } },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
     ///     junctions: [

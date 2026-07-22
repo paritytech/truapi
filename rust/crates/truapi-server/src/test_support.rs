@@ -630,7 +630,7 @@ pub(crate) fn raw_payload() -> v01::RawPayload {
 pub(crate) fn product_proof_context(product_id: &str) -> v01::ProductProofContext {
     v01::ProductProofContext {
         product_id: product_id.to_string(),
-        suffix: vec![7],
+        suffix: v01::DerivationIndex::Left(7),
     }
 }
 

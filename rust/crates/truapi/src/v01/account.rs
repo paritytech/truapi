@@ -82,8 +82,9 @@ pub struct RingLocation {
 pub struct ProductProofContext {
     /// dotNS product identifier (e.g. `"my-product.dot"`) scoping the context.
     pub product_id: String,
-    /// Arbitrary-byte suffix distinguishing contexts within the product.
-    pub suffix: Vec<u8>,
+    /// Selector distinguishing contexts within the product; expands to the
+    /// same 32-byte derivation index as [`ProductAccountId::derivation_index`].
+    pub suffix: DerivationIndex,
 }
 
 /// Request to create a ring VRF proof.

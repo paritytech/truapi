@@ -185,7 +185,7 @@ fn account_proof_declined_confirmation_returns_rejected() {
     let request = account::HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
         context: v01::ProductProofContext {
             product_id: "myapp.dot".to_string(),
-            suffix: Vec::new(),
+            suffix: v01::DerivationIndex::Left(0),
         },
         ring_location: v01::RingLocation {
             chain_id: [0u8; 32],
