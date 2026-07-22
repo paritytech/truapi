@@ -49,6 +49,8 @@ use pairing_host::PairingHost;
 pub(crate) use pairing_host::PairingHost as PairingHostRole;
 pub(crate) use services::RuntimeServices;
 pub use signing_host::ResponderExit;
+#[cfg(not(target_arch = "wasm32"))]
+pub use signing_host::StatementRenewalTarget;
 pub(crate) use signing_host::{
     LocalActivation, SigningHost as SigningHostRole, respond_to_pairing,
 };

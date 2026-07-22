@@ -129,7 +129,11 @@ export type CoreStorageKey =
   /**
    * Last processed SSO pairing response statement for the pairing device.
    */
-  | { tag: "LastProcessedPairingStatement"; value?: undefined };
+  | { tag: "LastProcessedPairingStatement"; value?: undefined }
+  /**
+   * Statement-store allowance targets the signing host keeps renewed.
+   */
+  | { tag: "StatementRenewalTargets"; value?: undefined };
 
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -373,6 +377,7 @@ export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy(
         sessionId: string;
       }>,
       LastProcessedPairingStatement: S._void,
+      StatementRenewalTargets: S._void,
     }),
 );
 

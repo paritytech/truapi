@@ -35,6 +35,8 @@ pub enum ShellCommand {
     Log(LogLevel),
     /// Inspect, list, or switch the active persistent session.
     Session(SessionCommand),
+    /// Renew tracked statement-store allowances for the current period.
+    Renew,
     /// Shut down the signing host.
     Quit,
 }
@@ -89,6 +91,7 @@ pub fn parse_command(input: &str) -> Result<ShellCommand, String> {
                 argument.to_string(),
             )))
         }
+        "/renew" => no_argument(name, argument, ShellCommand::Renew),
         "/quit" => no_argument(name, argument, ShellCommand::Quit),
         _ => Err(format!(
             "unknown command `{name}`; use /help to list commands"
@@ -118,6 +121,7 @@ const SIGNING_COMMANDS: &[(&str, &str)] = &[
     ("/script", "edit a new or run an existing product script"),
     ("/log ", "set error, warn, info, debug, or trace"),
     ("/session", "show or switch the active session"),
+    ("/renew", "renew statement-store allowances now"),
     ("/help", "show commands and keyboard shortcuts"),
     ("/clear", "clear the visible transcript"),
     ("/copy", "copy the transcript to the clipboard"),
@@ -470,6 +474,7 @@ pub const HELP_TEXT: &str = "\
 /session                show the current session and path
 /session <name>         switch to or create a session
 /session --list         list sessions for this network
+/renew                  renew statement-store allowances now
 /help                   show this help
 /clear                  clear the visible transcript
 /copy                   copy the transcript to the clipboard
@@ -515,6 +520,7 @@ mod tests {
             Ok(ShellCommand::Log(LogLevel::Trace))
         );
         assert_eq!(parse_command("/copy"), Ok(ShellCommand::Copy));
+        assert_eq!(parse_command("/renew"), Ok(ShellCommand::Renew));
         assert_eq!(
             parse_command("/session"),
             Ok(ShellCommand::Session(SessionCommand::Current))
@@ -536,6 +542,7 @@ mod tests {
         );
         assert!(parse_command("/whoami").is_err());
         assert!(parse_command("/copy now").is_err());
+        assert!(parse_command("/renew now").is_err());
         assert!(parse_command("/deeplink https://example.com").is_err());
         assert!(parse_command("/log noisy").is_err());
         assert!(parse_command("/session ../escape").is_err());
