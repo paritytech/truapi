@@ -2,5 +2,8 @@
 // emits its deeplink on the first requestLogin, and the runtime holds the
 // resulting session for every later product connection. Mirrors how the dotli
 // e2e baseline signs in before driving Diagnosis.
-const result = await truapi.account.requestLogin();
-console.log("PRELOGIN_OK", JSON.stringify(result).slice(0, 160));
+const login = await truapi.account.requestLogin({ reason: undefined });
+if (!(login.isOk() && login.value === "Success")) {
+  throw new Error(`pre-login failed: ${login.isOk() ? String(login.value) : JSON.stringify(login.error)}`);
+}
+console.log("PRELOGIN_OK");
