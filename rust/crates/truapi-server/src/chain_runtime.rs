@@ -19,7 +19,7 @@
 
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -229,7 +229,7 @@ pub struct ChainRuntime {
     spawner: Spawner,
     connections: Arc<Mutex<HashMap<String, Arc<ChainConnection>>>>,
     connection_setups: Arc<Mutex<HashMap<String, ConnectionSetup>>>,
-    transaction_operations: Arc<Mutex<HashMap<String, TransactionOperation>>>,
+    transaction_operations: Arc<Mutex<BTreeMap<u64, TransactionOperation>>>,
     next_transaction_operation_id: Arc<AtomicU64>,
 }
 
@@ -237,6 +237,20 @@ pub struct ChainRuntime {
 struct TransactionOperation {
     genesis_hash: Vec<u8>,
     provider_operation_id: String,
+}
+
+/// Prefix of the host-assigned transaction operation ids handed to products.
+const TRANSACTION_OPERATION_ID_PREFIX: &str = "truapi-tx-";
+/// Cap on tracked broadcast operations; products that never stop an operation
+/// would otherwise grow the map for the whole session. Provider operation ids
+/// are short-lived, so evicting the oldest handles is safe.
+const MAX_TRACKED_TRANSACTION_OPERATIONS: usize = 256;
+
+fn transaction_operation_sequence(operation_id: &str) -> Option<u64> {
+    operation_id
+        .strip_prefix(TRANSACTION_OPERATION_ID_PREFIX)?
+        .parse()
+        .ok()
 }
 
 impl ChainRuntime {
@@ -248,7 +262,7 @@ impl ChainRuntime {
             spawner,
             connections: Arc::new(Mutex::new(HashMap::new())),
             connection_setups: Arc::new(Mutex::new(HashMap::new())),
-            transaction_operations: Arc::new(Mutex::new(HashMap::new())),
+            transaction_operations: Arc::new(Mutex::new(BTreeMap::new())),
             next_transaction_operation_id: Arc::new(AtomicU64::new(1)),
         }
     }
@@ -519,22 +533,24 @@ impl ChainRuntime {
             .await
             .map_err(|err| rpc_failure(method, err))?;
         let operation_id = provider_operation_id.map(|provider_operation_id| {
-            let operation_id = format!(
-                "truapi-tx-{}",
-                self.next_transaction_operation_id
-                    .fetch_add(1, Ordering::Relaxed)
-            );
-            self.transaction_operations
+            let sequence = self
+                .next_transaction_operation_id
+                .fetch_add(1, Ordering::Relaxed);
+            let mut operations = self
+                .transaction_operations
                 .lock()
-                .expect("transaction operation mutex poisoned")
-                .insert(
-                    operation_id.clone(),
-                    TransactionOperation {
-                        genesis_hash: request.genesis_hash,
-                        provider_operation_id,
-                    },
-                );
-            operation_id
+                .expect("transaction operation mutex poisoned");
+            operations.insert(
+                sequence,
+                TransactionOperation {
+                    genesis_hash: request.genesis_hash,
+                    provider_operation_id,
+                },
+            );
+            while operations.len() > MAX_TRACKED_TRANSACTION_OPERATIONS {
+                operations.pop_first();
+            }
+            format!("{TRANSACTION_OPERATION_ID_PREFIX}{sequence}")
         });
         Ok(RemoteChainTransactionBroadcastResponse { operation_id })
     }
@@ -546,11 +562,14 @@ impl ChainRuntime {
         request: RemoteChainTransactionStopRequest,
     ) -> Result<(), RuntimeFailure> {
         let method = "remote_chain_transaction_stop";
+        let sequence = transaction_operation_sequence(&request.operation_id).ok_or_else(|| {
+            RuntimeFailure::host_failure(method, "unknown transaction operation id")
+        })?;
         let operation = self
             .transaction_operations
             .lock()
             .expect("transaction operation mutex poisoned")
-            .remove(&request.operation_id)
+            .remove(&sequence)
             .ok_or_else(|| {
                 RuntimeFailure::host_failure(method, "unknown transaction operation id")
             })?;
@@ -558,7 +577,7 @@ impl ChainRuntime {
             self.transaction_operations
                 .lock()
                 .expect("transaction operation mutex poisoned")
-                .insert(request.operation_id, operation);
+                .insert(sequence, operation);
             return Err(RuntimeFailure::host_failure(
                 method,
                 "transaction operation belongs to a different chain",
@@ -570,7 +589,7 @@ impl ChainRuntime {
                 self.transaction_operations
                     .lock()
                     .expect("transaction operation mutex poisoned")
-                    .insert(request.operation_id, operation);
+                    .insert(sequence, operation);
                 return Err(err);
             }
         };
@@ -585,7 +604,7 @@ impl ChainRuntime {
                 self.transaction_operations
                     .lock()
                     .expect("transaction operation mutex poisoned")
-                    .insert(request.operation_id, operation);
+                    .insert(sequence, operation);
                 Err(rpc_failure(method, err))
             }
         }
@@ -1852,6 +1871,40 @@ mod tests {
         )
         .unwrap();
         assert_eq!(stop["params"][0].as_str(), Some("REMOTE-OP"));
+    }
+
+    #[test]
+    fn transaction_operations_evict_oldest_beyond_cap() {
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            request
+                .contains("transaction_v1_broadcast")
+                .then(|| format!(r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-OP"}}"#))
+        }));
+        let runtime = ChainRuntime::new(provider, spawner_for_tests());
+        let genesis_hash = vec![0x11; 32];
+
+        let mut first_id = None;
+        for _ in 0..=MAX_TRACKED_TRANSACTION_OPERATIONS {
+            let broadcast =
+                futures::executor::block_on(runtime.remote_chain_transaction_broadcast(
+                    RemoteChainTransactionBroadcastRequest {
+                        genesis_hash: genesis_hash.clone(),
+                        transaction: vec![0],
+                    },
+                ))
+                .expect("broadcast succeeds");
+            first_id.get_or_insert(broadcast.operation_id.expect("operation id"));
+        }
+
+        let err = futures::executor::block_on(runtime.remote_chain_transaction_stop(
+            RemoteChainTransactionStopRequest {
+                genesis_hash,
+                operation_id: first_id.expect("first operation id"),
+            },
+        ))
+        .expect_err("evicted operation id is unknown");
+        assert!(err.reason().contains("unknown transaction operation id"));
     }
 
     #[test]

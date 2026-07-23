@@ -190,8 +190,9 @@ role-specific lifecycle, so no method exists on a role that can't mean it:
   the chain's `Members` pallet, and pins membership, ring pages, exponent, and
   revision reads to one finalized block before creating an alias or proof.
   Full personhood is preferred over lite personhood. Extrinsic-payload signing
-  and resource allocation still return `Unavailable` pending chain-metadata
-  and on-chain support.
+  and v4 transaction construction work from pre-encoded payload fields, so no
+  chain metadata is needed; statement-store and Bulletin allowance allocation
+  are native-only (wasm builds report them as unavailable).
 
 `host_logic` stays pure: the orchestrators above call into it for codecs,
 session/SSO crypto, key derivation, and permission policy, while all I/O

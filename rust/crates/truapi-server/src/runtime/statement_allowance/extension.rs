@@ -18,7 +18,8 @@ use std::collections::HashMap;
 use frame_metadata::RuntimeMetadata;
 use frame_metadata::RuntimeMetadataPrefixed;
 use parity_scale_codec::{Compact, Decode, Encode};
-use scale_info::{PortableRegistry, TypeDef, TypeDefPrimitive};
+use scale_info::form::PortableForm;
+use scale_info::{PortableRegistry, TypeDef, TypeDefPrimitive, TypeDefVariant};
 
 /// Signed-extension identifier that carries the `AsResources` authorization.
 pub const AS_RESOURCES: &str = "AsResources";
@@ -52,13 +53,15 @@ pub struct EncodedExtension {
     pub additional_signed: Vec<u8>,
 }
 
-/// Decoded metadata: the ordered signed-extension defs, the type registry, and
-/// each storage entry's value type id (`(pallet, entry) -> type id`).
+/// Decoded metadata: the ordered signed-extension defs, the type registry,
+/// each storage entry's value type id (`(pallet, entry) -> type id`), pallet
+/// constants, and each pallet's `(index, call enum type id)`.
 pub struct Metadata {
     extensions: Vec<ExtensionDef>,
     registry: PortableRegistry,
     storage_values: HashMap<(String, String), u32>,
     constants: HashMap<(String, String), Vec<u8>>,
+    calls: HashMap<String, (u8, u32)>,
 }
 
 /// Collect extensions, type registry, storage value types, and pallet constants
@@ -77,7 +80,11 @@ macro_rules! collect_metadata {
             .collect();
         let mut storage_values = HashMap::new();
         let mut constants = HashMap::new();
+        let mut calls = HashMap::new();
         for pallet in &$m.pallets {
+            if let Some(pallet_calls) = &pallet.calls {
+                calls.insert(pallet.name.clone(), (pallet.index, pallet_calls.ty.id));
+            }
             for constant in &pallet.constants {
                 constants.insert(
                     (pallet.name.clone(), constant.name.clone()),
@@ -96,7 +103,7 @@ macro_rules! collect_metadata {
                 storage_values.insert((pallet.name.clone(), entry.name.clone()), value_type);
             }
         }
-        (extensions, $m.types, storage_values, constants)
+        (extensions, $m.types, storage_values, constants, calls)
     }};
 }
 
@@ -124,7 +131,11 @@ macro_rules! collect_metadata_v16 {
             .collect();
         let mut storage_values = HashMap::new();
         let mut constants = HashMap::new();
+        let mut calls = HashMap::new();
         for pallet in &$m.pallets {
+            if let Some(pallet_calls) = &pallet.calls {
+                calls.insert(pallet.name.clone(), (pallet.index, pallet_calls.ty.id));
+            }
             for constant in &pallet.constants {
                 constants.insert(
                     (pallet.name.clone(), constant.name.clone()),
@@ -143,18 +154,18 @@ macro_rules! collect_metadata_v16 {
                 storage_values.insert((pallet.name.clone(), entry.name.clone()), value_type);
             }
         }
-        (extensions, $m.types, storage_values, constants)
+        (extensions, $m.types, storage_values, constants, calls)
     }};
 }
 
 impl Metadata {
-    /// Decode `state_getMetadata` bytes (a `RuntimeMetadataPrefixed`, V14 or
-    /// V15) into the ordered signed-extension defs, type registry, and storage
-    /// value types.
+    /// Decode `state_getMetadata` bytes (a `RuntimeMetadataPrefixed`, V14
+    /// through V16) into the ordered signed-extension defs, type registry,
+    /// storage value types, constants, and call enums.
     pub fn decode(bytes: &[u8]) -> Result<Self, String> {
         let prefixed = RuntimeMetadataPrefixed::decode(&mut &bytes[..])
             .map_err(|err| format!("metadata decode failed: {err}"))?;
-        let (extensions, registry, storage_values, constants) = match prefixed.1 {
+        let (extensions, registry, storage_values, constants, calls) = match prefixed.1 {
             RuntimeMetadata::V14(m) => collect_metadata!(m, frame_metadata::v14::StorageEntryType),
             RuntimeMetadata::V15(m) => collect_metadata!(m, frame_metadata::v15::StorageEntryType),
             RuntimeMetadata::V16(m) => collect_metadata_v16!(m),
@@ -165,6 +176,7 @@ impl Metadata {
             registry,
             storage_values,
             constants,
+            calls,
         })
     }
 
@@ -185,6 +197,105 @@ impl Metadata {
         self.constants
             .get(&(pallet.to_string(), name.to_string()))
             .map(Vec::as_slice)
+    }
+
+    /// Resolve `pallet::call` by name to its `[pallet_index, call_index]`
+    /// dispatch bytes.
+    pub fn call_indices(&self, pallet: &str, call: &str) -> Result<[u8; 2], String> {
+        let (pallet_index, call_type) = self
+            .calls
+            .get(pallet)
+            .copied()
+            .ok_or_else(|| format!("pallet `{pallet}` has no calls in metadata"))?;
+        let variants = self.resolve_variant(call_type)?;
+        let variant = variants
+            .variants
+            .iter()
+            .find(|v| v.name == call)
+            .ok_or_else(|| format!("call `{pallet}.{call}` not found in metadata"))?;
+        Ok([pallet_index, variant.index])
+    }
+
+    /// Resolve `AsResourcesInfo::<info_variant>` and the
+    /// `MembershipCollection::LitePeople` index it carries, by name, from the
+    /// `AsResources` extension type.
+    pub fn as_resources_variant_indices(&self, info_variant: &str) -> Result<(u8, u8), String> {
+        let ext = self
+            .extensions
+            .iter()
+            .find(|e| e.identifier == AS_RESOURCES)
+            .ok_or_else(|| format!("{AS_RESOURCES} extension not found in metadata"))?;
+        // extra = `AsResources(Option<AsResourcesInfo>)`, with or without the
+        // struct wrapper.
+        let option_type = match &self.resolve_type(ext.extra_type)?.type_def {
+            TypeDef::Composite(_) => self.single_field_type(ext.extra_type)?,
+            _ => ext.extra_type,
+        };
+        let info_type = self
+            .resolve_variant(option_type)?
+            .variants
+            .iter()
+            .find(|v| v.name == "Some")
+            .and_then(|some| match some.fields.as_slice() {
+                [field] => Some(field.ty.id),
+                _ => None,
+            })
+            .ok_or_else(|| format!("{AS_RESOURCES} extra is not an Option"))?;
+        let variant = self
+            .resolve_variant(info_type)?
+            .variants
+            .iter()
+            .find(|v| v.name == info_variant)
+            .ok_or_else(|| format!("AsResourcesInfo::{info_variant} not found in metadata"))?;
+        let collection_type = variant
+            .fields
+            .iter()
+            .rev()
+            .map(|field| field.ty.id)
+            .find(|&id| {
+                self.resolve_type(id).is_ok_and(|ty| {
+                    ty.path.segments.last().map(String::as_str) == Some("MembershipCollection")
+                })
+            })
+            .ok_or_else(|| {
+                format!("AsResourcesInfo::{info_variant} carries no MembershipCollection field")
+            })?;
+        let lite_people = self
+            .resolve_variant(collection_type)?
+            .variants
+            .iter()
+            .find(|v| v.name == "LitePeople")
+            .ok_or_else(|| "MembershipCollection::LitePeople not found in metadata".to_string())?;
+        Ok((variant.index, lite_people.index))
+    }
+
+    /// Resolve a type id in the registry.
+    fn resolve_type(&self, type_id: u32) -> Result<&scale_info::Type<PortableForm>, String> {
+        self.registry
+            .resolve(type_id)
+            .ok_or_else(|| format!("unknown type id {type_id}"))
+    }
+
+    /// Resolve `type_id` as an enum definition.
+    fn resolve_variant(&self, type_id: u32) -> Result<&TypeDefVariant<PortableForm>, String> {
+        match &self.resolve_type(type_id)?.type_def {
+            TypeDef::Variant(variant) => Ok(variant),
+            _ => Err(format!("type {type_id} is not an enum")),
+        }
+    }
+
+    /// The field type of a one-field composite.
+    fn single_field_type(&self, type_id: u32) -> Result<u32, String> {
+        let TypeDef::Composite(composite) = &self.resolve_type(type_id)?.type_def else {
+            return Err(format!("type {type_id} is not a composite"));
+        };
+        match composite.fields.as_slice() {
+            [field] => Ok(field.ty.id),
+            fields => Err(format!(
+                "type {type_id} has {} fields, expected 1",
+                fields.len()
+            )),
+        }
     }
 
     /// Encode every signed extension in metadata order.
@@ -394,6 +505,45 @@ mod tests {
                 "ChargeAssetTxPayment",
                 "StorageWeightReclaim",
             ],
+        );
+    }
+
+    #[test]
+    fn call_and_variant_indices_resolve_by_name() {
+        let metadata = Metadata::decode(FIXTURE).unwrap();
+
+        assert_eq!(
+            (
+                metadata
+                    .call_indices("Resources", "set_statement_store_account")
+                    .unwrap(),
+                metadata
+                    .call_indices("Resources", "claim_long_term_storage")
+                    .unwrap(),
+                metadata
+                    .as_resources_variant_indices("RegisterStatementStoreAllowance")
+                    .unwrap(),
+                metadata
+                    .as_resources_variant_indices("ClaimLongTermStorage")
+                    .unwrap(),
+            ),
+            ([0x3f, 0x0a], [0x3f, 0x0c], (0x02, 0x01), (0x03, 0x01)),
+        );
+    }
+
+    #[test]
+    fn index_resolution_fails_for_unknown_names() {
+        let metadata = Metadata::decode(FIXTURE).unwrap();
+
+        assert_eq!(
+            (
+                metadata.call_indices("Resources", "no_such_call").is_err(),
+                metadata.call_indices("NoSuchPallet", "transfer").is_err(),
+                metadata
+                    .as_resources_variant_indices("NoSuchVariant")
+                    .is_err(),
+            ),
+            (true, true, true),
         );
     }
 

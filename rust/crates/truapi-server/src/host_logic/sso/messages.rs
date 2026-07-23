@@ -41,14 +41,18 @@ use crate::host_logic::statement_store::{
 
 pub mod v1;
 
+/// Transport-level acknowledgement code for an SSO session statement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, derive_more::Display)]
-enum SsoResponseCode {
+pub enum SsoResponseCode {
+    /// The request statement was decrypted and decoded.
     #[codec(index = 0)]
     #[display("success")]
     Success,
+    /// The request statement could not be decrypted.
     #[codec(index = 1)]
     #[display("decryptionFailed")]
     DecryptionFailed,
+    /// The request statement decrypted but its messages could not be decoded.
     #[codec(index = 2)]
     #[display("decodingFailed")]
     DecodingFailed,
@@ -738,20 +742,45 @@ pub struct IncomingSsoRequest {
     pub messages: Vec<RemoteMessage>,
 }
 
+/// Failure decoding a peer request statement.
+///
+/// `request_id` is present when the encrypted envelope decoded far enough for
+/// the responder to acknowledge the statement with
+/// [`SsoResponseCode::DecodingFailed`].
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[display("{reason}")]
+pub struct SsoRequestDecodeError {
+    /// Statement-level request id, when recoverable.
+    pub request_id: Option<String>,
+    /// Human-readable failure description.
+    pub reason: String,
+}
+
+impl SsoRequestDecodeError {
+    fn unrecoverable(reason: String) -> Self {
+        Self {
+            request_id: None,
+            reason,
+        }
+    }
+}
+
 /// Decode a peer request for a signing-host responder.
 ///
 /// Own echoes, response acknowledgements, and expired statements are ignored.
 pub fn decode_incoming_sso_request(
     session: &SsoSessionInfo,
     statement: &[u8],
-) -> Result<Option<IncomingSsoRequest>, String> {
-    let verified =
-        decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
+) -> Result<Option<IncomingSsoRequest>, SsoRequestDecodeError> {
+    let verified = decode_verified_statement_data(statement, None)
+        .map_err(|err| SsoRequestDecodeError::unrecoverable(err.to_string()))?;
     if verified.signer == session.ss_public_key {
         return Ok(None);
     }
     if verified.signer != session.identity_account_id {
-        return Err("statement proof signer does not match expected peer".to_string());
+        return Err(SsoRequestDecodeError::unrecoverable(
+            "statement proof signer does not match expected peer".to_string(),
+        ));
     }
     if verified
         .expiry
@@ -759,7 +788,9 @@ pub fn decode_incoming_sso_request(
     {
         return Ok(None);
     }
-    match decrypt_session_statement_data(session, &verified.data)? {
+    match decrypt_session_statement_data(session, &verified.data)
+        .map_err(SsoRequestDecodeError::unrecoverable)?
+    {
         SsoStatementData::Response { .. } => Ok(None),
         SsoStatementData::Request { request_id, data } => {
             let messages = data
@@ -768,7 +799,11 @@ pub fn decode_incoming_sso_request(
                     RemoteMessage::decode(&mut message.as_slice())
                         .map_err(|err| format!("invalid SSO remote message: {err}"))
                 })
-                .collect::<Result<Vec<_>, _>>()?;
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|reason| SsoRequestDecodeError {
+                    request_id: Some(request_id.clone()),
+                    reason,
+                })?;
             Ok(Some(IncomingSsoRequest {
                 request_id,
                 messages,
@@ -1477,6 +1512,27 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn responder_recovers_request_id_from_undecodable_messages() {
+        let (host_session, responder_session) = host_and_responder_sessions();
+        let encrypted = encrypt_session_statement_data(
+            &host_session,
+            &SsoStatementData::Request {
+                request_id: "statement-1".to_string(),
+                data: vec![vec![0xFF, 0xFF, 0xFF]],
+            },
+        )
+        .unwrap();
+        let statement =
+            build_signed_session_request_statement(&host_session, encrypted, fresh_expiry())
+                .unwrap();
+
+        let error = decode_incoming_sso_request(&responder_session, &statement).unwrap_err();
+        assert_eq!(error.request_id.as_deref(), Some("statement-1"));
+        assert!(error.reason.contains("invalid SSO remote message"));
+    }
+
     fn response_ack_statement(session: &SsoSessionInfo, expiry: u64) -> Vec<u8> {
         let encrypted = encrypt_session_statement_data_with_nonce(
             session,

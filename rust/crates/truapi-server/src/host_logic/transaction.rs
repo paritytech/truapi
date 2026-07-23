@@ -1,93 +1,68 @@
-//! Extrinsic signing preimages and v4 signed-extrinsic assembly.
+//! Extrinsic signing preimages assembled from pre-encoded payload fields.
 //!
-//! Signing hosts receive pre-encoded payload fields (`HostSignPayloadData`)
-//! or pre-encoded transaction extensions (`TxPayloadExtension`), so no chain
-//! metadata is needed: the preimage is a byte concatenation and the signed
-//! extrinsic is assembled mechanically. Matches the polkadot-app signing
-//! convention: preimages longer than 256 bytes are BLAKE2b-256 hashed before
-//! signing.
+//! Signing hosts receive the pre-encoded fields of [`HostSignPayloadData`],
+//! so no chain metadata is needed: the preimage is the polkadot-js
+//! `ExtrinsicPayloadV4` byte layout. The optional `ChargeAssetTxPayment`
+//! (`asset_id` after `tip`) and `CheckMetadataHash` (`mode` extra plus the
+//! `Option`-encoded `metadata_hash` implicit) fields participate when the
+//! payload's signed-extension list names them. Extensions outside that set
+//! are assumed to carry no extra or implicit bytes, matching polkadot-js
+//! without user extensions. Preimages longer than 256 bytes are BLAKE2b-256
+//! hashed before signing (standard Substrate signed-payload rule).
 
-use parity_scale_codec::{Compact, Encode};
-use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
+use truapi::latest::HostSignPayloadData;
 
-/// Preimages longer than this are hashed before signing (standard Substrate
-/// signed-payload rule).
+/// Preimages longer than this are hashed before signing.
 const MAX_SIGNED_PREIMAGE_LEN: usize = 256;
 
-/// Extrinsic version 4 with the signed bit set.
-const EXTRINSIC_V4_SIGNED: u8 = 0x84;
-/// `MultiAddress::Id` variant index.
-const MULTI_ADDRESS_ID: u8 = 0x00;
-/// `MultiSignature::Sr25519` variant index.
-const MULTI_SIGNATURE_SR25519: u8 = 0x01;
+/// Signed extension contributing the `asset_id` extra after `tip`.
+const CHARGE_ASSET_TX_PAYMENT: &str = "ChargeAssetTxPayment";
+/// Signed extension contributing the `mode` extra and `metadata_hash` implicit.
+const CHECK_METADATA_HASH: &str = "CheckMetadataHash";
 
-/// Signing preimage for an extrinsic payload assembled from pre-encoded
-/// fields, in the polkadot-app field order. Empty optional fields are
-/// skipped, mirroring the JS falsy-field rule.
-pub fn extrinsic_payload_preimage(payload: &HostSignPayloadData) -> Vec<u8> {
-    let parts: [&[u8]; 8] = [
-        &payload.method,
-        &payload.era,
-        &payload.nonce,
-        &payload.tip,
-        &payload.spec_version,
-        &payload.transaction_version,
-        &payload.genesis_hash,
-        &payload.block_hash,
-    ];
+/// Signing preimage for an extrinsic payload, in the polkadot-js
+/// `ExtrinsicPayloadV4` field order: `method ++ era ++ nonce ++ tip ++
+/// [asset_id] ++ [mode] ++ spec_version ++ transaction_version ++
+/// genesis_hash ++ block_hash ++ [metadata_hash]`.
+pub fn extrinsic_payload_preimage(payload: &HostSignPayloadData) -> Result<Vec<u8>, String> {
+    let has_extension = |id: &str| payload.signed_extensions.iter().any(|ext| ext == id);
+    let charge_asset = has_extension(CHARGE_ASSET_TX_PAYMENT) || payload.asset_id.is_some();
+    let check_metadata_hash = has_extension(CHECK_METADATA_HASH) || payload.metadata_hash.is_some();
+
     let mut preimage = Vec::new();
-    for part in parts {
-        preimage.extend_from_slice(part);
+    preimage.extend_from_slice(&payload.method);
+    preimage.extend_from_slice(&payload.era);
+    preimage.extend_from_slice(&payload.nonce);
+    preimage.extend_from_slice(&payload.tip);
+    if charge_asset {
+        // The wire carries the chain's `TAssetConversion` encoding (itself
+        // option-typed on asset chains); an absent field means `None`.
+        match &payload.asset_id {
+            Some(asset_id) => preimage.extend_from_slice(asset_id),
+            None => preimage.push(0),
+        }
     }
-    if let Some(asset_id) = &payload.asset_id {
-        preimage.extend_from_slice(asset_id);
+    if check_metadata_hash {
+        let mode = payload.mode.unwrap_or(0);
+        let mode = u8::try_from(mode)
+            .map_err(|_| format!("CheckMetadataHash mode {mode} does not fit in a u8"))?;
+        preimage.push(mode);
     }
-    if let Some(metadata_hash) = &payload.metadata_hash {
-        preimage.extend_from_slice(metadata_hash);
+    preimage.extend_from_slice(&payload.spec_version);
+    preimage.extend_from_slice(&payload.transaction_version);
+    preimage.extend_from_slice(&payload.genesis_hash);
+    preimage.extend_from_slice(&payload.block_hash);
+    if check_metadata_hash {
+        // `Option<[u8; 32]>` implicit; the wire carries the raw hash.
+        match &payload.metadata_hash {
+            Some(hash) => {
+                preimage.push(1);
+                preimage.extend_from_slice(hash);
+            }
+            None => preimage.push(0),
+        }
     }
-    hash_large_preimage(preimage)
-}
-
-/// Signing preimage for a transaction built from pre-encoded extensions:
-/// call data, then every extension's `extra`, then every extension's
-/// `additional_signed`.
-pub fn transaction_signing_preimage(
-    call_data: &[u8],
-    extensions: &[TxPayloadExtension],
-) -> Vec<u8> {
-    let mut preimage = call_data.to_vec();
-    for extension in extensions {
-        preimage.extend_from_slice(&extension.extra);
-    }
-    for extension in extensions {
-        preimage.extend_from_slice(&extension.additional_signed);
-    }
-    hash_large_preimage(preimage)
-}
-
-/// Assemble a v4 signed extrinsic from a signer public key, an sr25519
-/// signature over [`transaction_signing_preimage`], the pre-encoded
-/// extension `extra` data, and the call data.
-pub fn build_v4_signed_extrinsic(
-    signer_public_key: [u8; 32],
-    signature: [u8; 64],
-    extensions: &[TxPayloadExtension],
-    call_data: &[u8],
-) -> Vec<u8> {
-    let mut body = Vec::with_capacity(2 + 32 + 1 + 64 + call_data.len());
-    body.push(EXTRINSIC_V4_SIGNED);
-    body.push(MULTI_ADDRESS_ID);
-    body.extend_from_slice(&signer_public_key);
-    body.push(MULTI_SIGNATURE_SR25519);
-    body.extend_from_slice(&signature);
-    for extension in extensions {
-        body.extend_from_slice(&extension.extra);
-    }
-    body.extend_from_slice(call_data);
-
-    let mut extrinsic = Compact(body.len() as u32).encode();
-    extrinsic.extend_from_slice(&body);
-    extrinsic
+    Ok(hash_large_preimage(preimage))
 }
 
 fn hash_large_preimage(preimage: Vec<u8>) -> Vec<u8> {
@@ -127,26 +102,85 @@ mod tests {
     }
 
     #[test]
-    fn payload_preimage_uses_polkadot_app_field_order() {
+    fn payload_preimage_uses_extrinsic_payload_v4_field_order() {
         // method, era, nonce, tip, spec_version, transaction_version,
         // genesis_hash, block_hash. block_number is not part of the preimage.
         assert_eq!(
-            extrinsic_payload_preimage(&payload()),
+            extrinsic_payload_preimage(&payload()).unwrap(),
             vec![0x4D, 0xE1, 0x4E, 0x54, 0x51, 0x56, 0x61, 0x62, 0xB1, 0xB2]
         );
     }
 
     #[test]
-    fn payload_preimage_appends_asset_id_and_metadata_hash() {
+    fn payload_preimage_places_asset_id_after_tip_and_metadata_hash_last() {
         let mut payload = payload();
-        payload.asset_id = Some(vec![0xAA]);
-        payload.metadata_hash = Some(vec![0xBB]);
+        payload.signed_extensions = vec![
+            "CheckMortality".to_string(),
+            "CheckNonce".to_string(),
+            "ChargeAssetTxPayment".to_string(),
+            "CheckMetadataHash".to_string(),
+        ];
+        payload.asset_id = Some(vec![0x01, 0xAA]);
+        payload.mode = Some(1);
+        payload.metadata_hash = Some(vec![0xBB; 32]);
+
+        let mut expected = vec![
+            0x4D, 0xE1, 0x4E, 0x54, // method, era, nonce, tip
+            0x01, 0xAA, // asset_id (TAssetConversion bytes)
+            0x01, // mode
+            0x51, 0x56, 0x61, 0x62, 0xB1, 0xB2, // spec, tx, genesis, block
+            0x01, // Some(metadata_hash)
+        ];
+        expected.extend_from_slice(&[0xBB; 32]);
+        assert_eq!(extrinsic_payload_preimage(&payload).unwrap(), expected);
+    }
+
+    #[test]
+    fn payload_preimage_defaults_listed_extensions_to_disabled() {
+        // A chain that has the extensions while the payload leaves them unset
+        // still signs their default encodings: assetId None, mode 0,
+        // metadata_hash None.
+        let mut payload = payload();
+        payload.signed_extensions = vec![
+            "ChargeAssetTxPayment".to_string(),
+            "CheckMetadataHash".to_string(),
+        ];
+        payload.mode = Some(0);
+
+        assert_eq!(
+            extrinsic_payload_preimage(&payload).unwrap(),
+            vec![
+                0x4D, 0xE1, 0x4E, 0x54, // method, era, nonce, tip
+                0x00, // asset_id None
+                0x00, // mode 0
+                0x51, 0x56, 0x61, 0x62, 0xB1, 0xB2, // spec, tx, genesis, block
+                0x00, // metadata_hash None
+            ]
+        );
+    }
+
+    #[test]
+    fn payload_preimage_ignores_mode_without_check_metadata_hash() {
+        // polkadot-js always emits `mode: 0` in the payload JSON, even for
+        // chains without CheckMetadataHash; the extension list decides.
+        let mut payload = payload();
+        payload.mode = Some(0);
+
+        assert_eq!(
+            extrinsic_payload_preimage(&payload).unwrap(),
+            vec![0x4D, 0xE1, 0x4E, 0x54, 0x51, 0x56, 0x61, 0x62, 0xB1, 0xB2]
+        );
+    }
+
+    #[test]
+    fn payload_preimage_rejects_out_of_range_mode() {
+        let mut payload = payload();
+        payload.signed_extensions = vec!["CheckMetadataHash".to_string()];
+        payload.mode = Some(256);
 
         assert_eq!(
             extrinsic_payload_preimage(&payload),
-            vec![
-                0x4D, 0xE1, 0x4E, 0x54, 0x51, 0x56, 0x61, 0x62, 0xB1, 0xB2, 0xAA, 0xBB
-            ]
+            Err("CheckMetadataHash mode 256 does not fit in a u8".to_string())
         );
     }
 
@@ -155,7 +189,7 @@ mod tests {
         let mut payload = payload();
         payload.method = vec![0x4D; 300];
 
-        let preimage = extrinsic_payload_preimage(&payload);
+        let preimage = extrinsic_payload_preimage(&payload).unwrap();
 
         assert_eq!(preimage.len(), 32);
         let mut raw = vec![0x4D; 300];
@@ -168,50 +202,5 @@ mod tests {
                 .as_bytes()
                 .to_vec()
         );
-    }
-
-    #[test]
-    fn transaction_preimage_orders_call_extra_then_implicit() {
-        let extensions = vec![
-            TxPayloadExtension {
-                id: "CheckNonce".to_string(),
-                extra: vec![0x01],
-                additional_signed: vec![0x02],
-            },
-            TxPayloadExtension {
-                id: "CheckSpecVersion".to_string(),
-                extra: vec![0x03],
-                additional_signed: vec![0x04],
-            },
-        ];
-
-        assert_eq!(
-            transaction_signing_preimage(&[0xCA, 0x11], &extensions),
-            vec![0xCA, 0x11, 0x01, 0x03, 0x02, 0x04]
-        );
-    }
-
-    #[test]
-    fn builds_v4_signed_extrinsic_layout() {
-        let extensions = vec![TxPayloadExtension {
-            id: "CheckNonce".to_string(),
-            extra: vec![0xEE],
-            additional_signed: vec![0xDD],
-        }];
-
-        let extrinsic =
-            build_v4_signed_extrinsic([0xAB; 32], [0xCD; 64], &extensions, &[0xCA, 0x11]);
-
-        let body_len = 1 + 1 + 32 + 1 + 64 + 1 + 2;
-        assert_eq!(extrinsic[..2], Compact(body_len as u32).encode()[..]);
-        let body = &extrinsic[2..];
-        assert_eq!(body.len(), body_len);
-        assert_eq!(body[0], 0x84);
-        assert_eq!(body[1], 0x00);
-        assert_eq!(&body[2..34], &[0xAB; 32]);
-        assert_eq!(body[34], 0x01);
-        assert_eq!(&body[35..99], &[0xCD; 64]);
-        assert_eq!(body[99], 0xEE);
-        assert_eq!(&body[100..], &[0xCA, 0x11]);
     }
 }

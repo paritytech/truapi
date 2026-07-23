@@ -101,8 +101,10 @@ fn json_u32(value: &Value, field: &str) -> Result<u32, String> {
 }
 
 /// Result of a statement-store allowance registration attempt.
+#[derive(Debug)]
 pub enum RegistrationOutcome {
-    /// The extrinsic reached a block; the target now holds slot `seq`.
+    /// The extrinsic reached a block and the slot entry was verified at that
+    /// block: the target now holds slot `seq`.
     Registered {
         /// Block hash the extrinsic landed in.
         block_hash: String,
@@ -151,7 +153,9 @@ impl BulletinAllowanceInfo {
 
 /// Find the newest ring (scanning up to `lookback` back from the current index)
 /// that includes our member key. Reads the ring exponent once and stops at the
-/// first match.
+/// first match. Every read is pinned to one finalized block so the snapshot is
+/// internally consistent; the pinned hash is recorded on the returned
+/// [`RingParams`].
 pub async fn find_including_ring(
     rpc: &RpcClient,
     metadata: &Metadata,
@@ -159,16 +163,18 @@ pub async fn find_including_ring(
     lookback: u32,
 ) -> Result<Option<RingParams>, String> {
     let member = proof::member_key(entropy);
-    let exponent = ring::read_ring_exponent(rpc, metadata).await?;
-    let current = ring::read_current_ring_index(rpc).await?;
+    let at = rpc.finalized_head().await?;
+    let exponent = ring::read_ring_exponent(rpc, metadata, &at).await?;
+    let current = ring::read_current_ring_index_at(rpc, &at).await?;
     let oldest = current.saturating_sub(lookback);
     for ring_index in (oldest..=current).rev() {
-        let members = ring::read_ring_members_at(rpc, ring_index).await?;
+        let members = ring::read_ring_members_at(rpc, ring_index, &at).await?;
         if members.contains(&member) {
             return Ok(Some(RingParams {
                 members,
                 exponent,
                 ring_index,
+                block_hash: at,
             }));
         }
     }
@@ -205,16 +211,26 @@ pub async fn register_statement_account(
         };
 
         let context = slot::derive_slot_context(period, seq);
-        let call = extrinsic::build_set_statement_store_account_call(period, seq, target);
+        let call =
+            extrinsic::build_set_statement_store_account_call(metadata, period, seq, target)?;
         let message = extension::build_proof_message(metadata, &call, chain_state)?;
         let domain = proof::domain_for_ring_exponent(ring.exponent)?;
         let ring_proof = proof::ring_vrf_proof(domain, entropy, &ring.members, &context, &message)?;
-        let as_resources_extra = extrinsic::build_as_resources_extra(&ring_proof, ring.ring_index);
+        let as_resources_extra =
+            extrinsic::build_as_resources_extra(metadata, &ring_proof, ring.ring_index)?;
         let extrinsic =
             extrinsic::build_unsigned_extrinsic(metadata, chain_state, &call, &as_resources_extra)?;
 
         match rpc.submit_and_watch(&extrinsic).await {
             Ok(block_hash) => {
+                if slot::read_slot_account_at(rpc, entropy, period, seq, &block_hash).await?
+                    != Some(*target)
+                {
+                    return Err(format!(
+                        "registration reached block {block_hash} but slot (period {period}, \
+                         seq {seq}) is not held by the target account"
+                    ));
+                }
                 return Ok(RegistrationOutcome::Registered {
                     block_hash,
                     seq,
@@ -240,7 +256,8 @@ pub async fn claim_long_term_storage(
     period: u32,
     ring: &RingParams,
 ) -> Result<LongTermStorageOutcome, String> {
-    let revision = ring::read_ring_revision(rpc, metadata, ring.ring_index).await?;
+    let revision =
+        ring::read_ring_revision(rpc, metadata, ring.ring_index, &ring.block_hash).await?;
     let mut skipped_duplicate_counters = Vec::new();
     loop {
         let counter = slot::scan_long_term_storage_counter_excluding(
@@ -253,12 +270,17 @@ pub async fn claim_long_term_storage(
         .await?;
 
         let context = slot::derive_long_term_storage_context(period, counter);
-        let call = extrinsic::build_claim_long_term_storage_call(period, counter, target);
+        let call =
+            extrinsic::build_claim_long_term_storage_call(metadata, period, counter, target)?;
         let message = extension::build_proof_message(metadata, &call, chain_state)?;
         let domain = proof::domain_for_ring_exponent(ring.exponent)?;
         let ring_proof = proof::ring_vrf_proof(domain, entropy, &ring.members, &context, &message)?;
-        let as_resources_extra =
-            extrinsic::build_long_term_storage_extra(&ring_proof, ring.ring_index, revision);
+        let as_resources_extra = extrinsic::build_long_term_storage_extra(
+            metadata,
+            &ring_proof,
+            ring.ring_index,
+            revision,
+        )?;
         let extrinsic =
             extrinsic::build_unsigned_extrinsic(metadata, chain_state, &call, &as_resources_extra)?;
         info!(
@@ -413,16 +435,23 @@ async fn fetch_block_number(rpc: &RpcClient) -> Result<u32, String> {
         .map_err(|err| format!("chain_getHeader number: {err}"))
 }
 
+/// Pool responses meaning an equivalent claim already occupies the pool, so
+/// the scan should move to the next slot. Bans and validity failures are hard
+/// errors for the caller.
 fn duplicate_submit_error(message: &str) -> bool {
     let message = message.to_ascii_lowercase();
-    message.contains("priority is too low")
-        || message.contains("already imported")
-        || message.contains("temporarily banned")
+    message.contains("priority is too low") || message.contains("already imported")
 }
 
 #[cfg(test)]
 mod tests {
+    use subxt_rpcs::RpcClient as HostRpcClient;
+
+    use super::rpc::testing::ScriptedRpc;
     use super::*;
+
+    /// Fixture metadata captured from paseo-next-v2 (raw `RuntimeMetadataPrefixed`).
+    const FIXTURE: &[u8] = include_bytes!("../../tests/fixtures/paseo-next-v2-metadata.scale");
 
     fn allowance(
         remained_size: u64,
@@ -462,5 +491,93 @@ mod tests {
         let baseline = allowance(128, 4, 100);
 
         assert!(!authorization_refreshed(baseline, Some(baseline)));
+    }
+
+    #[test]
+    fn banned_submissions_are_not_classified_as_duplicates() {
+        let classified: Vec<bool> = [
+            "Priority is too low: (100 vs 100)",
+            "Transaction Already Imported",
+            "Transaction is temporarily banned",
+            "Invalid Transaction",
+        ]
+        .into_iter()
+        .map(duplicate_submit_error)
+        .collect();
+
+        assert_eq!(classified, vec![true, true, false, false]);
+    }
+
+    /// `StmtStoreAllowanceEntry { account_id, seq: 0, since: 0 }` as a scripted
+    /// JSON storage result.
+    fn slot_entry(account: [u8; 32]) -> String {
+        let mut entry = account.to_vec();
+        entry.extend_from_slice(&0u32.to_le_bytes());
+        entry.extend_from_slice(&0u64.to_le_bytes());
+        format!(r#""0x{}""#, hex::encode(entry))
+    }
+
+    /// Run `register_statement_account` against a scripted chain: all ten
+    /// slots free, the extrinsic reaches block `0xb10c`, and the verification
+    /// read at that block returns `verified_entry`.
+    fn scripted_registration(
+        verified_entry: &str,
+    ) -> (Result<RegistrationOutcome, String>, ScriptedRpc) {
+        let metadata = Metadata::decode(FIXTURE).unwrap();
+        let chain_state = ChainState {
+            spec_version: 1_000_000,
+            transaction_version: 1,
+            genesis_hash: [0xab; 32],
+            nonce: 0,
+        };
+        let entropy = [0x11; 32];
+        let ring = RingParams {
+            members: vec![proof::member_key(entropy)],
+            exponent: 9,
+            ring_index: 0,
+            block_hash: "0xfinal".to_string(),
+        };
+
+        let mut responses = vec!["null"; 10];
+        responses.push(verified_entry);
+        let scripted = ScriptedRpc::new(responses);
+        scripted.script_subscription([r#"{"inBlock":"0xb10c"}"#]);
+        let rpc = RpcClient::new(HostRpcClient::new(scripted.clone()));
+
+        let outcome = futures::executor::block_on(register_statement_account(
+            &rpc,
+            &metadata,
+            &chain_state,
+            entropy,
+            &[0x22; 32],
+            7,
+            &ring,
+        ));
+        (outcome, scripted)
+    }
+
+    #[test]
+    fn registration_is_verified_at_the_included_block() {
+        let (outcome, scripted) = scripted_registration(&slot_entry([0x22; 32]));
+
+        assert!(matches!(
+            outcome.unwrap(),
+            RegistrationOutcome::Registered { block_hash, seq: 0, ring_index: 0 }
+                if block_hash == "0xb10c"
+        ));
+        let (method, params) = scripted.calls().last().cloned().unwrap();
+        assert_eq!(method, "state_getStorage");
+        assert!(
+            params.ends_with(r#","0xb10c"]"#),
+            "verification read not pinned to the included block: {params}"
+        );
+    }
+
+    #[test]
+    fn registration_fails_when_the_included_block_lacks_the_slot() {
+        let (outcome, _scripted) = scripted_registration(&slot_entry([0x99; 32]));
+
+        let err = outcome.unwrap_err();
+        assert!(err.contains("0xb10c"), "unexpected error: {err}");
     }
 }

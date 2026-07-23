@@ -138,6 +138,24 @@ fn entry_account_id(bytes: &[u8]) -> Option<[u8; 32]> {
     bytes.get(..32).map(|s| s.try_into().expect("32 bytes"))
 }
 
+/// The account holding our alias slot `(period, seq)`, read pinned to
+/// `block_hash` (`None` when the slot entry is absent).
+pub async fn read_slot_account_at(
+    rpc: &RpcClient,
+    entropy: [u8; 32],
+    period: u32,
+    seq: u32,
+    block_hash: &str,
+) -> Result<Option<[u8; 32]>, String> {
+    let alias = slot_alias(entropy, period, seq)?;
+    let key = statement_store_allowance_key(period, &alias);
+    Ok(rpc
+        .get_storage_at(&key, block_hash)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|bytes| entry_account_id(&bytes)))
+}
+
 /// Outcome of scanning for a slot to register `target` in.
 pub enum SlotSelection {
     /// A free `seq` we should claim.

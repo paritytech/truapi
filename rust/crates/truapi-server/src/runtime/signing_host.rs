@@ -8,9 +8,9 @@
 //!
 //! Implemented: local session lifecycle, raw-bytes signing, extrinsic-payload
 //! signing, v4 transaction construction (payload fields and extensions arrive
-//! pre-encoded, so no chain metadata is needed), RFC-0007 product entropy, and
-//! bandersnatch ring-VRF product-account aliases (native only), and
-//! product-scoped Statement Store and Bulletin allowance keys.
+//! pre-encoded, so no chain metadata is needed), RFC-0007 product entropy,
+//! bandersnatch ring-VRF aliases and membership proofs, and product-scoped
+//! Statement Store and Bulletin allowance keys (native only).
 
 mod local_activation;
 mod ring_vrf;
@@ -523,7 +523,8 @@ fn sign_extrinsic_payload(
             ),
         });
     }
-    let preimage = extrinsic_payload_preimage(&payload);
+    let preimage = extrinsic_payload_preimage(&payload)
+        .map_err(|reason| AuthorityError::Unknown { reason })?;
     let signature = keypair
         .secret
         .sign_simple(SR25519_SIGNING_CONTEXT, &preimage, &keypair.public)
@@ -864,7 +865,7 @@ mod tests {
         let session = authority.current_session().expect("active session");
         let cx = CallContext::new();
         let payload = crate::test_support::sign_payload_data();
-        let preimage = extrinsic_payload_preimage(&payload);
+        let preimage = extrinsic_payload_preimage(&payload).expect("preimage builds");
 
         let product_response = futures::executor::block_on(authority.sign_payload(
             &cx,

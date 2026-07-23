@@ -35,7 +35,7 @@ use crate::host_logic::sso::messages::{
     RemoteMessageData, ResourceAllocationResponse, RingVrfAliasResponse, RingVrfError,
     RingVrfProofResponse, SignRawLegacyResponse, SigningPayloadResponseData, SigningRequest,
     SigningResponse, SsoAllocatableResource, SsoAllocatedResource, SsoAllocationOutcome,
-    StatementStoreProductSignResponse, build_outgoing_request_statement,
+    SsoResponseCode, StatementStoreProductSignResponse, build_outgoing_request_statement,
     build_signed_session_response_statement, decode_incoming_sso_request, v1,
 };
 use crate::host_logic::sso::pairing::{
@@ -161,14 +161,31 @@ async fn serve_session(
             let incoming = match decode_incoming_sso_request(&session, &statement) {
                 Ok(Some(incoming)) => incoming,
                 Ok(None) => continue,
-                Err(reason) => {
+                Err(error) => {
                     let prefix = hex::encode(&statement[..statement.len().min(16)]);
                     warn!(
-                        %reason,
+                        reason = %error.reason,
                         statement_bytes = statement.len(),
                         statement_prefix = %prefix,
                         "ignoring undecodable SSO session statement"
                     );
+                    // Ack a decodable envelope whose messages did not decode
+                    // so the peer fails fast instead of waiting out its
+                    // response deadline.
+                    if let Some(request_id) = error.request_id
+                        && served_request_ids.insert(request_id.clone())
+                    {
+                        let ack = build_signed_session_response_statement(
+                            &session,
+                            request_id,
+                            SsoResponseCode::DecodingFailed as u8,
+                            fresh_statement_expiry(),
+                        )?;
+                        services
+                            .statement_store
+                            .submit_sso(ack, "sso-responder decode-failed ack")
+                            .await?;
+                    }
                     continue;
                 }
             };
@@ -223,7 +240,7 @@ async fn serve_request(
     let ack = build_signed_session_response_statement(
         session,
         incoming.request_id.clone(),
-        0,
+        SsoResponseCode::Success as u8,
         fresh_statement_expiry(),
     )?;
     services

@@ -24,6 +24,8 @@ pub struct RingParams {
     pub exponent: u8,
     /// Ring index these members belong to.
     pub ring_index: u32,
+    /// Finalized block hash the ring snapshot was read at.
+    pub block_hash: String,
 }
 
 /// `Members.CurrentRingIndex[id]` storage key.
@@ -100,23 +102,43 @@ fn ring_exponent_from_name(name: &str) -> Result<u8, String> {
     }
 }
 
-/// Read the current LitePeople ring index (absent => 0).
+/// Read the current LitePeople ring index at the current best block
+/// (absent => 0).
 pub async fn read_current_ring_index(rpc: &RpcClient) -> Result<u32, String> {
-    match rpc
-        .get_storage(&current_ring_index_key())
-        .await
-        .map_err(|e| e.to_string())?
-    {
+    decode_ring_index(
+        rpc.get_storage(&current_ring_index_key())
+            .await
+            .map_err(|e| e.to_string())?,
+    )
+}
+
+/// Read the current LitePeople ring index pinned to block `at` (absent => 0).
+pub async fn read_current_ring_index_at(rpc: &RpcClient, at: &str) -> Result<u32, String> {
+    decode_ring_index(
+        rpc.get_storage_at(&current_ring_index_key(), at)
+            .await
+            .map_err(|e| e.to_string())?,
+    )
+}
+
+/// Decode a `CurrentRingIndex` storage value (absent => 0).
+fn decode_ring_index(bytes: Option<Vec<u8>>) -> Result<u32, String> {
+    match bytes {
         Some(bytes) => u32::decode(&mut &bytes[..]).map_err(|e| format!("ring index: {e}")),
         None => Ok(0),
     }
 }
 
-/// Read the LitePeople ring size exponent from `Collections[LitePeople].ring_size`.
-/// This is a chain constant, so read it once and reuse across ring indices.
-pub async fn read_ring_exponent(rpc: &RpcClient, metadata: &Metadata) -> Result<u8, String> {
+/// Read the LitePeople ring size exponent from `Collections[LitePeople].ring_size`,
+/// pinned to block `at`. This is a chain constant, so read it once and reuse
+/// across ring indices.
+pub async fn read_ring_exponent(
+    rpc: &RpcClient,
+    metadata: &Metadata,
+    at: &str,
+) -> Result<u8, String> {
     let collection = rpc
-        .get_storage(&collections_key())
+        .get_storage_at(&collections_key(), at)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Members.Collections[LitePeople] missing".to_string())?;
@@ -128,16 +150,19 @@ pub async fn read_ring_exponent(rpc: &RpcClient, metadata: &Metadata) -> Result<
     ring_exponent_from_name(&variant)
 }
 
-/// Read the members of `ring_index`, sliced to the baked-in `included` prefix.
+/// Read the members of `ring_index`, sliced to the baked-in `included`
+/// prefix, with every read pinned to block `at` so pages and status come from
+/// one consistent snapshot.
 pub async fn read_ring_members_at(
     rpc: &RpcClient,
     ring_index: u32,
+    at: &str,
 ) -> Result<Vec<[u8; 32]>, String> {
     // 1. Page through RingKeys collecting raw 32-byte members.
     let mut members = Vec::new();
     for page in 0.. {
         let Some(bytes) = rpc
-            .get_storage(&ring_keys_key(ring_index, page))
+            .get_storage_at(&ring_keys_key(ring_index, page), at)
             .await
             .map_err(|e| e.to_string())?
         else {
@@ -162,7 +187,7 @@ pub async fn read_ring_members_at(
 
     // 2. Slice to the baked-in `included` prefix (absent status => all included).
     if let Some(status) = rpc
-        .get_storage(&ring_keys_status_key(ring_index))
+        .get_storage_at(&ring_keys_status_key(ring_index), at)
         .await
         .map_err(|e| e.to_string())?
     {
@@ -178,14 +203,16 @@ pub async fn read_ring_members_at(
     Ok(members)
 }
 
-/// Read `Members.Root[LitePeople][ring_index].revision` (absent => 0).
+/// Read `Members.Root[LitePeople][ring_index].revision` pinned to block `at`
+/// (absent => 0).
 pub async fn read_ring_revision(
     rpc: &RpcClient,
     metadata: &Metadata,
     ring_index: u32,
+    at: &str,
 ) -> Result<u32, String> {
     match rpc
-        .get_storage(&ring_root_key(ring_index))
+        .get_storage_at(&ring_root_key(ring_index), at)
         .await
         .map_err(|e| e.to_string())?
     {
@@ -197,5 +224,44 @@ pub async fn read_ring_revision(
                 .map_err(|e| format!("ring revision: {e}"))
         }
         None => Ok(0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use subxt_rpcs::RpcClient as HostRpcClient;
+
+    use super::super::rpc::testing::ScriptedRpc;
+    use super::*;
+
+    #[test]
+    fn member_reads_are_pinned_and_truncated_to_included() {
+        // Page 0 holds two members; RingStatus { total: 2, included: 1, None }.
+        let page = format!(
+            r#""0x08{}{}""#,
+            hex::encode([0xaa; 32]),
+            hex::encode([0xbb; 32]),
+        );
+        let status = r#""0x020000000100000000""#;
+        let scripted = ScriptedRpc::new([page.as_str(), "null", status]);
+        let rpc = RpcClient::new(HostRpcClient::new(scripted.clone()));
+
+        let members = futures::executor::block_on(read_ring_members_at(&rpc, 3, "0xat")).unwrap();
+
+        assert_eq!(members, vec![[0xaa; 32]]);
+        let expected: Vec<(String, String)> = [
+            ring_keys_key(3, 0),
+            ring_keys_key(3, 1),
+            ring_keys_status_key(3),
+        ]
+        .into_iter()
+        .map(|key| {
+            (
+                "state_getStorage".to_string(),
+                format!(r#"["0x{}","0xat"]"#, hex::encode(key)),
+            )
+        })
+        .collect();
+        assert_eq!(scripted.calls(), expected);
     }
 }
