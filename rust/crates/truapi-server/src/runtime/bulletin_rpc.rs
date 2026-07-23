@@ -155,6 +155,19 @@ pub(crate) enum AllowanceRejectionPhase {
 }
 
 impl BulletinSubmitError {
+    /// Whether the watch died without learning the transaction's fate:
+    /// progress updates stopped (for example `chainHead_follow` emitted
+    /// `stop`), as opposed to the node definitively reporting the
+    /// transaction invalid or dropped.
+    fn is_watch_interrupted(&self) -> bool {
+        match self {
+            Self::Subxt(error) => {
+                matches!(error.as_ref(), subxt::Error::TransactionProgressError(_))
+            }
+            _ => false,
+        }
+    }
+
     fn is_retryable_submission_uncertain(&self, phase: SubmissionPhase) -> bool {
         match self {
             Self::Subxt(_) if phase == SubmissionPhase::Watch => true,
@@ -287,7 +300,7 @@ impl BulletinRpc {
                 // transaction. Look for it in the next finalized blocks
                 // before failing: when it is on chain, re-broadcasting
                 // would only double-store the preimage.
-                if !is_watch_interrupted(&watch_error) {
+                if !watch_error.is_watch_interrupted() {
                     return Err(watch_error);
                 }
                 match finalized_inclusion_outcome(&client, &signed).await {
@@ -494,19 +507,6 @@ async fn watch_until_included(
     )))
 }
 
-/// Whether the watch died without learning the transaction's fate: progress
-/// updates stopped (for example `chainHead_follow` emitted `stop`), as
-/// opposed to the node definitively reporting the transaction invalid or
-/// dropped.
-fn is_watch_interrupted(error: &BulletinSubmitError) -> bool {
-    match error {
-        BulletinSubmitError::Subxt(error) => {
-            matches!(error.as_ref(), subxt::Error::TransactionProgressError(_))
-        }
-        _ => false,
-    }
-}
-
 /// Look for the already-broadcast transaction in the next few finalized
 /// blocks after an interrupted watch and classify its dispatch outcome from
 /// the inclusion block's events.
@@ -514,6 +514,12 @@ fn is_watch_interrupted(error: &BulletinSubmitError) -> bool {
 /// `None` means the transaction was not seen (or the scan itself failed);
 /// the caller keeps the interrupted-watch error and its retry semantics. A
 /// found transaction always yields a definitive outcome, never a retry.
+///
+/// Coverage is bounded by the `chainHead` backend: header/body lookups only
+/// work for blocks pinned by the follow subscription, so the scan sees the
+/// subscription's initial finalized set plus the next few finalized blocks.
+/// An inclusion block that finalized and was superseded before the follow
+/// (re)started is unreachable and the transaction is treated as not seen.
 async fn finalized_inclusion_outcome(
     client: &OnlineClient<SubstrateConfig>,
     signed: &SignedStore,
