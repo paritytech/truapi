@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use parity_scale_codec::Encode;
-use tracing::{debug, instrument, trace, warn};
+use tracing::{debug, instrument, warn};
 use truapi::{CallContext, latest as api};
 use truapi_platform::{
     CreateTransactionReview, ResourceAllocationReview, SignPayloadReview, SignRawReview,
@@ -231,31 +231,16 @@ async fn serve_session(
             for message in &incoming.messages {
                 let cli_summary = format!(
                     "Incoming SSO request · {}\nstatement_request_id={}\nremote_message_id={}",
-                    remote_message_name(&message.data),
-                    incoming.request_id,
-                    message.message_id
+                    message, incoming.request_id, message.message_id
                 );
                 tracing::event!(
                     target: "truapi_server::sso_transcript",
-                    tracing::Level::INFO,
+                    tracing::Level::DEBUG,
                     cli_summary = cli_summary.as_str(),
                     cli_event = "request_received",
-                    request = remote_message_name(&message.data),
+                    request = %message,
                     statement_request_id = %incoming.request_id,
                     remote_message_id = %message.message_id,
-                    remote_message = remote_message_name(&message.data),
-                );
-                debug!(
-                    statement_request_id = %incoming.request_id,
-                    remote_message_id = %message.message_id,
-                    remote_message = ?message.data,
-                    "decoded SSO request"
-                );
-                trace!(
-                    statement_request_id = %incoming.request_id,
-                    remote_message_id = %message.message_id,
-                    remote_message = ?message.data,
-                    "received SSO message"
                 );
             }
             if !served_request_ids.insert(incoming.request_id.clone()) {
@@ -293,7 +278,7 @@ async fn serve_request(
             debug!("pairing host disconnected the SSO session");
             return Ok(Some(ResponderExit::PeerDisconnected));
         }
-        let request_name = remote_v1_message_name(&request);
+        let request_name = request.to_string();
         let responding_to = message.message_id.clone();
         let started = Instant::now();
         let Some(answer) =
@@ -306,22 +291,6 @@ async fn serve_request(
         let response_result = answer
             .response_result
             .unwrap_or_else(|| remote_response_result(&response.data));
-        debug!(
-            statement_request_id = %incoming.request_id,
-            responding_to = %responding_to,
-            %response_message_id,
-            response = remote_message_name(&response.data),
-            outcome = response_result.outcome,
-            reason = response_result.reason.as_deref().unwrap_or_default(),
-            "prepared SSO response"
-        );
-        trace!(
-            statement_request_id = %incoming.request_id,
-            responding_to = %responding_to,
-            %response_message_id,
-            response = ?response.data,
-            "prepared SSO response payload"
-        );
         let statement_request_id = format!("resp:{}", response.message_id);
         let statement = build_outgoing_request_statement(
             session,
@@ -338,7 +307,7 @@ async fn serve_request(
             Ok(()) => {
                 let cli_summary = response_cli_summary(
                     "SSO response sent",
-                    request_name,
+                    &request_name,
                     &incoming.request_id,
                     &responding_to,
                     &response_message_id,
@@ -347,10 +316,10 @@ async fn serve_request(
                 );
                 tracing::event!(
                     target: "truapi_server::sso_transcript",
-                    tracing::Level::INFO,
+                    tracing::Level::DEBUG,
                     cli_summary = cli_summary.as_str(),
                     cli_event = "response_sent",
-                    request = request_name,
+                    request = request_name.as_str(),
                     statement_request_id = %incoming.request_id,
                     responding_to = %responding_to,
                     %response_message_id,
@@ -366,7 +335,7 @@ async fn serve_request(
                 };
                 let cli_summary = response_cli_summary(
                     "SSO response failed",
-                    request_name,
+                    &request_name,
                     &incoming.request_id,
                     &responding_to,
                     &response_message_id,
@@ -378,7 +347,7 @@ async fn serve_request(
                     tracing::Level::WARN,
                     cli_summary = cli_summary.as_str(),
                     cli_event = "response_failed",
-                    request = request_name,
+                    request = request_name.as_str(),
                     statement_request_id = %incoming.request_id,
                     responding_to = %responding_to,
                     %response_message_id,
@@ -391,35 +360,6 @@ async fn serve_request(
         }
     }
     Ok(None)
-}
-
-fn remote_message_name(message: &RemoteMessageData) -> &'static str {
-    match message {
-        RemoteMessageData::V1(message) => remote_v1_message_name(message),
-    }
-}
-
-fn remote_v1_message_name(message: &v1::RemoteMessage) -> &'static str {
-    match message {
-        v1::RemoteMessage::Disconnected => "disconnected",
-        v1::RemoteMessage::SignRequest(_) => "sign_request",
-        v1::RemoteMessage::SignResponse(_) => "sign_response",
-        v1::RemoteMessage::RingVrfAliasRequest(_) => "get_account_alias",
-        v1::RemoteMessage::RingVrfAliasResponse(_) => "get_account_alias_response",
-        v1::RemoteMessage::ResourceAllocationRequest(_) => "resource_allocation",
-        v1::RemoteMessage::ResourceAllocationResponse(_) => "resource_allocation_response",
-        v1::RemoteMessage::CreateTransactionRequest(_) => "create_transaction",
-        v1::RemoteMessage::CreateTransactionResponse(_) => "create_transaction_response",
-        v1::RemoteMessage::CreateTransactionLegacyRequest(_) => "create_transaction_legacy",
-        v1::RemoteMessage::SignRawLegacyRequest(_) => "sign_raw_legacy",
-        v1::RemoteMessage::SignRawLegacyResponse(_) => "sign_raw_legacy_response",
-        v1::RemoteMessage::RingVrfProofRequest(_) => "create_account_proof",
-        v1::RemoteMessage::RingVrfProofResponse(_) => "create_account_proof_response",
-        v1::RemoteMessage::StatementStoreProductSignRequest(_) => "statement_store_product_sign",
-        v1::RemoteMessage::StatementStoreProductSignResponse(_) => {
-            "statement_store_product_sign_response"
-        }
-    }
 }
 
 struct ResponseResult {
@@ -439,9 +379,6 @@ struct ResourceAllocationAnswer {
 
 fn remote_response_result(message: &RemoteMessageData) -> ResponseResult {
     let RemoteMessageData::V1(message) = message;
-    if let v1::RemoteMessage::ResourceAllocationResponse(response) = message {
-        return resource_allocation_payload_result(&response.payload, &[]);
-    }
     let error = match message {
         v1::RemoteMessage::SignResponse(response) => response.payload.as_ref().err().cloned(),
         v1::RemoteMessage::RingVrfAliasResponse(response) => {
@@ -450,7 +387,9 @@ fn remote_response_result(message: &RemoteMessageData) -> ResponseResult {
         v1::RemoteMessage::RingVrfProofResponse(response) => {
             response.payload.as_ref().err().map(ring_vrf_error_reason)
         }
-        v1::RemoteMessage::ResourceAllocationResponse(_) => unreachable!(),
+        v1::RemoteMessage::ResourceAllocationResponse(response) => {
+            return resource_allocation_payload_result(&response.payload, &[]);
+        }
         v1::RemoteMessage::CreateTransactionResponse(response) => {
             response.signed_transaction.as_ref().err().cloned()
         }
@@ -1417,6 +1356,27 @@ mod tests {
             Some(
                 "Requested resource is not available: timed out waiting for Bulletin authorization"
             )
+        );
+    }
+
+    #[test]
+    fn response_summary_classifies_resource_allocation_batches() {
+        let response = RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(
+            ResourceAllocationResponse {
+                responding_to: "allocation-1".to_string(),
+                payload: Ok(vec![
+                    SsoAllocationOutcome::Rejected,
+                    SsoAllocationOutcome::NotAvailable,
+                ]),
+            },
+        ));
+
+        let result = remote_response_result(&response);
+
+        assert_eq!(result.outcome, "rejected");
+        assert_eq!(
+            result.reason.as_deref(),
+            Some("No resources allocated; 1 rejected; 1 unavailable")
         );
     }
 

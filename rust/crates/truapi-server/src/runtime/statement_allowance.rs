@@ -6,7 +6,6 @@
 //! resulting unsigned General (v5) extrinsic. Native only (needs the
 //! `verifiable` prover and live chain reads).
 
-pub mod dynamic;
 pub mod extension;
 pub mod extrinsic;
 pub mod proof;
@@ -17,7 +16,7 @@ pub mod slot;
 use std::time::{Duration, Instant};
 
 use futures::FutureExt;
-use parity_scale_codec::Decode;
+use parity_scale_codec::{Decode, Encode};
 use serde_json::{Value, json};
 use sp_crypto_hashing::twox_128;
 use tracing::{debug, warn};
@@ -157,6 +156,11 @@ pub struct BulletinAllowanceInfo {
     pub expires_in: u32,
     /// Block at which this allowance snapshot was fetched.
     pub fetched_at: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+enum BulletinAuthorizationScope {
+    Account([u8; 32]),
 }
 
 impl BulletinAllowanceInfo {
@@ -408,9 +412,7 @@ fn authorization_refreshed(
 
 /// `TransactionStorage.Authorizations[AuthorizationScope::Account(target)]`.
 fn bulletin_authorization_key(target: &[u8; 32]) -> Vec<u8> {
-    let mut scope = Vec::with_capacity(1 + 32);
-    scope.push(0x00);
-    scope.extend_from_slice(target);
+    let scope = BulletinAuthorizationScope::Account(*target).encode();
     [
         twox_128(b"TransactionStorage").as_slice(),
         twox_128(b"Authorizations").as_slice(),
@@ -530,12 +532,22 @@ mod tests {
         assert_eq!(classified, vec![true, true, false, false]);
     }
 
+    #[test]
+    fn bulletin_account_scope_matches_runtime_enum_codec() {
+        let scope = BulletinAuthorizationScope::Account([0x42; 32]);
+        let encoded = scope.encode();
+
+        assert_eq!(encoded, [vec![0x00], vec![0x42; 32]].concat());
+        assert_eq!(
+            BulletinAuthorizationScope::decode(&mut encoded.as_slice()).unwrap(),
+            scope
+        );
+    }
+
     /// `StmtStoreAllowanceEntry { account_id, seq: 0, since: 0 }` as a scripted
     /// JSON storage result.
     fn slot_entry(account: [u8; 32]) -> String {
-        let mut entry = account.to_vec();
-        entry.extend_from_slice(&0u32.to_le_bytes());
-        entry.extend_from_slice(&0u64.to_le_bytes());
+        let entry = (account, 0u32, 0u64).encode();
         format!(r#""0x{}""#, hex::encode(entry))
     }
 

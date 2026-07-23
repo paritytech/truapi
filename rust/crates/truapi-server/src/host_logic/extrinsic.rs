@@ -11,7 +11,7 @@ use schnorrkel::{PublicKey, SecretKey};
 use subxt::config::substrate::SubstrateConfig;
 use subxt::tx::Signer;
 use subxt::utils::{AccountId32, MultiAddress, MultiSignature};
-use truapi::v01;
+use truapi::latest::TxPayloadExtension;
 
 use crate::host_logic::product_account::SR25519_SIGNING_CONTEXT;
 
@@ -78,7 +78,7 @@ impl Signer<SubstrateConfig> for Sr25519Signer {
 ///
 /// Note the order differs from the extrinsic body (which puts `extra` before
 /// the call): the call comes first here, extras next, implicits last.
-fn v4_signer_payload(call_data: &[u8], extensions: &[v01::TxPayloadExtension]) -> Vec<u8> {
+fn v4_signer_payload(call_data: &[u8], extensions: &[TxPayloadExtension]) -> Vec<u8> {
     let mut payload = Vec::with_capacity(call_data.len());
     payload.extend_from_slice(call_data);
     for ext in extensions {
@@ -115,7 +115,7 @@ fn v4_signer_payload(call_data: &[u8], extensions: &[v01::TxPayloadExtension]) -
 pub(crate) fn build_signed_extrinsic_v4(
     signer: &Sr25519Signer,
     call_data: &[u8],
-    extensions: &[v01::TxPayloadExtension],
+    extensions: &[TxPayloadExtension],
 ) -> Vec<u8> {
     let signature = signer.sign(&v4_signer_payload(call_data, extensions));
     build_signed_extrinsic_v4_with_signature(signer.account_id(), &signature, call_data, extensions)
@@ -129,7 +129,7 @@ pub(crate) fn build_signed_extrinsic_v4_with_signature(
     account_id: AccountId32,
     signature: &MultiSignature,
     call_data: &[u8],
-    extensions: &[v01::TxPayloadExtension],
+    extensions: &[TxPayloadExtension],
 ) -> Vec<u8> {
     /// `0b1000_0000 | 4`: the "signed" bit plus extrinsic format version 4.
     const EXTRINSIC_V4_SIGNED: u8 = 0x84;
@@ -275,8 +275,8 @@ pub(crate) mod tests {
         Sr25519Signer::from_keypair(&keypair)
     }
 
-    fn ext(id: &str, extra: &[u8], additional: &[u8]) -> v01::TxPayloadExtension {
-        v01::TxPayloadExtension {
+    fn ext(id: &str, extra: &[u8], additional: &[u8]) -> TxPayloadExtension {
+        TxPayloadExtension {
             id: id.to_string(),
             extra: extra.to_vec(),
             additional_signed: additional.to_vec(),

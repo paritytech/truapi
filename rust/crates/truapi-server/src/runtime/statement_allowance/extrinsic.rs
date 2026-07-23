@@ -4,7 +4,7 @@
 //! metadata, so a re-indexed runtime fails loudly instead of encoding a wrong
 //! call.
 
-use parity_scale_codec::{Compact, Encode};
+use parity_scale_codec::{Decode, Encode};
 
 use super::extension::{ChainState, Metadata};
 
@@ -14,6 +14,35 @@ const GENERAL_V5_PREAMBLE: u8 = 0x45;
 const EXTENSION_VERSION: u8 = 0x00;
 /// `Option::Some` discriminant for the `AsResources` extension `extra`.
 const OPTION_SOME: u8 = 0x01;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+struct SetStatementStoreAccountCallArgs {
+    period: u32,
+    seq: u32,
+    target: [u8; 32],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+struct ClaimLongTermStorageCallArgs {
+    period: u32,
+    counter: u8,
+    account_id: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+struct RegisterStatementStoreAllowanceInfo {
+    proof: Vec<u8>,
+    ring_index: u32,
+    personhood: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+struct ClaimLongTermStorageInfo {
+    proof: Vec<u8>,
+    ring_index: u32,
+    revision: u32,
+    personhood: u8,
+}
 
 /// Encode `Resources.set_statement_store_account(period, seq, target)`:
 /// `pallet ‖ call ‖ period_u32LE ‖ seq_u32LE ‖ target[32]`, with the dispatch
@@ -27,9 +56,12 @@ pub fn build_set_statement_store_account_call(
     let indices = metadata.call_indices("Resources", "set_statement_store_account")?;
     let mut call = Vec::with_capacity(2 + 4 + 4 + 32);
     call.extend_from_slice(&indices);
-    call.extend_from_slice(&period.to_le_bytes());
-    call.extend_from_slice(&seq.to_le_bytes());
-    call.extend_from_slice(target);
+    SetStatementStoreAccountCallArgs {
+        period,
+        seq,
+        target: *target,
+    }
+    .encode_to(&mut call);
     Ok(call)
 }
 
@@ -45,9 +77,12 @@ pub fn build_claim_long_term_storage_call(
     let indices = metadata.call_indices("Resources", "claim_long_term_storage")?;
     let mut call = Vec::with_capacity(2 + 4 + 1 + 32);
     call.extend_from_slice(&indices);
-    call.extend_from_slice(&period.to_le_bytes());
-    call.push(counter);
-    call.extend_from_slice(account_id);
+    ClaimLongTermStorageCallArgs {
+        period,
+        counter,
+        account_id: *account_id,
+    }
+    .encode_to(&mut call);
     Ok(call)
 }
 
@@ -64,10 +99,12 @@ pub fn build_as_resources_extra(
     let mut extra = Vec::with_capacity(2 + 2 + proof.len() + 4 + 1);
     extra.push(OPTION_SOME);
     extra.push(info_index);
-    extra.extend_from_slice(&Compact(proof.len() as u32).encode());
-    extra.extend_from_slice(proof);
-    extra.extend_from_slice(&ring_index.to_le_bytes());
-    extra.push(lite_people);
+    RegisterStatementStoreAllowanceInfo {
+        proof: proof.to_vec(),
+        ring_index,
+        personhood: lite_people,
+    }
+    .encode_to(&mut extra);
     Ok(extra)
 }
 
@@ -85,11 +122,13 @@ pub fn build_long_term_storage_extra(
     let mut extra = Vec::with_capacity(2 + 2 + proof.len() + 4 + 4 + 1);
     extra.push(OPTION_SOME);
     extra.push(info_index);
-    extra.extend_from_slice(&Compact(proof.len() as u32).encode());
-    extra.extend_from_slice(proof);
-    extra.extend_from_slice(&ring_index.to_le_bytes());
-    extra.extend_from_slice(&revision.to_le_bytes());
-    extra.push(lite_people);
+    ClaimLongTermStorageInfo {
+        proof: proof.to_vec(),
+        ring_index,
+        revision,
+        personhood: lite_people,
+    }
+    .encode_to(&mut extra);
     Ok(extra)
 }
 
@@ -116,14 +155,13 @@ pub fn build_unsigned_extrinsic(
     }
     body.extend_from_slice(call_data);
 
-    let mut extrinsic = Compact(body.len() as u32).encode();
-    extrinsic.extend_from_slice(&body);
-    Ok(extrinsic)
+    Ok(body.encode())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use parity_scale_codec::Compact;
 
     const FIXTURE: &[u8] = include_bytes!("../../../tests/fixtures/paseo-next-v2-metadata.scale");
 
@@ -150,6 +188,14 @@ mod tests {
             ]
             .concat()
         );
+        assert_eq!(
+            SetStatementStoreAccountCallArgs::decode(&mut &call[2..]).unwrap(),
+            SetStatementStoreAccountCallArgs {
+                period: 7,
+                seq: 0,
+                target: [0; 32],
+            }
+        );
     }
 
     #[test]
@@ -165,6 +211,14 @@ mod tests {
                 vec![0u8; 32],
             ]
             .concat()
+        );
+        assert_eq!(
+            ClaimLongTermStorageCallArgs::decode(&mut &call[2..]).unwrap(),
+            ClaimLongTermStorageCallArgs {
+                period: 7,
+                counter: 3,
+                account_id: [0; 32],
+            }
         );
     }
 
@@ -184,6 +238,14 @@ mod tests {
                 vec![0x01],
             ]
             .concat()
+        );
+        assert_eq!(
+            RegisterStatementStoreAllowanceInfo::decode(&mut &extra[2..]).unwrap(),
+            RegisterStatementStoreAllowanceInfo {
+                proof: vec![0xEE; 785],
+                ring_index: 3,
+                personhood: 1,
+            }
         );
     }
 
@@ -205,6 +267,15 @@ mod tests {
                 vec![0x01],
             ]
             .concat()
+        );
+        assert_eq!(
+            ClaimLongTermStorageInfo::decode(&mut &extra[2..]).unwrap(),
+            ClaimLongTermStorageInfo {
+                proof: vec![0xEE; 785],
+                ring_index: 3,
+                revision: 9,
+                personhood: 1,
+            }
         );
     }
 

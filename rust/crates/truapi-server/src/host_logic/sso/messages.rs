@@ -72,7 +72,8 @@ impl TryFrom<u8> for SsoResponseCode {
 }
 
 /// Top-level remote message sent over the encrypted SSO channel.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, derive_more::Display)]
+#[display("{data}")]
 pub struct RemoteMessage {
     /// Correlation id used to match signing-host responses to pairing-host requests.
     pub message_id: String,
@@ -81,9 +82,10 @@ pub struct RemoteMessage {
 }
 
 /// Versioned remote message body.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, derive_more::Display)]
 pub enum RemoteMessageData {
     /// Version 1 of the remote message catalog.
+    #[display("{_0}")]
     V1(v1::RemoteMessage),
 }
 
@@ -1044,6 +1046,7 @@ mod tests {
         };
 
         assert_eq!(message.encode(), vec![0, 0, 0]);
+        assert_eq!(message.to_string(), "disconnected");
     }
 
     #[test]

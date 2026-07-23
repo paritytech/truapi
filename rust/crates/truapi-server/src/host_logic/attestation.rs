@@ -10,7 +10,7 @@
 //! parity. The registered account is the account whose secret signs here; the
 //! paired host resolves the username from `Resources.Consumers[that account]`.
 
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use verifiable::GenerateVerifiable;
 use verifiable::ring::bandersnatch::BandersnatchVrfVerifiable;
 
@@ -23,6 +23,19 @@ use crate::host_logic::sso::pairing::derive_p256_keypair_from_entropy;
 const REGISTER_PREFIX: &[u8] = b"pop:people-lite:register using";
 /// Domain label for the P-256 identifier key advertised to the backend.
 const IDENTIFIER_KEY_LABEL: &[u8] = b"chat-encryption";
+
+/// SCALE payload signed for a lite consumer registration.
+///
+/// This mirrors the People runtime's tuple of account, verifier, identifier
+/// key, username base, and optional reserved username.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+struct ConsumerRegistrationSigningPayload {
+    account: [u8; 32],
+    verifier: [u8; 32],
+    identifier_key: [u8; 65],
+    username: Vec<u8>,
+    reserved_username: Option<Vec<u8>>,
+}
 
 /// Client-computed parameters for `POST /usernames`.
 pub struct LiteRegistration {
@@ -75,13 +88,14 @@ pub fn build_lite_registration(
         derive_p256_keypair_from_entropy(entropy, IDENTIFIER_KEY_LABEL)
             .map_err(|err| format!("identifier key derivation failed: {err}"))?;
 
-    // SCALE Tuple(Bytes(32), Bytes(32), Bytes(65), str, Option(Bytes())=None).
-    let mut consumer_message = Vec::new();
-    consumer_message.extend_from_slice(&candidate_public_key);
-    consumer_message.extend_from_slice(&verifier_account_id);
-    consumer_message.extend_from_slice(&identifier_key);
-    consumer_message.extend_from_slice(&username_base.encode());
-    consumer_message.push(0u8);
+    let consumer_message = ConsumerRegistrationSigningPayload {
+        account: candidate_public_key,
+        verifier: verifier_account_id,
+        identifier_key,
+        username: username_base.as_bytes().to_vec(),
+        reserved_username: None,
+    }
+    .encode();
     let consumer_registration_signature = candidate
         .secret
         .sign_simple(
@@ -152,6 +166,50 @@ mod tests {
                 &reg.ring_vrf_key
             ),
             "ring-VRF proof-of-ownership validates against the member key"
+        );
+
+        // Verify against the runtime tuple independently of the production
+        // payload struct so field-order or optional-field regressions fail.
+        let consumer_message = (
+            reg.candidate_public_key,
+            verifier,
+            reg.identifier_key,
+            b"headlesstester".as_slice(),
+            None::<Vec<u8>>,
+        )
+            .encode();
+        let sig = Signature::from_bytes(&reg.consumer_registration_signature).unwrap();
+        assert!(
+            public
+                .verify_simple(SR25519_SIGNING_CONTEXT, &consumer_message, &sig)
+                .is_ok(),
+            "consumer registration signature verifies against the runtime tuple"
+        );
+    }
+
+    #[test]
+    fn consumer_registration_payload_matches_runtime_tuple_codec() {
+        let payload = ConsumerRegistrationSigningPayload {
+            account: [0x11; 32],
+            verifier: [0x22; 32],
+            identifier_key: [0x04; 65],
+            username: b"headlesstester".to_vec(),
+            reserved_username: None,
+        };
+        let encoded = payload.encode();
+        let runtime_tuple = (
+            payload.account,
+            payload.verifier,
+            payload.identifier_key,
+            payload.username.as_slice(),
+            payload.reserved_username.as_ref(),
+        )
+            .encode();
+
+        assert_eq!(encoded, runtime_tuple);
+        assert_eq!(
+            ConsumerRegistrationSigningPayload::decode(&mut encoded.as_slice()).unwrap(),
+            payload
         );
     }
 

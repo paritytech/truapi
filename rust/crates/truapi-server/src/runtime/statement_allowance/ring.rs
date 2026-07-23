@@ -5,9 +5,9 @@
 //! current ring. Mirrors signing-bot `ring-proof.ts`.
 
 use parity_scale_codec::{Compact, Decode};
+use scale_decode::DecodeAsType;
 use sp_crypto_hashing::{blake2_128, twox_64, twox_128};
 
-use super::dynamic::{read_field_u32, read_field_variant_name};
 use super::extension::Metadata;
 use super::rpc::RpcClient;
 
@@ -15,6 +15,37 @@ use super::rpc::RpcClient;
 const LITE_PEOPLE_IDENTIFIER: &[u8; 32] = b"pop:polkadot.network/people-lite";
 /// Ring member public key length.
 const MEMBER_LEN: usize = 32;
+
+/// Fields read from `Members.Collections`.
+#[derive(Debug, PartialEq, Eq, DecodeAsType)]
+struct CollectionInfo {
+    ring_size: RingExponent,
+}
+
+/// Supported LitePeople ring domain sizes.
+#[derive(Debug, PartialEq, Eq, DecodeAsType)]
+enum RingExponent {
+    R2e9,
+    R2e10,
+    R2e14,
+}
+
+impl RingExponent {
+    /// Return the exponent represented by the runtime enum variant.
+    fn exponent(self) -> u8 {
+        match self {
+            Self::R2e9 => 9,
+            Self::R2e10 => 10,
+            Self::R2e14 => 14,
+        }
+    }
+}
+
+/// Fields read from `Members.Root`.
+#[derive(Debug, PartialEq, Eq, DecodeAsType)]
+struct RingRoot {
+    revision: u32,
+}
 
 /// On-chain LitePeople ring parameters for building a verifying proof.
 pub struct RingParams {
@@ -92,16 +123,6 @@ fn twox_64_concat(x: &[u8]) -> Vec<u8> {
     [twox_64(x).as_slice(), x].concat()
 }
 
-/// Map a `RingExponent` variant name to its exponent.
-fn ring_exponent_from_name(name: &str) -> Result<u8, String> {
-    match name {
-        "R2e9" => Ok(9),
-        "R2e10" => Ok(10),
-        "R2e14" => Ok(14),
-        other => Err(format!("unsupported RingExponent variant `{other}`")),
-    }
-}
-
 /// Read the current LitePeople ring index at the current best block
 /// (absent => 0).
 pub async fn read_current_ring_index(rpc: &RpcClient) -> Result<u32, String> {
@@ -145,9 +166,10 @@ pub async fn read_ring_exponent(
     let value_type = metadata
         .storage_value_type("Members", "Collections")
         .ok_or_else(|| "Members.Collections type not in metadata".to_string())?;
-    let variant =
-        read_field_variant_name(metadata.registry(), value_type, "ring_size", &collection)?;
-    ring_exponent_from_name(&variant)
+    let mut input = collection.as_slice();
+    CollectionInfo::decode_as_type(&mut input, value_type, metadata.registry())
+        .map(|collection| collection.ring_size.exponent())
+        .map_err(|err| format!("Members.Collections: {err}"))
 }
 
 /// Read the members of `ring_index`, sliced to the baked-in `included`
@@ -220,8 +242,10 @@ pub async fn read_ring_revision(
             let value_type = metadata
                 .storage_value_type("Members", "Root")
                 .ok_or_else(|| "Members.Root type not in metadata".to_string())?;
-            read_field_u32(metadata.registry(), value_type, "revision", &bytes)
-                .map_err(|e| format!("ring revision: {e}"))
+            let mut input = bytes.as_slice();
+            RingRoot::decode_as_type(&mut input, value_type, metadata.registry())
+                .map(|root| root.revision)
+                .map_err(|err| format!("ring revision: {err}"))
         }
         None => Ok(0),
     }
@@ -229,10 +253,77 @@ pub async fn read_ring_revision(
 
 #[cfg(test)]
 mod tests {
+    use parity_scale_codec::Encode;
+    use scale_info::TypeInfo;
     use subxt_rpcs::RpcClient as HostRpcClient;
 
     use super::super::rpc::testing::ScriptedRpc;
     use super::*;
+
+    fn decode_as<Source, Target>(source: Source) -> Target
+    where
+        Source: Encode + TypeInfo + 'static,
+        Target: DecodeAsType,
+    {
+        let mut registry = scale_info::Registry::new();
+        let type_id = registry
+            .register_type(&scale_info::meta_type::<Source>())
+            .id;
+        let registry: scale_info::PortableRegistry = registry.into();
+        let encoded = source.encode();
+        Target::decode_as_type(&mut encoded.as_slice(), type_id, &registry)
+            .expect("metadata-aware partial decode succeeds")
+    }
+
+    #[test]
+    fn ring_metadata_projections_ignore_unneeded_runtime_fields() {
+        #[derive(Encode, TypeInfo)]
+        enum SourceRingExponent {
+            R2e14,
+            R2e9,
+            R2e10,
+        }
+
+        #[derive(Encode, TypeInfo)]
+        struct SourceCollectionInfo {
+            owner: u8,
+            mode: u8,
+            ring_size: SourceRingExponent,
+            self_inclusion_delay: Option<u64>,
+        }
+
+        #[derive(Encode, TypeInfo)]
+        struct SourceRingRoot {
+            root: [u8; 4],
+            revision: u32,
+            intermediate: [u8; 8],
+        }
+
+        let collection: CollectionInfo = decode_as(SourceCollectionInfo {
+            owner: 7,
+            mode: 3,
+            ring_size: SourceRingExponent::R2e10,
+            self_inclusion_delay: Some(42),
+        });
+        let root: RingRoot = decode_as(SourceRingRoot {
+            root: [0xaa; 4],
+            revision: 12,
+            intermediate: [0xbb; 8],
+        });
+
+        assert_eq!(
+            collection,
+            CollectionInfo {
+                ring_size: RingExponent::R2e10,
+            }
+        );
+        assert_eq!(root, RingRoot { revision: 12 });
+
+        // Keep every source variant in the metadata so index order differs
+        // from the projection and variant-name decoding is exercised.
+        let _ = SourceRingExponent::R2e14;
+        let _ = SourceRingExponent::R2e9;
+    }
 
     #[test]
     fn member_reads_are_pinned_and_truncated_to_included() {

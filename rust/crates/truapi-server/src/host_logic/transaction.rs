@@ -7,6 +7,8 @@
 //! of being silently omitted. Preimages longer than 256 bytes are BLAKE2b-256
 //! hashed before signing (standard Substrate signed-payload rule).
 
+use parity_scale_codec::Encode;
+use sp_crypto_hashing::blake2_256;
 use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
 
 /// Preimages longer than this are hashed before signing.
@@ -42,7 +44,7 @@ pub(crate) fn extrinsic_payload_extensions(
                     let mut extra = payload.tip.clone();
                     match &payload.asset_id {
                         Some(asset_id) => extra.extend_from_slice(asset_id),
-                        None => extra.push(0),
+                        None => None::<()>.encode_to(&mut extra),
                     }
                     (extra, Vec::new())
                 }
@@ -51,15 +53,19 @@ pub(crate) fn extrinsic_payload_extensions(
                     let mode = u8::try_from(mode).map_err(|_| {
                         format!("CheckMetadataHash mode {mode} does not fit in a u8")
                     })?;
-                    let mut additional_signed = Vec::new();
-                    match &payload.metadata_hash {
-                        Some(hash) => {
-                            additional_signed.push(1);
-                            additional_signed.extend_from_slice(hash);
-                        }
-                        None => additional_signed.push(0),
-                    }
-                    (vec![mode], additional_signed)
+                    let metadata_hash = payload
+                        .metadata_hash
+                        .as_deref()
+                        .map(|hash| {
+                            <[u8; 32]>::try_from(hash).map_err(|_| {
+                                format!(
+                                    "CheckMetadataHash metadata hash is {} bytes, expected 32",
+                                    hash.len()
+                                )
+                            })
+                        })
+                        .transpose()?;
+                    (mode.encode(), metadata_hash.encode())
                 }
                 unsupported => {
                     return Err(format!(
@@ -96,11 +102,11 @@ pub fn extrinsic_payload_preimage(payload: &HostSignPayloadData) -> Result<Vec<u
 
 fn hash_large_preimage(preimage: Vec<u8>) -> Vec<u8> {
     if preimage.len() > MAX_SIGNED_PREIMAGE_LEN {
-        blake2b_simd::Params::new()
-            .hash_length(32)
-            .hash(&preimage)
-            .as_bytes()
-            .to_vec()
+        // This is the same primitive and threshold used by Subxt's
+        // `frame_decode::extrinsics::encode_v4_signer_payload`. That builder
+        // itself is not applicable here because this API receives pre-encoded
+        // fields without runtime metadata or structured call arguments.
+        blake2_256(&preimage).to_vec()
     } else {
         preimage
     }
@@ -261,6 +267,18 @@ mod tests {
         assert_eq!(
             extrinsic_payload_preimage(&payload),
             Err("CheckMetadataHash mode 256 does not fit in a u8".to_string())
+        );
+    }
+
+    #[test]
+    fn payload_preimage_rejects_invalid_metadata_hash_length() {
+        let mut payload = payload();
+        payload.signed_extensions = vec!["CheckMetadataHash".to_string()];
+        payload.metadata_hash = Some(vec![0xBB; 31]);
+
+        assert_eq!(
+            extrinsic_payload_preimage(&payload),
+            Err("CheckMetadataHash metadata hash is 31 bytes, expected 32".to_string())
         );
     }
 

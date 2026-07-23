@@ -6,6 +6,7 @@
 //! derived from OUR bandersnatch entropy in that slot context. Mirrors
 //! signing-bot `allowance.ts` / `allowance-slots.ts`.
 
+use parity_scale_codec::{Decode, Encode};
 use sp_crypto_hashing::twox_128;
 use verifiable::GenerateVerifiable;
 use verifiable::ring::bandersnatch::BandersnatchVrfVerifiable;
@@ -18,6 +19,13 @@ use super::rpc::RpcClient;
 pub const STATEMENT_STORE_PERIOD_SECONDS: u64 = 86_400;
 /// Bulletin long-term-storage claim context prefix.
 const LONG_TERM_STORAGE_CONTEXT_PREFIX: &[u8] = b"pop:polkadot.net/rsc-lts";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+struct StatementStoreAllowanceEntry {
+    account_id: [u8; 32],
+    seq: u32,
+    since: u64,
+}
 
 /// The current allowance period for `now_seconds`.
 pub fn current_period(now_seconds: u64) -> u32 {
@@ -135,7 +143,10 @@ pub fn long_term_storage_period_duration(metadata: &Metadata) -> Result<u32, Str
 /// The account id occupying a slot entry, if the storage value is present.
 /// Entry = `account_id(32) ‖ seq(u32 LE) ‖ since(u64 LE)`.
 fn entry_account_id(bytes: &[u8]) -> Option<[u8; 32]> {
-    bytes.get(..32).map(|s| s.try_into().expect("32 bytes"))
+    let mut input = bytes;
+    let entry = StatementStoreAllowanceEntry::decode(&mut input).ok()?;
+    let _ = (entry.seq, entry.since);
+    Some(entry.account_id)
 }
 
 /// The account holding our alias slot `(period, seq)`, read pinned to
@@ -262,5 +273,27 @@ mod tests {
             current_long_term_storage_period(1_209_600 * 20 + 5, 1_209_600).unwrap(),
             20,
         );
+    }
+
+    #[test]
+    fn allowance_entry_matches_runtime_field_codec() {
+        let entry = StatementStoreAllowanceEntry {
+            account_id: [0x42; 32],
+            seq: 7,
+            since: 99,
+        };
+        let encoded = entry.encode();
+
+        assert_eq!(encoded, (entry.account_id, entry.seq, entry.since).encode());
+        assert_eq!(entry_account_id(&encoded), Some(entry.account_id));
+        assert_eq!(
+            StatementStoreAllowanceEntry::decode(&mut encoded.as_slice()).unwrap(),
+            entry
+        );
+    }
+
+    #[test]
+    fn truncated_allowance_entry_has_no_account() {
+        assert_eq!(entry_account_id(&[0x42; 32]), None);
     }
 }
