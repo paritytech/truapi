@@ -20,7 +20,7 @@ use futures::FutureExt;
 use parity_scale_codec::Decode;
 use serde_json::{Value, json};
 use sp_crypto_hashing::twox_128;
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use extension::{ChainState, Metadata};
 use ring::RingParams;
@@ -296,7 +296,7 @@ pub async fn claim_long_term_storage(
         )?;
         let extrinsic =
             extrinsic::build_unsigned_extrinsic(metadata, chain_state, &call, &as_resources_extra)?;
-        info!(
+        debug!(
             period,
             counter,
             ring_index = ring.ring_index,

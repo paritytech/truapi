@@ -62,7 +62,7 @@ use authority::{
 use futures::{FutureExt, StreamExt, pin_mut};
 #[cfg(test)]
 use parity_scale_codec::Encode;
-use tracing::{info, instrument, warn};
+use tracing::{debug, instrument, warn};
 use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
     Preimage, ResourceAllocation, Signing, System, Theme,
@@ -1127,7 +1127,7 @@ impl Signing for ProductRuntimeHost {
         cx: &CallContext,
         request: HostSignPayloadRequest,
     ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
-        info!("sign_payload: requesting signing-host signature");
+        debug!("sign_payload: requesting signing-host signature");
         let HostSignPayloadRequest::V1(mut inner) = request;
         inner.account = Self::normalize_product_account_id(inner.account).map_err(|()| {
             CallError::Domain(HostSignPayloadError::V1(
@@ -1180,7 +1180,7 @@ impl Signing for ProductRuntimeHost {
         cx: &CallContext,
         request: HostSignRawRequest,
     ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
-        info!("sign_raw: requesting signing-host signature");
+        debug!("sign_raw: requesting signing-host signature");
         let HostSignRawRequest::V1(mut inner) = request;
         inner.account = Self::normalize_product_account_id(inner.account).map_err(|()| {
             CallError::Domain(HostSignRawError::V1(
@@ -1233,7 +1233,7 @@ impl Signing for ProductRuntimeHost {
         cx: &CallContext,
         request: HostCreateTransactionRequest,
     ) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>> {
-        info!("create_transaction: requesting signing-host signature");
+        debug!("create_transaction: requesting signing-host signature");
         let HostCreateTransactionRequest::V1(mut inner) = request;
         inner.signer = Self::normalize_product_account_id(inner.signer).map_err(|()| {
             CallError::Domain(HostCreateTransactionError::V1(

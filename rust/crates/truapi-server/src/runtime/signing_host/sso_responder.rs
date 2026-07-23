@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use parity_scale_codec::Encode;
-use tracing::{debug, info, instrument, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 use truapi::{CallContext, latest as api};
 use truapi_platform::{
     CreateTransactionReview, SignPayloadReview, SignRawReview, UserConfirmationReview,
@@ -131,7 +131,7 @@ pub(crate) async fn respond_to_pairing(
         .statement_store
         .submit(statement, "sso-responder handshake")
         .await?;
-    info!("answered pairing handshake, serving SSO session");
+    debug!("answered pairing handshake, serving SSO session");
 
     serve_session(services, signing_host, session).await
 }
@@ -251,7 +251,7 @@ async fn serve_request(
     for message in incoming.messages {
         let RemoteMessageData::V1(request) = message.data;
         if matches!(request, v1::RemoteMessage::Disconnected) {
-            info!("pairing host disconnected the SSO session");
+            debug!("pairing host disconnected the SSO session");
             return Ok(Some(ResponderExit::PeerDisconnected));
         }
         let request_name = remote_v1_message_name(&request);
@@ -809,7 +809,7 @@ pub(super) async fn allocate_statement_store_allowance(
             seq,
             ring_index,
         } => {
-            info!(
+            debug!(
                 %product_id,
                 %block_hash,
                 seq,
@@ -818,7 +818,7 @@ pub(super) async fn allocate_statement_store_allowance(
             );
         }
         statement_allowance::RegistrationOutcome::AlreadyAllocated { seq } => {
-            info!(
+            debug!(
                 %product_id,
                 seq,
                 "statement-store allowance already allocated"
@@ -895,7 +895,7 @@ pub(super) async fn allocate_bulletin_allowance(
         counter,
         ring_index,
     } = outcome;
-    info!(
+    debug!(
         %product_id,
         %block_hash,
         counter,
@@ -910,7 +910,7 @@ pub(super) async fn allocate_bulletin_allowance(
         BULLETIN_AUTHORIZATION_WAIT,
     )
     .await?;
-    info!(
+    debug!(
         %product_id,
         remained_size = authorization.remained_size,
         remained_transactions = authorization.remained_transactions,

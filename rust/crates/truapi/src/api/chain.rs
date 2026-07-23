@@ -362,12 +362,22 @@ pub trait Chain: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// const result = await truapi.chain.stopTransaction({
+    /// // Start a broadcast, then stop it using the returned operation id.
+    /// const broadcast = await truapi.chain.broadcastTransaction({
     ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///   operationId: "op-id",
+    ///   transaction: "0x",
     /// });
-    /// assert(result.isOk(), "stopTransaction failed:", result);
-    /// console.log("transaction broadcast stopped");
+    /// assert(broadcast.isOk(), "broadcastTransaction failed:", broadcast);
+    /// if (broadcast.value.operationId) {
+    ///   const result = await truapi.chain.stopTransaction({
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///     operationId: broadcast.value.operationId,
+    ///   });
+    ///   assert(result.isOk(), "stopTransaction failed:", result);
+    ///   console.log("transaction broadcast stopped");
+    /// } else {
+    ///   console.log("broadcast completed before a stop operation was created");
+    /// }
     /// ```
     #[wire(request_id = 102)]
     async fn stop_transaction(

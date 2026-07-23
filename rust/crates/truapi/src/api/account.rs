@@ -125,10 +125,13 @@ pub trait Account: Send + Sync {
 
     /// List non-product accounts the user owns.
     ///
+    /// Current hosts do not expose non-product accounts, so the list is empty.
+    ///
     /// ```ts
     /// const result = await truapi.account.getLegacyAccounts();
     /// assert(result.isOk(), "getLegacyAccounts failed:", result);
-    /// console.log("legacy accounts:", result.value);
+    /// assert(result.value.accounts.length === 0, "unexpected legacy accounts:", result.value);
+    /// console.log("legacy accounts:", result.value.accounts);
     /// ```
     #[wire(request_id = 28)]
     async fn get_legacy_accounts(
