@@ -1,3 +1,4 @@
+/// UI tree types for host-rendered custom chat messages.
 pub mod custom_renderer;
 pub use custom_renderer::*;
 
@@ -17,7 +18,9 @@ pub struct HostChatCreateRoomRequest {
 /// Whether the room was newly created or already existed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ChatRoomRegistrationStatus {
+    /// The room was created.
     New,
+    /// A room with this ID already existed.
     Exists,
 }
 
@@ -34,7 +37,10 @@ pub enum HostChatCreateRoomError {
     /// Not allowed.
     PermissionDenied,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable reason.
+        reason: String,
+    },
 }
 
 /// Request to register a chat bot.
@@ -51,7 +57,9 @@ pub struct HostChatRegisterBotRequest {
 /// Whether the bot was newly registered or already existed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ChatBotRegistrationStatus {
+    /// The bot was registered.
     New,
+    /// A bot with this ID already existed.
     Exists,
 }
 
@@ -68,13 +76,18 @@ pub enum HostChatRegisterBotError {
     /// Not allowed.
     PermissionDenied,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable reason.
+        reason: String,
+    },
 }
 
 /// How the product participates in a chat room.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ChatRoomParticipation {
+    /// The product owns and hosts the room.
     RoomHost,
+    /// The product participates as a registered bot.
     Bot,
 }
 
@@ -99,7 +112,9 @@ pub struct ChatAction {
 /// Layout for action buttons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ChatActionLayout {
+    /// Buttons stacked vertically.
     Column,
+    /// Buttons arranged in a grid.
     Grid,
 }
 
@@ -207,7 +222,10 @@ pub enum HostChatPostMessageError {
     /// Message exceeded size limit.
     MessageTooLarge,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable reason.
+        reason: String,
+    },
 }
 
 /// Payload when a user clicks an action button.

@@ -86,7 +86,9 @@ pub struct HostAccountCreateProofRequest {
 /// User's authentication state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum HostAccountConnectionStatusSubscribeItem {
+    /// User is not logged in to the host.
     Disconnected,
+    /// User is logged in to the host.
     Connected,
 }
 
@@ -112,7 +114,10 @@ pub struct HostRequestLoginRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostRequestLoginError {
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Error returned when credential/account requests fail.
@@ -125,7 +130,10 @@ pub enum HostAccountGetError {
     /// Domain identifier is invalid.
     DomainNotValid,
     /// Catch-all error with reason.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Error returned when ring VRF proof creation fails.
@@ -138,7 +146,10 @@ pub enum HostAccountCreateProofError {
     /// User or host rejected.
     Rejected,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Error returned when contextual alias derivation fails.
@@ -151,7 +162,10 @@ pub enum HostAccountGetAliasError {
     /// User or host rejected.
     Rejected,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Request to retrieve a product-scoped account.
@@ -183,7 +197,10 @@ pub enum HostGetUserIdError {
     /// User is not logged in.
     NotConnected,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Request to retrieve the contextual alias for a context and ring.

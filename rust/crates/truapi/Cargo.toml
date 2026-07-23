@@ -14,3 +14,6 @@ truapi-macros = { path = "../truapi-macros" }
 
 [features]
 default = []
+
+[lints]
+workspace = true
