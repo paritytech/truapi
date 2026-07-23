@@ -31,10 +31,14 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
   syscall traits and host-side runtime types live in `truapi-platform` and
   `truapi-server`, not in `truapi`. Any additions to `truapi` itself are limited
   to additive `Display` impls.
-- Outside the canonical `truapi` crate and its version-conversion impls, use
-  structs from `truapi::latest` for concrete protocol payload/error types.
-  Runtime crates should take envelopes from `truapi::versioned::*` and unwrap
-  them into latest payloads instead of spelling `truapi::v01::*` directly.
+- Treat concrete modules such as `truapi::v01` as implementation details of
+  the canonical `truapi` crate and its version-conversion impls. Everywhere
+  else, import concrete protocol payload and error types from `truapi::latest`.
+  This includes structs reused by host-internal APIs that are not exposed to
+  products; if such a type is missing, re-export it through `truapi::latest`
+  rather than importing a concrete protocol version. Runtime crates may use
+  `truapi::versioned::*` for wire envelopes, but should unwrap them into latest
+  payloads immediately.
 - `truapi-server` WASM artifacts live under
   `js/packages/truapi-host/dist/wasm/web/` and are gitignored.
   Build them locally with `make wasm` (rerun whenever

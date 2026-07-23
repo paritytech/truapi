@@ -195,7 +195,11 @@ export type PermissionAuthorizationRequest =
   /**
    * Product-scoped permission to disclose the user's primary identity.
    */
-  | { tag: "IdentityDisclosure"; value?: undefined };
+  | { tag: "IdentityDisclosure"; value?: undefined }
+  /**
+   * Product-scoped permission to access another product's account context.
+   */
+  | { tag: "AccountAccess"; value: { targetProductId: string } };
 
 /**
  * Authorization status for a permission request.
@@ -420,6 +424,9 @@ export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequ
         Device: HostDevicePermissionRequest,
         Remote: RemotePermissionRequest,
         IdentityDisclosure: S._void,
+        AccountAccess: S.Struct({ targetProductId: S.str }) as S.Codec<{
+          targetProductId: string;
+        }>,
       }),
   );
 
