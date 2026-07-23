@@ -460,6 +460,32 @@ pub const COIN_PAYMENT_LISTEN_FOR_PAYMENT: SubscriptionFrameIds = SubscriptionFr
     receive_id: 163,
 };
 
+/// Wire discriminants for `contacts_resolve`.
+pub const CONTACTS_RESOLVE: RequestFrameIds = RequestFrameIds {
+    request_id: 164,
+    response_id: 165,
+};
+
+/// Wire discriminants for `contacts_derive_shared_key`.
+pub const CONTACTS_DERIVE_SHARED_KEY: RequestFrameIds = RequestFrameIds {
+    request_id: 166,
+    response_id: 167,
+};
+
+/// Wire discriminants for `contacts_send`.
+pub const CONTACTS_SEND: RequestFrameIds = RequestFrameIds {
+    request_id: 168,
+    response_id: 169,
+};
+
+/// Wire discriminants for `contacts_subscribe`.
+pub const CONTACTS_SUBSCRIBE: SubscriptionFrameIds = SubscriptionFrameIds {
+    start_id: 170,
+    stop_id: 171,
+    interrupt_id: 172,
+    receive_id: 173,
+};
+
 /// The full wire table. Ordering is part of the wire protocol;
 /// only ever append. Removed methods leave their slot empty.
 pub const WIRE_TABLE: &[WireEntry] = &[
@@ -718,5 +744,21 @@ pub const WIRE_TABLE: &[WireEntry] = &[
     WireEntry {
         method: "coin_payment_listen_for_payment",
         kind: WireKind::Subscription(COIN_PAYMENT_LISTEN_FOR_PAYMENT),
+    },
+    WireEntry {
+        method: "contacts_resolve",
+        kind: WireKind::Request(CONTACTS_RESOLVE),
+    },
+    WireEntry {
+        method: "contacts_derive_shared_key",
+        kind: WireKind::Request(CONTACTS_DERIVE_SHARED_KEY),
+    },
+    WireEntry {
+        method: "contacts_send",
+        kind: WireKind::Request(CONTACTS_SEND),
+    },
+    WireEntry {
+        method: "contacts_subscribe",
+        kind: WireKind::Subscription(CONTACTS_SUBSCRIBE),
     },
 ];
