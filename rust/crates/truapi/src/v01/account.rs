@@ -254,5 +254,8 @@ pub enum HostAccountSignVrfError {
     /// User or host rejected the signing confirmation.
     Rejected,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
