@@ -23,73 +23,111 @@ pub struct Dimensions {
 /// Text typography presets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum TypographyStyle {
+    /// Large headline text.
     HeadlineLarge,
+    /// Medium title text, regular weight.
     TitleMediumRegular,
+    /// Large body text, regular weight.
     BodyLargeRegular,
+    /// Medium body text, regular weight.
     BodyMediumRegular,
+    /// Small body text, regular weight.
     BodySmallRegular,
 }
 
 /// Button style variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ButtonVariant {
+    /// Emphasized button for the primary action.
     Primary,
+    /// De-emphasized button for secondary actions.
     Secondary,
+    /// Text-only button without a background.
     Text,
 }
 
 /// Semantic color tokens for theming.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ColorToken {
+    /// Primary foreground (text) color.
     FgPrimary,
+    /// Secondary foreground color.
     FgSecondary,
+    /// Tertiary foreground color.
     FgTertiary,
+    /// Main surface background.
     BgSurfaceMain,
+    /// Container surface background.
     BgSurfaceContainer,
+    /// Nested surface background.
     BgSurfaceNested,
+    /// Foreground color for success states.
     FgSuccess,
+    /// Foreground color for error states.
     FgError,
+    /// Foreground color for warning states.
     FgWarning,
 }
 
 /// 2D content alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ContentAlignment {
+    /// Top edge, start side.
     TopStart,
+    /// Top edge, horizontally centered.
     TopCenter,
+    /// Top edge, end side.
     TopEnd,
+    /// Vertically centered, start side.
     CenterStart,
+    /// Centered on both axes.
     Center,
+    /// Vertically centered, end side.
     CenterEnd,
+    /// Bottom edge, start side.
     BottomStart,
+    /// Bottom edge, horizontally centered.
     BottomCenter,
+    /// Bottom edge, end side.
     BottomEnd,
 }
 
 /// Horizontal alignment options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum HorizontalAlignment {
+    /// Align to the start edge.
     Start,
+    /// Center horizontally.
     Center,
+    /// Align to the end edge.
     End,
 }
 
 /// Vertical alignment options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum VerticalAlignment {
+    /// Align to the top.
     Top,
+    /// Center vertically.
     Center,
+    /// Align to the bottom.
     Bottom,
 }
 
 /// Layout arrangement (like CSS flexbox `justify-content`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum Arrangement {
+    /// Pack children at the start.
     Start,
+    /// Pack children at the end.
     End,
+    /// Pack children in the center.
     Center,
+    /// Distribute with space between children.
     SpaceBetween,
+    /// Distribute with space around each child.
     SpaceAround,
+    /// Distribute with equal space between and around children.
     SpaceEvenly,
 }
 

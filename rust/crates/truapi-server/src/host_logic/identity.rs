@@ -11,9 +11,12 @@
 use parity_scale_codec::Decode;
 use sp_crypto_hashing::{blake2_128, twox_128};
 
+/// Username fields read from a People-chain `Resources.Consumers` record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeopleIdentity {
+    /// Lite username; `None` when the record stores an empty string.
     pub lite_username: Option<String>,
+    /// Full username, when the account has registered one.
     pub full_username: Option<String>,
 }
 

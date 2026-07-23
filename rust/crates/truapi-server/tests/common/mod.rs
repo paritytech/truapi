@@ -65,6 +65,8 @@ pub fn test_runtime_config() -> (PairingHostConfig, ProductContext) {
     )
 }
 
+/// Platform stub whose callbacks return fixed no-op values, enough for
+/// wire-shape tests that only inspect emitted frames.
 pub struct WireShapePlatform;
 
 #[truapi_platform::async_trait]

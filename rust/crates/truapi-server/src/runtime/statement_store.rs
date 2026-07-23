@@ -345,7 +345,7 @@ enum StatementProofFailure {
 fn statement_authority_failure(err: AuthorityError) -> StatementProofFailure {
     match err {
         AuthorityError::Disconnected => StatementProofFailure::NoSession,
-        err => StatementProofFailure::UnableToSign(err.reason()),
+        err => StatementProofFailure::UnableToSign(err.to_string()),
     }
 }
 
@@ -437,7 +437,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(sso_session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = RemoteStatementStoreCreateProofRequest::V1(
             v01::RemoteStatementStoreCreateProofRequest {
                 product_account_id: account_id("myapp.dot", 0),
@@ -464,7 +464,7 @@ mod tests {
         let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
         let product_keypair = derive_product_keypair(&root, "myapp.dot", index_bytes(0)).unwrap();
         let expected_signer = product_keypair.public.to_bytes();
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = RemoteStatementStoreCreateProofRequest::V1(
             v01::RemoteStatementStoreCreateProofRequest {
                 product_account_id: account_id("myapp.dot", 0),
@@ -488,7 +488,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(sso_session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = RemoteStatementStoreCreateProofRequest::V1(
             v01::RemoteStatementStoreCreateProofRequest {
                 product_account_id: account_id("other.dot", 0),

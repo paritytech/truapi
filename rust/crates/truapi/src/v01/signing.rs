@@ -90,7 +90,10 @@ pub enum HostSignPayloadError {
     /// Not authenticated.
     PermissionDenied,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Sign raw bytes with a non-product (legacy) account. The signer field

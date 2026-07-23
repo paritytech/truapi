@@ -4,7 +4,10 @@ use parity_scale_codec::{Decode, Encode};
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum PreimageSubmitError {
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Request to subscribe to preimage lookup results.

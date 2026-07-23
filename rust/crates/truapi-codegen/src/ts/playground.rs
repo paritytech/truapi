@@ -154,9 +154,12 @@ fn generate_playground_services_code(
     Ok(out)
 }
 
+/// Method docs split for the playground UI.
 #[derive(Debug)]
 pub(super) struct PlaygroundDocs {
+    /// Prose shown as the method description.
     pub(super) description: Option<String>,
+    /// TypeScript snippet extracted from the docs' ```ts fence.
     pub(super) client_example: Option<String>,
 }
 

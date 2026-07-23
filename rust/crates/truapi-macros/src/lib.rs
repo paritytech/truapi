@@ -219,6 +219,11 @@ impl Parse for VersionedVariant {
     }
 }
 
+/// True when `attrs` already carries a doc comment or `#[doc]` attribute.
+fn has_doc(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| attr.path().is_ident("doc"))
+}
+
 /// Parse the `Vn` version number from a variant identifier.
 fn variant_version(ident: &Ident) -> syn::Result<u8> {
     let name = ident.to_string();
@@ -242,6 +247,9 @@ fn variant_version(ident: &Ident) -> syn::Result<u8> {
 /// `impl Versioned` exposing `Latest`, `LATEST`, and `version()`. Single-version
 /// envelopes also get trivial `IntoLatest`/`FromLatest` impls; multi-version
 /// envelopes leave those to be written by hand, since the conversion is bespoke.
+///
+/// The enum and every variant receive generated doc comments; a variant keeps
+/// its own doc attributes when the declaration provides them.
 ///
 /// The declared visibility (`pub`, `pub(crate)`, or none) carries through to the
 /// generated enum.
@@ -296,13 +304,23 @@ fn expand_versioned_enum(def: &VersionedEnum) -> syn::Result<proc_macro2::TokenS
         let version_lit = Literal::u8_unsuffixed(version);
         let vattrs = &variant.attrs;
         let vident = &variant.ident;
+        let default_doc = (!has_doc(vattrs)).then(|| {
+            let doc = match &variant.ty {
+                Some(_) => format!("Version {version} payload."),
+                None => format!("Version {version} (no payload)."),
+            };
+            quote! { #[doc = #doc] }
+        });
         match &variant.ty {
             Some(ty) => {
-                variant_defs.push(quote! { #(#vattrs)* #[codec(index = #index)] #vident(#ty) });
+                variant_defs.push(
+                    quote! { #(#vattrs)* #default_doc #[codec(index = #index)] #vident(#ty) },
+                );
                 version_arms.push(quote! { Self::#vident(..) => #version_lit });
             }
             None => {
-                variant_defs.push(quote! { #(#vattrs)* #[codec(index = #index)] #vident });
+                variant_defs
+                    .push(quote! { #(#vattrs)* #default_doc #[codec(index = #index)] #vident });
                 version_arms.push(quote! { Self::#vident => #version_lit });
             }
         }
