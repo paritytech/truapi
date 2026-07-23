@@ -16,6 +16,12 @@ android {
     namespace = "io.parity.truapi"
     compileSdk = 34
 
+    lint {
+        // Suppresses the NewApi false positive on the UniFFI-generated cleaner
+        // (runtime-guarded via Class.forName). See lint.xml.
+        lintConfig = file("lint.xml")
+    }
+
     defaultConfig {
         // minSdk 29 matches the polkadot-app-android-v2 floor; raise here
         // first and bump consumers' floors if we ever depend on a newer API.

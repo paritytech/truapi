@@ -106,9 +106,10 @@ data class RuntimeConfig(
             platformVersion == other.platformVersion &&
             peopleChainGenesisHash.contentEquals(other.peopleChainGenesisHash) &&
             bulletinChainGenesisHash.contentEquals(other.bulletinChainGenesisHash) &&
-            (localSessionSecret ?: ByteArray(0)).contentEquals(
-                other.localSessionSecret ?: ByteArray(0),
-            ) &&
+            // Compare nullability explicitly so null (no session) is distinct
+            // from an empty secret (invalid input) — matching hashCode, which
+            // hashes null to 0 and an empty array to 1.
+            localSessionSecret.contentEquals(other.localSessionSecret) &&
             localSessionLiteUsername == other.localSessionLiteUsername &&
             pairingDeeplinkScheme == other.pairingDeeplinkScheme
     }

@@ -92,6 +92,8 @@ Both return a `Boolean` granted flag. SCALE decoding for the UI prompt is done b
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import io.parity.truapi.HostBridge
 import io.parity.truapi.HostCoreStorage
 import io.parity.truapi.HostStorage
@@ -212,14 +214,23 @@ core.notifyPreimageChanged(preimageKey, preimageBytesOrNull)
 core.notifyChainResponse(chainConnectionId, jsonRpcResponse)
 core.notifyChainClosed(chainConnectionId)
 
-// Publish the bridge endpoint to the product page by injecting the bootstrap
-// snippet at document start, then load the product. The page reads
-// `window.__truapi_localhost.url` and passes it to `@parity/truapi`'s
-// `createWebSocketProvider`.
+// Publish the bridge endpoint to the product page. Install the bootstrap as a
+// DOCUMENT-START script so it runs in the destination document before the page
+// scripts — `evaluateJavascript` runs in the CURRENT document, which the
+// following `loadUrl` replaces, so the product would lose the endpoint. Scope
+// it to the product origin. The page reads `window.__truapi_localhost.url` and
+// passes it to `@parity/truapi`'s `createWebSocketProvider`.
 val bootstrap = LocalhostBridgeBootstrap.script(endpoint.port, endpoint.token)
 main.post {
-    webView.evaluateJavascript(bootstrap, null) // or add as a document-start script
-    webView.loadUrl("https://your-product.example/")
+    val productUrl = "https://your-product.example/"
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+        WebViewCompat.addDocumentStartJavaScript(
+            webView,
+            bootstrap,
+            setOf("https://your-product.example"), // origin allowlist
+        )
+    }
+    webView.loadUrl(productUrl)
 }
 
 // On logout:
@@ -298,11 +309,11 @@ The artifact lands under `~/.m2/repository/io/parity/truapi-host-android/<versio
 The ignored Kotlin bindings under `src/main/kotlin/generated/uniffi/` are produced from the workspace `uniffi-bindgen-cli`. Regenerate them before building or publishing the Android host package:
 
 ```bash
-cargo build -p truapi-server --release --features ws-bridge
-cargo run -p uniffi-bindgen-cli -- generate \
-  --library target/release/libtruapi_server.so \
-  --language kotlin \
-  --out-dir android/truapi-host/src/main/kotlin/generated
+make uniffi-kotlin
 ```
 
-Or run `make uniffi` from the repo root.
+`make uniffi-kotlin` builds the host cdylib with the `codegen` profile and runs
+the generator. The `codegen` profile is required because uniffi-bindgen scans
+the cdylib's exported metadata symbols, which the `release` profile strips — a
+plain `--release` build produces a stripped library and no bindings. (`make
+uniffi` regenerates the Swift bindings; use `make uniffi-kotlin` for Android.)

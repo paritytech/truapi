@@ -17,3 +17,11 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 debug = false
+
+# UniFFI binding generation scans the host cdylib's exported metadata symbols.
+# `release` strips them (`strip = "symbols"`), so uniffi-bindgen finds nothing
+# and emits no bindings. This profile inherits release but keeps symbols, and is
+# used by the `uniffi` / `uniffi-kotlin` make targets for the codegen build only.
+[profile.codegen]
+inherits = "release"
+strip = false

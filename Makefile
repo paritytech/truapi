@@ -68,7 +68,9 @@ wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
 dotli-link: ## Link dotli to this checkout's local @parity/truapi packages.
 	cd $(DOTLI) && TRUAPI_REPO="$(CURDIR)" bun run link:truapi
 
-UNIFFI_CDYLIB_DIR := target/release
+# uniffi-bindgen scans the cdylib's metadata symbols, which `release` strips, so
+# codegen builds use the unstripped `codegen` profile (see [profile.codegen]).
+UNIFFI_CDYLIB_DIR := target/codegen
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
 UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.dylib
@@ -79,7 +81,7 @@ endif
 UNIFFI_SWIFT_TMP := target/uniffi-swift-out
 
 uniffi: ## Regenerate Swift bindings from truapi-server cdylib.
-	$(CARGO) build -p truapi-server --release --features ws-bridge
+	$(CARGO) build -p truapi-server --profile codegen --features ws-bridge
 	rm -rf $(UNIFFI_SWIFT_TMP)
 	mkdir -p $(UNIFFI_SWIFT_TMP)
 	$(CARGO) run -p uniffi-bindgen-cli -- generate \
@@ -97,7 +99,7 @@ uniffi: ## Regenerate Swift bindings from truapi-server cdylib.
 UNIFFI_KOTLIN_OUT := android/truapi-host/src/main/kotlin/generated
 
 uniffi-kotlin: ## Regenerate Kotlin UniFFI bindings from the truapi-server cdylib.
-	$(CARGO) build -p truapi-server --release --features ws-bridge
+	$(CARGO) build -p truapi-server --profile codegen --features ws-bridge
 	rm -rf $(UNIFFI_KOTLIN_OUT)
 	mkdir -p $(UNIFFI_KOTLIN_OUT)
 	$(CARGO) run -p uniffi-bindgen-cli -- generate \
