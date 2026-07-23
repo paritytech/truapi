@@ -19,12 +19,16 @@ const PRODUCT_JUNCTION: &str = "product";
 /// the core produces (statement store, product raw signing).
 pub(crate) const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
 
+/// Error deriving product accounts or keys.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ProductAccountError {
+    /// Root public key bytes are not a valid sr25519 point.
     #[error("invalid sr25519 root public key")]
     InvalidRootPublicKey,
+    /// All-digit junction strings encode as `u64`, and this one overflows it.
     #[error("numeric derivation junction is outside u64 range")]
     NumericJunctionOutOfRange,
+    /// Entropy bytes could not be expanded into a mini secret.
     #[error("invalid BIP-39 entropy: {0}")]
     InvalidEntropy(String),
 }

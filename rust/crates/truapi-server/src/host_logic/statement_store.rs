@@ -30,12 +30,16 @@ pub use statement::{
 /// Error while parsing statement-store JSON-RPC or SCALE statement payloads.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum StatementStoreParseError {
+    /// Statement hex string from a JSON-RPC frame failed to decode.
     #[error("invalid statement hex: {0}")]
     InvalidStatementHex(String),
+    /// Statement bytes are not a valid SCALE field vector.
     #[error("invalid statement scale: {0}")]
     InvalidStatementScale(String),
+    /// Fields decoded but violate statement invariants (duplicate or missing fields).
     #[error("malformed statement-store frame: {0}")]
     Malformed(String),
+    /// Proof is missing, not sr25519, from the wrong signer, or fails verification.
     #[error("invalid statement proof: {0}")]
     InvalidStatementProof(String),
 }

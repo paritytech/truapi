@@ -17,7 +17,9 @@ pub struct Crate {
     /// rustdoc JSON format version stamped into the document.
     #[serde(default)]
     pub format_version: Option<u32>,
+    /// All items in the crate, keyed by stringified item id.
     pub index: HashMap<String, Item>,
+    /// Path and kind lookup for item ids, including external crates.
     #[serde(default)]
     pub paths: HashMap<String, ItemPath>,
 }
@@ -48,11 +50,13 @@ pub struct ItemPath {
 /// Extracted API definition ready for code generation.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ApiDefinition {
+    /// Service traits extracted from the crate.
     pub traits: Vec<TraitDef>,
     /// Names of the public service traits in `TrUApi` super-trait declaration
     /// order (excluding `Send`/`Sync`). Drives stable, source-order emission of
     /// services in the playground, examples, and client modules.
     pub public_trait_order: Vec<String>,
+    /// Data types referenced by the trait surface.
     pub types: Vec<TypeDef>,
 }
 
@@ -90,11 +94,17 @@ pub struct MethodDef {
 /// Raw wire ids extracted from `#[wire(...)]`.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct WireAttrs {
+    /// Request frame discriminant.
     pub request_id: Option<u8>,
+    /// Response frame discriminant.
     pub response_id: Option<u8>,
+    /// Subscription start frame discriminant.
     pub start_id: Option<u8>,
+    /// Subscription stop frame discriminant.
     pub stop_id: Option<u8>,
+    /// Subscription interrupt frame discriminant.
     pub interrupt_id: Option<u8>,
+    /// Subscription item frame discriminant.
     pub receive_id: Option<u8>,
 }
 
@@ -226,6 +236,8 @@ struct ItemCandidate {
     kind: String,
 }
 
+/// Maps rustdoc item ids and full paths to the output type names used in
+/// generated code, disambiguated when several types share a simple name.
 #[derive(Debug, Default)]
 pub(crate) struct NameContext {
     by_item_id: HashMap<String, String>,

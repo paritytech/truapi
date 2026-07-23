@@ -137,6 +137,8 @@ pub(crate) fn build_signed_extrinsic_v4(
     inner.encode()
 }
 
+/// Signer and V4-assembly tests, plus offline-chain fixtures reused by other
+/// test modules.
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

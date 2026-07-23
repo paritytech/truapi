@@ -3,7 +3,6 @@
 //! Concrete wire types live in per-version modules. Versioned envelopes are in
 //! [`versioned`].
 
-#![forbid(unsafe_code)]
 #![allow(async_fn_in_trait)]
 
 use core::convert::Infallible;
@@ -23,6 +22,8 @@ pub mod api;
 pub mod v01;
 pub mod versioned;
 
+/// Latest-version protocol payload types, unwrapped from their versioned
+/// envelopes. Runtime code should use these instead of per-version modules.
 pub mod latest {
     use crate::versioned::{self, Versioned};
 
@@ -34,53 +35,83 @@ pub mod latest {
         TxPayloadExtension,
     };
 
+    /// Latest payload type of a versioned envelope.
     pub type LatestOf<T> = <T as Versioned>::Latest;
 
+    /// Ring VRF proof creation result.
     pub type HostAccountCreateProofResponse =
         LatestOf<versioned::account::HostAccountCreateProofResponse>;
+    /// Contextual alias derivation result.
     pub type HostAccountGetAliasResponse =
         LatestOf<versioned::account::HostAccountGetAliasResponse>;
+    /// Transaction creation result.
     pub type HostCreateTransactionResponse =
         LatestOf<versioned::signing::HostCreateTransactionResponse>;
+    /// Device-capability permission request.
     pub type HostDevicePermissionRequest =
         LatestOf<versioned::permissions::HostDevicePermissionRequest>;
+    /// Device-capability permission outcome.
     pub type HostDevicePermissionResponse =
         LatestOf<versioned::permissions::HostDevicePermissionResponse>;
+    /// Feature-support query.
     pub type HostFeatureSupportedRequest = LatestOf<versioned::system::HostFeatureSupportedRequest>;
+    /// Feature-support query result.
     pub type HostFeatureSupportedResponse =
         LatestOf<versioned::system::HostFeatureSupportedResponse>;
+    /// Local storage operation error.
     pub type HostLocalStorageReadError =
         LatestOf<versioned::local_storage::HostLocalStorageReadError>;
+    /// Navigation request error.
     pub type HostNavigateToError = LatestOf<versioned::system::HostNavigateToError>;
+    /// Push notification scheduling request.
     pub type HostPushNotificationRequest =
         LatestOf<versioned::notifications::HostPushNotificationRequest>;
+    /// Push notification scheduling result.
     pub type HostPushNotificationResponse =
         LatestOf<versioned::notifications::HostPushNotificationResponse>;
+    /// Login request error.
     pub type HostRequestLoginError = LatestOf<versioned::account::HostRequestLoginError>;
+    /// Login request result.
     pub type HostRequestLoginResponse = LatestOf<versioned::account::HostRequestLoginResponse>;
+    /// Batched resource pre-allocation request.
     pub type HostRequestResourceAllocationRequest =
         LatestOf<versioned::resource_allocation::HostRequestResourceAllocationRequest>;
+    /// Per-resource allocation outcomes.
     pub type HostRequestResourceAllocationResponse =
         LatestOf<versioned::resource_allocation::HostRequestResourceAllocationResponse>;
+    /// Extrinsic payload signing request for a product account.
     pub type HostSignPayloadRequest = LatestOf<versioned::signing::HostSignPayloadRequest>;
+    /// Signing operation result.
     pub type HostSignPayloadResponse = LatestOf<versioned::signing::HostSignPayloadResponse>;
+    /// Extrinsic payload signing request for a legacy account.
     pub type HostSignPayloadWithLegacyAccountRequest =
         LatestOf<versioned::signing::HostSignPayloadWithLegacyAccountRequest>;
+    /// Raw-bytes signing request for a product account.
     pub type HostSignRawRequest = LatestOf<versioned::signing::HostSignRawRequest>;
+    /// Raw-bytes signing request for a legacy account.
     pub type HostSignRawWithLegacyAccountRequest =
         LatestOf<versioned::signing::HostSignRawWithLegacyAccountRequest>;
+    /// Transaction creation payload for a legacy account.
     pub type LegacyAccountTxPayload =
         LatestOf<versioned::signing::HostCreateTransactionWithLegacyAccountRequest>;
+    /// Preimage submission error.
     pub type PreimageSubmitError = LatestOf<versioned::preimage::RemotePreimageSubmitError>;
+    /// Transaction creation payload for a product account.
     pub type ProductAccountTxPayload = LatestOf<versioned::signing::HostCreateTransactionRequest>;
+    /// Chain-head subscription item.
     pub type RemoteChainHeadFollowItem = LatestOf<versioned::chain::RemoteChainHeadFollowItem>;
+    /// Chain-head subscription request.
     pub type RemoteChainHeadFollowRequest =
         LatestOf<versioned::chain::RemoteChainHeadFollowRequest>;
+    /// Chain-head storage query request.
     pub type RemoteChainHeadStorageRequest =
         LatestOf<versioned::chain::RemoteChainHeadStorageRequest>;
+    /// Chain-head storage query result.
     pub type RemoteChainHeadStorageResponse =
         LatestOf<versioned::chain::RemoteChainHeadStorageResponse>;
+    /// Remote-operation permission request.
     pub type RemotePermissionRequest = LatestOf<versioned::permissions::RemotePermissionRequest>;
+    /// Remote-operation permission outcome.
     pub type RemotePermissionResponse = LatestOf<versioned::permissions::RemotePermissionResponse>;
 }
 
@@ -99,9 +130,15 @@ pub enum CallError<D> {
     /// The host does not support this operation.
     Unsupported,
     /// The incoming request payload could not be decoded or validated.
-    MalformedFrame { reason: String },
+    MalformedFrame {
+        /// Why decoding or validation failed.
+        reason: String,
+    },
     /// Host-side failure with a diagnostic reason.
-    HostFailure { reason: String },
+    HostFailure {
+        /// Diagnostic reason for the failure.
+        reason: String,
+    },
 }
 
 impl<D> CallError<D> {
@@ -122,6 +159,7 @@ pub type FrameworkOnlyError = CallError<Infallible>;
 /// tokens fire when a runtime explicitly cancels them or attaches a timeout.
 /// Subscription runtimes can cancel this token when the peer sends `_stop` or
 /// disconnects.
+#[derive(Clone, Default)]
 pub struct CancellationToken {
     inner: Arc<CancellationInner>,
 }
@@ -139,12 +177,26 @@ struct CancellationState {
 }
 
 /// Cause attached to a cancelled call.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
 pub enum CancellationReason {
     /// The caller or runtime explicitly cancelled the call.
+    #[display("cancelled")]
     Cancelled,
     /// The call exceeded the configured timeout.
-    TimedOut { timeout: Duration },
+    #[display("timed out after {}", format_timeout(timeout))]
+    TimedOut {
+        /// Timeout that elapsed.
+        timeout: Duration,
+    },
+}
+
+/// Render a timeout as whole seconds when possible, milliseconds otherwise.
+fn format_timeout(timeout: &Duration) -> String {
+    if timeout.subsec_millis() == 0 {
+        format!("{}s", timeout.as_secs())
+    } else {
+        format!("{}ms", timeout.as_millis())
+    }
 }
 
 /// Future resolved when a [`CancellationToken`] is cancelled.
@@ -161,28 +213,7 @@ impl fmt::Debug for CancellationToken {
     }
 }
 
-impl Clone for CancellationToken {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl Default for CancellationToken {
-    fn default() -> Self {
-        Self {
-            inner: Arc::new(CancellationInner::default()),
-        }
-    }
-}
-
 impl CancellationToken {
-    /// Create a token in the non-cancelled state.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Mark the token as cancelled.
     pub fn cancel(&self) {
         self.cancel_with_reason(CancellationReason::Cancelled);
@@ -272,7 +303,7 @@ impl Drop for CancellationFuture {
 }
 
 /// Ambient context passed to every trait method.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct CallContext {
     request_id: RequestId,
     cancel: CancellationToken,
@@ -280,16 +311,11 @@ pub struct CallContext {
 }
 
 impl CallContext {
-    /// Construct an empty context with a fresh cancellation token.
-    pub fn new() -> Self {
-        Self::with_request_id(String::new())
-    }
-
     /// Construct a context bound to the given `request_id` with a fresh cancellation token.
     pub fn with_request_id(request_id: RequestId) -> Self {
         Self {
             request_id,
-            cancel: CancellationToken::new(),
+            cancel: CancellationToken::default(),
             timeout: None,
         }
     }
@@ -321,12 +347,6 @@ impl CallContext {
     /// Return the timeout attached to this call, if any.
     pub fn timeout(&self) -> Option<Duration> {
         self.timeout
-    }
-}
-
-impl Default for CallContext {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -381,7 +401,7 @@ mod tests {
 
     #[test]
     fn cancellation_token_clones_share_cancellation() {
-        let token = CancellationToken::new();
+        let token = CancellationToken::default();
         let cloned = token.clone();
         let wait = cloned.cancelled();
 

@@ -5,6 +5,8 @@ use std::collections::BTreeSet;
 use crate::platform::{PlatformDefinition, PlatformInner, PlatformMethod, PlatformTrait};
 use crate::rustdoc::TypeRef;
 
+/// Traits the platform surface actually composes: the super trait's
+/// constituents when one exists, otherwise every collected trait.
 pub(crate) fn composed_traits(definition: &PlatformDefinition) -> Vec<&PlatformTrait> {
     let composed: BTreeSet<String> = match &definition.super_trait {
         Some(s) => s.composes.iter().cloned().collect(),
@@ -17,14 +19,17 @@ pub(crate) fn composed_traits(definition: &PlatformDefinition) -> Vec<&PlatformT
         .collect()
 }
 
+/// JS-side callback name for a platform method (camelCase of the Rust name).
 pub(crate) fn raw_callback_name(method: &PlatformMethod) -> String {
     to_camel_case(&method.name)
 }
 
+/// Set of all platform trait names, used to recognize trait-object returns.
 pub(crate) fn platform_trait_names(definition: &PlatformDefinition) -> BTreeSet<String> {
     definition.traits.iter().map(|t| t.name.clone()).collect()
 }
 
+/// Name of the platform trait a method returns as a handle, if any.
 pub(crate) fn trait_object_return_name<'a>(
     method: &'a PlatformMethod,
     platform_trait_names: &BTreeSet<String>,
@@ -38,6 +43,9 @@ pub(crate) fn trait_object_return_name<'a>(
     }
 }
 
+/// Wire name of a raw callback. Handle-returning methods get a trait
+/// namespace prefix so equally named methods on different traits stay
+/// distinct.
 pub(crate) fn raw_callback_wire_name(
     trait_def: &PlatformTrait,
     method: &PlatformMethod,
@@ -54,6 +62,7 @@ pub(crate) fn raw_callback_wire_name(
     raw
 }
 
+/// Field name holding the callback in the generated Rust bridge struct.
 pub(crate) fn raw_callback_field_name(
     trait_def: &PlatformTrait,
     method: &PlatformMethod,
@@ -66,6 +75,7 @@ pub(crate) fn raw_callback_field_name(
     ))
 }
 
+/// TS type name for the raw callback in the generated host-callback bridge.
 pub(crate) fn raw_callback_type_name(
     trait_def: &PlatformTrait,
     method: &PlatformMethod,
@@ -78,6 +88,7 @@ pub(crate) fn raw_callback_type_name(
     ))
 }
 
+/// Name of the TS adapter that wraps a typed host callback into its raw form.
 pub(crate) fn raw_callback_adapter_name(
     trait_def: &PlatformTrait,
     method: &PlatformMethod,
@@ -89,6 +100,8 @@ pub(crate) fn raw_callback_adapter_name(
     )
 }
 
+/// Callback-object namespace for a trait: its name with the role suffix
+/// (`Provider`, `Presenter`, `Host`) stripped, lower-cased first letter.
 pub(crate) fn callback_namespace(trait_name: &str) -> String {
     let stem = ["Provider", "Presenter", "Host"]
         .into_iter()
@@ -123,6 +136,7 @@ pub(crate) fn stream_item(item: &TypeRef) -> &TypeRef {
     item
 }
 
+/// Convert a snake_case identifier to camelCase.
 pub(crate) fn to_camel_case(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut upper_next = false;
@@ -165,6 +179,7 @@ fn upper_first(name: &str) -> String {
     )
 }
 
+/// Convert a camelCase identifier to snake_case.
 pub(crate) fn snake_case(name: &str) -> String {
     let mut out = String::with_capacity(name.len() + 4);
     for (idx, ch) in name.chars().enumerate() {

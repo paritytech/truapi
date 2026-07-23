@@ -1,3 +1,6 @@
+//! CLI that turns the `truapi` crate's rustdoc JSON into the generated
+//! TypeScript client, playground metadata, and Rust dispatch/bridge code.
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::path::PathBuf;
