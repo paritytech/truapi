@@ -4,7 +4,10 @@ use parity_scale_codec::{Decode, Encode};
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostDeriveEntropyError {
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Request to derive deterministic per-product entropy (RFC 0007).

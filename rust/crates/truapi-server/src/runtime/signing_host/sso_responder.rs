@@ -768,7 +768,7 @@ pub(super) async fn allocate_statement_store_allowance(
         register_statement_account,
     };
 
-    let entropy = signing_host.root_entropy().map_err(|err| err.reason())?;
+    let entropy = signing_host.root_entropy().map_err(|err| err.to_string())?;
     let allowance =
         derive_sr25519_hard_path(&entropy, &["allowance", "statement-store", product_id])
             .map_err(product_account_error)?;
@@ -840,7 +840,7 @@ pub(super) async fn allocate_bulletin_allowance(
         find_including_ring, wait_bulletin_authorization,
     };
 
-    let entropy = signing_host.root_entropy().map_err(|err| err.reason())?;
+    let entropy = signing_host.root_entropy().map_err(|err| err.to_string())?;
     let allowance = derive_sr25519_hard_path(&entropy, &["allowance", "bulletin", product_id])
         .map_err(product_account_error)?;
     let target = allowance.public.to_bytes();
@@ -977,7 +977,7 @@ async fn serve_sign_request(
     let session = signing_host
         .current_session()
         .ok_or_else(|| "signing host session is not active".to_string())?;
-    let cx = CallContext::new();
+    let cx = CallContext::default();
     let response = match request {
         SigningRequest::Payload(request) => {
             let request: api::HostSignPayloadRequest = (*request).into();
@@ -1002,7 +1002,7 @@ async fn serve_sign_request(
                 .await
         }
     }
-    .map_err(|err| err.reason())?;
+    .map_err(|err| err.to_string())?;
     Ok(SigningPayloadResponseData {
         signature: response.signature,
         signed_transaction: response.signed_transaction,
@@ -1028,7 +1028,7 @@ async fn sign_raw_legacy_response(
         .ok_or_else(|| "signing host session is not active".to_string())?;
     signing_host
         .sign_raw(
-            &CallContext::new(),
+            &CallContext::default(),
             &session,
             SignRawAuthorityRequest::LegacyAccount {
                 account: request.account,
@@ -1037,7 +1037,7 @@ async fn sign_raw_legacy_response(
         )
         .await
         .map(|response| response.signature)
-        .map_err(|err| err.reason())
+        .map_err(|err| err.to_string())
 }
 
 async fn statement_store_product_sign_response(
@@ -1059,7 +1059,7 @@ async fn statement_store_product_sign_response(
     let session = signing_host
         .current_session()
         .ok_or_else(|| "signing host session is not active".to_string())?;
-    let cx = CallContext::new();
+    let cx = CallContext::default();
     signing_host
         .sign_statement_store_product_payload(
             &cx,
@@ -1069,7 +1069,7 @@ async fn statement_store_product_sign_response(
         )
         .await
         .map(|signature| signature.to_vec())
-        .map_err(|err| err.reason())
+        .map_err(|err| err.to_string())
 }
 
 /// Confirm and serve a transaction-creation request.
@@ -1083,12 +1083,12 @@ async fn create_transaction_response(
         .current_session()
         .ok_or_else(|| "signing host session is not active".to_string())?;
     confirm(services, UserConfirmationReview::CreateTransaction(review)).await?;
-    let cx = CallContext::new();
+    let cx = CallContext::default();
     signing_host
         .create_transaction(&cx, &session, request)
         .await
         .map(|response| response.transaction)
-        .map_err(|err| err.reason())
+        .map_err(|err| err.to_string())
 }
 
 async fn account_alias_response(
@@ -1098,7 +1098,7 @@ async fn account_alias_response(
     let session = signing_host
         .current_session()
         .ok_or_else(disconnected_ring_vrf)?;
-    let cx = CallContext::new();
+    let cx = CallContext::default();
     signing_host
         .account_alias(
             &cx,
@@ -1119,7 +1119,7 @@ async fn create_proof_response(
     let session = signing_host
         .current_session()
         .ok_or_else(disconnected_ring_vrf)?;
-    let cx = CallContext::new();
+    let cx = CallContext::default();
     signing_host
         .create_proof(
             &cx,

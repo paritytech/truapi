@@ -90,6 +90,9 @@ impl PairingHost {
             .take();
     }
 
+    /// Watch the session's topics for a peer disconnect statement, replacing
+    /// any monitor for a different session. No-op when one is already running
+    /// for this session.
     pub(super) fn start_disconnect_monitor(&self, session: &SessionInfo) {
         let Some(sso) = session.sso.clone() else {
             self.stop_disconnect_monitor();
@@ -261,6 +264,7 @@ impl PairingHost {
         result
     }
 
+    /// Forward a payload-signing request to the paired signing host.
     pub(super) async fn remote_sign_payload(
         &self,
         cx: &CallContext,
@@ -285,6 +289,7 @@ impl PairingHost {
             .map_err(remote_authority_error)
     }
 
+    /// Forward a raw-signing request to the paired signing host.
     pub(super) async fn remote_sign_raw(
         &self,
         cx: &CallContext,
@@ -327,6 +332,7 @@ impl PairingHost {
         }
     }
 
+    /// Forward a transaction-creation request to the paired signing host.
     pub(super) async fn remote_create_transaction(
         &self,
         cx: &CallContext,
@@ -371,6 +377,7 @@ impl PairingHost {
             .map_err(remote_authority_error)
     }
 
+    /// Forward a contextual-alias request to the paired signing host.
     pub(super) async fn remote_account_alias(
         &self,
         cx: &CallContext,
@@ -396,6 +403,7 @@ impl PairingHost {
         response.payload
     }
 
+    /// Forward a ring-VRF proof request to the paired signing host.
     pub(super) async fn remote_create_proof(
         &self,
         cx: &CallContext,
@@ -422,6 +430,8 @@ impl PairingHost {
         response.payload
     }
 
+    /// Ask the paired signing host to allocate product resources, caching any
+    /// returned allowance keys.
     pub(super) async fn remote_allocate_resources(
         &self,
         cx: &CallContext,
@@ -453,6 +463,8 @@ impl PairingHost {
         })
     }
 
+    /// Statement-store allowance key for the product, served from the cache
+    /// or allocated by the paired signing host.
     pub(super) async fn remote_statement_store_allowance_key(
         &self,
         cx: &CallContext,
@@ -508,6 +520,8 @@ impl PairingHost {
         }
     }
 
+    /// Bulletin allowance key for the product, served from the cache or
+    /// allocated by the paired signing host.
     pub(super) async fn remote_bulletin_allowance_key(
         &self,
         cx: &CallContext,
@@ -561,6 +575,8 @@ impl PairingHost {
         }
     }
 
+    /// Evict the cached Bulletin allowance key and allocate a fresh one with
+    /// an increased allowance.
     pub(super) async fn remote_refresh_bulletin_allowance_key(
         &self,
         cx: &CallContext,

@@ -130,15 +130,16 @@ pub(crate) struct StubPlatform {
     pub(crate) local_storage_error: Option<&'static str>,
 }
 
+/// Scripted peer behavior for the recording connection's SSO exchange.
 #[derive(Clone)]
 pub(crate) enum SsoResponseScript {
+    /// Peer acknowledges the request and replies with `response`.
     Success {
         session: SessionInfo,
         response: RemoteMessage,
     },
-    PeerDisconnect {
-        session: SessionInfo,
-    },
+    /// Peer acknowledges the request and then sends `Disconnected`.
+    PeerDisconnect { session: SessionInfo },
 }
 
 struct PendingThemeStream {
@@ -493,6 +494,7 @@ pub(crate) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65
     )
 }
 
+/// Signed wallet handshake statement answering `deeplink` with pairing success.
 pub(crate) fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
     wallet_handshake_statement_with_response(
         deeplink,
@@ -509,6 +511,7 @@ fn pending_wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
     )
 }
 
+/// Signed wallet handshake statement answering `deeplink` with failure `reason`.
 pub(crate) fn failed_wallet_handshake_statement(deeplink: &str, reason: &str) -> Vec<u8> {
     wallet_handshake_statement_with_response(
         deeplink,

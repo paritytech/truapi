@@ -20,3 +20,6 @@ convert_case = "0.6"
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints]
+workspace = true

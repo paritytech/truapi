@@ -17,7 +17,9 @@ use subxt::tx::{StaticPayload, SubmittableTransaction};
 use crate::host_logic::extrinsic::Sr25519Signer;
 use crate::runtime::BulletinAllowanceKey;
 
+/// Pallet the store transaction targets.
 pub(crate) const STORE_PALLET_NAME: &str = "TransactionStorage";
+/// Call name within [`STORE_PALLET_NAME`].
 pub(crate) const STORE_CALL_NAME: &str = "store";
 
 /// Mortality window for store transactions.

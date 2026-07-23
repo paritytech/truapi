@@ -26,8 +26,11 @@ const STATEMENT_CACHE_MAX_ENTRIES: usize = 64;
 
 /// Infrastructure shared by all product runtimes created from one host role.
 pub(crate) struct RuntimeServices {
+    /// Host platform backing all syscalls.
     pub(crate) platform: Arc<dyn Platform>,
+    /// Shared chainHead-v1 runtime behind the Chain surface.
     pub(crate) chain: ChainRuntime,
+    /// People-chain statement store RPC client.
     pub(crate) statement_store: StatementStoreRpc,
     /// In-core Bulletin submission over the configured Bulletin chain.
     pub(crate) bulletin: BulletinRpc,
@@ -37,6 +40,7 @@ pub(crate) struct RuntimeServices {
     /// Confirmed submissions served to new subscriptions until the remote
     /// Statement Store reports them.
     statement_cache: Mutex<StatementCache>,
+    /// Task spawner for background runtime work.
     pub(crate) spawner: Spawner,
     next_core_instance: AtomicU64,
 }
@@ -70,6 +74,8 @@ impl RuntimeServices {
         })
     }
 
+    /// Allocate the next per-product-runtime id, used to scope chain follow
+    /// operation ids within the shared host runtime.
     pub(crate) fn next_core_instance(&self) -> u64 {
         self.next_core_instance.fetch_add(1, Ordering::Relaxed)
     }

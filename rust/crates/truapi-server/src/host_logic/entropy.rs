@@ -9,10 +9,13 @@ use thiserror::Error;
 
 const DOMAIN_SEPARATOR: &[u8] = b"product-entropy-derivation";
 
+/// Error deriving product-scoped entropy.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ProductEntropyError {
+    /// Caller key is outside the 1..=32 byte range the contract allows.
     #[error("\"key\" must be between 1 and 32 bytes, got {0}")]
     InvalidKeyLength(usize),
+    /// Session has no entropy secret to derive from.
     #[error("entropy secret is missing")]
     MissingSecret,
 }

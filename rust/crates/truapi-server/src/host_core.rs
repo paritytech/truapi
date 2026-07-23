@@ -249,7 +249,7 @@ impl SigningHostRuntime {
             .activate_local_session(secret)
             .await
             .map_err(|err| v01::GenericError {
-                reason: err.reason(),
+                reason: err.to_string(),
             })
     }
 
@@ -265,7 +265,7 @@ impl SigningHostRuntime {
             .activate_local_session_with_identity(secret, lite_username)
             .await
             .map_err(|err| v01::GenericError {
-                reason: err.reason(),
+                reason: err.to_string(),
             })
     }
 

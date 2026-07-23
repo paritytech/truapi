@@ -72,6 +72,7 @@ pub(crate) struct SigningHost {
 }
 
 impl SigningHost {
+    /// Build a signing host with no active session.
     pub(crate) fn new(services: Arc<RuntimeServices>) -> Arc<Self> {
         let platform = services.platform.clone();
         let ring_resolver = ChainRingResolver::new(services.chain.clone());
@@ -106,6 +107,7 @@ impl SigningHost {
         })
     }
 
+    /// Shared session holder for connection-status subscriptions.
     pub(super) fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }
@@ -784,7 +786,7 @@ mod tests {
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = authority.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let context = v01::ProductProofContext {
             product_id: "myapp.dot".to_string(),
             suffix: b"account".to_vec(),
@@ -835,7 +837,7 @@ mod tests {
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = authority.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let context = v01::ProductProofContext {
             product_id: "other.dot".to_string(),
             suffix: b"account".to_vec(),
@@ -888,7 +890,7 @@ mod tests {
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = authority.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = AccountAliasAuthorityRequest {
             calling_product_id: "myapp.dot".to_string(),
             context: v01::ProductProofContext {
@@ -938,7 +940,7 @@ mod tests {
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let runtime = product_runtime(services, activation);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: v01::ProductAccountId {
@@ -972,7 +974,7 @@ mod tests {
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = authority.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let mut payload = crate::test_support::sign_payload_data();
         payload.signed_extensions = vec![
             "CheckSpecVersion".to_string(),
@@ -1054,7 +1056,7 @@ mod tests {
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = authority.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let identity = derive_sr25519_hard_path(&ENTROPY, &["wallet", "sso"]).unwrap();
         let request = |account| SignRawAuthorityRequest::LegacyAccount {
             account,
@@ -1090,7 +1092,7 @@ mod tests {
     fn sign_raw_requires_active_session() {
         let (services, authority) = signing_runtime();
         let runtime = product_runtime(services, authority);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
@@ -1132,7 +1134,7 @@ mod tests {
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = activation.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let response = futures::executor::block_on(activation.create_transaction(
             &cx,
@@ -1165,7 +1167,7 @@ mod tests {
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = activation.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let err = futures::executor::block_on(activation.create_transaction(
             &cx,
@@ -1184,7 +1186,7 @@ mod tests {
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = activation.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let payload = tx_payload(0);
         let request = CreateTransactionAuthorityRequest::LegacyAccount {
@@ -1211,7 +1213,7 @@ mod tests {
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let session = activation.current_session().expect("active session");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
         let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
@@ -1255,7 +1257,7 @@ mod tests {
         futures::executor::block_on(other.activate_local_session(ENTROPY.to_vec())).unwrap();
         let stale_session = other.current_session().expect("session");
         futures::executor::block_on(other.disconnect());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let err = futures::executor::block_on(activation.create_transaction(
             &cx,
@@ -1272,7 +1274,7 @@ mod tests {
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let runtime = product_runtime_for(services, activation, "test.product.dot");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest {
             context: b"my-key".to_vec(),
         });
@@ -1289,7 +1291,7 @@ mod tests {
     fn get_account_gates_on_local_session() {
         let (services, authority) = signing_runtime();
         let runtime = product_runtime(services, authority);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
@@ -1365,7 +1367,7 @@ mod tests {
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let runtime = product_runtime(services, activation);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
@@ -1417,7 +1419,7 @@ mod tests {
             stale.public_key,
         );
 
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
@@ -1446,7 +1448,7 @@ mod tests {
         futures::executor::block_on(authority.disconnect());
         assert!(authority.current_session().is_none());
 
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
@@ -1469,7 +1471,7 @@ mod tests {
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation");
         let session = authority.current_session().expect("connected");
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let empty = futures::executor::block_on(authority.allocate_resources(
             &cx,

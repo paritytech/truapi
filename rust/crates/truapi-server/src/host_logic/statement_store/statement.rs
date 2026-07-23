@@ -32,21 +32,34 @@ pub struct VerifiedStatementData {
 /// <https://github.com/paritytech/polkadot-sdk/blob/7d525248d594c79dcc5e30217becbd56d2fcda40/substrate/primitives/statement-store/src/lib.rs#L260-L289>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum StatementProof {
+    /// Statement signed with an sr25519 key.
     Sr25519 {
+        /// Signature over the sorted non-proof fields.
         signature: [u8; 64],
+        /// sr25519 public key that produced the signature.
         signer: [u8; 32],
     },
+    /// Statement signed with an ed25519 key.
     Ed25519 {
+        /// Signature over the sorted non-proof fields.
         signature: [u8; 64],
+        /// ed25519 public key that produced the signature.
         signer: [u8; 32],
     },
+    /// Statement signed with an ECDSA secp256k1 key.
     Ecdsa {
+        /// Signature over the sorted non-proof fields.
         signature: [u8; 65],
+        /// Compressed secp256k1 public key that produced the signature.
         signer: [u8; 33],
     },
+    /// Statement anchored by a pallet-statement chain event instead of a signature.
     OnChain {
+        /// Account that submitted the statement on chain.
         who: [u8; 32],
+        /// Block containing the statement event.
         block_hash: [u8; 32],
+        /// Event index within that block.
         event: u64,
     },
 }
@@ -57,14 +70,23 @@ pub enum StatementProof {
 /// <https://github.com/paritytech/polkadot-sdk/blob/f2f3aa6a8fda8ea52282da9711b3c5da4ba82529/substrate/primitives/statement-store/src/lib.rs#L314-L337>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum StatementField {
+    /// Authenticity proof over the other fields.
     Proof(StatementProof),
+    /// Identifier of the key able to decrypt the `Data` field.
     DecryptionKey([u8; 32]),
+    /// Expiry, unix seconds in the upper 32 bits.
     Expiry(u64),
+    /// Per-signer channel; the store keeps one live statement per channel.
     Channel([u8; 32]),
+    /// First matching topic.
     Topic1([u8; 32]),
+    /// Second matching topic.
     Topic2([u8; 32]),
+    /// Third matching topic.
     Topic3([u8; 32]),
+    /// Fourth matching topic.
     Topic4([u8; 32]),
+    /// Statement payload bytes.
     Data(Vec<u8>),
 }
 

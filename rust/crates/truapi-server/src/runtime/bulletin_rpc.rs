@@ -1179,7 +1179,7 @@ mod tests {
             ]));
             let value = b"scripted bulletin happy path";
             let result = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
                 value,
@@ -1206,7 +1206,7 @@ mod tests {
             ]));
             let value = b"scripted bulletin retry";
             let result = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
                 value,
@@ -1228,7 +1228,7 @@ mod tests {
             ]));
             let value = b"scripted bulletin inconsistent inclusion";
             let result = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
                 value,
@@ -1250,7 +1250,7 @@ mod tests {
                 TransactionOutcome::Invalid,
             ]));
             let error = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
                 b"scripted stale allowance",
@@ -1288,7 +1288,7 @@ mod tests {
                     ),
             );
             let error = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
                 b"scripted stale allowance",
@@ -1315,7 +1315,7 @@ mod tests {
         fn submit_preimage_budget_reports_pre_broadcast_phase() {
             let provider = Arc::new(BulletinScriptedProvider::with_options([], true));
             let error = futures::executor::block_on(rpc(provider).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_millis(25),
                 &allowance_fixture(),
                 b"timeout",
@@ -1345,7 +1345,7 @@ mod tests {
             );
             let value = b"scripted allowance propagation";
             let result = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
                 value,
@@ -1370,7 +1370,7 @@ mod tests {
                     .with_validation_outcomes([ValidationOutcome::AllowanceRejected], false),
             );
             let error = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
                 b"scripted propagation block wait timeout",
@@ -1396,7 +1396,7 @@ mod tests {
                 true,
             ));
             let error = futures::executor::block_on(rpc(provider.clone()).submit_preimage(
-                &CallContext::new(),
+                &CallContext::default(),
                 Instant::now() + Duration::from_secs(2),
                 &allowance_fixture(),
                 b"scripted propagation block limit",

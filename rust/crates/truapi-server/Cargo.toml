@@ -28,14 +28,11 @@ dwarf-debug-info = false
 [features]
 default = []
 
-[lints.rust]
-unsafe_code = "forbid"
-
 [dependencies]
 truapi = { path = "../truapi" }
 truapi-platform = { path = "../truapi-platform" }
 async-trait = "0.1"
-derive_more = { version = "2", features = ["debug", "display", "error"] }
+derive_more = { version = "2", features = ["debug", "display", "error", "from"] }
 futures = "0.3"
 futures-timer = "3"
 parity-scale-codec = { version = "3", features = ["derive"] }
@@ -86,3 +83,6 @@ scale-info = "2.11"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[lints]
+workspace = true

@@ -16,12 +16,16 @@ use super::authority::AuthorityError;
 use super::sso_remote::SsoSessionKey;
 use crate::host_logic::session::{SessionInfo, SsoSessionInfo};
 
+/// Chain resource an allowance key grants access to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub(super) enum AllowanceResource {
+    /// Bulletin-chain transaction storage.
     Bulletin,
+    /// People-chain statement store.
     StatementStore,
 }
 
+/// Memory-cache key: `(session, product_id, resource)`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(super) struct AllowanceCacheKey {
     session: SsoSessionKey,
@@ -30,6 +34,7 @@ pub(super) struct AllowanceCacheKey {
 }
 
 impl AllowanceCacheKey {
+    /// Cache key for the session's SSO pair; fails when the session has none.
     pub(super) fn new(
         session: &SessionInfo,
         product_id: &str,
@@ -42,6 +47,7 @@ impl AllowanceCacheKey {
         })
     }
 
+    /// Whether this key belongs to the given SSO session.
     pub(super) fn is_for_session(&self, session: SsoSessionKey) -> bool {
         self.session == session
     }
@@ -54,6 +60,7 @@ struct StoredAllowanceEntry {
     slot_account_key: Vec<u8>,
 }
 
+/// Read the persisted allowance key for `(product_id, resource)`, if any.
 pub(super) async fn read_allowance_key(
     storage: &(impl CoreStorage + ?Sized),
     session: &SessionInfo,
@@ -67,6 +74,8 @@ pub(super) async fn read_allowance_key(
         .map(|entry| entry.slot_account_key))
 }
 
+/// Persist an allowance key, replacing any prior key for the same
+/// `(product_id, resource)`.
 pub(super) async fn write_allowance_key(
     storage: &(impl CoreStorage + ?Sized),
     session: &SessionInfo,
@@ -87,6 +96,8 @@ pub(super) async fn write_allowance_key(
         .map_err(storage_error)
 }
 
+/// Remove the persisted allowance key for `(product_id, resource)`; a miss is
+/// not an error.
 pub(super) async fn remove_allowance_key(
     storage: &(impl CoreStorage + ?Sized),
     session: &SessionInfo,
@@ -105,6 +116,7 @@ pub(super) async fn remove_allowance_key(
         .map_err(storage_error)
 }
 
+/// Drop every persisted allowance key belonging to the session.
 pub(super) async fn clear_session_allowance_keys(
     storage: &(impl CoreStorage + ?Sized),
     session: &SessionInfo,

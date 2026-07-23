@@ -122,9 +122,13 @@ pub enum RegistrationOutcome {
 
 /// Target and slot-selection inputs for one statement-store registration.
 pub struct RegistrationParams<'a> {
+    /// Account that should receive the statement-store registration.
     pub target: &'a [u8; 32],
+    /// Statement-store period for which the registration is requested.
     pub period: u32,
+    /// Ring parameters used to build the membership proof.
     pub ring: &'a RingParams,
+    /// Whether an existing registration for this period may be reused.
     pub reuse_existing: bool,
 }
 
@@ -145,13 +149,18 @@ pub enum LongTermStorageOutcome {
 /// Bulletin authorization state for one account.
 #[derive(Debug, Clone, Copy)]
 pub struct BulletinAllowanceInfo {
+    /// Number of preimage bytes that remain available.
     pub remained_size: u64,
+    /// Number of preimage submissions that remain available.
     pub remained_transactions: u32,
+    /// Block at which the allowance expires.
     pub expires_in: u32,
+    /// Block at which this allowance snapshot was fetched.
     pub fetched_at: u32,
 }
 
 impl BulletinAllowanceInfo {
+    /// Returns whether the snapshot still permits at least one submission.
     pub fn available(self) -> bool {
         self.remained_size > 0
             && self.remained_transactions > 0

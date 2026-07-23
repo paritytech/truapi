@@ -1,5 +1,11 @@
 # @parity/truapi
 
+## 0.5.1
+
+### Patch Changes
+
+- Support the sandbox client in legacy Nova and dotli iframe hosts while the Rust Core transport migration rolls out.
+
 ## 0.5.0
 
 ### Minor Changes

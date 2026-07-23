@@ -83,13 +83,16 @@ pub struct RemoteMessage {
 /// Versioned remote message body.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemoteMessageData {
+    /// Version 1 of the remote message catalog.
     V1(v1::RemoteMessage),
 }
 
 /// Signing request flavor sent to the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRequest {
+    /// Sign a full Substrate extrinsic payload.
     Payload(Box<SigningPayloadRequest>),
+    /// Sign raw bytes or a string message.
     Raw(SigningRawRequest),
 }
 
@@ -101,21 +104,37 @@ pub enum SigningRequest {
 /// encodes `with_signed_transaction` as `OptionBool`.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadRequest {
+    /// Product account that signs the payload.
     pub product_account_id: ProductAccountId,
+    /// Reference block hash.
     pub block_hash: Vec<u8>,
+    /// Reference block number.
     pub block_number: Vec<u8>,
+    /// Mortality era encoding.
     pub era: Vec<u8>,
+    /// Chain genesis hash.
     pub genesis_hash: Vec<u8>,
+    /// SCALE-encoded call data.
     pub method: Vec<u8>,
+    /// Account nonce.
     pub nonce: Vec<u8>,
+    /// Runtime spec version.
     pub spec_version: Vec<u8>,
+    /// Transaction tip.
     pub tip: Vec<u8>,
+    /// Transaction format version.
     pub transaction_version: Vec<u8>,
+    /// Extension identifiers.
     pub signed_extensions: Vec<String>,
+    /// Extrinsic version.
     pub version: u32,
+    /// For multi-asset tips.
     pub asset_id: Option<Vec<u8>>,
+    /// CheckMetadataHash extension.
     pub metadata_hash: Option<Vec<u8>>,
+    /// Metadata mode.
     pub mode: Option<u32>,
+    /// Request the full signed transaction back.
     pub with_signed_transaction: OptionBool,
 }
 
@@ -176,7 +195,9 @@ impl From<SigningPayloadRequest> for truapi::v01::HostSignPayloadRequest {
 /// statement.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningRawRequest {
+    /// Product account that signs the payload.
     pub product_account_id: ProductAccountId,
+    /// Raw bytes or string message to sign.
     pub data: SigningRawPayload,
 }
 
@@ -196,7 +217,9 @@ impl SigningRawRequest {
 /// from the user's legacy accounts.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SignRawLegacyRequest {
+    /// Legacy account that signs the payload.
     pub account: AccountId,
+    /// Raw bytes or string message to sign.
     pub data: SigningRawPayload,
 }
 
@@ -207,7 +230,9 @@ pub struct SignRawLegacyRequest {
 /// wire.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRawPayload {
+    /// Raw binary payload.
     Bytes(Vec<u8>),
+    /// String message payload.
     Payload(String),
 }
 
@@ -244,14 +269,18 @@ impl From<SigningRawRequest> for truapi::v01::HostSignRawRequest {
 /// for a matching SSO remote message id.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningResponse {
+    /// `message_id` of the signing request being answered.
     pub responding_to: String,
+    /// Signing result, or an error description from the signing host.
     pub payload: Result<SigningPayloadResponseData, String>,
 }
 
 /// Successful product-account signing result returned by the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadResponseData {
+    /// The cryptographic signature.
     pub signature: Vec<u8>,
+    /// Full signed transaction, when the request asked for it.
     pub signed_transaction: Option<Vec<u8>>,
 }
 
@@ -261,7 +290,9 @@ pub struct SigningPayloadResponseData {
 /// the public raw-signing response shape.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SignRawLegacyResponse {
+    /// `message_id` of the legacy raw-signing request being answered.
     pub responding_to: String,
+    /// Signature bytes, or an error description from the signing host.
     pub signature: Result<Vec<u8>, String>,
 }
 
@@ -272,14 +303,18 @@ pub struct SignRawLegacyResponse {
 /// unsigned statement payload bytes directly.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct StatementStoreProductSignRequest {
+    /// Product-derived account that must sign the statement payload.
     pub product_account_id: ProductAccountId,
+    /// Exact SCALE-encoded unsigned statement payload to sign.
     pub payload: Vec<u8>,
 }
 
 /// Response returned for exact statement-store proof signing.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct StatementStoreProductSignResponse {
+    /// `message_id` of the statement-signing request being answered.
     pub responding_to: String,
+    /// Signature bytes, or an error description from the signing host.
     pub signature: Result<Vec<u8>, String>,
 }
 
@@ -297,7 +332,10 @@ pub enum RingVrfError {
     /// User or Account Holder rejected the request.
     Rejected,
     /// Catch-all failure, carrying a diagnostic reason.
-    Unknown { reason: String },
+    Unknown {
+        /// Diagnostic failure description.
+        reason: String,
+    },
 }
 
 /// Request sent when a product asks the Account Holder for a contextual alias.
@@ -307,15 +345,20 @@ pub enum RingVrfError {
 /// `ring_location` select the member key and bind the derived alias (RFC 0004).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasRequest {
+    /// Product id of the calling product.
     pub calling_product_id: String,
+    /// Context that scopes the derived alias.
     pub context: ProductProofContext,
+    /// Ring whose member key derives the alias.
     pub ring_location: RingLocation,
 }
 
 /// Response returned by the Account Holder for a ring-VRF alias request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasResponse {
+    /// `message_id` of the alias request being answered.
     pub responding_to: String,
+    /// Derived alias, or the ring-VRF failure.
     pub payload: Result<HostAccountGetAliasResponse, RingVrfError>,
 }
 
@@ -326,16 +369,22 @@ pub struct RingVrfAliasResponse {
 /// the proof (RFC 0004).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfProofRequest {
+    /// Product id of the calling product.
     pub calling_product_id: String,
+    /// Context that scopes the proof.
     pub context: ProductProofContext,
+    /// Ring whose member key produces the proof.
     pub ring_location: RingLocation,
+    /// Opaque message bound into the proof.
     pub message: Vec<u8>,
 }
 
 /// Response returned by the Account Holder for a ring-VRF proof request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfProofResponse {
+    /// `message_id` of the proof request being answered.
     pub responding_to: String,
+    /// Created proof, or the ring-VRF failure.
     pub payload: Result<HostAccountCreateProofResponse, RingVrfError>,
 }
 
@@ -347,17 +396,25 @@ pub struct RingVrfProofResponse {
 /// auto-signing material.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ResourceAllocationRequest {
+    /// Product id the allocation is requested for.
     pub calling_product_id: String,
+    /// Resources to allocate; outcomes come back in the same order.
     pub resources: Vec<SsoAllocatableResource>,
+    /// Policy applied when an allocation already exists for this product.
     pub on_existing: OnExistingAllowancePolicy,
 }
 
 /// Resources the signing host may allocate for the calling product.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatableResource {
+    /// Statement Store slot allowance for the product's allowance account.
     StatementStoreAllowance,
+    /// Bulletin chain slot allowance for the product's allowance account.
     BulletinAllowance,
+    /// Pre-warmed PGAS balance for the smart-contract account at the given
+    /// derivation index.
     SmartContractAllowance(u32),
+    /// Transfer of the product subtree key so the host can sign locally.
     AutoSigning,
 }
 
@@ -377,37 +434,52 @@ impl From<AllocatableResource> for SsoAllocatableResource {
 /// Signing-host policy for already-existing resource allowance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum OnExistingAllowancePolicy {
+    /// Return the existing allocation unchanged; allocate only if none exists.
     Ignore,
+    /// Assign one additional slot to the existing allowance account.
     Increase,
 }
 
 /// Response returned by the signing host for a resource-allocation request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ResourceAllocationResponse {
+    /// `message_id` of the allocation request being answered.
     pub responding_to: String,
+    /// Per-resource outcomes in request order, or an error description.
     pub payload: Result<Vec<SsoAllocationOutcome>, String>,
 }
 
 /// Per-resource allocation result from the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocationOutcome {
+    /// Resource granted, carrying the allocated material.
     Allocated(SsoAllocatedResource),
+    /// User or signing host declined this resource.
     Rejected,
+    /// Signing host cannot currently grant this resource.
     NotAvailable,
 }
 
 /// Resource material allocated by the signing host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatedResource {
+    /// Statement Store slot allowance material.
     StatementStoreAllowance {
+        /// Private key of the allowance account assigned to the slot.
         slot_account_key: Vec<u8>,
     },
+    /// Bulletin chain slot allowance material.
     BulletinAllowance {
+        /// Private key of the allowance account assigned to the slot.
         slot_account_key: Vec<u8>,
     },
+    /// Smart-contract allowance carries no key material.
     SmartContractAllowance,
+    /// Auto-signing material for the product subtree.
     AutoSigning {
+        /// Secret component of the per-product soft-derivation path.
         product_derivation_secret: String,
+        /// Private key of the product subtree root.
         product_root_private_key: Vec<u8>,
     },
 }
@@ -416,12 +488,14 @@ pub enum SsoAllocatedResource {
 /// for a product-derived account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionRequest {
+    /// Transaction payload to build and sign.
     pub payload: CreateTransactionPayload,
 }
 
 /// Versioned transaction-creation payload.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CreateTransactionPayload {
+    /// Version 1 product-account payload.
     V1(ProductAccountTxPayload),
 }
 
@@ -429,12 +503,14 @@ pub enum CreateTransactionPayload {
 /// for a user-imported legacy account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionLegacyRequest {
+    /// Transaction payload to build and sign.
     pub payload: CreateTransactionLegacyPayload,
 }
 
 /// Versioned legacy transaction-creation payload.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CreateTransactionLegacyPayload {
+    /// Version 1 legacy-account payload.
     V1(LegacyAccountTxPayload),
 }
 
@@ -442,27 +518,39 @@ pub enum CreateTransactionLegacyPayload {
 /// transaction creation.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionResponse {
+    /// `message_id` of the transaction-creation request being answered.
     pub responding_to: String,
+    /// SCALE-encoded signed transaction, or an error description.
     pub signed_transaction: Result<Vec<u8>, String>,
 }
 
 /// Decoded inbound statement-channel outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SsoSessionStatement {
+    /// The outbound request statement was acknowledged with a success code.
     RequestAccepted,
+    /// Remote response matching the pending remote message id.
     RemoteResponse(SsoRemoteResponse),
+    /// The peer ended the SSO session.
     Disconnected,
 }
 
 /// Signing-host response variants that can satisfy a pending remote request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SsoRemoteResponse {
+    /// Product-account signing response.
     Sign(SigningResponse),
+    /// Legacy-account raw-signing response.
     SignRawLegacy(SignRawLegacyResponse),
+    /// Statement-store product signing response.
     StatementStoreProductSign(StatementStoreProductSignResponse),
+    /// Contextual-alias response.
     RingVrfAlias(RingVrfAliasResponse),
+    /// Ring-VRF proof response.
     RingVrfProof(RingVrfProofResponse),
+    /// Resource-allocation response.
     ResourceAllocation(ResourceAllocationResponse),
+    /// Transaction-creation response.
     CreateTransaction(CreateTransactionResponse),
 }
 

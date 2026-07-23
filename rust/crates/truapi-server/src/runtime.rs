@@ -8,17 +8,24 @@
 //! `CallError::unavailable()`.
 
 mod allowances;
+/// Core-owned auth/session UI state machine.
 pub(crate) mod auth_state;
 mod authority;
+/// In-core Bulletin preimage submission over the shared Subxt client.
 pub(crate) mod bulletin_rpc;
 mod identity;
 mod pairing_host;
+/// Role-neutral runtime services shared by product-facing runtimes.
 pub(crate) mod services;
 mod signing_host;
+/// SSO pairing (login) flow over the statement store bootstrap topic.
 pub(crate) mod sso_pairing;
+/// SSO remote request/response messaging over the statement store.
 pub(crate) mod sso_remote;
+/// Native Statement Store and Bulletin allowance allocation.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod statement_allowance;
+/// `StatementStore` surface: proofs plus submit and subscribe flows.
 pub(crate) mod statement_store;
 mod statement_store_rpc;
 
@@ -151,6 +158,7 @@ use truapi_platform::{
     normalize_product_identifier,
 };
 
+/// Error reason surfaced to products when a remote permission is not granted.
 pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
 /// Host-spec B.6.2 recommends timing out unanswered SSO application requests
 /// after 180 seconds:
@@ -303,6 +311,7 @@ impl ProductRuntimeHost {
         }
     }
 
+    /// Test constructor building a standalone pairing-host runtime.
     #[cfg(test)]
     pub fn new<P>(
         platform: Arc<P>,
@@ -511,6 +520,8 @@ impl ProductRuntimeHost {
             .map_err(|err| format!("permission storage failed: {err:?}"))
     }
 
+    /// Gate a remote call on `permission`, prompting the user when it is
+    /// undetermined. Anything short of `Authorized` fails with `denied_error`.
     pub(super) async fn require_remote_permission<E>(
         &self,
         permission: v01::RemotePermission,
@@ -1838,7 +1849,7 @@ impl ResourceAllocation for ProductRuntimeHost {
         .map_err(|err| {
             CallError::Domain(HostRequestResourceAllocationError::V1(
                 v01::ResourceAllocationError::Unknown {
-                    reason: err.reason(),
+                    reason: err.to_string(),
                 },
             ))
         })
@@ -1869,7 +1880,7 @@ impl Entropy for ProductRuntimeHost {
             .map_err(|err| {
                 CallError::Domain(HostDeriveEntropyError::V1(
                     v01::HostDeriveEntropyError::Unknown {
-                        reason: err.reason(),
+                        reason: err.to_string(),
                     },
                 ))
             })?;
@@ -2061,7 +2072,7 @@ fn bulletin_allowance_error_reason(err: AuthorityError) -> String {
         AuthorityError::Disconnected => {
             "Signing host disconnected while allocating Bulletin allowance".to_string()
         }
-        other => other.reason(),
+        other => other.to_string(),
     }
 }
 
@@ -2186,7 +2197,7 @@ mod tests {
     #[test]
     fn feature_supported_round_trips_through_runtime() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],
         });
@@ -2229,7 +2240,7 @@ mod tests {
     #[test]
     fn navigate_to_uses_dotns_decision_and_then_platform() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostNavigateToRequest::V1(v01::HostNavigateToRequest {
             url: "mytestapp.dot".to_string(),
         });
@@ -2240,7 +2251,7 @@ mod tests {
     #[test]
     fn navigate_to_rejects_empty_input_without_calling_platform() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostNavigateToRequest::V1(v01::HostNavigateToRequest {
             url: "".to_string(),
         });
@@ -2262,7 +2273,7 @@ mod tests {
             ..Default::default()
         });
         let host = ProductRuntimeHost::new_compat(platform, test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostPushNotificationRequest::V1(v01::HostPushNotificationRequest {
             text: "Hello".to_string(),
             deeplink: Some("https://example.invalid/launch".to_string()),
@@ -2297,7 +2308,7 @@ mod tests {
             ..Default::default()
         });
         let host = ProductRuntimeHost::new_compat(platform, test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request =
             HostPushNotificationCancelRequest::V1(v01::HostPushNotificationCancelRequest {
                 id: 42,
@@ -2320,7 +2331,7 @@ mod tests {
     fn get_account_requires_session() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
@@ -2341,7 +2352,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "example.com".to_string(),
@@ -2366,7 +2377,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
@@ -2402,7 +2413,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
@@ -2427,7 +2438,7 @@ mod tests {
         );
         let session = session_info();
         host.test_session_state().set_session(session.clone());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "other.dot".to_string(),
@@ -2449,7 +2460,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
@@ -2469,7 +2480,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("MyApp.DOT"), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "MyApp.DOT".to_string(),
@@ -2495,7 +2506,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
@@ -2514,7 +2525,7 @@ mod tests {
     fn get_account_alias_requires_session() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let err = futures::executor::block_on(
             host.get_account_alias(&cx, account_alias_request("myapp.dot")),
         )
@@ -2576,7 +2587,7 @@ mod tests {
     fn create_account_proof_requires_session() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let err = futures::executor::block_on(
             host.create_account_proof(&cx, create_proof_request("myapp.dot")),
         )
@@ -2685,7 +2696,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let response = futures::executor::block_on(
             host.get_legacy_accounts(&cx, HostGetLegacyAccountsRequest::V1),
         )
@@ -2697,7 +2708,7 @@ mod tests {
     #[test]
     fn get_legacy_accounts_returns_empty_when_disconnected() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let response = futures::executor::block_on(
             host.get_legacy_accounts(&cx, HostGetLegacyAccountsRequest::V1),
         )
@@ -2714,7 +2725,7 @@ mod tests {
         });
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let response =
             futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
         let HostGetUserIdResponse::V1(inner) = response;
@@ -2730,7 +2741,7 @@ mod tests {
         });
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
         futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
@@ -2749,7 +2760,7 @@ mod tests {
         let platform = Arc::new(StubPlatform::default());
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let first = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
             .unwrap_err();
@@ -2785,7 +2796,7 @@ mod tests {
         });
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let first = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
             .unwrap_err();
@@ -2821,7 +2832,7 @@ mod tests {
         session.full_username = None;
         session.lite_username = None;
         host.test_session_state().set_session(session);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
             .unwrap_err();
@@ -2846,7 +2857,7 @@ mod tests {
         session.full_username = None;
         session.lite_username = None;
         host.test_session_state().set_session(session);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
 
         let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
             .unwrap_err();
@@ -2865,7 +2876,7 @@ mod tests {
         let platform = Arc::new(StubPlatform::default());
         let host = ProductRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         futures::executor::block_on(host.set_permission_authorization_status(
             PermissionAuthorizationRequest::IdentityDisclosure,
             PermissionAuthorizationStatus::Authorized,
@@ -2886,7 +2897,7 @@ mod tests {
         let mut session = sso_session_info();
         session.root_entropy_source = session_info().root_entropy_source;
         host.test_session_state().set_session(session);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest {
             context: b"product-key".to_vec(),
         });
@@ -2901,7 +2912,7 @@ mod tests {
     #[test]
     fn derive_entropy_requires_session() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest {
             context: b"product-key".to_vec(),
         });
@@ -2920,7 +2931,7 @@ mod tests {
         let mut session = sso_session_info();
         session.root_entropy_source = None;
         host.test_session_state().set_session(session);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest {
             context: b"product-key".to_vec(),
         });
@@ -2939,7 +2950,7 @@ mod tests {
         let mut session = sso_session_info();
         session.root_entropy_source = session_info().root_entropy_source;
         host.test_session_state().set_session(session);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request =
             HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest { context: vec![] });
         let err = futures::executor::block_on(host.derive(&cx, request)).unwrap_err();
@@ -2954,7 +2965,7 @@ mod tests {
     #[test]
     fn preimage_submit_requires_session_first() {
         let host = ProductRuntimeHost::new_compat_with_bulletin(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
 
         let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
@@ -2975,7 +2986,7 @@ mod tests {
         });
         let host = ProductRuntimeHost::new_compat_with_bulletin(platform.clone(), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
         let err = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap_err();
         match err {
@@ -3004,7 +3015,7 @@ mod tests {
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = RemoteChainTransactionBroadcastRequest::V1(
             v01::RemoteChainTransactionBroadcastRequest {
                 genesis_hash: vec![0; 32],
@@ -3032,7 +3043,7 @@ mod tests {
         let key = preimage_key(&value);
         host.services.cache_preimage(key, value.clone());
 
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request =
             RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
                 key: key.to_vec(),
@@ -3063,7 +3074,7 @@ mod tests {
             ..Default::default()
         });
         let host = ProductRuntimeHost::new_compat(forged, test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request =
             RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
                 key: key.to_vec(),
@@ -3100,7 +3111,7 @@ mod tests {
     #[test]
     fn theme_subscribe_maps_platform_values() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let mut subscription = futures::executor::block_on(Theme::subscribe(&host, &cx));
         let item = futures::executor::block_on(subscription.next()).expect("theme item");
         assert_eq!(
@@ -3117,7 +3128,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: account_id("other.dot", 0),
             payload: raw_payload(),
@@ -3135,7 +3146,7 @@ mod tests {
     fn sign_raw_rejects_without_session_after_valid_account() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: account_id("myapp.dot", 0),
             payload: raw_payload(),
@@ -3158,7 +3169,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: account_id("myapp.dot", 0),
             payload: raw_payload(),
@@ -3177,7 +3188,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: account_id("myapp.dot", 0),
             payload: raw_payload(),
@@ -3317,7 +3328,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session);
-        let cancel = truapi::CancellationToken::new();
+        let cancel = truapi::CancellationToken::default();
         let cx = CallContext::with_parts(message_id.to_string(), cancel.clone());
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: account_id("myapp.dot", 0),
@@ -3471,7 +3482,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignPayloadRequest::V1(v01::HostSignPayloadRequest {
             account: account_id("myapp.dot", 0),
             payload: sign_payload_data(),
@@ -3496,7 +3507,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignPayloadRequest::V1(v01::HostSignPayloadRequest {
             account: account_id("myapp.dot", 0),
             payload: sign_payload_data(),
@@ -3595,7 +3606,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session);
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostSignPayloadWithLegacyAccountRequest::V1(
             v01::HostSignPayloadWithLegacyAccountRequest {
                 signer: subxt::utils::AccountId32(identity).to_string(),
@@ -3619,7 +3630,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request =
             HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
                 signer: "5Ci5sCERp3MFEDpF2jVkQDJoBevpRosB7toYRqKWShewhdhq".to_string(),
@@ -3646,7 +3657,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(sso_session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request =
             HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
                 signer: "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1".to_string(),
@@ -3805,7 +3816,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request =
             HostCreateTransactionWithLegacyAccountRequest::V1(v01::LegacyAccountTxPayload {
                 signer: [0; 32],
@@ -3950,7 +3961,7 @@ mod tests {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostCreateTransactionRequest::V1(product_tx_payload("other.dot"));
         let err = futures::executor::block_on(host.create_transaction(&cx, request)).unwrap_err();
         assert!(matches!(
@@ -3964,7 +3975,7 @@ mod tests {
     #[test]
     fn resource_allocation_rejects_without_session() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let err = futures::executor::block_on(ResourceAllocation::request(
             &host,
             &cx,
@@ -3983,7 +3994,7 @@ mod tests {
     fn resource_allocation_rejects_when_user_declines() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let err = futures::executor::block_on(ResourceAllocation::request(
             &host,
             &cx,
@@ -4008,7 +4019,7 @@ mod tests {
             test_spawner(),
         );
         host.test_session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let err = futures::executor::block_on(ResourceAllocation::request(
             &host,
             &cx,
@@ -4432,7 +4443,7 @@ mod tests {
     #[test]
     fn permissions_grants_and_caches() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostDevicePermissionRequest::V1(v01::HostDevicePermissionRequest::Camera);
         let response =
             futures::executor::block_on(host.request_device_permission(&cx, request)).unwrap();
@@ -4443,7 +4454,7 @@ mod tests {
     #[test]
     fn feature_supported_encodes_response_to_known_bytes() {
         let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
-        let cx = CallContext::new();
+        let cx = CallContext::default();
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],
         });
