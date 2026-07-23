@@ -97,6 +97,23 @@ pub fn public_key_from_address(address: &str) -> Option<[u8; 32]> {
     Some(subxt::utils::AccountId32::from_str(address).ok()?.0)
 }
 
+/// Derive an sr25519 keypair down a path of hard string junctions from the
+/// canonical BIP-39 root key.
+pub fn derive_sr25519_hard_path(
+    entropy: &[u8],
+    junctions: &[&str],
+) -> Result<Keypair, ProductAccountError> {
+    let mut keypair = derive_root_keypair_from_entropy(entropy)?;
+    for junction in junctions {
+        let chain_code = ChainCode(create_chain_code(junction)?);
+        let (mini_secret, _) = keypair
+            .secret
+            .hard_derive_mini_secret_key(Some(chain_code), b"");
+        keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
+    }
+    Ok(keypair)
+}
+
 /// Create a Substrate soft-derivation chain code for one junction.
 fn create_chain_code(code: &str) -> Result<[u8; 32], ProductAccountError> {
     let encoded = if !code.is_empty() && code.bytes().all(|byte| byte.is_ascii_digit()) {

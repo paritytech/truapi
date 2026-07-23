@@ -65,7 +65,9 @@ verifiable = { git = "https://github.com/paritytech/verifiable.git", rev = "19b0
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 subxt = { version = "0.50.2", default-features = false, features = ["native"] }
-subxt-rpcs = { version = "0.50.1", default-features = false, features = ["native"] }
+subxt-rpcs = { version = "0.50.1", default-features = false, features = ["jsonrpsee", "native"] }
+frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
+scale-info = { version = "2.11", default-features = false, features = ["decode"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 futures-timer = { version = "3", features = ["wasm-bindgen"] }

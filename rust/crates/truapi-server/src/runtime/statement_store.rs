@@ -577,7 +577,9 @@ mod tests {
     #[test]
     fn statement_store_submit_posts_signed_statement_and_waits_for_ack() {
         let platform = Arc::new(StubPlatform {
-            rpc_responses: vec![r#"{"jsonrpc":"2.0","id":"truapi:1","result":"0xok"}"#.to_string()],
+            rpc_responses: vec![
+                r#"{"jsonrpc":"2.0","id":"truapi:1","result":{"status":"new"}}"#.to_string(),
+            ],
             ..Default::default()
         });
         let host = ProductRuntimeHost::new(

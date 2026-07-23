@@ -23,8 +23,14 @@ pub fn derive_product_entropy(
     product_id: &str,
     key: &[u8],
 ) -> Result<[u8; 32], ProductEntropyError> {
-    let root_entropy_source = blake2b256_keyed(entropy_secret, DOMAIN_SEPARATOR);
-    derive_product_entropy_from_source(&root_entropy_source, product_id, key)
+    derive_product_entropy_from_source(&root_entropy_source(entropy_secret), product_id, key)
+}
+
+/// Pre-hashed root entropy source (RFC-0007 layer 1). Signing hosts share this
+/// value with paired hosts during the SSO handshake so both sides derive the
+/// same product entropy.
+pub fn root_entropy_source(entropy_secret: &[u8]) -> [u8; 32] {
+    blake2b256_keyed(entropy_secret, DOMAIN_SEPARATOR)
 }
 
 /// Derive product-scoped entropy when the session already stores the

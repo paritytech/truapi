@@ -17,7 +17,7 @@ use crate::host_logic::session::SessionInfo;
 
 use futures::{FutureExt, pin_mut};
 use tracing::{debug, instrument, warn};
-use truapi::v01::{
+use truapi::latest::{
     OperationStartedResult, RemoteChainHeadFollowRequest, RemoteChainHeadStorageRequest,
     StorageQueryItem, StorageQueryType,
 };
@@ -51,7 +51,7 @@ pub(super) async fn resolve_session_identity_with_chain(
     }
 
     let preferred_account = session.identity_account_id.unwrap_or(session.public_key);
-    if !lookup_and_apply(
+    if lookup_and_apply(
         chain,
         people_chain_genesis_hash,
         preferred_account,
@@ -59,6 +59,7 @@ pub(super) async fn resolve_session_identity_with_chain(
         "identity",
     )
     .await
+        == LookupOutcome::NoRecord
         && preferred_account != session.public_key
     {
         let public_key = session.public_key;
@@ -75,42 +76,60 @@ pub(super) async fn resolve_session_identity_with_chain(
     session
 }
 
+/// Maximum lookup attempts per account on transient failure. The first attempt
+/// warms the People-chain connection (cached per genesis), so a retry after a
+/// cold-start timeout usually resolves immediately.
+const IDENTITY_LOOKUP_MAX_ATTEMPTS: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LookupOutcome {
+    /// A username record was found and applied.
+    Applied,
+    /// The account has no consumer record (definitive; do not retry).
+    NoRecord,
+    /// The lookup failed transiently after exhausting retries.
+    Failed,
+}
+
 /// Look up `account`'s people-chain identity and apply any usernames to
-/// `session`; returns whether a username record was found and applied.
+/// `session`, retrying transient failures against the warmed connection.
 async fn lookup_and_apply(
     chain: &ChainRuntime,
     people_chain_genesis_hash: [u8; 32],
     account: [u8; 32],
     session: &mut SessionInfo,
     label: &str,
-) -> bool {
-    match lookup_people_identity(chain, people_chain_genesis_hash, account).await {
-        Ok(Some(identity)) => {
-            debug!(
-                account = %hex::encode(account),
-                lite_username = identity.lite_username.as_deref().unwrap_or(""),
-                full_username = identity.full_username.as_deref().unwrap_or(""),
-                "People-chain {label} lookup found username"
-            );
-            session.apply_usernames(identity.lite_username, identity.full_username);
-            true
-        }
-        Ok(None) => {
-            debug!(
-                account = %hex::encode(account),
-                "People-chain {label} lookup found no consumer record"
-            );
-            false
-        }
-        Err(reason) => {
-            warn!(
-                account = %hex::encode(account),
-                %reason,
-                "People-chain {label} lookup failed"
-            );
-            false
+) -> LookupOutcome {
+    for attempt in 1..=IDENTITY_LOOKUP_MAX_ATTEMPTS {
+        match lookup_people_identity(chain, people_chain_genesis_hash, account).await {
+            Ok(Some(identity)) => {
+                debug!(
+                    account = %hex::encode(account),
+                    lite_username = identity.lite_username.as_deref().unwrap_or(""),
+                    full_username = identity.full_username.as_deref().unwrap_or(""),
+                    "People-chain {label} lookup found username"
+                );
+                session.apply_usernames(identity.lite_username, identity.full_username);
+                return LookupOutcome::Applied;
+            }
+            Ok(None) => {
+                debug!(
+                    account = %hex::encode(account),
+                    "People-chain {label} lookup found no consumer record"
+                );
+                return LookupOutcome::NoRecord;
+            }
+            Err(reason) => {
+                warn!(
+                    account = %hex::encode(account),
+                    attempt,
+                    %reason,
+                    "People-chain {label} lookup failed"
+                );
+            }
         }
     }
+    LookupOutcome::Failed
 }
 
 #[instrument(skip_all, fields(runtime.method = "session.identity.lookup"))]

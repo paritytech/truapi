@@ -10,7 +10,7 @@
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L105-L183>
 //! The SCALE handshake codecs are kept wire-compatible with host-papp's v2
 //! handshake codec:
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/auth/scale/handshakeV2.ts#L43-L115>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/auth/scale/handshakeV2.ts>
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -98,7 +98,7 @@ pub mod v2;
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L151-L175>
 ///
 /// Mirrors `@novasamatech/statement-store` session statement data:
-/// <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/statement-store/src/session/scale/statementData.ts#L33-L46>
+/// <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/statement-store/src/session/scale/statementData.ts>
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoStatementData {
     Request {
@@ -109,6 +109,53 @@ pub enum SsoStatementData {
         request_id: String,
         response_code: u8,
     },
+}
+
+/// Decode a pairing deeplink (or its bare handshake hex) into the advertised
+/// handshake proposal. Inverse of [`build_pairing_deeplink`].
+pub fn decode_pairing_deeplink(deeplink: &str) -> Result<VersionedHandshakeProposal, String> {
+    let hex_payload = match deeplink.split_once("?handshake=") {
+        Some((_, hex_payload)) => hex_payload,
+        None => deeplink,
+    };
+    let encoded = hex::decode(hex_payload.trim())
+        .map_err(|err| format!("invalid pairing deeplink hex: {err}"))?;
+    let mut input = encoded.as_slice();
+    let proposal = VersionedHandshakeProposal::decode(&mut input)
+        .map_err(|err| format!("invalid pairing handshake proposal: {err}"))?;
+    if !input.is_empty() {
+        return Err("invalid pairing handshake proposal: trailing bytes".to_string());
+    }
+    Ok(proposal)
+}
+
+/// Encrypt a v2 handshake response for the host that advertised
+/// `host_encryption_public_key`. Inverse of [`decrypt_v2_handshake_response`]:
+/// a fresh ephemeral P-256 key is used per response so each Pending/Success
+/// statement carries an independent ciphertext.
+pub fn encrypt_v2_handshake_response(
+    host_encryption_public_key: [u8; 65],
+    response: &v2::EncryptedResponse,
+) -> Result<VersionedHandshakeResponse, String> {
+    let (ephemeral_secret, ephemeral_public) =
+        generate_p256_keypair().map_err(|err| err.to_string())?;
+    let shared_secret = shared_secret(ephemeral_secret, host_encryption_public_key)?;
+    let aes_key = aes_key_from_shared_secret(&shared_secret)?;
+    let mut nonce = [0u8; AES_GCM_NONCE_LEN];
+    getrandom::getrandom(&mut nonce)
+        .map_err(|err| format!("failed to generate AES-GCM nonce: {err}"))?;
+    let cipher = Aes256Gcm::new_from_slice(&aes_key)
+        .map_err(|err| format!("failed to initialize AES-GCM: {err}"))?;
+    let mut encrypted_message = nonce.to_vec();
+    encrypted_message.extend(
+        cipher
+            .encrypt(Nonce::from_slice(&nonce), response.encode().as_slice())
+            .map_err(|err| format!("failed to encrypt SSO handshake response: {err}"))?,
+    );
+    Ok(VersionedHandshakeResponse::V2 {
+        encrypted_message,
+        public_key: ephemeral_public,
+    })
 }
 
 /// Decode wallet-posted pairing handshake data from SCALE bytes.
@@ -173,6 +220,93 @@ pub fn establish_sso_session_info(
         response_channel: keyed_hash(session_id_own, RESPONSE_CHANNEL_SUFFIX),
         peer_request_channel: keyed_hash(session_id_peer, REQUEST_CHANNEL_SUFFIX),
     })
+}
+
+/// Signing-host key material answering one pairing proposal.
+///
+/// The statement keypair signs every session statement (its public key is the
+/// `identityAccountId` the pairing host binds the session to), and the P-256
+/// secret is the persistent `sso_enc` key both sides feed into the session
+/// ECDH.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponderIdentity {
+    pub statement_secret: [u8; 64],
+    pub statement_public_key: [u8; 32],
+    pub encryption_secret_key: [u8; 32],
+    pub encryption_public_key: [u8; 65],
+}
+
+/// Derive the SSO session channels from the responder (signing host)
+/// perspective after answering the handshake advertised by
+/// `host_statement_account_id` / `host_encryption_public_key`.
+///
+/// Mirror of [`establish_sso_session_info`]: the responder's `session_id_own`
+/// equals the pairing host's `session_id_peer` and vice versa, so statements
+/// built from either side land on the topics the other side subscribes to.
+pub fn establish_responder_session_info(
+    identity: &ResponderIdentity,
+    host_statement_account_id: [u8; 32],
+    host_encryption_public_key: [u8; 65],
+) -> Result<SsoSessionInfo, String> {
+    let shared_secret = shared_secret(identity.encryption_secret_key, host_encryption_public_key)?;
+    let shared_secret_bytes: [u8; 32] = (*shared_secret.raw_secret_bytes()).into();
+    let session_id_own = create_session_id(
+        shared_secret_bytes,
+        identity.statement_public_key,
+        host_statement_account_id,
+    );
+    let session_id_peer = create_session_id(
+        shared_secret_bytes,
+        host_statement_account_id,
+        identity.statement_public_key,
+    );
+
+    Ok(SsoSessionInfo {
+        ss_secret: identity.statement_secret,
+        ss_public_key: identity.statement_public_key,
+        enc_secret: identity.encryption_secret_key,
+        peer_enc_pubkey: host_encryption_public_key,
+        identity_account_id: host_statement_account_id,
+        session_id_own,
+        session_id_peer,
+        request_channel: keyed_hash(session_id_own, REQUEST_CHANNEL_SUFFIX),
+        response_channel: keyed_hash(session_id_own, RESPONSE_CHANNEL_SUFFIX),
+        peer_request_channel: keyed_hash(session_id_peer, REQUEST_CHANNEL_SUFFIX),
+    })
+}
+
+/// Statement channel acknowledging requests the peer initiated: the peer's
+/// own `response` channel seen from this side of the session.
+pub fn peer_response_channel(session: &SsoSessionInfo) -> [u8; 32] {
+    keyed_hash(session.session_id_peer, RESPONSE_CHANNEL_SUFFIX)
+}
+
+/// Derive a deterministic P-256 keypair from BIP-39 entropy and a domain
+/// label. Host-spec C.4 leaves signing-host P-256 derivation
+/// implementation-defined; this scheme only needs to be stable per entropy.
+pub fn derive_p256_keypair_from_entropy(
+    entropy: &[u8],
+    label: &[u8],
+) -> Result<([u8; 32], [u8; 65]), PairingBootstrapError> {
+    for attempt in 0..MAX_P256_SECRET_ATTEMPTS {
+        let mut message = Vec::with_capacity(label.len() + 1);
+        message.extend_from_slice(label);
+        message.push(attempt as u8);
+        let candidate = blake2b256_keyed(&message, entropy);
+        let Ok(secret) = SecretKey::from_slice(&candidate) else {
+            continue;
+        };
+        let public = secret.public_key().to_encoded_point(false);
+        let public = public.as_bytes();
+        if public.len() != 65 {
+            return Err(PairingBootstrapError::InvalidP256Secret);
+        }
+        let mut encryption_public_key = [0u8; 65];
+        encryption_public_key.copy_from_slice(public);
+        return Ok((candidate, encryption_public_key));
+    }
+
+    Err(PairingBootstrapError::InvalidP256Secret)
 }
 
 /// Encrypt session-channel statement data with a random nonce.
@@ -309,13 +443,17 @@ fn create_session_id(
 }
 
 fn keyed_hash(key: [u8; 32], message: &[u8]) -> [u8; 32] {
-    let digest = blake2b_simd::Params::new()
+    blake2b256_keyed(message, &key)
+}
+
+fn blake2b256_keyed(message: &[u8], key: &[u8]) -> [u8; 32] {
+    blake2b_simd::Params::new()
         .hash_length(32)
-        .key(&key)
-        .hash(message);
-    let mut output = [0u8; 32];
-    output.copy_from_slice(digest.as_bytes());
-    output
+        .key(key)
+        .hash(message)
+        .as_bytes()
+        .try_into()
+        .expect("BLAKE2b-256 returns 32 bytes")
 }
 
 /// Create one-shot pairing bootstrap material from runtime config.
@@ -663,6 +801,136 @@ mod tests {
         assert_eq!(
             info.peer_request_channel,
             keyed_hash(info.session_id_peer, b"request")
+        );
+    }
+
+    #[test]
+    fn decodes_pairing_deeplink_round_trip() {
+        let config = runtime_config();
+        let deeplink = build_pairing_deeplink("polkadotapp", SS_PUBLIC, ENC_PUBLIC, &config);
+
+        let decoded = decode_pairing_deeplink(&deeplink).unwrap();
+
+        let VersionedHandshakeProposal::V2(proposal) = decoded;
+        assert_eq!(proposal.device.statement_account_id, SS_PUBLIC);
+        assert_eq!(proposal.device.encryption_public_key, ENC_PUBLIC);
+    }
+
+    #[test]
+    fn decodes_bare_handshake_hex() {
+        let config = runtime_config();
+        let deeplink = build_pairing_deeplink("polkadotapp", SS_PUBLIC, ENC_PUBLIC, &config);
+        let hex_payload = deeplink.split("handshake=").nth(1).unwrap();
+
+        assert_eq!(
+            decode_pairing_deeplink(hex_payload).unwrap(),
+            decode_pairing_deeplink(&deeplink).unwrap()
+        );
+    }
+
+    #[test]
+    fn rejects_pairing_deeplink_with_trailing_bytes() {
+        let config = runtime_config();
+        let deeplink = build_pairing_deeplink("polkadotapp", SS_PUBLIC, ENC_PUBLIC, &config);
+
+        let err = decode_pairing_deeplink(&format!("{deeplink}00")).unwrap_err();
+
+        assert_eq!(err, "invalid pairing handshake proposal: trailing bytes");
+    }
+
+    #[test]
+    fn encrypted_handshake_response_round_trips_through_host_decrypt() {
+        let host_secret = SecretKey::from_slice(&[1; 32]).unwrap();
+        let host_public: [u8; 65] = host_secret
+            .public_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .try_into()
+            .unwrap();
+        let response = v2::EncryptedResponse::Success(Box::new(v2::Success {
+            identity_account_id: [8; 32],
+            root_account_id: [7; 32],
+            identity_chat_private_key: [6; 32],
+            sso_enc_pub_key: ENC_PUBLIC,
+            device_enc_pub_key: ENC_PUBLIC,
+            root_entropy_source: [5; 32],
+        }));
+
+        let VersionedHandshakeResponse::V2 {
+            encrypted_message,
+            public_key,
+        } = encrypt_v2_handshake_response(host_public, &response).unwrap();
+
+        assert_eq!(
+            decrypt_v2_handshake_response(
+                host_secret.to_bytes().into(),
+                public_key,
+                &encrypted_message
+            )
+            .unwrap(),
+            response
+        );
+    }
+
+    fn responder_identity() -> ResponderIdentity {
+        let (statement_secret, statement_public_key) = generate_statement_store_keypair().unwrap();
+        let (encryption_secret_key, encryption_public_key) =
+            derive_p256_keypair_from_entropy(&[0xAB; 16], b"sso-encryption").unwrap();
+        ResponderIdentity {
+            statement_secret,
+            statement_public_key,
+            encryption_secret_key,
+            encryption_public_key,
+        }
+    }
+
+    /// The responder-perspective session must mirror the host-perspective
+    /// session: swapped session ids, aligned channels, and one shared AES key
+    /// so either side can decrypt the other's statement data.
+    #[test]
+    fn responder_session_mirrors_host_session() {
+        let config = runtime_config();
+        let host_bootstrap = create_pairing_bootstrap(&config).unwrap();
+        let responder = responder_identity();
+
+        let responder_session = establish_responder_session_info(
+            &responder,
+            host_bootstrap.statement_store_public_key,
+            host_bootstrap.encryption_public_key,
+        )
+        .unwrap();
+        let host_session = establish_sso_session_info(
+            &host_bootstrap,
+            responder.statement_public_key,
+            responder.encryption_public_key,
+        )
+        .unwrap();
+
+        assert_eq!(
+            responder_session.session_id_own,
+            host_session.session_id_peer
+        );
+        assert_eq!(
+            responder_session.session_id_peer,
+            host_session.session_id_own
+        );
+        assert_eq!(
+            responder_session.request_channel,
+            host_session.peer_request_channel
+        );
+        assert_eq!(
+            peer_response_channel(&responder_session),
+            host_session.response_channel
+        );
+
+        let data = SsoStatementData::Request {
+            request_id: "req-1".to_string(),
+            data: vec![vec![0xde, 0xad]],
+        };
+        let encrypted = encrypt_session_statement_data(&responder_session, &data).unwrap();
+        assert_eq!(
+            decrypt_session_statement_data(&host_session, &encrypted).unwrap(),
+            data
         );
     }
 

@@ -26,8 +26,8 @@ use truapi_platform::{
 use crate::core::TrUApiCore;
 use crate::frame::ProtocolMessage;
 use crate::runtime::{
-    LocalActivation, PairingHostRole, ProductAuthority, ProductRuntimeHost, RuntimeServices,
-    SigningHostRole,
+    LocalActivation, PairingHostRole, ProductAuthority, ProductRuntimeHost, ResponderExit,
+    RuntimeServices, SigningHostRole, respond_to_pairing,
 };
 use crate::subscription::Spawner;
 use crate::transport::Transport;
@@ -185,10 +185,9 @@ impl PairingHostAdmin for PairingHostRuntime {
 /// Owns the shared services plus signing-host state. There is no pairing flow,
 /// so pairing cancellation is not present here.
 ///
-/// Raw-bytes signing, transaction construction, product entropy, and RFC-0004
-/// ring-VRF aliases/proofs are implemented; extrinsic-payload signing and
-/// resource allocation return an `Unavailable` error pending chain-metadata
-/// and on-chain support.
+/// Raw-bytes and extrinsic-payload signing, v4 transaction construction, and
+/// product entropy are implemented; native signing hosts can also serve
+/// ring-VRF aliases and on-chain resource allocation.
 pub struct SigningHostRuntime {
     services: Arc<RuntimeServices>,
     signing_host: Arc<SigningHostRole>,
@@ -252,6 +251,34 @@ impl SigningHostRuntime {
             .map_err(|err| v01::GenericError {
                 reason: err.reason(),
             })
+    }
+
+    /// Activate a wallet-local session from host-held secret material and
+    /// attach known identity metadata.
+    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.activate_local_session_with_identity"))]
+    pub async fn activate_local_session_with_identity(
+        &self,
+        secret: Vec<u8>,
+        lite_username: Option<String>,
+    ) -> Result<(), v01::GenericError> {
+        self.signing_host
+            .activate_local_session_with_identity(secret, lite_username)
+            .await
+            .map_err(|err| v01::GenericError {
+                reason: err.reason(),
+            })
+    }
+
+    /// Answer a pairing host's handshake deeplink and serve the resulting SSO
+    /// session until it ends.
+    #[instrument(skip_all, fields(runtime.method = "signing_host_runtime.respond_to_pairing"))]
+    pub async fn respond_to_pairing(
+        &self,
+        deeplink: &str,
+    ) -> Result<ResponderExit, v01::GenericError> {
+        respond_to_pairing(self.services.clone(), self.signing_host.clone(), deeplink)
+            .await
+            .map_err(|reason| v01::GenericError { reason })
     }
 }
 

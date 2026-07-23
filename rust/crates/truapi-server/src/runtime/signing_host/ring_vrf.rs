@@ -417,6 +417,18 @@ mod tests {
     }
 
     #[test]
+    fn context_matches_ios_host_vector() {
+        let context = ProductProofContext {
+            product_id: "voting.dot".to_string(),
+            suffix: vec![0, 1, 2, 3],
+        };
+        assert_eq!(
+            hex::encode(context_bytes(&context)),
+            "03fba4e4f9ce1b2eb228e79b8aabef71213cfc53bec6dcae9d24a075a2d5a89e"
+        );
+    }
+
+    #[test]
     fn collection_selects_corresponding_person_key() {
         assert_eq!(key_for_collection(&FULL_PERSON_COLLECTION), PersonKey::Full);
         assert_eq!(key_for_collection(&LITE_PERSON_COLLECTION), PersonKey::Lite);

@@ -5,13 +5,22 @@
 //! embedding host at unlock through [`LocalActivation::activate_local_session`]
 //! (the host owns its persistence, e.g. the OS keychain) and kept in memory
 //! for the session, zeroized on disconnect.
+//!
+//! Implemented: local session lifecycle, raw-bytes signing, extrinsic-payload
+//! signing, v4 transaction construction (payload fields and extensions arrive
+//! pre-encoded, so no chain metadata is needed), RFC-0007 product entropy, and
+//! bandersnatch ring-VRF product-account aliases (native only), and
+//! product-scoped Statement Store and Bulletin allowance keys.
 
 mod local_activation;
 mod ring_vrf;
+mod sso_responder;
 
 use std::sync::{Arc, Mutex};
 
 pub(crate) use local_activation::LocalActivation;
+pub use sso_responder::ResponderExit;
+pub(crate) use sso_responder::respond_to_pairing;
 
 use super::authority::{
     AccountAliasAuthorityRequest, AuthorityError, AuthoritySession, BulletinAllowanceKey,
@@ -24,10 +33,11 @@ use crate::host_logic::entropy::derive_product_entropy;
 use crate::host_logic::extrinsic::{Sr25519Signer, build_signed_extrinsic_v4};
 use crate::host_logic::product_account::{
     ProductAccountError, SR25519_SIGNING_CONTEXT, derive_product_keypair,
-    derive_root_keypair_from_entropy,
+    derive_root_keypair_from_entropy, derive_sr25519_hard_path,
 };
 use crate::host_logic::session::SessionState;
-use crate::host_logic::sso::messages::RingVrfError;
+use crate::host_logic::sso::messages::{OnExistingAllowancePolicy, RingVrfError};
+use crate::host_logic::transaction::extrinsic_payload_preimage;
 use crate::runtime::auth_state::AuthStateMachine;
 use ring_vrf::{
     ChainRingResolver, MemberCandidate, PersonKey, RingResolver, alias_from_entropy, context_bytes,
@@ -36,9 +46,10 @@ use ring_vrf::{
 
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, v01};
-#[cfg(test)]
-use truapi_platform::Platform;
-use truapi_platform::{ProductContext, normalize_product_identifier};
+use truapi_platform::{
+    AccountAliasReview, CreateProofReview, Platform, ProductContext, UserConfirmationReview,
+    normalize_product_identifier,
+};
 use zeroize::Zeroizing;
 
 const BYTES_WRAP_PREFIX: &[u8] = b"<Bytes>";
@@ -46,6 +57,8 @@ const BYTES_WRAP_SUFFIX: &[u8] = b"</Bytes>";
 
 /// Wallet-local account authority for a signing host.
 pub(crate) struct SigningHost {
+    services: Arc<RuntimeServices>,
+    platform: Arc<dyn Platform>,
     session_state: Arc<SessionState>,
     auth_state: AuthStateMachine,
     ring_resolver: Arc<dyn RingResolver>,
@@ -58,6 +71,8 @@ impl SigningHost {
         let platform = services.platform.clone();
         let ring_resolver = ChainRingResolver::new(services.chain.clone());
         Arc::new(Self {
+            services,
+            platform: platform.clone(),
             session_state: SessionState::new(),
             auth_state: AuthStateMachine::new(platform),
             ring_resolver,
@@ -70,7 +85,15 @@ impl SigningHost {
         platform: Arc<dyn Platform>,
         ring_resolver: Arc<dyn RingResolver>,
     ) -> Arc<Self> {
+        let services = RuntimeServices::new(
+            platform.clone(),
+            [0; 32],
+            [0xbb; 32],
+            crate::test_support::test_spawner(),
+        );
         Arc::new(Self {
+            services,
+            platform: platform.clone(),
             session_state: SessionState::new(),
             auth_state: AuthStateMachine::new(platform),
             ring_resolver,
@@ -140,6 +163,24 @@ impl SigningHost {
             },
         ])
     }
+
+    async fn confirm_ring_vrf_if_cross_product(
+        &self,
+        calling_product_id: &str,
+        target_product_id: &str,
+        review: UserConfirmationReview,
+    ) -> Result<(), RingVrfError> {
+        if calling_product_id == target_product_id {
+            return Ok(());
+        }
+        match self.platform.confirm_user_action(review).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(RingVrfError::Rejected),
+            Err(err) => Err(RingVrfError::Unknown {
+                reason: format!("confirmation failed: {}", err.reason),
+            }),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -183,14 +224,20 @@ impl ProductAuthority for SigningHost {
     async fn sign_payload(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _request: SignPayloadAuthorityRequest,
+        session: &AuthoritySession,
+        request: SignPayloadAuthorityRequest,
     ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: extrinsic-payload signing needs chain-metadata payload \
-                     assembly (not yet implemented)"
-                .to_string(),
-        })
+        require_current_session(&self.session_state, session)?;
+        let (keypair, payload) = match request {
+            SignPayloadAuthorityRequest::Product(request) => {
+                (self.product_keypair(&request.account)?, request.payload)
+            }
+            SignPayloadAuthorityRequest::LegacyAccount {
+                product_account,
+                request,
+            } => (self.product_keypair(&product_account)?, request.payload),
+        };
+        sign_extrinsic_payload(&keypair, payload)
     }
 
     async fn sign_raw(
@@ -199,15 +246,26 @@ impl ProductAuthority for SigningHost {
         session: &AuthoritySession,
         request: SignRawAuthorityRequest,
     ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
-        let SignRawAuthorityRequest::Product(request) = request else {
-            return Err(AuthorityError::Unavailable {
-                reason: "signing host: legacy-account raw signing is not yet implemented"
-                    .to_string(),
-            });
+        let (keypair, payload) = match request {
+            SignRawAuthorityRequest::Product(request) => {
+                (self.product_keypair(&request.account)?, request.payload)
+            }
+            SignRawAuthorityRequest::LegacyAccount { account, request } => {
+                let entropy = self.root_entropy()?;
+                let keypair = derive_sr25519_hard_path(&entropy, &["wallet", "sso"])
+                    .map_err(product_authority_error)?;
+                if keypair.public.to_bytes() != account {
+                    return Err(AuthorityError::Unavailable {
+                        reason: "signing host: the requested legacy account is not available in \
+                                 this CLI wallet"
+                            .to_string(),
+                    });
+                }
+                (keypair, request.payload)
+            }
         };
         require_current_session(&self.session_state, session)?;
-        let keypair = self.product_keypair(&request.account)?;
-        let message = raw_payload_bytes(request.payload)?;
+        let message = raw_payload_bytes(payload)?;
         let signature = keypair
             .secret
             .sign_simple(SR25519_SIGNING_CONTEXT, &message, &keypair.public)
@@ -269,6 +327,16 @@ impl ProductAuthority for SigningHost {
         request: AccountAliasAuthorityRequest,
     ) -> Result<v01::ContextualAlias, RingVrfError> {
         require_current_session(&self.session_state, session)?;
+        self.confirm_ring_vrf_if_cross_product(
+            &request.calling_product_id,
+            &request.context.product_id,
+            UserConfirmationReview::AccountAlias(AccountAliasReview {
+                calling_product_id: request.calling_product_id.clone(),
+                context: request.context.clone(),
+                ring_location: request.ring_location.clone(),
+            }),
+        )
+        .await?;
         let collection = self.ring_resolver.validate(&request.ring_location).await?;
         let context = context_bytes(&request.context);
         let entropy = self.person_entropy(session, key_for_collection(&collection))?;
@@ -285,6 +353,18 @@ impl ProductAuthority for SigningHost {
         session: &AuthoritySession,
         request: CreateProofAuthorityRequest,
     ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
+        require_current_session(&self.session_state, session)?;
+        self.confirm_ring_vrf_if_cross_product(
+            &request.calling_product_id,
+            &request.context.product_id,
+            UserConfirmationReview::CreateProof(CreateProofReview {
+                calling_product_id: request.calling_product_id.clone(),
+                context: request.context.clone(),
+                ring_location: request.ring_location.clone(),
+                message: request.message.clone(),
+            }),
+        )
+        .await?;
         let candidates = self.member_candidates(session)?;
         let resolved = self
             .ring_resolver
@@ -309,50 +389,95 @@ impl ProductAuthority for SigningHost {
     async fn allocate_resources(
         &self,
         _cx: &CallContext,
-        _session: &AuthoritySession,
-        _product_id: String,
-        _request: v01::HostRequestResourceAllocationRequest,
+        session: &AuthoritySession,
+        product_id: String,
+        request: v01::HostRequestResourceAllocationRequest,
     ) -> Result<v01::HostRequestResourceAllocationResponse, AuthorityError> {
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: on-chain resource allocation not yet implemented".to_string(),
-        })
+        require_current_session(&self.session_state, session)?;
+        let mut outcomes = Vec::with_capacity(request.resources.len());
+        for resource in request.resources {
+            let outcome = match resource {
+                v01::AllocatableResource::StatementStoreAllowance => {
+                    sso_responder::allocate_statement_store_allowance(
+                        &self.services,
+                        self,
+                        &product_id,
+                    )
+                    .await
+                    .map(|_| v01::AllocationOutcome::Allocated)
+                }
+                v01::AllocatableResource::BulletinAllowance => {
+                    sso_responder::allocate_bulletin_allowance(
+                        &self.services,
+                        self,
+                        &product_id,
+                        OnExistingAllowancePolicy::Ignore,
+                    )
+                    .await
+                    .map(|_| v01::AllocationOutcome::Allocated)
+                }
+                v01::AllocatableResource::SmartContractAllowance(_)
+                | v01::AllocatableResource::AutoSigning => Ok(v01::AllocationOutcome::NotAvailable),
+            };
+            match outcome {
+                Ok(outcome) => outcomes.push(outcome),
+                Err(reason) => {
+                    tracing::warn!(%product_id, %reason, "direct resource allocation item failed");
+                    outcomes.push(v01::AllocationOutcome::Rejected);
+                }
+            }
+        }
+        Ok(v01::HostRequestResourceAllocationResponse { outcomes })
     }
 
     async fn statement_store_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: statement-store allowance allocation not yet implemented"
-                .to_string(),
-        })
+        let secret =
+            sso_responder::allocate_statement_store_allowance(&self.services, self, &product_id)
+                .await
+                .map_err(allocation_authority_error)?;
+        StatementStoreAllowanceKey::from_secret_bytes(secret)
     }
 
     async fn bulletin_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: bulletin allowance allocation not yet implemented".to_string(),
-        })
+        let secret = sso_responder::allocate_bulletin_allowance(
+            &self.services,
+            self,
+            &product_id,
+            OnExistingAllowancePolicy::Ignore,
+        )
+        .await
+        .map_err(allocation_authority_error)?;
+        BulletinAllowanceKey::from_secret_bytes(secret)
     }
 
     async fn refresh_bulletin_allowance_key(
         &self,
         _cx: &CallContext,
         session: &AuthoritySession,
-        _product_id: String,
+        product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         require_current_session(&self.session_state, session)?;
-        Err(AuthorityError::Unavailable {
-            reason: "signing host: bulletin allowance allocation not yet implemented".to_string(),
-        })
+        let secret = sso_responder::allocate_bulletin_allowance(
+            &self.services,
+            self,
+            &product_id,
+            OnExistingAllowancePolicy::Increase,
+        )
+        .await
+        .map_err(allocation_authority_error)?;
+        BulletinAllowanceKey::from_secret_bytes(secret)
     }
 
     async fn sign_statement_store_product_payload(
@@ -386,10 +511,37 @@ impl ProductAuthority for SigningHost {
     }
 }
 
+fn sign_extrinsic_payload(
+    keypair: &schnorrkel::Keypair,
+    payload: v01::HostSignPayloadData,
+) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
+    if payload.version != 4 {
+        return Err(AuthorityError::NotSupported {
+            reason: format!(
+                "signing host: unsupported extrinsic payload version {}; only version 4 is supported",
+                payload.version
+            ),
+        });
+    }
+    let preimage = extrinsic_payload_preimage(&payload);
+    let signature = keypair
+        .secret
+        .sign_simple(SR25519_SIGNING_CONTEXT, &preimage, &keypair.public)
+        .to_bytes();
+    Ok(v01::HostSignPayloadResponse {
+        signature: signature.to_vec(),
+        signed_transaction: None,
+    })
+}
+
 fn product_authority_error(err: ProductAccountError) -> AuthorityError {
     AuthorityError::Unavailable {
         reason: err.to_string(),
     }
+}
+
+fn allocation_authority_error(reason: String) -> AuthorityError {
+    AuthorityError::Unavailable { reason }
 }
 
 /// Assemble and sign a transaction locally from caller-supplied, pre-encoded
@@ -457,19 +609,21 @@ mod tests {
 
     use super::super::authority::{
         AccountAliasAuthorityRequest, AuthorityError, CreateProofAuthorityRequest,
-        CreateTransactionAuthorityRequest, SignRawAuthorityRequest,
+        CreateTransactionAuthorityRequest, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
     };
     use super::super::{ProductAuthority, ProductRuntimeHost, RuntimeServices, SigningHostRole};
     use super::ring_vrf::{
         MemberCandidate, PersonKey, ResolvedRing, RingResolver, member_from_entropy, person_entropy,
     };
     use super::{
-        BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, RingVrfError, raw_payload_bytes,
+        BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, RingVrfError,
+        SR25519_SIGNING_CONTEXT, raw_payload_bytes,
     };
     use crate::host_logic::extrinsic::tests::split_v4;
     use crate::host_logic::product_account::{
-        derive_product_keypair, derive_root_keypair_from_entropy,
+        derive_product_keypair, derive_root_keypair_from_entropy, derive_sr25519_hard_path,
     };
+    use crate::host_logic::transaction::extrinsic_payload_preimage;
     use crate::test_support::{StubPlatform, test_spawner};
     use truapi::api::{Account, Entropy, Signing};
     use truapi::versioned::account::{HostAccountGetError, HostAccountGetRequest};
@@ -557,24 +711,27 @@ mod tests {
         )
     }
 
-    #[test]
-    fn ring_alias_and_proof_share_the_selected_person_key() {
+    fn full_person_ring_resolver() -> Arc<StubRingResolver> {
         let full_entropy = person_entropy(&ENTROPY, PersonKey::Full);
         let full_member = member_from_entropy(&full_entropy).expect("full-person member");
-        let selected = MemberCandidate {
-            key: PersonKey::Full,
-            member: full_member,
-        };
-        let resolver = Arc::new(StubRingResolver {
+        Arc::new(StubRingResolver {
             collection: *b"pop:polkadot.network/people     ",
             ring: ResolvedRing {
-                selected,
+                selected: MemberCandidate {
+                    key: PersonKey::Full,
+                    member: full_member,
+                },
                 ring_index: 7,
                 ring_revision: 11,
                 domain_size: RingDomainSize::Domain11,
                 members: vec![full_member],
             },
-        });
+        })
+    }
+
+    #[test]
+    fn ring_alias_and_proof_share_the_selected_person_key() {
+        let resolver = full_person_ring_resolver();
         let platform: Arc<dyn truapi_platform::Platform> = Arc::new(StubPlatform::default());
         let authority = SigningHostRole::new_with_ring_resolver(platform, resolver);
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
@@ -624,6 +781,48 @@ mod tests {
     }
 
     #[test]
+    fn cross_product_ring_requests_require_signing_host_confirmation() {
+        let platform: Arc<dyn truapi_platform::Platform> = Arc::new(StubPlatform::default());
+        let authority =
+            SigningHostRole::new_with_ring_resolver(platform, full_person_ring_resolver());
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = authority.current_session().expect("active session");
+        let cx = CallContext::new();
+        let context = v01::ProductProofContext {
+            product_id: "other.dot".to_string(),
+            suffix: b"account".to_vec(),
+        };
+        let ring_location = v01::RingLocation {
+            chain_id: [0x22; 32],
+            junctions: vec![v01::RingLocationJunction::PalletInstance(42)],
+        };
+
+        let alias = futures::executor::block_on(authority.account_alias(
+            &cx,
+            &session,
+            AccountAliasAuthorityRequest {
+                calling_product_id: "myapp.dot".to_string(),
+                context: context.clone(),
+                ring_location: ring_location.clone(),
+            },
+        ));
+        assert_eq!(alias, Err(RingVrfError::Rejected));
+
+        let proof = futures::executor::block_on(authority.create_proof(
+            &cx,
+            &session,
+            CreateProofAuthorityRequest {
+                calling_product_id: "myapp.dot".to_string(),
+                context,
+                ring_location,
+                message: b"prove me".to_vec(),
+            },
+        ));
+        assert_eq!(proof, Err(RingVrfError::Rejected));
+    }
+
+    #[test]
     fn activate_then_sign_raw_verifies_against_derived_product_key() {
         let (services, activation) = signing_runtime();
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))
@@ -655,6 +854,95 @@ mod tests {
                 .is_ok(),
             "signature verifies over the <Bytes>-wrapped message",
         );
+    }
+
+    #[test]
+    fn sign_payload_product_and_legacy_use_the_substrate_preimage() {
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = authority.current_session().expect("active session");
+        let cx = CallContext::new();
+        let payload = crate::test_support::sign_payload_data();
+        let preimage = extrinsic_payload_preimage(&payload);
+
+        let product_response = futures::executor::block_on(authority.sign_payload(
+            &cx,
+            &session,
+            SignPayloadAuthorityRequest::Product(v01::HostSignPayloadRequest {
+                account: product_account(0),
+                payload: payload.clone(),
+            }),
+        ))
+        .expect("product payload signing succeeds");
+
+        let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let signature = schnorrkel::Signature::from_bytes(&product_response.signature).unwrap();
+        assert!(
+            keypair
+                .public
+                .verify_simple(SR25519_SIGNING_CONTEXT, &preimage, &signature)
+                .is_ok()
+        );
+
+        let legacy_response = futures::executor::block_on(authority.sign_payload(
+            &cx,
+            &session,
+            SignPayloadAuthorityRequest::LegacyAccount {
+                product_account: product_account(0),
+                request: v01::HostSignPayloadWithLegacyAccountRequest {
+                    signer: format!("0x{}", hex::encode(keypair.public.to_bytes())),
+                    payload,
+                },
+            },
+        ))
+        .expect("legacy payload signing succeeds");
+        let signature = schnorrkel::Signature::from_bytes(&legacy_response.signature).unwrap();
+        assert!(
+            keypair
+                .public
+                .verify_simple(SR25519_SIGNING_CONTEXT, &preimage, &signature)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn sign_raw_legacy_accepts_only_the_wallet_identity_key() {
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+        let session = authority.current_session().expect("active session");
+        let cx = CallContext::new();
+        let identity = derive_sr25519_hard_path(&ENTROPY, &["wallet", "sso"]).unwrap();
+        let request = |account| SignRawAuthorityRequest::LegacyAccount {
+            account,
+            request: v01::HostSignRawWithLegacyAccountRequest {
+                signer: String::new(),
+                payload: v01::RawPayload::Bytes {
+                    bytes: b"hello".to_vec(),
+                },
+            },
+        };
+
+        let response = futures::executor::block_on(authority.sign_raw(
+            &cx,
+            &session,
+            request(identity.public.to_bytes()),
+        ))
+        .expect("identity raw signing succeeds");
+        let signature = schnorrkel::Signature::from_bytes(&response.signature).unwrap();
+        assert!(
+            identity
+                .public
+                .verify_simple(SR25519_SIGNING_CONTEXT, b"<Bytes>hello</Bytes>", &signature)
+                .is_ok()
+        );
+
+        let error =
+            futures::executor::block_on(authority.sign_raw(&cx, &session, request([0xff; 32])))
+                .expect_err("unknown legacy account is rejected");
+        assert!(matches!(error, AuthorityError::Unavailable { .. }));
     }
 
     #[test]
@@ -1035,20 +1323,40 @@ mod tests {
     }
 
     #[test]
-    fn deferred_operations_return_unavailable() {
+    fn direct_allocation_handles_empty_and_optional_resource_batches() {
         let (_services, authority) = signing_runtime();
         futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
             .expect("activation");
         let session = authority.current_session().expect("connected");
         let cx = CallContext::new();
 
-        let alloc = futures::executor::block_on(authority.allocate_resources(
+        let empty = futures::executor::block_on(authority.allocate_resources(
             &cx,
             &session,
             "myapp.dot".to_string(),
             v01::HostRequestResourceAllocationRequest { resources: vec![] },
         ))
-        .expect_err("allocation deferred");
-        assert!(matches!(alloc, AuthorityError::Unavailable { .. }));
+        .expect("empty allocation succeeds");
+        assert!(empty.outcomes.is_empty());
+
+        let optional = futures::executor::block_on(authority.allocate_resources(
+            &cx,
+            &session,
+            "myapp.dot".to_string(),
+            v01::HostRequestResourceAllocationRequest {
+                resources: vec![
+                    v01::AllocatableResource::SmartContractAllowance(0),
+                    v01::AllocatableResource::AutoSigning,
+                ],
+            },
+        ))
+        .expect("optional allocation succeeds");
+        assert_eq!(
+            optional.outcomes,
+            vec![
+                v01::AllocationOutcome::NotAvailable,
+                v01::AllocationOutcome::NotAvailable,
+            ]
+        );
     }
 }

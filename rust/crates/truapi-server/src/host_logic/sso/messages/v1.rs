@@ -11,7 +11,8 @@ use super::{
     CreateTransactionLegacyRequest, CreateTransactionRequest, CreateTransactionResponse,
     ResourceAllocationRequest, ResourceAllocationResponse, RingVrfAliasRequest,
     RingVrfAliasResponse, RingVrfProofRequest, RingVrfProofResponse, SignRawLegacyRequest,
-    SignRawLegacyResponse, SigningRequest, SigningResponse,
+    SignRawLegacyResponse, SigningRequest, SigningResponse, StatementStoreProductSignRequest,
+    StatementStoreProductSignResponse,
 };
 
 /// v1 messages exchanged with the paired signing host over the encrypted SSO channel.
@@ -34,4 +35,6 @@ pub enum RemoteMessage {
     SignRawLegacyResponse(SignRawLegacyResponse),
     RingVrfProofRequest(RingVrfProofRequest),
     RingVrfProofResponse(RingVrfProofResponse),
+    StatementStoreProductSignRequest(StatementStoreProductSignRequest),
+    StatementStoreProductSignResponse(StatementStoreProductSignResponse),
 }

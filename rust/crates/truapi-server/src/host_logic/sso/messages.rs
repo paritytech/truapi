@@ -13,27 +13,30 @@
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L194-L208>
 //! Deployed extension variants are tracked as a host-spec divergence:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/divergences.md?plain=1#L26-L33>
-//! Field order and enum variant order are kept wire-compatible with host-papp:
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts#L23-L35>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/signing.ts#L6-L68>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/ringVrf.ts#L5-L15>
-//! <https://github.com/paritytech/triangle-js-sdks/blob/18c12d3bd1c51a9520eb247dc038ace2996dc2e7/packages/host-papp/src/sso/sessionManager/scale/createTransaction.ts#L6-L25>
+//! Field order and enum variant order are kept wire-compatible with
+//! `@novasamatech/host-papp` 0.8.11:
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/remoteMessage.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/signing.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/ringVrf.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/resourceAllocation.ts>
+//! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/createTransaction.ts>
 
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
     AccountId, AllocatableResource, HostAccountCreateProofResponse, HostAccountGetAliasResponse,
-    HostSignPayloadRequest, HostSignRawRequest, LegacyAccountTxPayload, ProductAccountId,
-    ProductAccountTxPayload, ProductProofContext, RawPayload, RingLocation,
+    LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext,
+    RawPayload, RingLocation,
 };
 
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::pairing::{
     AES_GCM_NONCE_LEN, SsoStatementData, decrypt_session_statement_data,
     encrypt_session_statement_data, encrypt_session_statement_data_with_nonce,
+    peer_response_channel,
 };
 use crate::host_logic::statement_store::{
-    build_signed_session_request_statement, current_unix_secs, decode_verified_statement_data,
-    statement_expiry_elapsed,
+    build_signed_session_request_statement, build_signed_statement, current_unix_secs,
+    decode_verified_statement_data, statement_expiry_elapsed,
 };
 
 pub mod v1;
@@ -89,7 +92,7 @@ pub enum SigningRequest {
 /// Request sent when a product asks the paired signing host to sign a Substrate
 /// payload with a product-derived account.
 ///
-/// Built from [`HostSignPayloadRequest`] but kept as a dedicated wire type
+/// Built from [`truapi::v01::HostSignPayloadRequest`] but kept as a dedicated wire type
 /// because the host-papp SSO dialect flattens the public request payload and
 /// encodes `with_signed_transaction` as `OptionBool`.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -113,7 +116,7 @@ pub struct SigningPayloadRequest {
 }
 
 impl SigningPayloadRequest {
-    fn from_host_request(value: HostSignPayloadRequest) -> Self {
+    fn from_host_request(value: truapi::v01::HostSignPayloadRequest) -> Self {
         let payload = value.payload;
         Self {
             product_account_id: value.account,
@@ -136,10 +139,35 @@ impl SigningPayloadRequest {
     }
 }
 
+impl From<SigningPayloadRequest> for truapi::v01::HostSignPayloadRequest {
+    fn from(value: SigningPayloadRequest) -> Self {
+        Self {
+            account: value.product_account_id,
+            payload: truapi::v01::HostSignPayloadData {
+                block_hash: value.block_hash,
+                block_number: value.block_number,
+                era: value.era,
+                genesis_hash: value.genesis_hash,
+                method: value.method,
+                nonce: value.nonce,
+                spec_version: value.spec_version,
+                tip: value.tip,
+                transaction_version: value.transaction_version,
+                signed_extensions: value.signed_extensions,
+                version: value.version,
+                asset_id: value.asset_id,
+                metadata_hash: value.metadata_hash,
+                mode: value.mode,
+                with_signed_transaction: value.with_signed_transaction.0,
+            },
+        }
+    }
+}
+
 /// Request sent when a product asks the paired signing host to sign raw bytes or a
 /// string message with a product-derived account.
 ///
-/// Built from [`HostSignRawRequest`] and wrapped in
+/// Built from [`truapi::v01::HostSignRawRequest`] and wrapped in
 /// [`v1::RemoteMessage::SignRequest`] before being encrypted into an SSO session
 /// statement.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -149,7 +177,7 @@ pub struct SigningRawRequest {
 }
 
 impl SigningRawRequest {
-    fn from_host_request(value: HostSignRawRequest) -> Self {
+    fn from_host_request(value: truapi::v01::HostSignRawRequest) -> Self {
         Self {
             product_account_id: value.account,
             data: value.payload.into(),
@@ -188,6 +216,24 @@ impl From<RawPayload> for SigningRawPayload {
     }
 }
 
+impl From<SigningRawPayload> for RawPayload {
+    fn from(value: SigningRawPayload) -> Self {
+        match value {
+            SigningRawPayload::Bytes(bytes) => Self::Bytes { bytes },
+            SigningRawPayload::Payload(payload) => Self::Payload { payload },
+        }
+    }
+}
+
+impl From<SigningRawRequest> for truapi::v01::HostSignRawRequest {
+    fn from(value: SigningRawRequest) -> Self {
+        Self {
+            account: value.product_account_id,
+            payload: value.data.into(),
+        }
+    }
+}
+
 /// Response returned by the signing host for a product-account signing request.
 ///
 /// Decoded from [`v1::RemoteMessage::SignResponse`] while the runtime is waiting
@@ -211,6 +257,24 @@ pub struct SigningPayloadResponseData {
 /// the public raw-signing response shape.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SignRawLegacyResponse {
+    pub responding_to: String,
+    pub signature: Result<Vec<u8>, String>,
+}
+
+/// Request exact statement-store proof signing with a product-derived account.
+///
+/// Raw signing cannot be reused because it applies the public
+/// `<Bytes>...</Bytes>` payload convention, while statement proofs sign the
+/// unsigned statement payload bytes directly.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct StatementStoreProductSignRequest {
+    pub product_account_id: ProductAccountId,
+    pub payload: Vec<u8>,
+}
+
+/// Response returned for exact statement-store proof signing.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct StatementStoreProductSignResponse {
     pub responding_to: String,
     pub signature: Result<Vec<u8>, String>,
 }
@@ -391,6 +455,7 @@ pub enum SsoSessionStatement {
 pub enum SsoRemoteResponse {
     Sign(SigningResponse),
     SignRawLegacy(SignRawLegacyResponse),
+    StatementStoreProductSign(StatementStoreProductSignResponse),
     RingVrfAlias(RingVrfAliasResponse),
     RingVrfProof(RingVrfProofResponse),
     ResourceAllocation(ResourceAllocationResponse),
@@ -496,6 +561,11 @@ fn remote_response_for_message(
         {
             Some(SsoRemoteResponse::SignRawLegacy(response))
         }
+        v1::RemoteMessage::StatementStoreProductSignResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::StatementStoreProductSign(response))
+        }
         v1::RemoteMessage::ResourceAllocationResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
@@ -510,8 +580,28 @@ fn remote_response_for_message(
     }
 }
 
+/// Build an exact statement-store proof signing request.
+pub fn statement_store_product_sign_message(
+    message_id: String,
+    product_account_id: ProductAccountId,
+    payload: Vec<u8>,
+) -> RemoteMessage {
+    RemoteMessage {
+        message_id,
+        data: RemoteMessageData::V1(v1::RemoteMessage::StatementStoreProductSignRequest(
+            StatementStoreProductSignRequest {
+                product_account_id,
+                payload,
+            },
+        )),
+    }
+}
+
 /// Build a signing-host payload-signing request message.
-pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest) -> RemoteMessage {
+pub fn sign_payload_message(
+    message_id: String,
+    request: truapi::v01::HostSignPayloadRequest,
+) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::SignRequest(Box::new(
@@ -521,7 +611,10 @@ pub fn sign_payload_message(message_id: String, request: HostSignPayloadRequest)
 }
 
 /// Build a signing-host raw-signing request message.
-pub fn sign_raw_message(message_id: String, request: HostSignRawRequest) -> RemoteMessage {
+pub fn sign_raw_message(
+    message_id: String,
+    request: truapi::v01::HostSignRawRequest,
+) -> RemoteMessage {
     RemoteMessage {
         message_id,
         data: RemoteMessageData::V1(v1::RemoteMessage::SignRequest(Box::new(
@@ -636,6 +729,77 @@ pub fn create_transaction_legacy_message(
     }
 }
 
+/// Inbound request decoded from a peer-signed session statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncomingSsoRequest {
+    /// Statement-level request id used by the transport acknowledgement.
+    pub request_id: String,
+    /// Application messages batched into the request.
+    pub messages: Vec<RemoteMessage>,
+}
+
+/// Decode a peer request for a signing-host responder.
+///
+/// Own echoes, response acknowledgements, and expired statements are ignored.
+pub fn decode_incoming_sso_request(
+    session: &SsoSessionInfo,
+    statement: &[u8],
+) -> Result<Option<IncomingSsoRequest>, String> {
+    let verified =
+        decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
+    if verified.signer == session.ss_public_key {
+        return Ok(None);
+    }
+    if verified.signer != session.identity_account_id {
+        return Err("statement proof signer does not match expected peer".to_string());
+    }
+    if verified
+        .expiry
+        .is_some_and(|expiry| statement_expiry_elapsed(expiry, current_unix_secs()))
+    {
+        return Ok(None);
+    }
+    match decrypt_session_statement_data(session, &verified.data)? {
+        SsoStatementData::Response { .. } => Ok(None),
+        SsoStatementData::Request { request_id, data } => {
+            let messages = data
+                .iter()
+                .map(|message| {
+                    RemoteMessage::decode(&mut message.as_slice())
+                        .map_err(|err| format!("invalid SSO remote message: {err}"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Some(IncomingSsoRequest {
+                request_id,
+                messages,
+            }))
+        }
+    }
+}
+
+/// Build the signed transport acknowledgement for a peer-initiated request.
+pub fn build_signed_session_response_statement(
+    session: &SsoSessionInfo,
+    request_id: String,
+    response_code: u8,
+    expiry: u64,
+) -> Result<Vec<u8>, String> {
+    let encrypted = encrypt_session_statement_data(
+        session,
+        &SsoStatementData::Response {
+            request_id,
+            response_code,
+        },
+    )?;
+    build_signed_statement(
+        session,
+        peer_response_channel(session),
+        session.session_id_peer,
+        encrypted,
+        expiry,
+    )
+}
+
 /// Build a signed outbound SSO request statement with a random nonce.
 pub fn build_outgoing_request_statement(
     session: &SsoSessionInfo,
@@ -708,6 +872,7 @@ mod tests {
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
     use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
+    use truapi::v01::RingLocationJunction;
 
     fn account() -> ProductAccountId {
         ProductAccountId {
@@ -762,7 +927,7 @@ mod tests {
     fn raw_sign_request_uses_remote_message_variant_indices() {
         let message = sign_raw_message(
             "m1".to_string(),
-            HostSignRawRequest {
+            truapi::v01::HostSignRawRequest {
                 account: account(),
                 payload: RawPayload::Bytes {
                     bytes: vec![0xde, 0xad],
@@ -798,11 +963,84 @@ mod tests {
         assert_eq!(legacy_raw[..3], [0, 0, 10]);
     }
 
+    #[test]
+    fn ring_vrf_messages_match_host_papp_0_8_11_fixtures() {
+        let context = ProductProofContext {
+            product_id: "voting.dot".to_string(),
+            suffix: vec![0, 1, 2, 3],
+        };
+        let ring_location = RingLocation {
+            chain_id: [0x11; 32],
+            junctions: vec![
+                RingLocationJunction::PalletInstance(67),
+                RingLocationJunction::CollectionId(b"pop".to_vec()),
+            ],
+        };
+
+        let alias = alias_request_message(
+            "m-alias".to_string(),
+            "caller.dot".to_string(),
+            context.clone(),
+            ring_location.clone(),
+        );
+        let proof = proof_request_message(
+            "m-proof".to_string(),
+            "caller.dot".to_string(),
+            context,
+            ring_location,
+            b"vote".to_vec(),
+        );
+        let contextual_alias = HostAccountGetAliasResponse {
+            context: [0x22; 32],
+            alias: vec![0x33, 0x44],
+        };
+        let alias_response = RemoteMessage {
+            message_id: "r-alias".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfAliasResponse(
+                RingVrfAliasResponse {
+                    responding_to: "m-alias".to_string(),
+                    payload: Ok(contextual_alias.clone()),
+                },
+            )),
+        };
+        let proof_response = RemoteMessage {
+            message_id: "r-proof".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::RingVrfProofResponse(
+                RingVrfProofResponse {
+                    responding_to: "m-proof".to_string(),
+                    payload: Ok(HostAccountCreateProofResponse {
+                        proof: vec![0x55, 0x66],
+                        contextual_alias,
+                        ring_index: 7,
+                        ring_revision: 9,
+                    }),
+                },
+            )),
+        };
+
+        assert_host_papp_0_8_11_fixture(
+            alias,
+            "0x1c6d2d616c69617300032863616c6c65722e646f7428766f74696e672e646f7410000102031111111111111111111111111111111111111111111111111111111111111111080043010c706f70",
+        );
+        assert_host_papp_0_8_11_fixture(
+            proof,
+            "0x1c6d2d70726f6f66000c2863616c6c65722e646f7428766f74696e672e646f7410000102031111111111111111111111111111111111111111111111111111111111111111080043010c706f7010766f7465",
+        );
+        assert_host_papp_0_8_11_fixture(
+            alias_response,
+            "0x1c722d616c69617300041c6d2d616c696173002222222222222222222222222222222222222222222222222222222222222222083344",
+        );
+        assert_host_papp_0_8_11_fixture(
+            proof_response,
+            "0x1c722d70726f6f66000d1c6d2d70726f6f660008556622222222222222222222222222222222222222222222222222222222222222220833440700000009000000",
+        );
+    }
+
     fn sequential_bytes<const N: usize>(start: u8) -> [u8; N] {
         std::array::from_fn(|index| start.wrapping_add(index as u8))
     }
 
-    fn assert_host_papp_0_8_8_fixture(message: RemoteMessage, expected: &str) {
+    fn assert_host_papp_0_8_11_fixture(message: RemoteMessage, expected: &str) {
         assert_eq!(
             hex::encode(message.encode()),
             expected.trim_start_matches("0x")
@@ -810,7 +1048,7 @@ mod tests {
     }
 
     #[test]
-    fn resource_allocation_message_matches_host_papp_0_8_8_fixture() {
+    fn resource_allocation_message_matches_host_papp_0_8_11_fixture() {
         let message = resource_allocation_message(
             "m-resource".to_string(),
             "truapi-playground.dot".to_string(),
@@ -823,14 +1061,14 @@ mod tests {
             OnExistingAllowancePolicy::Increase,
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x286d2d7265736f757263650005547472756170692d706c617967726f756e642e646f7410000102090000000301",
         );
     }
 
     #[test]
-    fn create_transaction_message_matches_host_papp_0_8_8_fixture() {
+    fn create_transaction_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_message(
             "m-product-tx".to_string(),
             ProductAccountTxPayload {
@@ -849,14 +1087,14 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x306d2d70726f647563742d7478000700547472756170692d706c617967726f756e642e646f7400000000202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
         );
     }
 
     #[test]
-    fn playground_create_transaction_message_matches_host_papp_0_8_8_fixture() {
+    fn playground_create_transaction_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_message(
             "create-transaction-1".to_string(),
             ProductAccountTxPayload {
@@ -875,14 +1113,14 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x506372656174652d7472616e73616374696f6e2d31000700547472756170692d706c617967726f756e642e646f7400000000bf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f0800000000",
         );
     }
 
     #[test]
-    fn create_transaction_legacy_message_matches_host_papp_0_8_8_fixture() {
+    fn create_transaction_legacy_message_matches_host_papp_0_8_11_fixture() {
         let message = create_transaction_legacy_message(
             "m-legacy-tx".to_string(),
             LegacyAccountTxPayload {
@@ -898,15 +1136,15 @@ mod tests {
             },
         );
 
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             message,
             "0x2c6d2d6c65676163792d7478000900000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f0800000428436865636b4e6f6e6365040108020300",
         );
     }
 
     #[test]
-    fn sign_raw_legacy_messages_match_host_papp_0_8_8_fixtures() {
-        assert_host_papp_0_8_8_fixture(
+    fn sign_raw_legacy_messages_match_host_papp_0_8_11_fixtures() {
+        assert_host_papp_0_8_11_fixture(
             sign_raw_legacy_message(
                 "m-legacy-raw".to_string(),
                 sequential_bytes(0),
@@ -916,7 +1154,7 @@ mod tests {
             ),
             "0x306d2d6c65676163792d726177000a000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f00084869",
         );
-        assert_host_papp_0_8_8_fixture(
+        assert_host_papp_0_8_11_fixture(
             sign_raw_legacy_message(
                 "m-legacy-raw-payload".to_string(),
                 sequential_bytes(0),
@@ -930,7 +1168,7 @@ mod tests {
 
     #[test]
     fn option_bool_matches_host_papp_option_bool_encoding() {
-        let mut request = HostSignPayloadRequest {
+        let mut request = truapi::v01::HostSignPayloadRequest {
             account: account(),
             payload: HostSignPayloadData {
                 block_hash: vec![],
@@ -997,7 +1235,7 @@ mod tests {
         let session = session();
         let remote_message = sign_raw_message(
             "remote-1".to_string(),
-            HostSignRawRequest {
+            truapi::v01::HostSignRawRequest {
                 account: account(),
                 payload: RawPayload::Payload {
                     payload: "<Bytes>hello</Bytes>".to_string(),
@@ -1037,7 +1275,7 @@ mod tests {
         let session = session();
         let remote_message = sign_raw_message(
             "remote-1".to_string(),
-            HostSignRawRequest {
+            truapi::v01::HostSignRawRequest {
                 account: account(),
                 payload: RawPayload::Payload {
                     payload: "<Bytes>hello</Bytes>".to_string(),
@@ -1059,6 +1297,186 @@ mod tests {
         assert_eq!(decoded, None);
     }
 
+    fn host_and_responder_sessions() -> (SsoSessionInfo, SsoSessionInfo) {
+        use crate::host_logic::sso::pairing::{
+            ResponderIdentity, create_pairing_bootstrap, derive_p256_keypair_from_entropy,
+            establish_responder_session_info, establish_sso_session_info,
+        };
+        use truapi_platform::{HostInfo, PairingHostConfig, PlatformInfo};
+
+        let config = PairingHostConfig::new(
+            HostInfo {
+                name: "Test Host".to_string(),
+                icon: None,
+                version: None,
+            },
+            PlatformInfo::default(),
+            [0; 32],
+            [0xbb; 32],
+            "polkadotapp".to_string(),
+        )
+        .expect("test pairing config is valid");
+        let bootstrap = create_pairing_bootstrap(&config).unwrap();
+        let statement_keypair = MiniSecretKey::from_bytes(&[7; 32])
+            .unwrap()
+            .expand_to_keypair(ExpansionMode::Ed25519);
+        let (encryption_secret_key, encryption_public_key) =
+            derive_p256_keypair_from_entropy(&[0xAB; 16], b"sso-encryption").unwrap();
+        let responder = ResponderIdentity {
+            statement_secret: statement_keypair.secret.to_bytes(),
+            statement_public_key: statement_keypair.public.to_bytes(),
+            encryption_secret_key,
+            encryption_public_key,
+        };
+        let responder_session = establish_responder_session_info(
+            &responder,
+            bootstrap.statement_store_public_key,
+            bootstrap.encryption_public_key,
+        )
+        .unwrap();
+        let host_session = establish_sso_session_info(
+            &bootstrap,
+            responder.statement_public_key,
+            responder.encryption_public_key,
+        )
+        .unwrap();
+        (host_session, responder_session)
+    }
+
+    /// A host-built request statement decodes on the responder side into the
+    /// batched remote messages, and the responder's ack plus response
+    /// statements resolve the host's pending wait.
+    #[test]
+    fn host_request_round_trips_through_responder_statements() {
+        let (host_session, responder_session) = host_and_responder_sessions();
+        let request = sign_raw_message(
+            "remote-1".to_string(),
+            truapi::v01::HostSignRawRequest {
+                account: account(),
+                payload: RawPayload::Payload {
+                    payload: "<Bytes>hello</Bytes>".to_string(),
+                },
+            },
+        );
+        let host_statement = build_outgoing_request_statement(
+            &host_session,
+            "statement-1".to_string(),
+            vec![request.clone()],
+            fresh_expiry(),
+        )
+        .unwrap();
+
+        let incoming = decode_incoming_sso_request(&responder_session, &host_statement)
+            .unwrap()
+            .expect("responder should surface the host request");
+        assert_eq!(
+            incoming,
+            IncomingSsoRequest {
+                request_id: "statement-1".to_string(),
+                messages: vec![request],
+            }
+        );
+
+        let ack = build_signed_session_response_statement(
+            &responder_session,
+            incoming.request_id.clone(),
+            0,
+            fresh_expiry(),
+        )
+        .unwrap();
+        assert_eq!(
+            decode_sso_session_statement(&host_session, &ack, "statement-1", "remote-1").unwrap(),
+            Some(SsoSessionStatement::RequestAccepted)
+        );
+
+        let response = RemoteMessage {
+            message_id: "resp-1".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::SignResponse(SigningResponse {
+                responding_to: "remote-1".to_string(),
+                payload: Ok(SigningPayloadResponseData {
+                    signature: vec![9; 64],
+                    signed_transaction: None,
+                }),
+            })),
+        };
+        let response_statement = build_outgoing_request_statement(
+            &responder_session,
+            "resp-statement-1".to_string(),
+            vec![response],
+            fresh_expiry(),
+        )
+        .unwrap();
+        let decoded = decode_sso_session_statement(
+            &host_session,
+            &response_statement,
+            "statement-1",
+            "remote-1",
+        )
+        .unwrap();
+        assert_eq!(
+            decoded,
+            Some(SsoSessionStatement::RemoteResponse(
+                SsoRemoteResponse::Sign(SigningResponse {
+                    responding_to: "remote-1".to_string(),
+                    payload: Ok(SigningPayloadResponseData {
+                        signature: vec![9; 64],
+                        signed_transaction: None,
+                    }),
+                })
+            ))
+        );
+    }
+
+    #[test]
+    fn responder_ignores_own_echo_and_transport_acks() {
+        let (host_session, responder_session) = host_and_responder_sessions();
+        let own_statement = build_outgoing_request_statement(
+            &responder_session,
+            "resp-statement-1".to_string(),
+            vec![RemoteMessage {
+                message_id: "resp-1".to_string(),
+                data: RemoteMessageData::V1(v1::RemoteMessage::Disconnected),
+            }],
+            fresh_expiry(),
+        )
+        .unwrap();
+        assert_eq!(
+            decode_incoming_sso_request(&responder_session, &own_statement).unwrap(),
+            None
+        );
+
+        let host_ack = build_signed_session_response_statement(
+            &host_session,
+            "resp-statement-1".to_string(),
+            0,
+            fresh_expiry(),
+        )
+        .unwrap();
+        assert_eq!(
+            decode_incoming_sso_request(&responder_session, &host_ack).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn responder_ignores_expired_host_request() {
+        let (host_session, responder_session) = host_and_responder_sessions();
+        let stale_statement = build_outgoing_request_statement(
+            &host_session,
+            "statement-1".to_string(),
+            vec![RemoteMessage {
+                message_id: "remote-1".to_string(),
+                data: RemoteMessageData::V1(v1::RemoteMessage::Disconnected),
+            }],
+            elapsed_expiry(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            decode_incoming_sso_request(&responder_session, &stale_statement).unwrap(),
+            None
+        );
+    }
     fn response_ack_statement(session: &SsoSessionInfo, expiry: u64) -> Vec<u8> {
         let encrypted = encrypt_session_statement_data_with_nonce(
             session,

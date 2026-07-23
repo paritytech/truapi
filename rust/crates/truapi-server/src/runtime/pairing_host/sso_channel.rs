@@ -224,7 +224,7 @@ impl PairingHost {
             if !session_matches_key(&session_state, key) {
                 return Err(SsoRemoteResponseError::LocalDisconnected);
             }
-            statement_store_rpc::submit(&submit_client, statement)
+            statement_store_rpc::submit_sso(&submit_client, statement, "pairing-host request")
                 .await
                 .map_err(|err| {
                     SsoRemoteResponseError::Failure(format!("SSO statement submit failed: {err}"))

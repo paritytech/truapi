@@ -3668,6 +3668,7 @@ dependencies = [
  "serde_json",
  "subxt-lightclient",
  "thiserror 2.0.18",
+ "tokio-util",
  "tracing",
  "url",
  "wasm-bindgen-futures",
@@ -4001,6 +4002,7 @@ dependencies = [
  "truapi",
  "unicode-normalization",
  "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -4012,6 +4014,7 @@ dependencies = [
  "blake2b_simd",
  "console_error_panic_hook",
  "derive_more 2.1.1",
+ "frame-metadata",
  "futures",
  "futures-timer",
  "getrandom 0.2.17",

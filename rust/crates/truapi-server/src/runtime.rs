@@ -17,6 +17,8 @@ pub(crate) mod services;
 mod signing_host;
 pub(crate) mod sso_pairing;
 pub(crate) mod sso_remote;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod statement_allowance;
 pub(crate) mod statement_store;
 mod statement_store_rpc;
 
@@ -46,7 +48,10 @@ pub(crate) use authority::{BulletinAllowanceKey, ProductAuthority};
 use pairing_host::PairingHost;
 pub(crate) use pairing_host::PairingHost as PairingHostRole;
 pub(crate) use services::RuntimeServices;
-pub(crate) use signing_host::{LocalActivation, SigningHost as SigningHostRole};
+pub use signing_host::ResponderExit;
+pub(crate) use signing_host::{
+    LocalActivation, SigningHost as SigningHostRole, respond_to_pairing,
+};
 
 use authority::{
     AccountAliasAuthorityRequest, AuthorityCancelError, AuthorityError, AuthoritySession,
@@ -140,10 +145,10 @@ use truapi::{CallContext, CallError, CancellationReason, Subscription};
 #[cfg(test)]
 use truapi_platform::Platform;
 use truapi_platform::{
-    AccountAccessReview, AccountAliasReview, CreateProofReview, CreateTransactionReview,
-    IdentityDisclosureReview, PermissionAuthorizationRequest, PermissionAuthorizationStatus,
-    PreimageSubmitReview, ProductContext, SessionUiInfo, SignPayloadReview, SignRawReview,
-    UserConfirmationReview, normalize_product_identifier,
+    AccountAccessReview, CreateTransactionReview, IdentityDisclosureReview,
+    PermissionAuthorizationRequest, PermissionAuthorizationStatus, PreimageSubmitReview,
+    ProductContext, SessionUiInfo, SignPayloadReview, SignRawReview, UserConfirmationReview,
+    normalize_product_identifier,
 };
 
 pub(super) const REMOTE_PERMISSION_DENIED_REASON: &str = "Permission denied";
@@ -870,24 +875,6 @@ impl Account for ProductRuntimeHost {
         };
 
         let calling_product_id = self.product_id();
-        let confirmed = self
-            .services
-            .platform
-            .confirm_user_action(UserConfirmationReview::AccountAlias(AccountAliasReview {
-                calling_product_id: calling_product_id.clone(),
-                context: context.clone(),
-                ring_location: ring_location.clone(),
-            }))
-            .await
-            .map_err(|err| CallError::HostFailure {
-                reason: format!("account alias confirmation failed: {err:?}"),
-            })?;
-        if !confirmed {
-            return Err(CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetAliasError::Rejected,
-            )));
-        }
-
         let cx = remote_authority_context(cx);
         remote_authority_call(
             &cx,
@@ -925,25 +912,6 @@ impl Account for ProductRuntimeHost {
         };
 
         let calling_product_id = self.product_id();
-        let confirmed = self
-            .services
-            .platform
-            .confirm_user_action(UserConfirmationReview::CreateProof(CreateProofReview {
-                calling_product_id: calling_product_id.clone(),
-                context: context.clone(),
-                ring_location: ring_location.clone(),
-                message: message.clone(),
-            }))
-            .await
-            .map_err(|err| CallError::HostFailure {
-                reason: format!("ring-VRF proof confirmation failed: {err:?}"),
-            })?;
-        if !confirmed {
-            return Err(CallError::Domain(HostAccountCreateProofError::V1(
-                v01::HostAccountCreateProofError::Rejected,
-            )));
-        }
-
         let cx = remote_authority_context(cx);
         remote_authority_call(
             &cx,
@@ -988,16 +956,24 @@ impl Account for ProductRuntimeHost {
                 ))
             })?;
 
+        let mut accounts = vec![v01::LegacyAccount {
+            public_key: public_key.to_vec(),
+            // TODO(#266): gate this legacy display name on
+            // IdentityDisclosure while keeping the public key for
+            // compatibility.
+            name: session.lite_username.clone(),
+        }];
+        if let Some(identity_account_id) = session.identity_account_id
+            && identity_account_id != public_key
+        {
+            accounts.push(v01::LegacyAccount {
+                public_key: identity_account_id.to_vec(),
+                name: Some("Identity".to_string()),
+            });
+        }
+
         Ok(HostGetLegacyAccountsResponse::V1(
-            v01::HostGetLegacyAccountsResponse {
-                accounts: vec![v01::LegacyAccount {
-                    public_key: public_key.to_vec(),
-                    // TODO(#266): gate this legacy display name on
-                    // IdentityDisclosure while keeping the public key for
-                    // compatibility.
-                    name: session.lite_username.clone(),
-                }],
-            },
+            v01::HostGetLegacyAccountsResponse { accounts },
         ))
     }
 
@@ -1725,9 +1701,9 @@ impl Chain for ProductRuntimeHost {
     ) -> Result<RemoteChainTransactionStopResponse, CallError<RemoteChainTransactionStopError>>
     {
         let RemoteChainTransactionStopRequest::V1(inner) = request;
-        // We intentionally forward the provider operation id here. Transaction
-        // operation ids are node-assigned and short-lived, so cross-product
-        // collision or guessing is not worth local id indirection yet.
+        // ChainRuntime resolves this product-visible host handle to the
+        // provider's short-lived operation id and makes stopping an operation
+        // that completed between broadcast and stop idempotent.
         self.services
             .chain
             .remote_chain_transaction_stop(inner)
@@ -2012,7 +1988,7 @@ impl Preimage for ProductRuntimeHost {
                 .bulletin_allowance_key(&authority_cx, &session, self.product_id()),
         )
         .await
-        .map_err(|err| preimage_submit_error(err.reason()))?;
+        .map_err(|err| preimage_submit_error(bulletin_allowance_error_reason(err)))?;
 
         let key = match bulletin
             .submit_preimage(cx, submission_deadline, &allowance, &value)
@@ -2037,7 +2013,7 @@ impl Preimage for ProductRuntimeHost {
                     ),
                 )
                 .await
-                .map_err(|err| preimage_submit_error(err.reason()))?;
+                .map_err(|err| preimage_submit_error(bulletin_allowance_error_reason(err)))?;
                 bulletin
                     .submit_preimage(cx, submission_deadline, &allowance, &value)
                     .await
@@ -2067,6 +2043,18 @@ fn preimage_submit_error(reason: String) -> CallError<RemotePreimageSubmitError>
     CallError::Domain(RemotePreimageSubmitError::V1(
         v01::PreimageSubmitError::Unknown { reason },
     ))
+}
+
+fn bulletin_allowance_error_reason(err: AuthorityError) -> String {
+    match err {
+        AuthorityError::Rejected => {
+            "Bulletin allowance allocation was rejected by the signing host".to_string()
+        }
+        AuthorityError::Disconnected => {
+            "Signing host disconnected while allocating Bulletin allowance".to_string()
+        }
+        other => other.reason(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2156,6 +2144,14 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "{message}");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn preimage_reports_bulletin_allocation_rejection_with_context() {
+        assert_eq!(
+            bulletin_allowance_error_reason(AuthorityError::Rejected),
+            "Bulletin allowance allocation was rejected by the signing host"
+        );
     }
 
     fn recorded_rpc_methods(sent_rpc: &Mutex<Vec<String>>) -> Vec<String> {
@@ -2524,28 +2520,9 @@ mod tests {
     }
 
     #[test]
-    fn get_account_alias_rejected_when_user_declines() {
-        let host =
-            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        host.test_session_state().set_session(sso_session_info());
-        let cx = CallContext::new();
-        let err = futures::executor::block_on(
-            host.get_account_alias(&cx, account_alias_request("myapp.dot")),
-        )
-        .unwrap_err();
-        assert!(matches!(
-            err,
-            CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetAliasError::Rejected
-            ))
-        ));
-    }
-
-    #[test]
-    fn get_account_alias_returns_sso_alias() {
+    fn get_account_alias_forwards_without_pairing_host_confirmation() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
-            account_alias_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
                 &session,
                 RemoteMessage {
@@ -2608,7 +2585,6 @@ mod tests {
     fn create_account_proof_returns_sso_proof() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
-            create_proof_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
                 &session,
                 RemoteMessage {
@@ -2660,7 +2636,6 @@ mod tests {
     fn create_account_proof_maps_not_member_error() {
         let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
-            create_proof_confirmed: true,
             sso_response_script: Some(sso_success_response_script(
                 &session,
                 RemoteMessage {
@@ -2708,11 +2683,16 @@ mod tests {
         )
         .unwrap();
         let HostGetLegacyAccountsResponse::V1(inner) = response;
-        assert_eq!(inner.accounts.len(), 1);
+        assert_eq!(inner.accounts.len(), 2);
         assert_eq!(inner.accounts[0].name.as_deref(), Some("alice"));
         assert_eq!(
             hex::encode(&inner.accounts[0].public_key),
             "1c822b488297fde8c60d9cbc5585839f70a69fb2c5c69daa66b6043c75184467"
+        );
+        assert_eq!(inner.accounts[1].name.as_deref(), Some("Identity"));
+        assert_eq!(
+            inner.accounts[1].public_key,
+            session_info().identity_account_id.unwrap()
         );
     }
 

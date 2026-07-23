@@ -4,6 +4,7 @@
 //! storage, URL handler, notification center). Everything else lives here so
 //! iOS, Android, and web hosts share one canonical implementation.
 
+pub mod attestation;
 pub mod bulletin;
 pub mod dotns;
 pub mod entropy;
@@ -16,3 +17,4 @@ pub mod session;
 pub mod session_store;
 pub mod sso;
 pub mod statement_store;
+pub mod transaction;
