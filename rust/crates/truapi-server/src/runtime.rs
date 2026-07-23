@@ -67,7 +67,6 @@ use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
     Preimage, ResourceAllocation, Signing, System, Theme,
 };
-use truapi::v01;
 use truapi::versioned::account::{
     HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
     HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
@@ -142,6 +141,7 @@ use truapi::versioned::system::{
 };
 use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, CancellationReason, Subscription};
+use truapi::{latest, v01};
 #[cfg(test)]
 use truapi_platform::Platform;
 use truapi_platform::{
@@ -986,41 +986,10 @@ impl Account for ProductRuntimeHost {
         _cx: &CallContext,
         _request: HostGetLegacyAccountsRequest,
     ) -> Result<HostGetLegacyAccountsResponse, CallError<HostGetLegacyAccountsError>> {
-        let Some(session) = self.authority.current_session() else {
-            return Ok(HostGetLegacyAccountsResponse::V1(
-                v01::HostGetLegacyAccountsResponse { accounts: vec![] },
-            ));
-        };
-
-        let product_id = self.product_id();
-
-        let public_key =
-            derive_product_public_key(session.public_key, &product_id, 0).map_err(|err| {
-                CallError::Domain(HostGetLegacyAccountsError::V1(
-                    v01::HostAccountGetError::Unknown {
-                        reason: err.to_string(),
-                    },
-                ))
-            })?;
-
-        let mut accounts = vec![v01::LegacyAccount {
-            public_key: public_key.to_vec(),
-            // TODO(#266): gate this legacy display name on
-            // IdentityDisclosure while keeping the public key for
-            // compatibility.
-            name: session.lite_username.clone(),
-        }];
-        if let Some(identity_account_id) = session.identity_account_id
-            && identity_account_id != public_key
-        {
-            accounts.push(v01::LegacyAccount {
-                public_key: identity_account_id.to_vec(),
-                name: Some("Identity".to_string()),
-            });
-        }
-
+        // Match the mobile hosts: compatibility signing accounts may be
+        // addressed explicitly, but are not enumerated.
         Ok(HostGetLegacyAccountsResponse::V1(
-            v01::HostGetLegacyAccountsResponse { accounts },
+            latest::HostGetLegacyAccountsResponse { accounts: vec![] },
         ))
     }
 
@@ -2709,7 +2678,7 @@ mod tests {
     }
 
     #[test]
-    fn get_legacy_accounts_returns_derived_slot_zero_when_connected() {
+    fn get_legacy_accounts_returns_empty_when_connected() {
         let host = ProductRuntimeHost::new(
             stub_platform(),
             runtime_config("localhost:3000"),
@@ -2722,17 +2691,7 @@ mod tests {
         )
         .unwrap();
         let HostGetLegacyAccountsResponse::V1(inner) = response;
-        assert_eq!(inner.accounts.len(), 2);
-        assert_eq!(inner.accounts[0].name.as_deref(), Some("alice"));
-        assert_eq!(
-            hex::encode(&inner.accounts[0].public_key),
-            "1c822b488297fde8c60d9cbc5585839f70a69fb2c5c69daa66b6043c75184467"
-        );
-        assert_eq!(inner.accounts[1].name.as_deref(), Some("Identity"));
-        assert_eq!(
-            inner.accounts[1].public_key,
-            session_info().identity_account_id.unwrap()
-        );
+        assert!(inner.accounts.is_empty());
     }
 
     #[test]

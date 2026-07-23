@@ -919,6 +919,20 @@ mod tests {
     }
 
     #[test]
+    fn local_activation_exposes_the_wallet_sso_identity_account() {
+        let (_services, authority) = signing_runtime();
+        futures::executor::block_on(authority.activate_local_session(ENTROPY.to_vec()))
+            .expect("activation succeeds");
+
+        let session = authority.current_session().expect("active session");
+        let identity = derive_sr25519_hard_path(&ENTROPY, &["wallet", "sso"])
+            .expect("wallet identity derivation")
+            .public
+            .to_bytes();
+        assert_eq!(session.identity_account_id, Some(identity));
+    }
+
+    #[test]
     fn activate_then_sign_raw_verifies_against_derived_product_key() {
         let (services, activation) = signing_runtime();
         futures::executor::block_on(activation.activate_local_session(ENTROPY.to_vec()))

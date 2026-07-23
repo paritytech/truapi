@@ -29,9 +29,11 @@ pub mod latest {
     pub use crate::v01::{
         AccountId, AllocatableResource, AllocationOutcome, ContextualAlias, GenericError,
         HostSignPayloadData, NotificationId, OperationStartedResult, ProductAccountId,
-        ProductProofContext, RawPayload, RemotePermission, RingLocation, RuntimeApi, RuntimeSpec,
-        RuntimeType, StorageQueryItem, StorageQueryType, StorageResultItem, ThemeVariant,
-        TxPayloadExtension,
+        ProductProofContext, RawPayload, RemotePermission, RemoteStatementStoreCreateProofError,
+        RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
+        RemoteStatementStoreSubscribeItem, RemoteStatementStoreSubscribeRequest, RingLocation,
+        RuntimeApi, RuntimeSpec, RuntimeType, SignedStatement, Statement, StatementProof,
+        StorageQueryItem, StorageQueryType, StorageResultItem, ThemeVariant, TxPayloadExtension,
     };
 
     pub type LatestOf<T> = <T as Versioned>::Latest;
@@ -40,6 +42,8 @@ pub mod latest {
         LatestOf<versioned::account::HostAccountCreateProofResponse>;
     pub type HostAccountGetAliasResponse =
         LatestOf<versioned::account::HostAccountGetAliasResponse>;
+    pub type HostGetLegacyAccountsResponse =
+        LatestOf<versioned::account::HostGetLegacyAccountsResponse>;
     pub type HostCreateTransactionResponse =
         LatestOf<versioned::signing::HostCreateTransactionResponse>;
     pub type HostDevicePermissionRequest =
