@@ -504,14 +504,17 @@ fn resource_allocation_payload_result(
         );
     }
 
-    ResponseResult {
-        outcome: "not_available",
-        reason: Some(if total == 1 {
-            "Requested resource is not available".to_string()
-        } else {
-            format!("None of the {total} requested resources are available")
-        }),
-    }
+    allocation_result_with_failures(
+        ResponseResult {
+            outcome: "not_available",
+            reason: Some(if total == 1 {
+                "Requested resource is not available".to_string()
+            } else {
+                format!("None of the {total} requested resources are available")
+            }),
+        },
+        item_failures,
+    )
 }
 
 fn allocation_result_with_failures(
@@ -613,12 +616,18 @@ async fn answer_remote_message(
                 signed_transaction,
             })
         }
-        v1::RemoteMessage::CreateTransactionLegacyRequest(_) => {
+        v1::RemoteMessage::CreateTransactionLegacyRequest(request) => {
+            let messages::CreateTransactionLegacyPayload::V1(payload) = request.payload;
+            let signed_transaction = create_transaction_response(
+                services,
+                signing_host,
+                CreateTransactionReview::LegacyAccount(payload.clone()),
+                CreateTransactionAuthorityRequest::IdentityAccount(payload),
+            )
+            .await;
             v1::RemoteMessage::CreateTransactionResponse(messages::CreateTransactionResponse {
                 responding_to: message_id,
-                signed_transaction: Err(
-                    "signing host: legacy-account transactions are not supported".to_string(),
-                ),
+                signed_transaction,
             })
         }
         v1::RemoteMessage::SignRawLegacyRequest(request) => {
@@ -661,22 +670,31 @@ async fn resource_allocation_response(
     signing_host: &Arc<SigningHost>,
     request: messages::ResourceAllocationRequest,
 ) -> ResourceAllocationAnswer {
-    if let Err(reason) = confirm(
-        services,
+    let review =
         UserConfirmationReview::ResourceAllocation(api::HostRequestResourceAllocationRequest {
             resources: request
                 .resources
                 .iter()
                 .map(public_allocatable_resource)
                 .collect(),
-        }),
-    )
-    .await
-    {
-        return ResourceAllocationAnswer {
-            payload: Err(reason),
-            item_failures: Vec::new(),
-        };
+        });
+    match services.platform.confirm_user_action(review).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return ResourceAllocationAnswer {
+                payload: Ok(vec![
+                    SsoAllocationOutcome::Rejected;
+                    request.resources.len()
+                ]),
+                item_failures: Vec::new(),
+            };
+        }
+        Err(err) => {
+            return ResourceAllocationAnswer {
+                payload: Err(format!("confirmation failed: {}", err.reason)),
+                item_failures: Vec::new(),
+            };
+        }
     }
 
     let mut outcomes = Vec::with_capacity(request.resources.len());
@@ -687,6 +705,7 @@ async fn resource_allocation_response(
                 services,
                 signing_host,
                 &request.calling_product_id,
+                request.on_existing,
             )
             .await
             .map(|slot_account_key| {
@@ -714,7 +733,7 @@ async fn resource_allocation_response(
             Err(reason) => {
                 warn!(%reason, "resource allocation item failed");
                 item_failures.push(reason);
-                outcomes.push(SsoAllocationOutcome::Rejected);
+                outcomes.push(SsoAllocationOutcome::NotAvailable);
             }
         }
     }
@@ -742,9 +761,11 @@ pub(super) async fn allocate_statement_store_allowance(
     services: &Arc<RuntimeServices>,
     signing_host: &SigningHost,
     product_id: &str,
+    policy: OnExistingAllowancePolicy,
 ) -> Result<Vec<u8>, String> {
     use crate::runtime::statement_allowance::{
-        self, fetch_chain_state, fetch_metadata, find_including_ring, register_statement_account,
+        self, RegistrationParams, fetch_chain_state, fetch_metadata, find_including_ring,
+        register_statement_account,
     };
 
     let entropy = signing_host.root_entropy().map_err(|err| err.reason())?;
@@ -774,9 +795,12 @@ pub(super) async fn allocate_statement_store_allowance(
         &metadata,
         &chain_state,
         bandersnatch,
-        &target,
-        period,
-        &ring,
+        RegistrationParams {
+            target: &target,
+            period,
+            ring: &ring,
+            reuse_existing: matches!(policy, OnExistingAllowancePolicy::Ignore),
+        },
     )
     .await?;
     match outcome {
@@ -900,6 +924,7 @@ pub(super) async fn allocate_statement_store_allowance(
     _services: &Arc<RuntimeServices>,
     _signing_host: &SigningHost,
     _product_id: &str,
+    _policy: OnExistingAllowancePolicy,
 ) -> Result<Vec<u8>, String> {
     Err("signing host: statement-store allowance allocation is native-only".to_string())
 }
@@ -1132,6 +1157,7 @@ async fn confirm(
 mod tests {
     use super::super::LocalActivation;
     use super::*;
+    use crate::host_logic::extrinsic::tests::split_v4;
     use crate::host_logic::statement_store::{StatementField, unsigned_statement_signing_payload};
     use crate::runtime::services::RuntimeServices;
     use crate::test_support::{StubPlatform, test_spawner};
@@ -1308,14 +1334,12 @@ mod tests {
 
     #[test]
     fn resource_allocation_summary_reflects_per_resource_outcomes() {
-        let result = resource_allocation_payload_result(
-            &Ok(vec![SsoAllocationOutcome::Rejected]),
-            &["timed out waiting for Bulletin authorization".to_string()],
-        );
+        let result =
+            resource_allocation_payload_result(&Ok(vec![SsoAllocationOutcome::Rejected]), &[]);
         assert_eq!(result.outcome, "rejected");
         assert_eq!(
             result.reason.as_deref(),
-            Some("Requested resource was rejected: timed out waiting for Bulletin authorization")
+            Some("Requested resource was rejected")
         );
 
         let result = resource_allocation_payload_result(
@@ -1334,12 +1358,16 @@ mod tests {
             Some("1 of 3 requested resources allocated; 1 rejected; 1 unavailable")
         );
 
-        let result =
-            resource_allocation_payload_result(&Ok(vec![SsoAllocationOutcome::NotAvailable]), &[]);
+        let result = resource_allocation_payload_result(
+            &Ok(vec![SsoAllocationOutcome::NotAvailable]),
+            &["timed out waiting for Bulletin authorization".to_string()],
+        );
         assert_eq!(result.outcome, "not_available");
         assert_eq!(
             result.reason.as_deref(),
-            Some("Requested resource is not available")
+            Some(
+                "Requested resource is not available: timed out waiting for Bulletin authorization"
+            )
         );
     }
 
@@ -1363,6 +1391,59 @@ mod tests {
         else {
             panic!("expected resource allocation response");
         };
-        assert_eq!(response.payload.unwrap_err(), "Rejected");
+        assert_eq!(
+            response.payload.unwrap(),
+            vec![SsoAllocationOutcome::Rejected]
+        );
+    }
+
+    #[test]
+    fn legacy_transaction_request_uses_the_controlled_identity_account() {
+        let (services, signing_host) = signing_fixture(Arc::new(StubPlatform {
+            create_transaction_confirmed: true,
+            ..StubPlatform::default()
+        }));
+        let identity = derive_sr25519_hard_path(&ENTROPY, &["wallet", "sso"]).unwrap();
+        let payload = api::LegacyAccountTxPayload {
+            signer: identity.public.to_bytes(),
+            genesis_hash: [0xaa; 32],
+            call_data: vec![0x00, 0x00],
+            extensions: vec![api::TxPayloadExtension {
+                id: "CheckNonce".to_string(),
+                extra: vec![1],
+                additional_signed: vec![2, 3],
+            }],
+            tx_ext_version: 0,
+        };
+
+        let response = futures::executor::block_on(answer_remote_message(
+            &services,
+            &signing_host,
+            "legacy-tx-1".to_string(),
+            v1::RemoteMessage::CreateTransactionLegacyRequest(
+                messages::CreateTransactionLegacyRequest {
+                    payload: messages::CreateTransactionLegacyPayload::V1(payload),
+                },
+            ),
+        ))
+        .expect("response is emitted");
+
+        let v1::RemoteMessage::CreateTransactionResponse(response) = response_payload(response)
+        else {
+            panic!("expected create transaction response");
+        };
+        let transaction = response
+            .signed_transaction
+            .expect("identity transaction succeeds");
+        let (account, signature, tail) = split_v4(&transaction);
+        assert_eq!(account, identity.public.to_bytes());
+        assert_eq!(tail, vec![1, 0x00, 0x00]);
+        let signature = schnorrkel::Signature::from_bytes(&signature).unwrap();
+        assert!(
+            identity
+                .public
+                .verify_simple(b"substrate", &[0x00, 0x00, 1, 2, 3], &signature)
+                .is_ok()
+        );
     }
 }

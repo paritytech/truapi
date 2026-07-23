@@ -607,6 +607,51 @@ impl ProductRuntimeHost {
     }
 }
 
+async fn account_access_authorization(
+    services: &RuntimeServices,
+    requesting_product_id: &str,
+    target_product_id: &str,
+) -> Result<PermissionAuthorizationStatus, String> {
+    if requesting_product_id == target_product_id {
+        return Ok(PermissionAuthorizationStatus::Authorized);
+    }
+
+    let request = PermissionAuthorizationRequest::AccountAccess {
+        target_product_id: target_product_id.to_string(),
+    };
+    let service = PermissionsService::new(
+        services.platform.as_ref(),
+        services.platform.as_ref(),
+        requesting_product_id,
+    );
+    let cached = service
+        .authorization_status(&request)
+        .await
+        .map_err(|err| format!("permission storage failed: {err:?}"))?;
+    if cached != PermissionAuthorizationStatus::NotDetermined {
+        return Ok(cached);
+    }
+
+    let confirmed = services
+        .platform
+        .confirm_user_action(UserConfirmationReview::AccountAccess(AccountAccessReview {
+            requesting_product_id: requesting_product_id.to_string(),
+            target_product_id: target_product_id.to_string(),
+        }))
+        .await
+        .map_err(|err| format!("account access confirmation failed: {err:?}"))?;
+    let status = if confirmed {
+        PermissionAuthorizationStatus::Authorized
+    } else {
+        PermissionAuthorizationStatus::Denied
+    };
+    service
+        .set_authorization_status(&request, status)
+        .await
+        .map_err(|err| format!("permission storage failed: {err:?}"))?;
+    Ok(status)
+}
+
 fn parse_legacy_signer_hex(signer: &str) -> Option<[u8; 32]> {
     let raw = signer
         .strip_prefix("0x")
@@ -821,21 +866,23 @@ impl Account for ProductRuntimeHost {
 
         let product_id = self.product_id();
         if product_account_id.dot_ns_identifier != product_id {
-            let confirmed = self
-                .services
-                .platform
-                .confirm_user_action(UserConfirmationReview::AccountAccess(AccountAccessReview {
-                    requesting_product_id: product_id,
-                    target_product_id: product_account_id.dot_ns_identifier.clone(),
-                }))
-                .await
-                .map_err(|err| CallError::HostFailure {
-                    reason: format!("account access confirmation failed: {err:?}"),
-                })?;
-            if !confirmed {
-                return Err(CallError::Domain(HostAccountGetError::V1(
-                    v01::HostAccountGetError::Rejected,
-                )));
+            match account_access_authorization(
+                &self.services,
+                &product_id,
+                &product_account_id.dot_ns_identifier,
+            )
+            .await
+            {
+                Ok(PermissionAuthorizationStatus::Authorized) => {}
+                Ok(
+                    PermissionAuthorizationStatus::Denied
+                    | PermissionAuthorizationStatus::NotDetermined,
+                ) => {
+                    return Err(CallError::Domain(HostAccountGetError::V1(
+                        v01::HostAccountGetError::Rejected,
+                    )));
+                }
+                Err(reason) => return Err(CallError::HostFailure { reason }),
             }
         }
 
@@ -1423,15 +1470,6 @@ impl Signing for ProductRuntimeHost {
                     },
                 ))
             })?;
-        if !matches!(signer, LegacySigner::Product) {
-            return Err(CallError::Domain(
-                HostCreateTransactionWithLegacyAccountError::V1(
-                    v01::HostCreateTransactionError::Unknown {
-                        reason: LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON.to_string(),
-                    },
-                ),
-            ));
-        }
         self.require_chain_submit(HostCreateTransactionWithLegacyAccountError::V1(
             v01::HostCreateTransactionError::PermissionDenied,
         ))
@@ -1454,19 +1492,20 @@ impl Signing for ProductRuntimeHost {
             ));
         }
         let cx = remote_authority_context(cx);
+        let authority_request = match signer {
+            LegacySigner::Product => CreateTransactionAuthorityRequest::LegacyAccount {
+                product_account: v01::ProductAccountId {
+                    dot_ns_identifier: self.product_id(),
+                    derivation_index: 0,
+                },
+                request: inner,
+            },
+            LegacySigner::Identity(_) => CreateTransactionAuthorityRequest::IdentityAccount(inner),
+        };
         remote_authority_call(
             &cx,
-            self.authority.create_transaction(
-                &cx,
-                &session,
-                CreateTransactionAuthorityRequest::LegacyAccount {
-                    product_account: v01::ProductAccountId {
-                        dot_ns_identifier: self.product_id(),
-                        derivation_index: 0,
-                    },
-                    request: inner,
-                },
-            ),
+            self.authority
+                .create_transaction(&cx, &session, authority_request),
         )
         .await
         .map(|response| {
@@ -3828,13 +3867,34 @@ mod tests {
     }
 
     #[test]
-    fn legacy_create_transaction_rejects_identity_account() {
-        let session = session_info();
+    fn legacy_create_transaction_accepts_identity_account_then_routes_legacy_request() {
+        let session = sso_session_info();
         let identity = session.identity_account_id.unwrap();
-        let host =
-            ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        host.test_session_state().set_session(session);
-        let cx = CallContext::new();
+        let platform = Arc::new(StubPlatform {
+            create_transaction_confirmed: true,
+            sso_response_script: Some(sso_success_response_script(
+                &session,
+                crate::host_logic::sso::messages::RemoteMessage {
+                    message_id: "wallet-identity-create-tx-1".to_string(),
+                    data: crate::host_logic::sso::messages::RemoteMessageData::V1(
+                        crate::host_logic::sso::messages::v1::RemoteMessage::CreateTransactionResponse(
+                            crate::host_logic::sso::messages::CreateTransactionResponse {
+                                responding_to: "identity-create-tx-1".to_string(),
+                                signed_transaction: Ok(vec![0xca, 0xfe]),
+                            },
+                        ),
+                    ),
+                },
+            )),
+            ..Default::default()
+        });
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.test_session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("identity-create-tx-1".to_string());
         let request =
             HostCreateTransactionWithLegacyAccountRequest::V1(v01::LegacyAccountTxPayload {
                 signer: identity,
@@ -3844,16 +3904,24 @@ mod tests {
                 tx_ext_version: 0,
             });
 
-        let err =
+        let response =
             futures::executor::block_on(host.create_transaction_with_legacy_account(&cx, request))
-                .unwrap_err();
+                .unwrap();
 
-        match err {
-            CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
-                v01::HostCreateTransactionError::Unknown { reason },
-            )) => assert_eq!(reason, LEGACY_PRODUCT_ACCOUNT_MISMATCH_REASON),
-            other => panic!("expected identity account rejection, got {other:?}"),
-        }
+        let HostCreateTransactionWithLegacyAccountResponse::V1(inner) = response;
+        assert_eq!(inner.transaction, vec![0xca, 0xfe]);
+        let message = submitted_remote_message(&platform, &session);
+        let crate::host_logic::sso::messages::RemoteMessageData::V1(
+            crate::host_logic::sso::messages::v1::RemoteMessage::CreateTransactionLegacyRequest(
+                request,
+            ),
+        ) = message.data
+        else {
+            panic!("expected identity transaction request");
+        };
+        let crate::host_logic::sso::messages::CreateTransactionLegacyPayload::V1(payload) =
+            request.payload;
+        assert_eq!(payload.signer, identity);
     }
 
     #[test]

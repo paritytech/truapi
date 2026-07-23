@@ -17,9 +17,10 @@ use crate::host_logic::session::{SessionInfo, SessionState, SsoSessionInfo};
 use crate::host_logic::sso::messages::{
     OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, RingVrfError,
     SsoAllocatedResource, SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement,
-    alias_request_message, build_outgoing_request_statement, create_transaction_message,
-    decode_sso_session_statement, proof_request_message, resource_allocation_message,
-    sign_payload_message, sign_raw_legacy_message, sign_raw_message, v1,
+    alias_request_message, build_outgoing_request_statement, create_transaction_legacy_message,
+    create_transaction_message, decode_sso_session_statement, proof_request_message,
+    resource_allocation_message, sign_payload_message, sign_raw_legacy_message, sign_raw_message,
+    v1,
 };
 use crate::host_logic::statement_store::parse_new_statements_result;
 
@@ -334,20 +335,27 @@ impl PairingHost {
     ) -> Result<latest::HostCreateTransactionResponse, AuthorityError> {
         let action = AuthorityRequestKind::from(&request);
         let message_id = sso_message_id();
-        let request = match request {
-            CreateTransactionAuthorityRequest::Product(request) => request,
+        let message = match request {
+            CreateTransactionAuthorityRequest::Product(request) => {
+                create_transaction_message(message_id, request)
+            }
             CreateTransactionAuthorityRequest::LegacyAccount {
                 product_account,
                 request,
-            } => latest::ProductAccountTxPayload {
-                signer: product_account,
-                genesis_hash: request.genesis_hash,
-                call_data: request.call_data,
-                extensions: request.extensions,
-                tx_ext_version: request.tx_ext_version,
-            },
+            } => create_transaction_message(
+                message_id,
+                latest::ProductAccountTxPayload {
+                    signer: product_account,
+                    genesis_hash: request.genesis_hash,
+                    call_data: request.call_data,
+                    extensions: request.extensions,
+                    tx_ext_version: request.tx_ext_version,
+                },
+            ),
+            CreateTransactionAuthorityRequest::IdentityAccount(request) => {
+                create_transaction_legacy_message(message_id, request)
+            }
         };
-        let message = create_transaction_message(message_id, request);
         let response = self
             .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await

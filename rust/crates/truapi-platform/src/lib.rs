@@ -323,6 +323,11 @@ pub enum PermissionAuthorizationRequest {
     Remote(RemotePermissionRequest),
     /// Product-scoped permission to disclose the user's primary identity.
     IdentityDisclosure,
+    /// Product-scoped permission to access another product's account context.
+    AccountAccess {
+        /// Product whose account context may be accessed.
+        target_product_id: String,
+    },
 }
 
 /// Authorization status for a permission request.

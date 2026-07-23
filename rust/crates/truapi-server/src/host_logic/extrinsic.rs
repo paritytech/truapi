@@ -117,12 +117,24 @@ pub(crate) fn build_signed_extrinsic_v4(
     call_data: &[u8],
     extensions: &[v01::TxPayloadExtension],
 ) -> Vec<u8> {
+    let signature = signer.sign(&v4_signer_payload(call_data, extensions));
+    build_signed_extrinsic_v4_with_signature(signer.account_id(), &signature, call_data, extensions)
+}
+
+/// Assemble a signed Extrinsic V4 using an existing signature.
+///
+/// This keeps `signPayload`'s returned typed signature byte-for-byte identical
+/// to the signature embedded in an optionally requested signed transaction.
+pub(crate) fn build_signed_extrinsic_v4_with_signature(
+    account_id: AccountId32,
+    signature: &MultiSignature,
+    call_data: &[u8],
+    extensions: &[v01::TxPayloadExtension],
+) -> Vec<u8> {
     /// `0b1000_0000 | 4`: the "signed" bit plus extrinsic format version 4.
     const EXTRINSIC_V4_SIGNED: u8 = 0x84;
 
-    let signature = signer.sign(&v4_signer_payload(call_data, extensions));
-    let address = MultiAddress::<AccountId32, u32>::Id(signer.account_id());
-
+    let address = MultiAddress::<AccountId32, u32>::Id(account_id);
     let mut inner = Vec::new();
     inner.push(EXTRINSIC_V4_SIGNED);
     address.encode_to(&mut inner);

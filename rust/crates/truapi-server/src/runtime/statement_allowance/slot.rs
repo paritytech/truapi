@@ -174,6 +174,7 @@ pub async fn scan_slot_excluding(
     period: u32,
     target: &[u8; 32],
     excluded: &[u32],
+    reuse_existing: bool,
 ) -> Result<SlotSelection, String> {
     let max = max_slots(metadata)?;
     let mut first_free: Option<u32> = None;
@@ -187,7 +188,7 @@ pub async fn scan_slot_excluding(
                 }
             }
             Some(bytes) => {
-                if entry_account_id(&bytes) == Some(*target) {
+                if reuse_existing && entry_account_id(&bytes) == Some(*target) {
                     return Ok(SlotSelection::AlreadyAllocated(seq));
                 }
             }

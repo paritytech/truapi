@@ -120,6 +120,14 @@ pub enum RegistrationOutcome {
     },
 }
 
+/// Target and slot-selection inputs for one statement-store registration.
+pub struct RegistrationParams<'a> {
+    pub target: &'a [u8; 32],
+    pub period: u32,
+    pub ring: &'a RingParams,
+    pub reuse_existing: bool,
+}
+
 /// Result of a long-term storage claim attempt.
 pub enum LongTermStorageOutcome {
     /// The extrinsic reached a block; the target should receive Bulletin
@@ -188,9 +196,7 @@ pub async fn register_statement_account(
     metadata: &Metadata,
     chain_state: &ChainState,
     entropy: [u8; 32],
-    target: &[u8; 32],
-    period: u32,
-    ring: &RingParams,
+    params: RegistrationParams<'_>,
 ) -> Result<RegistrationOutcome, String> {
     let mut skipped_duplicate_slots = Vec::new();
     loop {
@@ -198,9 +204,10 @@ pub async fn register_statement_account(
             rpc,
             metadata,
             entropy,
-            period,
-            target,
+            params.period,
+            params.target,
             &skipped_duplicate_slots,
+            params.reuse_existing,
         )
         .await?
         {
@@ -210,31 +217,37 @@ pub async fn register_statement_account(
             SlotSelection::Free(seq) => seq,
         };
 
-        let context = slot::derive_slot_context(period, seq);
-        let call =
-            extrinsic::build_set_statement_store_account_call(metadata, period, seq, target)?;
+        let context = slot::derive_slot_context(params.period, seq);
+        let call = extrinsic::build_set_statement_store_account_call(
+            metadata,
+            params.period,
+            seq,
+            params.target,
+        )?;
         let message = extension::build_proof_message(metadata, &call, chain_state)?;
-        let domain = proof::domain_for_ring_exponent(ring.exponent)?;
-        let ring_proof = proof::ring_vrf_proof(domain, entropy, &ring.members, &context, &message)?;
+        let domain = proof::domain_for_ring_exponent(params.ring.exponent)?;
+        let ring_proof =
+            proof::ring_vrf_proof(domain, entropy, &params.ring.members, &context, &message)?;
         let as_resources_extra =
-            extrinsic::build_as_resources_extra(metadata, &ring_proof, ring.ring_index)?;
+            extrinsic::build_as_resources_extra(metadata, &ring_proof, params.ring.ring_index)?;
         let extrinsic =
             extrinsic::build_unsigned_extrinsic(metadata, chain_state, &call, &as_resources_extra)?;
 
         match rpc.submit_and_watch(&extrinsic).await {
             Ok(block_hash) => {
-                if slot::read_slot_account_at(rpc, entropy, period, seq, &block_hash).await?
-                    != Some(*target)
+                if slot::read_slot_account_at(rpc, entropy, params.period, seq, &block_hash).await?
+                    != Some(*params.target)
                 {
                     return Err(format!(
-                        "registration reached block {block_hash} but slot (period {period}, \
-                         seq {seq}) is not held by the target account"
+                        "registration reached block {block_hash} but slot (period {}, \
+                         seq {seq}) is not held by the target account",
+                        params.period
                     ));
                 }
                 return Ok(RegistrationOutcome::Registered {
                     block_hash,
                     seq,
-                    ring_index: ring.ring_index,
+                    ring_index: params.ring.ring_index,
                 });
             }
             Err(err) if duplicate_submit_error(&err) => {
@@ -549,9 +562,12 @@ mod tests {
             &metadata,
             &chain_state,
             entropy,
-            &[0x22; 32],
-            7,
-            &ring,
+            RegistrationParams {
+                target: &[0x22; 32],
+                period: 7,
+                ring: &ring,
+                reuse_existing: true,
+            },
         ));
         (outcome, scripted)
     }

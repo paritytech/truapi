@@ -220,6 +220,8 @@ pub(crate) enum CreateTransactionAuthorityRequest {
         /// Original legacy-account transaction request.
         request: LegacyAccountTxPayload,
     },
+    /// Create a transaction with the active wallet's identity account.
+    IdentityAccount(LegacyAccountTxPayload),
 }
 
 /// Contextual-alias request forwarded to the account authority (RFC 0004).
