@@ -154,8 +154,8 @@ use truapi_platform::Platform;
 use truapi_platform::{
     AccountAccessReview, CreateTransactionReview, IdentityDisclosureReview,
     PermissionAuthorizationRequest, PermissionAuthorizationStatus, PreimageSubmitReview,
-    ProductContext, SessionUiInfo, SignPayloadReview, SignRawReview, UserConfirmationReview,
-    normalize_product_identifier,
+    ProductContext, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview,
+    UserConfirmationReview, normalize_product_identifier,
 };
 
 /// Error reason surfaced to products when a remote permission is not granted.
@@ -1823,7 +1823,12 @@ impl ResourceAllocation for ProductRuntimeHost {
         let confirmed = self
             .services
             .platform
-            .confirm_user_action(UserConfirmationReview::ResourceAllocation(inner.clone()))
+            .confirm_user_action(UserConfirmationReview::ResourceAllocation(
+                ResourceAllocationReview {
+                    calling_product_id: self.product_id(),
+                    resources: inner.resources.clone(),
+                },
+            ))
             .await
             .map_err(|err| CallError::HostFailure {
                 reason: format!("resource allocation confirmation failed: {err:?}"),

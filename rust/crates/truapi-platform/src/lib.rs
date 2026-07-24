@@ -16,10 +16,10 @@ use unicode_normalization::UnicodeNormalization;
 pub use async_trait::async_trait;
 
 use truapi::latest::{
-    GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
+    AllocatableResource, GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageReadError,
     HostNavigateToError, HostPushNotificationRequest, HostPushNotificationResponse,
-    HostRequestResourceAllocationRequest, HostSignPayloadRequest,
+    HostSignPayloadRequest,
     HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
     HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
     ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest,
@@ -581,6 +581,17 @@ pub struct CreateProofReview {
     pub message: Vec<u8>,
 }
 
+/// Review shown before allocating resources for a product. Names the
+/// beneficiary product so the user knows which product receives the
+/// (signing-capable) allowance key they are approving.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct ResourceAllocationReview {
+    /// Product the allocation is requested for.
+    pub calling_product_id: String,
+    /// Resources to allocate.
+    pub resources: Vec<AllocatableResource>,
+}
+
 /// Review shown before a product asks to access another product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct AccountAccessReview {
@@ -621,7 +632,7 @@ pub enum UserConfirmationReview {
     /// Allow a product to learn the user's primary identity.
     IdentityDisclosure(IdentityDisclosureReview),
     /// Allocate resources for the requesting product.
-    ResourceAllocation(HostRequestResourceAllocationRequest),
+    ResourceAllocation(ResourceAllocationReview),
     /// Submit a preimage to the host-selected backend.
     PreimageSubmit(PreimageSubmitReview),
     /// Allow a product to access another product account.

@@ -19,7 +19,8 @@ use parity_scale_codec::Encode;
 use tracing::{debug, instrument, trace, warn};
 use truapi::{CallContext, latest as api};
 use truapi_platform::{
-    CreateTransactionReview, SignPayloadReview, SignRawReview, UserConfirmationReview,
+    CreateTransactionReview, ResourceAllocationReview, SignPayloadReview, SignRawReview,
+    UserConfirmationReview,
 };
 
 use super::SigningHost;
@@ -708,14 +709,14 @@ async fn resource_allocation_response(
     signing_host: &Arc<SigningHost>,
     request: messages::ResourceAllocationRequest,
 ) -> ResourceAllocationAnswer {
-    let review =
-        UserConfirmationReview::ResourceAllocation(api::HostRequestResourceAllocationRequest {
-            resources: request
-                .resources
-                .iter()
-                .map(public_allocatable_resource)
-                .collect(),
-        });
+    let review = UserConfirmationReview::ResourceAllocation(ResourceAllocationReview {
+        calling_product_id: request.calling_product_id.clone(),
+        resources: request
+            .resources
+            .iter()
+            .map(public_allocatable_resource)
+            .collect(),
+    });
     match services.platform.confirm_user_action(review).await {
         Ok(true) => {}
         Ok(false) => {
@@ -1411,7 +1412,8 @@ mod tests {
 
     #[test]
     fn resource_allocation_requires_confirmation_before_allocation() {
-        let (services, signing_host) = signing_fixture(Arc::new(StubPlatform::default()));
+        let platform = Arc::new(StubPlatform::default());
+        let (services, signing_host) = signing_fixture(platform.clone());
 
         let response = futures::executor::block_on(answer_remote_message(
             &services,
@@ -1433,6 +1435,15 @@ mod tests {
             response.payload.unwrap(),
             vec![SsoAllocationOutcome::Rejected]
         );
+
+        // The confirmation review names the beneficiary product so the user
+        // knows which product receives the delegated allowance key.
+        let reviews = platform
+            .resource_allocation_reviews
+            .lock()
+            .expect("resource allocation review list mutex poisoned");
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0].calling_product_id, "myapp.dot");
     }
 
     #[test]

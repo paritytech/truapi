@@ -37,8 +37,8 @@ use truapi_platform::{
     CoreStorage as PlatformCoreStorage, CoreStorageKey, Features as PlatformFeatures, HostInfo,
     JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
     PairingHostConfig, Permissions as PlatformPermissions, PlatformInfo, PreimageHost,
-    ProductContext, ProductStorage as PlatformProductStorage, ThemeHost, UserConfirmation,
-    UserConfirmationReview,
+    ProductContext, ProductStorage as PlatformProductStorage, ResourceAllocationReview, ThemeHost,
+    UserConfirmation, UserConfirmationReview,
 };
 
 /// Test spawner that matches the current target.
@@ -88,6 +88,8 @@ pub(crate) struct StubPlatform {
     pub(crate) create_transaction_error: Option<&'static str>,
     pub(crate) resource_allocation_confirmed: bool,
     pub(crate) resource_allocation_error: Option<&'static str>,
+    /// Every `ResourceAllocation` review passed to `confirm_user_action`, in order.
+    pub(crate) resource_allocation_reviews: Arc<Mutex<Vec<ResourceAllocationReview>>>,
     pub(crate) session_blob: Option<Vec<u8>>,
     pub(crate) session_error: Option<&'static str>,
     pub(crate) session_clears: Arc<Mutex<usize>>,
@@ -1368,10 +1370,16 @@ impl UserConfirmation for StubPlatform {
                     self.identity_disclosure_confirmed,
                 )
             }
-            UserConfirmationReview::ResourceAllocation(_) => (
-                self.resource_allocation_error,
-                self.resource_allocation_confirmed,
-            ),
+            UserConfirmationReview::ResourceAllocation(review) => {
+                self.resource_allocation_reviews
+                    .lock()
+                    .expect("resource allocation review list mutex poisoned")
+                    .push(review);
+                (
+                    self.resource_allocation_error,
+                    self.resource_allocation_confirmed,
+                )
+            }
             UserConfirmationReview::PreimageSubmit(_) => (None, true),
         };
         if let Some(reason) = error {
