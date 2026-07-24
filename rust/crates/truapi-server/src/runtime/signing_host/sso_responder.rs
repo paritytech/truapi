@@ -20,7 +20,7 @@ use tracing::{debug, instrument, trace, warn};
 use truapi::{CallContext, latest as api};
 use truapi_platform::{
     CreateTransactionReview, ResourceAllocationReview, SignPayloadReview, SignRawReview,
-    UserConfirmationReview,
+    StatementStoreProductSignReview, UserConfirmationReview,
 };
 
 use super::SigningHost;
@@ -1087,12 +1087,10 @@ async fn statement_store_product_sign_response(
     validate_unsigned_statement_signing_payload(&request.payload)?;
     confirm(
         services,
-        UserConfirmationReview::SignRaw(SignRawReview::Product(api::HostSignRawRequest {
+        UserConfirmationReview::StatementStoreProductSign(StatementStoreProductSignReview {
             account: request.product_account_id.clone(),
-            payload: api::RawPayload::Bytes {
-                bytes: request.payload.clone(),
-            },
-        })),
+            payload: request.payload.clone(),
+        }),
     )
     .await?;
     let session = signing_host
@@ -1291,13 +1289,15 @@ mod tests {
 
     #[test]
     fn statement_store_product_sign_requires_confirmation() {
-        let (services, signing_host) = signing_fixture(Arc::new(StubPlatform::default()));
+        let platform = Arc::new(StubPlatform::default());
+        let (services, signing_host) = signing_fixture(platform.clone());
 
+        let payload = statement_payload();
         let response = futures::executor::block_on(answer_remote_message(
             &services,
             &signing_host,
             "request-1".to_string(),
-            statement_sign_request(statement_payload()),
+            statement_sign_request(payload.clone()),
         ))
         .expect("response is emitted");
 
@@ -1307,6 +1307,16 @@ mod tests {
             panic!("expected statement sign response");
         };
         assert_eq!(response.signature.unwrap_err(), "Rejected");
+
+        // The confirmation is a statement-store proof review carrying the exact
+        // unsigned payload, not a raw-message (`<Bytes>`-wrapped) signing review.
+        let reviews = platform
+            .statement_store_product_sign_reviews
+            .lock()
+            .expect("statement store product sign review list mutex poisoned");
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0].account.dot_ns_identifier, "myapp.dot");
+        assert_eq!(reviews[0].payload, payload);
     }
 
     #[test]

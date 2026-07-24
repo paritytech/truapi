@@ -14,6 +14,7 @@ import {
   HostSignRawRequest,
   HostSignRawWithLegacyAccountRequest,
   LegacyAccountTxPayload,
+  ProductAccountId,
   ProductAccountTxPayload,
   ProductProofContext,
   RemotePermissionRequest,
@@ -292,6 +293,24 @@ export type SignRawReview =
   | { tag: "LegacyAccount"; value: HostSignRawWithLegacyAccountRequest };
 
 /**
+ * Review shown before a product account signs a Statement Store proof
+ * payload. Distinct from raw-message signing: the payload is the exact
+ * unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
+ * not present it with the raw-signing convention.
+ */
+export interface StatementStoreProductSignReview {
+  /**
+   * Product account that will sign the statement payload.
+   */
+  account: ProductAccountId;
+
+  /**
+   * Exact unsigned statement payload to be signed.
+   */
+  payload: Uint8Array;
+}
+
+/**
  * Review shown before a user-confirmed core action continues.
  */
 export type UserConfirmationReview =
@@ -303,6 +322,10 @@ export type UserConfirmationReview =
    * Sign raw bytes with a product or legacy account.
    */
   | { tag: "SignRaw"; value: SignRawReview }
+  /**
+   * Sign a Statement Store proof payload with a product account.
+   */
+  | { tag: "StatementStoreProductSign"; value: StatementStoreProductSignReview }
   /**
    * Create a transaction with a product or legacy account.
    */
@@ -518,6 +541,21 @@ export const SignRawReview: S.Codec<SignRawReview> = S.lazy(
 );
 
 /**
+ * Review shown before a product account signs a Statement Store proof
+ * payload. Distinct from raw-message signing: the payload is the exact
+ * unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
+ * not present it with the raw-signing convention.
+ */
+export const StatementStoreProductSignReview: S.Codec<StatementStoreProductSignReview> =
+  S.lazy(
+    (): S.Codec<StatementStoreProductSignReview> =>
+      S.Struct({
+        account: ProductAccountId,
+        payload: S.Bytes(),
+      }) as S.Codec<StatementStoreProductSignReview>,
+  );
+
+/**
  * Review shown before a user-confirmed core action continues.
  */
 export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy(
@@ -525,6 +563,7 @@ export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy(
     S.TaggedUnion({
       SignPayload: SignPayloadReview,
       SignRaw: SignRawReview,
+      StatementStoreProductSign: StatementStoreProductSignReview,
       CreateTransaction: CreateTransactionReview,
       AccountAlias: AccountAliasReview,
       CreateProof: CreateProofReview,

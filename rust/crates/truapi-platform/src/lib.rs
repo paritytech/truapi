@@ -22,7 +22,7 @@ use truapi::latest::{
     HostSignPayloadRequest,
     HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
     HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
-    ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest,
+    ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest,
     RemotePermissionResponse, RingLocation, ThemeVariant,
 };
 use url::Url;
@@ -548,6 +548,18 @@ pub enum SignRawReview {
     LegacyAccount(HostSignRawWithLegacyAccountRequest),
 }
 
+/// Review shown before a product account signs a Statement Store proof
+/// payload. Distinct from raw-message signing: the payload is the exact
+/// unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
+/// not present it with the raw-signing convention.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct StatementStoreProductSignReview {
+    /// Product account that will sign the statement payload.
+    pub account: ProductAccountId,
+    /// Exact unsigned statement payload to be signed.
+    pub payload: Vec<u8>,
+}
+
 /// Review shown before a transaction-creation request is sent to the paired wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CreateTransactionReview {
@@ -623,6 +635,8 @@ pub enum UserConfirmationReview {
     SignPayload(SignPayloadReview),
     /// Sign raw bytes with a product or legacy account.
     SignRaw(SignRawReview),
+    /// Sign a Statement Store proof payload with a product account.
+    StatementStoreProductSign(StatementStoreProductSignReview),
     /// Create a transaction with a product or legacy account.
     CreateTransaction(CreateTransactionReview),
     /// Allow a product to derive a contextual alias for a ring.

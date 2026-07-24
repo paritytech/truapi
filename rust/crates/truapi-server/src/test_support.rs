@@ -37,8 +37,8 @@ use truapi_platform::{
     CoreStorage as PlatformCoreStorage, CoreStorageKey, Features as PlatformFeatures, HostInfo,
     JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
     PairingHostConfig, Permissions as PlatformPermissions, PlatformInfo, PreimageHost,
-    ProductContext, ProductStorage as PlatformProductStorage, ResourceAllocationReview, ThemeHost,
-    UserConfirmation, UserConfirmationReview,
+    ProductContext, ProductStorage as PlatformProductStorage, ResourceAllocationReview,
+    StatementStoreProductSignReview, ThemeHost, UserConfirmation, UserConfirmationReview,
 };
 
 /// Test spawner that matches the current target.
@@ -84,6 +84,9 @@ pub(crate) struct StubPlatform {
     pub(crate) sign_payload_error: Option<&'static str>,
     pub(crate) sign_raw_confirmed: bool,
     pub(crate) sign_raw_error: Option<&'static str>,
+    /// Every `StatementStoreProductSign` review passed to `confirm_user_action`, in order.
+    pub(crate) statement_store_product_sign_reviews:
+        Arc<Mutex<Vec<StatementStoreProductSignReview>>>,
     pub(crate) create_transaction_confirmed: bool,
     pub(crate) create_transaction_error: Option<&'static str>,
     pub(crate) resource_allocation_confirmed: bool,
@@ -1345,6 +1348,13 @@ impl UserConfirmation for StubPlatform {
                 (self.sign_payload_error, self.sign_payload_confirmed)
             }
             UserConfirmationReview::SignRaw(_) => (self.sign_raw_error, self.sign_raw_confirmed),
+            UserConfirmationReview::StatementStoreProductSign(review) => {
+                self.statement_store_product_sign_reviews
+                    .lock()
+                    .expect("statement store product sign review list mutex poisoned")
+                    .push(review);
+                (self.sign_raw_error, self.sign_raw_confirmed)
+            }
             UserConfirmationReview::CreateTransaction(_) => (
                 self.create_transaction_error,
                 self.create_transaction_confirmed,
