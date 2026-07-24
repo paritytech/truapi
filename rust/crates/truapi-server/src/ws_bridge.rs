@@ -110,11 +110,11 @@ where
 /// The runtime intentionally lives until process exit. Native products have
 /// independent bridge lifecycles, so shutting the executor down with any one
 /// bridge would interrupt the others.
-struct SharedWsExecutor {
+struct SharedNativeExecutor {
     runtime: Runtime,
 }
 
-impl SharedWsExecutor {
+impl SharedNativeExecutor {
     fn new() -> io::Result<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .thread_name("truapi-native-worker")
@@ -133,27 +133,29 @@ impl SharedWsExecutor {
     }
 }
 
-static SHARED_WS_EXECUTOR: OnceLock<SharedWsExecutor> = OnceLock::new();
-static SHARED_WS_EXECUTOR_INIT: Mutex<()> = Mutex::new(());
+static SHARED_NATIVE_EXECUTOR: OnceLock<SharedNativeExecutor> = OnceLock::new();
+static SHARED_NATIVE_EXECUTOR_INIT: Mutex<()> = Mutex::new(());
 
-fn shared_ws_executor() -> io::Result<(&'static SharedWsExecutor, bool)> {
-    if let Some(executor) = SHARED_WS_EXECUTOR.get() {
+fn shared_native_executor() -> io::Result<(&'static SharedNativeExecutor, bool)> {
+    if let Some(executor) = SHARED_NATIVE_EXECUTOR.get() {
         return Ok((executor, false));
     }
 
     // Serialize fallible initialization without caching a transient thread
     // creation failure for the rest of the process.
-    let _guard = SHARED_WS_EXECUTOR_INIT
+    let _guard = SHARED_NATIVE_EXECUTOR_INIT
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(executor) = SHARED_WS_EXECUTOR.get() {
+    if let Some(executor) = SHARED_NATIVE_EXECUTOR.get() {
         return Ok((executor, false));
     }
 
-    let initialized = SHARED_WS_EXECUTOR.set(SharedWsExecutor::new()?).is_ok();
-    let executor = SHARED_WS_EXECUTOR
+    let initialized = SHARED_NATIVE_EXECUTOR
+        .set(SharedNativeExecutor::new()?)
+        .is_ok();
+    let executor = SHARED_NATIVE_EXECUTOR
         .get()
-        .ok_or_else(|| io::Error::other("shared WebSocket executor initialization failed"))?;
+        .ok_or_else(|| io::Error::other("shared native executor initialization failed"))?;
     Ok((executor, initialized))
 }
 
@@ -189,7 +191,7 @@ impl WsBridge {
         std_listener.set_nonblocking(true)?;
         let port = std_listener.local_addr()?.port();
 
-        let (executor, initialized) = shared_ws_executor()?;
+        let (executor, initialized) = shared_native_executor()?;
         let handle = executor.handle();
         let runtime_id = handle.id();
         if initialized {
@@ -539,7 +541,7 @@ mod tests {
 
     #[test]
     fn shared_executor_uses_multithread_scheduler() {
-        let (executor, _) = shared_ws_executor().expect("shared native executor");
+        let (executor, _) = shared_native_executor().expect("shared native executor");
         let handle = executor.handle();
         assert_eq!(
             handle.runtime_flavor(),
@@ -580,8 +582,8 @@ mod tests {
 
     #[test]
     fn shared_executor_is_reused() {
-        let (first, _) = shared_ws_executor().expect("first executor access");
-        let (second, initialized) = shared_ws_executor().expect("second executor access");
+        let (first, _) = shared_native_executor().expect("first executor access");
+        let (second, initialized) = shared_native_executor().expect("second executor access");
 
         assert!(!initialized);
         assert_eq!(first.handle().id(), second.handle().id());
@@ -591,7 +593,7 @@ mod tests {
     fn drop_from_shared_executor_does_not_block_worker() {
         let (bridge, _) =
             WsBridge::start(0, test_runtime_factory(), Arc::new(|_, _| {})).expect("start bridge");
-        let (executor, _) = shared_ws_executor().expect("shared native executor");
+        let (executor, _) = shared_native_executor().expect("shared native executor");
         let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
 
         executor.handle().spawn(async move {
