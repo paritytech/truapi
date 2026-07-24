@@ -5,9 +5,9 @@
 //!
 //! Feature-gated (`ws-bridge`) so wasm32 and no-tokio build paths stay lean.
 //!
-//! The bridge owns a `tokio` runtime spawned at [`WsBridge::start`] time and
-//! shuts down both the accept loop and the runtime when the handle is dropped
-//! or [`WsBridge::stop`] is called.
+//! Native bridges share one process-wide `tokio` runtime. Each [`WsBridge`]
+//! owns only its accept loop and connection tasks; dropping or stopping one
+//! bridge leaves the executor available to other products.
 //!
 //! Security model: the listener binds to `127.0.0.1` only, and every
 //! connection must present the per-session 256-bit token (`?t=<token>`,
@@ -20,12 +20,12 @@
 
 use std::io;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use futures::{SinkExt, StreamExt};
 use rand::RngCore;
 use tokio::net::TcpListener;
+use tokio::runtime::{Handle, Runtime};
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -40,10 +40,6 @@ use crate::{FrameSink, ProductRuntime};
 /// a single connection; the cap bounds resource use from a buggy or hostile
 /// local peer opening many sockets.
 const MAX_WS_BRIDGE_CONNECTIONS: usize = 32;
-
-/// Keep the product-scoped executor large enough for concurrent dispatch
-/// without creating an unbounded worker pool for every open product.
-const MAX_WS_BRIDGE_WORKER_THREADS: usize = 4;
 
 /// Bound on the per-connection outbound frame queue. A peer that stops reading
 /// cannot make the core buffer responses without limit; once the queue fills
@@ -109,20 +105,73 @@ where
     }
 }
 
+/// Process-wide executor shared by every native product bridge.
+///
+/// The runtime intentionally lives until process exit. Native products have
+/// independent bridge lifecycles, so shutting the executor down with any one
+/// bridge would interrupt the others.
+struct SharedWsExecutor {
+    runtime: Runtime,
+}
+
+impl SharedWsExecutor {
+    fn new() -> io::Result<Self> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .thread_name("truapi-native-worker")
+            .enable_all()
+            .build()
+            .map_err(|err| io::Error::other(err.to_string()))?;
+        Ok(Self { runtime })
+    }
+
+    fn handle(&self) -> Handle {
+        self.runtime.handle().clone()
+    }
+
+    fn worker_threads(&self) -> usize {
+        self.runtime.metrics().num_workers()
+    }
+}
+
+static SHARED_WS_EXECUTOR: OnceLock<SharedWsExecutor> = OnceLock::new();
+static SHARED_WS_EXECUTOR_INIT: Mutex<()> = Mutex::new(());
+
+fn shared_ws_executor() -> io::Result<(&'static SharedWsExecutor, bool)> {
+    if let Some(executor) = SHARED_WS_EXECUTOR.get() {
+        return Ok((executor, false));
+    }
+
+    // Serialize fallible initialization without caching a transient thread
+    // creation failure for the rest of the process.
+    let _guard = SHARED_WS_EXECUTOR_INIT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(executor) = SHARED_WS_EXECUTOR.get() {
+        return Ok((executor, false));
+    }
+
+    let initialized = SHARED_WS_EXECUTOR.set(SharedWsExecutor::new()?).is_ok();
+    let executor = SHARED_WS_EXECUTOR
+        .get()
+        .ok_or_else(|| io::Error::other("shared WebSocket executor initialization failed"))?;
+    Ok((executor, initialized))
+}
+
 /// Running bridge handle. Drop or call [`WsBridge::stop`] to shut down.
 ///
-/// The bridge owns a dedicated OS thread that drives a multithreaded `tokio`
-/// runtime. TrUAPI dispatch futures are `Send`, so connections and independent
-/// frames can execute across worker threads instead of sharing one local task
-/// queue.
+/// The bridge's tasks run on the process-wide native executor. TrUAPI dispatch
+/// futures are `Send`, so connections and independent frames from all products
+/// can execute across the shared worker pool.
 pub struct WsBridge {
     shutdown: Option<oneshot::Sender<()>>,
-    thread: Option<thread::JoinHandle<()>>,
+    stopped: Option<std::sync::mpsc::Receiver<()>>,
+    accept_task: Option<tokio::task::JoinHandle<()>>,
+    runtime_id: tokio::runtime::Id,
 }
 
 impl WsBridge {
-    /// Bind a localhost listener and start the accept loop on a dedicated
-    /// OS thread. Returns the [`WsBridgeEndpoint`] descriptor the host
+    /// Bind a localhost listener and start the accept loop on the shared
+    /// native executor. Returns the [`WsBridgeEndpoint`] descriptor the host
     /// hands to the product alongside the bridge handle.
     pub fn start(
         bind_port: u16,
@@ -133,87 +182,95 @@ impl WsBridge {
         rand::thread_rng().fill_bytes(&mut token_bytes);
         let token = hex::encode(token_bytes);
 
-        // Bind synchronously so we can surface bind errors back to the
-        // caller and discover the actual port the OS handed back. The
-        // listener is registered with tokio inside the worker thread
-        // because a `tokio::net::TcpListener` is bound to the runtime that
-        // created it.
+        // Bind synchronously so we can surface bind errors and discover the
+        // actual port before returning the endpoint.
         let std_listener =
             std::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], bind_port)))?;
         std_listener.set_nonblocking(true)?;
         let port = std_listener.local_addr()?.port();
 
+        let (executor, initialized) = shared_ws_executor()?;
+        let handle = executor.handle();
+        let runtime_id = handle.id();
+        if initialized {
+            logger(
+                "truapi.native.executor.started",
+                &format!(
+                    "runtime_id={runtime_id} worker_threads={}",
+                    executor.worker_threads()
+                ),
+            );
+        }
+
+        // Register the listener with the shared runtime's I/O driver before
+        // returning so a successful start always yields a ready endpoint.
+        let listener = {
+            let _entered = handle.enter();
+            TcpListener::from_std(std_listener)?
+        };
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<io::Result<()>>();
+        let (stopped_tx, stopped_rx) = std::sync::mpsc::channel::<()>();
         let accept_token = token.clone();
         let accept_logger = logger.clone();
-        let worker_logger = logger.clone();
-        let thread = thread::Builder::new()
-            .name("truapi-ws-bridge".to_string())
-            .spawn(move || {
-                let worker_threads = ws_bridge_worker_threads();
-                let rt = match build_ws_bridge_runtime(worker_threads) {
-                    Ok(rt) => rt,
-                    Err(err) => {
-                        let _ = ready_tx.send(Err(err));
-                        return;
-                    }
-                };
-                worker_logger(
-                    "truapi.ws_bridge.runtime_started",
-                    &format!("worker_threads={worker_threads}"),
-                );
-                let listener_setup = rt.block_on(async { TcpListener::from_std(std_listener) });
-                let listener = match listener_setup {
-                    Ok(listener) => {
-                        let _ = ready_tx.send(Ok(()));
-                        listener
-                    }
-                    Err(err) => {
-                        let _ = ready_tx.send(Err(err));
-                        return;
-                    }
-                };
-                rt.block_on(accept_loop(
-                    listener,
-                    runtime_factory,
-                    accept_token,
-                    accept_logger,
-                    shutdown_rx,
-                ));
-                worker_logger("truapi.ws_bridge.worker_exit", "worker thread exiting");
-            })?;
-
-        // Block until the worker thread reports the listener is registered
-        // with its runtime, so the caller knows the bridge is ready to
-        // accept connections by the time `start` returns.
-        match ready_rx.recv() {
-            Ok(Ok(())) => {}
-            Ok(Err(err)) => return Err(err),
-            Err(err) => return Err(io::Error::other(err.to_string())),
-        }
+        let accept_task = handle.spawn(async move {
+            accept_loop(
+                listener,
+                runtime_factory,
+                accept_token,
+                accept_logger,
+                shutdown_rx,
+            )
+            .await;
+            let _ = stopped_tx.send(());
+        });
 
         logger(
             "truapi.ws_bridge.started",
-            &format!("port={port} token_len={}", token.len()),
+            &format!(
+                "port={port} token_len={} runtime_id={runtime_id}",
+                token.len()
+            ),
         );
 
         Ok((
             Self {
                 shutdown: Some(shutdown_tx),
-                thread: Some(thread),
+                stopped: Some(stopped_rx),
+                accept_task: Some(accept_task),
+                runtime_id,
             },
             WsBridgeEndpoint { port, token },
         ))
     }
 
-    /// Signal the accept loop to exit and join the worker thread.
+    /// Signal this bridge's accept loop to exit without stopping the shared
+    /// native executor used by other products.
     pub fn stop(&mut self) {
         if let Some(tx) = self.shutdown.take() {
             let _ = tx.send(());
         }
-        if let Some(handle) = self.thread.take() {
-            let _ = handle.join();
+
+        // UniFFI hosts call stop synchronously from outside Rust's executor,
+        // where waiting preserves the existing "fully stopped on return"
+        // behavior. Avoid blocking if a Rust caller drops the bridge from one
+        // of the shared runtime's own workers, especially on a single-core
+        // runtime; the shutdown signal still lets the task clean itself up.
+        let called_from_shared_executor =
+            Handle::try_current().is_ok_and(|handle| handle.id() == self.runtime_id);
+        let stopped_cleanly = if called_from_shared_executor {
+            drop(self.stopped.take());
+            true
+        } else {
+            self.stopped
+                .take()
+                .is_none_or(|stopped| stopped.recv().is_ok())
+        };
+
+        if let Some(task) = self.accept_task.take()
+            && !stopped_cleanly
+            && !task.is_finished()
+        {
+            task.abort();
         }
     }
 }
@@ -222,22 +279,6 @@ impl Drop for WsBridge {
     fn drop(&mut self) {
         self.stop();
     }
-}
-
-fn ws_bridge_worker_threads() -> usize {
-    thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(2)
-        .clamp(2, MAX_WS_BRIDGE_WORKER_THREADS)
-}
-
-fn build_ws_bridge_runtime(worker_threads: usize) -> io::Result<tokio::runtime::Runtime> {
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(worker_threads)
-        .thread_name("truapi-ws-worker")
-        .enable_all()
-        .build()
-        .map_err(|err| io::Error::other(err.to_string()))
 }
 
 async fn accept_loop(
@@ -254,6 +295,9 @@ async fn accept_loop(
                 logger("truapi.ws_bridge.shutdown", "accept loop exiting");
                 for h in &handles {
                     h.abort();
+                }
+                for h in handles {
+                    let _ = h.await;
                 }
                 break;
             }
@@ -494,33 +538,70 @@ mod tests {
     }
 
     #[test]
-    fn bridge_runtime_executes_send_tasks_on_multiple_workers() {
-        let runtime = build_ws_bridge_runtime(2).expect("multithreaded bridge runtime");
-        assert_eq!(runtime.metrics().num_workers(), 2);
+    fn shared_executor_uses_multithread_scheduler() {
+        let (executor, _) = shared_ws_executor().expect("shared native executor");
+        let handle = executor.handle();
+        assert_eq!(
+            handle.runtime_flavor(),
+            tokio::runtime::RuntimeFlavor::MultiThread
+        );
 
         // Each task blocks one runtime worker at the barrier. They can only
         // both complete if the executor actually schedules them concurrently
         // on distinct worker threads.
+        if executor.worker_threads() < 2 {
+            return;
+        }
         let barrier = Arc::new(std::sync::Barrier::new(2));
-        let first = runtime.spawn({
+        let first = handle.spawn({
             let barrier = barrier.clone();
             async move {
-                let worker = thread::current().id();
+                let worker = std::thread::current().id();
                 barrier.wait();
                 worker
             }
         });
-        let second = runtime.spawn(async move {
-            let worker = thread::current().id();
+        let second = handle.spawn(async move {
+            let worker = std::thread::current().id();
             barrier.wait();
             worker
         });
 
-        let (first, second) = runtime.block_on(async { tokio::join!(first, second) });
+        let client = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        let (first, second) = client.block_on(async { tokio::join!(first, second) });
         assert_ne!(
             first.expect("first dispatch task"),
             second.expect("second dispatch task"),
         );
+    }
+
+    #[test]
+    fn shared_executor_is_reused() {
+        let (first, _) = shared_ws_executor().expect("first executor access");
+        let (second, initialized) = shared_ws_executor().expect("second executor access");
+
+        assert!(!initialized);
+        assert_eq!(first.handle().id(), second.handle().id());
+    }
+
+    #[test]
+    fn drop_from_shared_executor_does_not_block_worker() {
+        let (bridge, _) =
+            WsBridge::start(0, test_runtime_factory(), Arc::new(|_, _| {})).expect("start bridge");
+        let (executor, _) = shared_ws_executor().expect("shared native executor");
+        let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
+
+        executor.handle().spawn(async move {
+            drop(bridge);
+            let _ = dropped_tx.send(());
+        });
+
+        dropped_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("dropping from an executor worker must not deadlock");
     }
 
     /// Spin the bridge up on `127.0.0.1:0`, dial it with a real
@@ -534,8 +615,8 @@ mod tests {
             WsBridge::start(0, runtime_factory, logger).expect("start bridge");
         let url = format!("ws://127.0.0.1:{}/?t={}", endpoint.port, endpoint.token);
 
-        // Use a fresh `tokio` runtime on the test thread so we don't fight
-        // the bridge's runtime, which lives on a different worker thread.
+        // Use a fresh `tokio` runtime on the test thread so the client does
+        // not depend on the native executor under test.
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -582,6 +663,47 @@ mod tests {
         bridge.stop();
     }
 
+    /// Multiple product bridges use the same executor, and stopping one
+    /// product must not interrupt another product's bridge.
+    #[test]
+    fn stopping_one_bridge_leaves_another_operational() {
+        let runtime_ids = Arc::new(Mutex::new(Vec::<String>::new()));
+        let logger: BridgeLogger = {
+            let runtime_ids = runtime_ids.clone();
+            Arc::new(move |marker, detail| {
+                if marker == "truapi.ws_bridge.started"
+                    && let Some(runtime_id) = detail.split("runtime_id=").nth(1)
+                {
+                    runtime_ids.lock().unwrap().push(runtime_id.to_string());
+                }
+            })
+        };
+        let (mut first, _) =
+            WsBridge::start(0, test_runtime_factory(), logger.clone()).expect("first bridge");
+        let (mut second, endpoint) =
+            WsBridge::start(0, test_runtime_factory(), logger).expect("second bridge");
+
+        let ids = runtime_ids.lock().unwrap().clone();
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0], ids[1]);
+
+        first.stop();
+
+        let url = format!("ws://127.0.0.1:{}/?t={}", endpoint.port, endpoint.token);
+        let client = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        client.block_on(async {
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url)
+                .await
+                .expect("second bridge remains reachable");
+            ws.close(None).await.expect("close client");
+        });
+
+        second.stop();
+    }
+
     /// A handshake with the wrong `?t=` token must be rejected at the HTTP
     /// upgrade step with a 401, not silently dropped.
     #[test]
@@ -610,20 +732,19 @@ mod tests {
     }
 
     /// Dropping a `WsBridge` handle without an explicit `stop()` must still
-    /// shut the worker thread down cleanly. `Drop::drop` calls `stop`, and
-    /// a second `stop` (from drop after the test's explicit one) is a
-    /// no-op.
+    /// shut its accept task down cleanly. `Drop::drop` calls `stop`, and a
+    /// second `stop` (from drop after the test's explicit one) is a no-op.
     #[test]
     fn drop_calls_stop_idempotently() {
         let runtime_factory = test_runtime_factory();
         let logger: BridgeLogger = Arc::new(|_, _| {});
         let (bridge, _endpoint) =
             WsBridge::start(0, runtime_factory, logger).expect("start bridge");
-        // Drop the bridge; the worker thread must join via Drop.
+        // Drop the bridge; the accept task must finish via Drop.
         drop(bridge);
 
         // Build a second bridge and explicitly stop twice. The second
-        // call has no shutdown sender and no thread handle left to join,
+        // call has no shutdown sender or accept task left to wait for,
         // so it returns without panicking.
         let runtime_factory = test_runtime_factory();
         let logger: BridgeLogger = Arc::new(|_, _| {});
