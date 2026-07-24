@@ -27,18 +27,20 @@ for failure modes — both the skills and CI cite it.
 
 `make e2e-dotli` is the end-to-end dotli + playground diagnosis harness. It
 starts the local dotli preview and playground, opens Chromium, signs out any
-restored host session, signs in through the signer-bot SSO service, runs the
-playground Diagnosis screen, and writes
-`playground/test-results/e2e-dotli/diagnosis-report.md`. Full automation
-requires `SIGNER_BOT_SVC_TOKEN`; `SIGNER_BOT_BASE_URL` and
-`SIGNER_BOT_NETWORK` default to dotli CI's signer-bot service and
-`paseo-next-v2`. Without the token, use
+restored host session, builds and launches the local `truapi-host signing-host`
+CLI to answer the pairing deeplink and auto-approve SSO requests, runs the
+playground Diagnosis screen, verifies sign-out and same-account reconnect, and
+writes `playground/test-results/e2e-dotli/diagnosis-report.md`. The harness
+uses `HOST_CLI_SIGNER_MNEMONIC` when supplied. Otherwise the CLI provisions
+and reuses an isolated test identity under `.e2e-dotli/`. Set
+`E2E_DOTLI_SIGNING_HOST_BASE_PATH` to use a different state directory while
+debugging. Set `E2E_DOTLI_NETWORK` to override the default `paseo-next-v2`
+network. Use
 `E2E_DOTLI_SMOKE=1 make e2e-dotli` to verify the local stack, browser launch,
 login click, TrUAPI debug logs, and QR/deeplink extraction without a phone.
 In root CI, the job also needs `DOTLI_CHECKOUT_TOKEN` to read the private
 dotli submodule. Without dotli access it reports a warning and skips the e2e
-job; with dotli access but without `SIGNER_BOT_SVC_TOKEN`, it runs the smoke
-path only.
+job.
 
 The order matters: each layer assumes the layer below it builds clean.
 Skip a step only if you are certain the change cannot affect that layer.

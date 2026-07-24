@@ -118,6 +118,33 @@ impl PairingHostRuntime {
         self.pairing_host.disconnect().await;
     }
 
+    /// Log out and discard the old pairing keypair.
+    ///
+    /// The next product login request generates a fresh pairing identity and
+    /// presents a new deeplink suitable for another signing host.
+    #[instrument(skip_all, fields(runtime.method = "pairing_host_runtime.logout"))]
+    pub async fn logout(&self) -> Result<(), v01::GenericError> {
+        self.pairing_host
+            .logout_and_reset_pairing()
+            .await
+            .map_err(|reason| v01::GenericError { reason })
+    }
+
+    /// Start or join the pairing-host login flow for one product.
+    #[instrument(skip_all, fields(runtime.method = "pairing_host_runtime.login", %product_id))]
+    pub async fn login(
+        &self,
+        product_id: &str,
+    ) -> Result<v01::HostRequestLoginResponse, v01::GenericError> {
+        let product = product_context(product_id)?;
+        match self.pairing_host.request_login(&product).await {
+            Ok(truapi::versioned::account::HostRequestLoginResponse::V1(response)) => Ok(response),
+            Err(error) => Err(v01::GenericError {
+                reason: pairing_login_error_reason(error),
+            }),
+        }
+    }
+
     /// Cancel an in-flight SSO pairing request. A no-op when no pairing is
     /// active.
     #[instrument(skip_all, fields(runtime.method = "pairing_host_runtime.cancel_pairing"))]
@@ -167,6 +194,20 @@ impl PairingHostRuntime {
         self.product_admin(product_context(product_id)?)
             .set_permission_authorization_status(request, status)
             .await
+    }
+}
+
+fn pairing_login_error_reason(
+    error: truapi::CallError<truapi::versioned::account::HostRequestLoginError>,
+) -> String {
+    match error {
+        truapi::CallError::Domain(truapi::versioned::account::HostRequestLoginError::V1(
+            v01::HostRequestLoginError::Unknown { reason },
+        ))
+        | truapi::CallError::HostFailure { reason }
+        | truapi::CallError::MalformedFrame { reason } => reason,
+        truapi::CallError::Denied => "login denied".to_string(),
+        truapi::CallError::Unsupported => "login unsupported".to_string(),
     }
 }
 

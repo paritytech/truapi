@@ -21,6 +21,7 @@ local.properties
 .env
 .env.*
 !.env.example
+/.e2e-dotli/
 
 # Editor / OS
 .vscode/*

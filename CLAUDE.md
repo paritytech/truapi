@@ -182,33 +182,32 @@ still verify that the playground renders, the TrUAPI debug panel receives
 host/product events, generated examples can call non-confirmation methods, and
 logout/relogin does not restore a stale session.
 
-The dotli Playwright e2e suite under `hosts/dotli/apps/host/tests/e2e/`
-pairs through the signer-bot service. It requires `SIGNER_BOT_SVC_TOKEN`;
-`SIGNER_BOT_BASE_URL` and `SIGNER_BOT_NETWORK` default to dotli CI's
-`https://signing-bot-dev.novasama-tech.org/` and `paseo-next-v2`. Without the
-token, do not treat the full suite as locally runnable. Use
-`E2E_DOTLI_SMOKE=1 make e2e-dotli` for the no-phone QR smoke path.
-If those signer-bot variables are not available in a worktree, check for a
-repo-root `.env` and load or copy the values from there before falling back to
-smoke mode. Prefer the current worktree's `.env` when it exists.
+The root `make e2e-dotli` target builds the local `truapi-host` binary and
+drives the dotli/playground diagnosis through a non-interactive signing-host
+CLI process. The CLI answers the QR-derived pairing deeplink, auto-approves
+remote requests, stays alive for the SSO session, and is launched again to
+verify same-account reconnect after host sign-out. It uses
+an explicitly exported `HOST_CLI_SIGNER_MNEMONIC` when present. Without one,
+it auto-manages a reusable isolated identity under `.e2e-dotli/`. Set
+`E2E_DOTLI_SIGNING_HOST_BASE_PATH` to preserve and reuse signing-host state
+while debugging. Use `E2E_DOTLI_SMOKE=1 make e2e-dotli` for the QR-only smoke
+path.
 
 For a fully automated local playground diagnosis run, use:
 
 ```bash
-SIGNER_BOT_SVC_TOKEN=... \
 make e2e-dotli
 ```
 
 `make e2e-dotli` starts dotli preview and the playground, signs out any
-restored host session, signs in through signer-bot by extracting the QR payload,
-runs the playground Diagnosis screen, auto-accepts host-side Allow/Sign modals,
-and writes `hosts/dotli/test-results/e2e-dotli/diagnosis-report.md`.
+restored host session, signs in through the local signing-host CLI by extracting
+the QR payload, runs the playground Diagnosis screen, auto-accepts host-side
+Allow/Sign modals, and writes
+`playground/test-results/e2e-dotli/diagnosis-report.md`.
 
-Root CI runs the same target when it can read the private dotli submodule. It
-needs `DOTLI_CHECKOUT_TOKEN` for submodule checkout; without that token, the
-job warns and skips dotli e2e rather than failing unrelated PR checks. With
-dotli access but without `SIGNER_BOT_SVC_TOKEN`, CI runs the no-phone smoke
-path only.
+Any CI job running the same target needs `DOTLI_CHECKOUT_TOKEN` for private
+submodule checkout; without dotli access it should skip this integration gate
+rather than fail unrelated checks.
 
 A useful no-phone smoke assertion is:
 
