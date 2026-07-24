@@ -19,10 +19,9 @@ use truapi::latest::{
     AllocatableResource, GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageReadError,
     HostNavigateToError, HostPushNotificationRequest, HostPushNotificationResponse,
-    HostSignPayloadRequest,
-    HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
-    HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
-    ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest,
+    HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
+    HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId, ProductAccountId,
+    ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest,
     RemotePermissionResponse, RingLocation, ThemeVariant,
 };
 use url::Url;

@@ -94,10 +94,10 @@ impl ServedRequestIds {
             return false;
         }
         self.order.push_back(request_id);
-        if self.order.len() > MAX_SERVED_REQUEST_IDS {
-            if let Some(evicted) = self.order.pop_front() {
-                self.seen.remove(&evicted);
-            }
+        if self.order.len() > MAX_SERVED_REQUEST_IDS
+            && let Some(evicted) = self.order.pop_front()
+        {
+            self.seen.remove(&evicted);
         }
         true
     }
