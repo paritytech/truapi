@@ -42,16 +42,22 @@ use truapi_platform::{CoreStorageKey, PairingHostConfig, Platform, ProductContex
 /// Distinguishes all remote authority request entrypoints by wire label.
 #[derive(Clone, Copy, Debug, derive_more::Display)]
 pub(super) enum AuthorityRequestKind {
+    /// `sign_payload` with a product account.
     #[display("sign-payload")]
     SignPayload,
+    /// `sign_raw` with a product account.
     #[display("sign-raw")]
     SignRaw,
+    /// `create_transaction` with a product account.
     #[display("create-transaction")]
     CreateTransaction,
+    /// `sign_payload` through the legacy-account API.
     #[display("legacy-sign-payload")]
     LegacySignPayload,
+    /// `sign_raw` through the legacy-account API.
     #[display("legacy-sign-raw")]
     LegacySignRaw,
+    /// `create_transaction` through the legacy-account API.
     #[display("legacy-create-transaction")]
     LegacyCreateTransaction,
 }
@@ -118,13 +124,18 @@ impl Drop for LoginInFlightOwner<'_> {
 
 /// Remote account authority for a pairing host.
 pub(crate) struct PairingHost {
+    /// Host platform backing all syscalls.
     pub(super) platform: Arc<dyn Platform>,
+    /// Pairing configuration supplied by the embedding host.
     pub(super) host_config: PairingHostConfig,
+    /// Shared chain runtime, used to resolve session identity.
     pub(super) chain: ChainRuntime,
     /// Active inter-host session with a signing host.
     session_state: Arc<SessionState>,
     session_store_changes: Arc<SessionStoreChangeNotifier>,
+    /// Core-owned auth-state machine emitting to the host.
     pub(super) auth_state: AuthStateMachine,
+    /// People-chain statement store RPC client.
     pub(super) statement_store: StatementStoreRpc,
     session_disconnects: Arc<SessionDisconnects>,
     disconnect_monitor: Mutex<Option<SsoDisconnectMonitor>>,
@@ -134,10 +145,12 @@ pub(crate) struct PairingHost {
     bulletin_allowances: Mutex<HashMap<AllowanceCacheKey, BulletinAllowanceKey>>,
     /// Self-reference captured by the spawned disconnect-monitor task.
     weak_self: Weak<PairingHost>,
+    /// Task spawner for background monitors.
     pub(super) spawner: Spawner,
 }
 
 impl PairingHost {
+    /// Build a pairing host over the shared runtime services.
     pub(crate) fn new(services: Arc<RuntimeServices>, host_config: PairingHostConfig) -> Arc<Self> {
         let platform = services.platform.clone();
         let auth_state = AuthStateMachine::new(platform.clone());
@@ -160,19 +173,24 @@ impl PairingHost {
         })
     }
 
+    /// Shared session holder for connection-status subscriptions.
     pub(crate) fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }
 
+    /// Signal that the persisted auth session may have changed; the sync task
+    /// re-reads it.
     pub(crate) fn notify_session_store_changed(&self) {
         self.session_store_changes.notify();
     }
 
+    /// Test hook for [`Self::start_session_store_sync`].
     #[cfg(test)]
     pub(crate) fn start_session_store_sync_for_tests(self: Arc<Self>, spawner: Spawner) {
         self.start_session_store_sync(spawner);
     }
 
+    /// Test alias for [`Self::start_remote_monitor_for_current_session`].
     #[cfg(test)]
     pub(crate) fn start_session_supervision_for_current_session(&self) {
         self.start_remote_monitor_for_current_session();
@@ -182,6 +200,7 @@ impl PairingHost {
         self.session_state.current().as_ref().map(authority_session)
     }
 
+    /// Start the disconnect monitor when a session is already active.
     #[cfg(test)]
     pub(crate) fn start_remote_monitor_for_current_session(&self) {
         if let Some(session) = self.session_state.current() {
@@ -189,6 +208,8 @@ impl PairingHost {
         }
     }
 
+    /// Spawn the background task that re-reads the persisted auth session on
+    /// every change notification and reconciles the in-memory session.
     #[instrument(skip_all, fields(runtime.method = "session_store.sync"))]
     pub(crate) fn start_session_store_sync(self: Arc<Self>, spawner: Spawner) {
         let pairing_host = Arc::downgrade(&self);
@@ -348,6 +369,7 @@ impl PairingHost {
         }
     }
 
+    /// Invalidate in-flight login attempts and emit the cancelled auth state.
     #[instrument(skip_all, fields(runtime.method = "account.cancel_login"))]
     pub(crate) fn cancel_login(&self) {
         self.invalidate_login_attempts();
@@ -527,6 +549,8 @@ impl PairingHost {
         }
     }
 
+    /// Persist and memory-cache a freshly allocated statement-store allowance
+    /// key.
     pub(super) async fn cache_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
@@ -561,6 +585,8 @@ impl PairingHost {
         Ok(())
     }
 
+    /// Cached statement-store allowance key for the product, falling back to
+    /// persisted storage.
     pub(super) async fn cached_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
@@ -592,6 +618,7 @@ impl PairingHost {
         Ok(Some(allowance))
     }
 
+    /// Persist and memory-cache a freshly allocated Bulletin allowance key.
     pub(super) async fn cache_bulletin_allowance_key(
         &self,
         session: &SessionInfo,
@@ -625,6 +652,8 @@ impl PairingHost {
         Ok(())
     }
 
+    /// Cached Bulletin allowance key for the product, falling back to
+    /// persisted storage.
     pub(super) async fn cached_bulletin_allowance_key(
         &self,
         session: &SessionInfo,
@@ -675,6 +704,8 @@ impl PairingHost {
         .await
     }
 
+    /// Drop memory-cached statement-store allowance keys, scoped to `session`
+    /// when given, otherwise all.
     pub(super) fn clear_statement_store_allowance_keys(&self, session: Option<&SessionInfo>) {
         let mut allowances = self
             .statement_store_allowances
@@ -691,6 +722,8 @@ impl PairingHost {
         allowances.retain(|key, _| !key.is_for_session(session_key));
     }
 
+    /// Drop memory-cached Bulletin allowance keys, scoped to `session` when
+    /// given, otherwise all.
     pub(super) fn clear_bulletin_allowance_keys(&self, session: Option<&SessionInfo>) {
         let mut allowances = self
             .bulletin_allowances

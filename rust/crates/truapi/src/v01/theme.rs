@@ -12,7 +12,9 @@ pub enum ThemeName {
 /// Light or dark variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ThemeVariant {
+    /// Light appearance.
     Light,
+    /// Dark appearance.
     Dark,
 }
 

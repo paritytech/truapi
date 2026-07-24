@@ -71,5 +71,8 @@ pub enum HostCreateTransactionError {
     /// Not authenticated.
     PermissionDenied,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }

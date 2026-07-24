@@ -20,18 +20,32 @@ use super::{
 /// statement-store session statements.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemoteMessage {
+    /// The peer is ending the SSO session.
     Disconnected,
+    /// Ask the signing host to sign a payload or raw data with a product account.
     SignRequest(Box<SigningRequest>),
+    /// Signing host's answer to [`RemoteMessage::SignRequest`].
     SignResponse(SigningResponse),
+    /// Ask the Account Holder for a contextual alias.
     RingVrfAliasRequest(RingVrfAliasRequest),
+    /// Account Holder's answer to [`RemoteMessage::RingVrfAliasRequest`].
     RingVrfAliasResponse(RingVrfAliasResponse),
+    /// Ask the signing host to allocate SSO-backed resources.
     ResourceAllocationRequest(ResourceAllocationRequest),
+    /// Signing host's answer to [`RemoteMessage::ResourceAllocationRequest`].
     ResourceAllocationResponse(ResourceAllocationResponse),
+    /// Ask the signing host to create a signed product-account transaction.
     CreateTransactionRequest(CreateTransactionRequest),
+    /// Signing host's answer to either transaction-creation request.
     CreateTransactionResponse(CreateTransactionResponse),
+    /// Ask the signing host to create a signed legacy-account transaction.
     CreateTransactionLegacyRequest(CreateTransactionLegacyRequest),
+    /// Ask the signing host to sign raw data with a legacy account.
     SignRawLegacyRequest(SignRawLegacyRequest),
+    /// Signing host's answer to [`RemoteMessage::SignRawLegacyRequest`].
     SignRawLegacyResponse(SignRawLegacyResponse),
+    /// Ask the Account Holder for a ring-VRF proof.
     RingVrfProofRequest(RingVrfProofRequest),
+    /// Account Holder's answer to [`RemoteMessage::RingVrfProofRequest`].
     RingVrfProofResponse(RingVrfProofResponse),
 }

@@ -49,5 +49,8 @@ pub struct HostRequestResourceAllocationResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum ResourceAllocationError {
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }

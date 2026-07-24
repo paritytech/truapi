@@ -9,22 +9,31 @@ use parity_scale_codec::{Decode, Encode};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, Display)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum HostDevicePermissionRequest {
+    /// Showing system notifications.
     #[display("notifications")]
     Notifications,
+    /// Camera capture access.
     #[display("camera")]
     Camera,
+    /// Microphone capture access.
     #[display("microphone")]
     Microphone,
+    /// Bluetooth device access.
     #[display("bluetooth")]
     Bluetooth,
+    /// NFC reader access.
     #[display("NFC")]
     NFC,
+    /// Geolocation access.
     #[display("location")]
     Location,
+    /// Clipboard access.
     #[display("clipboard")]
     Clipboard,
+    /// Opening URLs outside the host.
     #[display("open URL")]
     OpenUrl,
+    /// Biometric authentication.
     #[display("biometrics")]
     Biometrics,
 }

@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, StreamExt};
 
+/// Fan-out notifier for host session-storage change ticks.
 #[derive(Default)]
 pub struct SessionStoreChangeNotifier {
     subscribers: Mutex<Vec<mpsc::UnboundedSender<()>>>,

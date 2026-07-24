@@ -7,23 +7,32 @@ use super::ProductAccountId;
 pub enum StatementProof {
     /// Sr25519 signature proof.
     Sr25519 {
+        /// Signature over the statement.
         signature: [u8; 64],
+        /// Signer public key.
         signer: [u8; 32],
     },
     /// Ed25519 signature proof.
     Ed25519 {
+        /// Signature over the statement.
         signature: [u8; 64],
+        /// Signer public key.
         signer: [u8; 32],
     },
     /// ECDSA signature proof.
     Ecdsa {
+        /// Signature over the statement.
         signature: [u8; 65],
+        /// Compressed signer public key.
         signer: [u8; 33],
     },
     /// On-chain event proof.
     OnChain {
+        /// Account the event attributes the statement to.
         who: [u8; 32],
+        /// Hash of the block containing the event.
         block_hash: [u8; 32],
+        /// Index of the event within the block.
         event: u64,
     },
 }
@@ -79,7 +88,10 @@ pub enum RemoteStatementStoreCreateProofError {
     /// Account not recognized.
     UnknownAccount,
     /// Catch-all.
-    Unknown { reason: String },
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// 32-byte statement topic.
