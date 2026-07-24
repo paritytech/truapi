@@ -105,6 +105,14 @@ make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-ho
 CI regenerates the shared bindings before building and testing both npm
 packages, so generated client and host callback changes are checked together.
 
+The native `truapi-host` utility can run pairing and signing hosts against the
+real SSO transport for local end-to-end work. Both roles provide a
+transcript-based terminal UI with commands such as `/product` and `/script`;
+the signing host also provides `/pair` and a non-interactive `exec` form for
+automation. See the
+[`truapi-host-cli` guide](rust/crates/truapi-host-cli/README.md) for setup,
+controls, and examples.
+
 To run the playground locally:
 
 ```bash
@@ -125,6 +133,12 @@ make playground   # rebuild the playground against the refreshed snapshot
 
 This repopulates the ignored generated TS under `js/packages/truapi/`, including the playground metadata.
 `make dev` and `make e2e-dotli` run this generation step unconditionally before starting their local stacks.
+The full `make e2e-dotli` diagnosis builds and launches the local
+`truapi-host signing-host` CLI to answer dotli's pairing QR and auto-approve
+remote signing requests. It does not require the external signer-bot service.
+When `HOST_CLI_SIGNER_MNEMONIC` is absent, the CLI manages a reusable isolated
+test identity under `.e2e-dotli/`. Set `E2E_DOTLI_SIGNING_HOST_BASE_PATH` to
+use a different state directory while debugging.
 
 ## Protocol versions
 

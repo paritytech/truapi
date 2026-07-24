@@ -7,9 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 An interactive explorer for the TrUAPI, the Host API surface exposed to products running inside the Polkadot Desktop Browser webview. The app must be opened from within a Host environment. It talks to the host over iframe `postMessage` frames or the native webview `window.__HOST_API_PORT__` MessagePort.
 
 To develop locally, run `yarn dev` and open the app via `https://dot.li/localhost:3000` inside the Desktop Host.
-For host-backed diagnosis/e2e runs, signer-bot settings may live in the
-repo-root `.env`; if they are not present in the current worktree environment,
-load or copy them from that file before treating signer-bot as unavailable.
+For host-backed diagnosis/e2e runs, `make e2e-dotli` builds and launches the
+repo's signing-host CLI. An explicitly exported `HOST_CLI_SIGNER_MNEMONIC` is
+used when present; otherwise the CLI auto-manages a reusable isolated test
+identity. Set `E2E_DOTLI_SIGNING_HOST_BASE_PATH` to use different state while
+debugging.
 
 ## Commands
 

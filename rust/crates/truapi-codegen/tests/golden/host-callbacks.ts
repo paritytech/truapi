@@ -786,7 +786,8 @@ export interface PreimageHost {
  * Product-scoped key-value storage.
  *
  * The core namespaces product keys before calling this trait. Host
- * implementations should treat `key` as an opaque OS-style storage key.
+ * implementations may treat `key` as opaque or decode it with
+ * `ProductStorageKey` when their physical storage is separated by product.
  */
 export interface ProductStorage {
   /**

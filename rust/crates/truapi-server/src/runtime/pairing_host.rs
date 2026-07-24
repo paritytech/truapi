@@ -370,6 +370,30 @@ impl PairingHost {
         }
     }
 
+    /// Disconnect and discard pairing bootstrap material so the next login
+    /// generates a new device keypair and topic.
+    pub(crate) async fn logout_and_reset_pairing(&self) -> Result<(), String> {
+        self.disconnect().await;
+        self.platform
+            .clear_core_storage(CoreStorageKey::PairingDeviceIdentity)
+            .await
+            .map_err(|error| {
+                format!(
+                    "session disconnected, but pairing identity reset failed: {}",
+                    error.reason
+                )
+            })?;
+        self.platform
+            .clear_core_storage(CoreStorageKey::LastProcessedPairingStatement)
+            .await
+            .map_err(|error| {
+                format!(
+                    "session disconnected and pairing identity reset, but pairing history reset failed: {}",
+                    error.reason
+                )
+            })
+    }
+
     /// Invalidate in-flight login attempts and emit the cancelled auth state.
     #[instrument(skip_all, fields(runtime.method = "account.cancel_login"))]
     pub(crate) fn cancel_login(&self) {
