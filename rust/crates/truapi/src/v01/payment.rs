@@ -1,5 +1,6 @@
 use parity_scale_codec::{Decode, Encode};
 
+use super::account::DerivationIndex;
 use super::coin_payment::CoinPaymentPurseId;
 
 /// Balance amount for payment operations. Interpreted according to the host's
@@ -33,8 +34,11 @@ pub struct HostPaymentBalanceSubscribeItem {
 pub enum PaymentTopUpSource {
     /// Fund from one of the calling product's scoped accounts.
     ProductAccount {
-        /// Product account derivation index.
-        derivation_index: u32,
+        /// Account selector within the product subtree; the same selector as
+        /// [`ProductAccountId::derivation_index`].
+        ///
+        /// [`ProductAccountId::derivation_index`]: super::account::ProductAccountId::derivation_index
+        derivation_index: DerivationIndex,
     },
     /// Fund from a one-time account represented by its private key. This is a
     /// standard account holding public funds, not a coin key.

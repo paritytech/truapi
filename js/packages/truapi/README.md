@@ -29,7 +29,7 @@ const transport = createTransport(provider);
 const truapi: Client = createClient(transport);
 
 const result = await truapi.accountManagement.accountGet({
-  productAccountId: { dotNsIdentifier: "my-product.dot", derivationIndex: 0 },
+  productAccountId: { dotNsIdentifier: "my-product.dot", derivationIndex: { tag: "Left", value: 0 } },
 });
 
 if (result.isErr()) throw result.error;

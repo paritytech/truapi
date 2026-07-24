@@ -1,5 +1,7 @@
 use parity_scale_codec::{Decode, Encode};
 
+use super::account::DerivationIndex;
+
 /// A resource the host can pre-allocate on behalf of the product (RFC 0010).
 ///
 /// For the slot-table allowances (`StatementStoreAllowance`,
@@ -13,9 +15,9 @@ pub enum AllocatableResource {
     StatementStoreAllowance,
     /// Bulletin chain slot allowance for the product's own allowance account.
     BulletinAllowance,
-    /// Pre-warmed PGAS balance for the smart-contract account at the given
+    /// Pre-warmed PGAS balance for the product account selected by this
     /// derivation index.
-    SmartContractAllowance(u32),
+    SmartContractAllowance(DerivationIndex),
     /// Permission to sign on the product's behalf without per-call user prompts.
     AutoSigning,
 }

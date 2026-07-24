@@ -1,7 +1,8 @@
 //! Product account derivation shared by all hosts.
 //!
 //! Mirrors host product-account derivation: derive an sr25519 public
-//! key through soft HDKD junctions `["product", product_id, derivation_index]`.
+//! key through soft HDKD junctions `["product", product_id, derivation_index]`,
+//! where the derivation index is the 32-byte format defined by RFC-0022.
 //! Host-spec C.5-C.7 define the product-account derivation, SS58 address, and
 //! `ProductAccountId` shape:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L66-L128>
@@ -48,6 +49,32 @@ pub fn derive_root_keypair_from_entropy(entropy: &[u8]) -> Result<Keypair, Produ
     Ok(mini_secret.expand_to_keypair(ExpansionMode::Ed25519))
 }
 
+/// 28-byte magic separating plain-index space from raw 32-byte indexes:
+/// `blake2b256("product-account-index")[..28]`.
+fn index_magic() -> [u8; 28] {
+    let digest = sp_crypto_hashing::blake2_256(b"product-account-index");
+    let mut magic = [0u8; 28];
+    magic.copy_from_slice(&digest[..28]);
+    magic
+}
+
+/// 32-byte derivation index for a plain `u32` index: the index little-endian
+/// followed by the index magic.
+pub fn index_bytes(index: u32) -> [u8; 32] {
+    let mut bytes = [0u8; 32];
+    bytes[..4].copy_from_slice(&index.to_le_bytes());
+    bytes[4..].copy_from_slice(&index_magic());
+    bytes
+}
+
+/// Internal 32-byte derivation index for a wire-level account selector.
+pub fn derivation_index_bytes(index: &truapi::v01::DerivationIndex) -> [u8; 32] {
+    match index {
+        truapi::v01::DerivationIndex::Left(index) => index_bytes(*index),
+        truapi::v01::DerivationIndex::Right(bytes) => *bytes,
+    }
+}
+
 /// Derive a product-account keypair from the root keypair.
 ///
 /// Applies the same soft HDKD junctions `["product", product_id,
@@ -57,13 +84,11 @@ pub fn derive_root_keypair_from_entropy(entropy: &[u8]) -> Result<Keypair, Produ
 pub fn derive_product_keypair(
     root: &Keypair,
     product_id: &str,
-    derivation_index: u32,
+    derivation_index: [u8; 32],
 ) -> Result<Keypair, ProductAccountError> {
     let mut keypair = root.clone();
-    let derivation_index = derivation_index.to_string();
-    for junction in [PRODUCT_JUNCTION, product_id, derivation_index.as_str()] {
-        let chain_code = ChainCode(create_chain_code(junction)?);
-        keypair = keypair.derived_key_simple(chain_code, []).0;
+    for chain_code in product_chain_codes(product_id, derivation_index)? {
+        keypair = keypair.derived_key_simple(ChainCode(chain_code), []).0;
     }
     Ok(keypair)
 }
@@ -72,19 +97,31 @@ pub fn derive_product_keypair(
 pub fn derive_product_public_key(
     root_public_key: [u8; 32],
     product_id: &str,
-    derivation_index: u32,
+    derivation_index: [u8; 32],
 ) -> Result<[u8; 32], ProductAccountError> {
     let mut public_key = PublicKey::from_bytes(&root_public_key)
         .map_err(|_| ProductAccountError::InvalidRootPublicKey)?;
 
-    let derivation_index = derivation_index.to_string();
-    for junction in [PRODUCT_JUNCTION, product_id, derivation_index.as_str()] {
-        let chain_code = ChainCode(create_chain_code(junction)?);
-        let (derived, _) = public_key.derived_key_simple(chain_code, []);
+    for chain_code in product_chain_codes(product_id, derivation_index)? {
+        let (derived, _) = public_key.derived_key_simple(ChainCode(chain_code), []);
         public_key = derived;
     }
 
     Ok(public_key.to_bytes())
+}
+
+/// Chain codes for the product-account junction path
+/// `["product", product_id, derivation_index]`. The 32-byte derivation index
+/// is used directly as its junction's chain code.
+fn product_chain_codes(
+    product_id: &str,
+    derivation_index: [u8; 32],
+) -> Result<[[u8; 32]; 3], ProductAccountError> {
+    Ok([
+        create_chain_code(PRODUCT_JUNCTION)?,
+        create_chain_code(product_id)?,
+        derivation_index,
+    ])
 }
 
 /// Encode a product account public key as a generic Substrate SS58 address.
@@ -110,14 +147,18 @@ fn create_chain_code(code: &str) -> Result<[u8; 32], ProductAccountError> {
     } else {
         code.encode()
     };
+    Ok(normalize_chain_code(encoded))
+}
 
+/// Normalize a SCALE-encoded junction to a 32-byte chain code.
+fn normalize_chain_code(encoded: Vec<u8>) -> [u8; 32] {
     let mut chain_code = [0u8; JUNCTION_ID_LEN];
     if encoded.len() > JUNCTION_ID_LEN {
         chain_code = sp_crypto_hashing::blake2_256(&encoded);
     } else {
         chain_code[..encoded.len()].copy_from_slice(&encoded);
     }
-    Ok(chain_code)
+    chain_code
 }
 
 #[cfg(test)]
@@ -131,20 +172,25 @@ mod tests {
     ];
 
     #[test]
-    fn derives_dotli_product_account_vector() {
-        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+    fn derives_product_account_vector() {
+        // Self-computed regression pin for the RFC-0022 32-byte-index path;
+        // replace with a cross-implementation vector once the Account Holder
+        // ships the scheme.
+        let derived =
+            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(0)).unwrap();
         assert_eq!(
             hex::encode(derived),
-            "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
+            "0c7da1b57ade0827b6518174da49945b24d79541ee5e5403f646537e5746c80b"
         );
     }
 
     #[test]
     fn derives_different_index_vector() {
-        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 1).unwrap();
+        let derived =
+            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(1)).unwrap();
         assert_eq!(
             hex::encode(derived),
-            "ec8a80808b46e44c1351b68e295eb975c55bda4855e5ea9fc1325be7296a2a4e"
+            "20cce591a5e5306591de475e3c2efec3d94c6a00b8f52d3703a21f132555ee44"
         );
     }
 
@@ -153,27 +199,29 @@ mod tests {
         let derived = derive_product_public_key(
             ROOT_PUBLIC_KEY,
             "w-credentialless-staticblitz-com.local-credentialless.webcontainer-api.io",
-            0,
+            index_bytes(0),
         )
         .unwrap();
         assert_eq!(
             hex::encode(derived),
-            "56769a234038defb62a7ad42f251091cc24846c2473a31b5bdd17d366c38c211"
+            "06b64516f806d13dceafca5fda4aeac4c99265bc2e5ab3036decef3e7371e03f"
         );
     }
 
     #[test]
-    fn ss58_address_matches_dotli_vector() {
-        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+    fn ss58_address_regression_pin() {
+        let derived =
+            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(0)).unwrap();
         assert_eq!(
             product_public_key_to_address(derived),
-            "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1"
+            "5CM5kaayBqheti7ugSEty5ptuzFhaP16fVm3ujAMVEtZqnKy"
         );
     }
 
     #[test]
     fn ss58_address_round_trips_to_public_key() {
-        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+        let derived =
+            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(0)).unwrap();
         let address = product_public_key_to_address(derived);
 
         assert_eq!(public_key_from_address(&address), Some(derived));
@@ -187,15 +235,54 @@ mod tests {
         let entropy = [0xABu8; 16];
         let root = derive_root_keypair_from_entropy(&entropy).unwrap();
         let root_public = root.public.to_bytes();
-        for (product_id, index) in [("myapp.dot", 0u32), ("myapp.dot", 1), ("localhost:3000", 7)] {
+        for (product_id, index) in [
+            ("myapp.dot", index_bytes(0)),
+            ("myapp.dot", index_bytes(1)),
+            ("localhost:3000", index_bytes(7)),
+            ("myapp.dot", [0xEE; 32]),
+        ] {
             let keypair = derive_product_keypair(&root, product_id, index).unwrap();
             let public = derive_product_public_key(root_public, product_id, index).unwrap();
             assert_eq!(
                 keypair.public.to_bytes(),
                 public,
-                "{product_id}#{index} secret vs public derivation",
+                "{product_id}#{index:02x?} secret vs public derivation",
             );
         }
+    }
+
+    #[test]
+    fn index_bytes_layout_pin() {
+        let index = index_bytes(5);
+        assert_eq!(&index[..4], &[5, 0, 0, 0]);
+        assert_eq!(
+            index[4..],
+            sp_crypto_hashing::blake2_256(b"product-account-index")[..28]
+        );
+    }
+
+    #[test]
+    fn derivation_index_bytes_maps_both_selector_forms() {
+        use truapi::v01::DerivationIndex;
+
+        assert_eq!(
+            derivation_index_bytes(&DerivationIndex::Left(7)),
+            index_bytes(7)
+        );
+        assert_eq!(
+            derivation_index_bytes(&DerivationIndex::Right([0xEE; 32])),
+            [0xEE; 32]
+        );
+    }
+
+    #[test]
+    fn raw_index_space_is_disjoint_from_plain_indexes() {
+        // A raw all-zero index must not collide with plain index 0: the magic
+        // keeps the two spaces separate.
+        let indexed =
+            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(0)).unwrap();
+        let raw = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", [0u8; 32]).unwrap();
+        assert_ne!(indexed, raw);
     }
 
     #[test]
@@ -219,7 +306,7 @@ mod tests {
     #[test]
     fn product_secret_signs_verifiably() {
         let root = derive_root_keypair_from_entropy(&[0xABu8; 16]).unwrap();
-        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", index_bytes(0)).unwrap();
         let message = b"<Bytes>hello</Bytes>";
         let signature = keypair
             .secret

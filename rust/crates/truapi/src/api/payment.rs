@@ -40,7 +40,7 @@ pub trait Payment: Send + Sync {
     /// // Fund the balance first so the request is not rejected for lack of funds.
     /// const topUp = await truapi.payment.topUp({
     ///   amount: 1000n,
-    ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
+    ///   source: { tag: "ProductAccount", value: { derivationIndex: { tag: "Left", value: 0 } } },
     /// });
     /// assert(topUp.isOk(), "topUp failed:", topUp);
     ///
@@ -69,7 +69,7 @@ pub trait Payment: Send + Sync {
     /// // Fund the balance and start a payment first so there is a status to watch.
     /// const topUp = await truapi.payment.topUp({
     ///   amount: 1000n,
-    ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
+    ///   source: { tag: "ProductAccount", value: { derivationIndex: { tag: "Left", value: 0 } } },
     /// });
     /// assert(topUp.isOk(), "topUp failed:", topUp);
     ///
@@ -106,7 +106,7 @@ pub trait Payment: Send + Sync {
     /// ```ts
     /// const result = await truapi.payment.topUp({
     ///   amount: 1000n,
-    ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
+    ///   source: { tag: "ProductAccount", value: { derivationIndex: { tag: "Left", value: 0 } } },
     /// });
     /// assert(result.isOk(), "topUp failed:", result);
     /// console.log("balance topped up");

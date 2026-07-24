@@ -38,7 +38,7 @@ pub trait Account: Send + Sync {
     /// const result = await truapi.account.getAccount({
     ///   productAccountId: {
     ///     dotNsIdentifier: "truapi-playground.dot",
-    ///     derivationIndex: 0,
+    ///     derivationIndex: { tag: "Left", value: 0 },
     ///   },
     /// });
     /// assert(result.isOk(), "getAccount failed:", result);
@@ -47,7 +47,7 @@ pub trait Account: Send + Sync {
     /// const otherProduct = await truapi.account.getAccount({
     ///   productAccountId: {
     ///     dotNsIdentifier: "other-product.dot",
-    ///     derivationIndex: 0,
+    ///     derivationIndex: { tag: "Left", value: 0 },
     ///   },
     /// });
     /// assert(otherProduct.isOk(), "cross-product getAccount was denied or failed:", otherProduct);
@@ -71,7 +71,7 @@ pub trait Account: Send + Sync {
     ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
     ///
     /// const result = await truapi.account.getAccountAlias({
-    ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
+    ///   context: { productId: "truapi-playground.dot", suffix: { tag: "Left", value: 0 } },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
     ///     junctions: [
@@ -101,7 +101,7 @@ pub trait Account: Send + Sync {
     ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
     ///
     /// const result = await truapi.account.createAccountProof({
-    ///   context: { productId: "truapi-playground.dot", suffix: "0x00" },
+    ///   context: { productId: "truapi-playground.dot", suffix: { tag: "Left", value: 0 } },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
     ///     junctions: [

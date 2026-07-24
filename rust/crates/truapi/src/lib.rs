@@ -28,11 +28,11 @@ pub mod latest {
     use crate::versioned::{self, Versioned};
 
     pub use crate::v01::{
-        AccountId, AllocatableResource, AllocationOutcome, ContextualAlias, GenericError,
-        HostSignPayloadData, NotificationId, OperationStartedResult, ProductAccountId,
-        ProductProofContext, RawPayload, RemotePermission, RingLocation, RuntimeApi, RuntimeSpec,
-        RuntimeType, StorageQueryItem, StorageQueryType, StorageResultItem, ThemeVariant,
-        TxPayloadExtension,
+        AccountId, AllocatableResource, AllocationOutcome, ContextualAlias, DerivationIndex,
+        GenericError, HostSignPayloadData, NotificationId, OperationStartedResult,
+        ProductAccountId, ProductProofContext, RawPayload, RemotePermission, RingLocation,
+        RuntimeApi, RuntimeSpec, RuntimeType, StorageQueryItem, StorageQueryType,
+        StorageResultItem, ThemeVariant, TxPayloadExtension,
     };
 
     /// Latest payload type of a versioned envelope.

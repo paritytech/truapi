@@ -1,14 +1,28 @@
 use crate::v01::transaction::GenesisHash;
 use parity_scale_codec::{Decode, Encode};
 
+/// Account selector within a product subtree: `Either<u32, [u8; 32]>`.
+///
+/// `Left` is the primary form — plain indices keep a product's accounts
+/// enumerable. `Right` carries a raw 32-byte derivation index for cases where
+/// bytes are genuinely necessary. Hosts expand `Left(n)` to the internal
+/// 32-byte index (`u32` little-endian plus the index magic).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum DerivationIndex {
+    /// Plain account index.
+    Left(u32),
+    /// Raw 32-byte derivation index.
+    Right([u8; 32]),
+}
+
 /// Identifies a product-specific account by combining a dotNS domain name with a
 /// derivation index.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ProductAccountId {
     /// A dotNS domain name identifier (e.g., `"my-product.dot"`).
     pub dot_ns_identifier: String,
-    /// Key derivation index for generating product-specific accounts.
-    pub derivation_index: u32,
+    /// Account selector within the product subtree.
+    pub derivation_index: DerivationIndex,
 }
 
 /// A user-imported (legacy) account: public key plus an optional user-chosen
@@ -68,8 +82,9 @@ pub struct RingLocation {
 pub struct ProductProofContext {
     /// dotNS product identifier (e.g. `"my-product.dot"`) scoping the context.
     pub product_id: String,
-    /// Arbitrary-byte suffix distinguishing contexts within the product.
-    pub suffix: Vec<u8>,
+    /// Selector distinguishing contexts within the product; expands to the
+    /// same 32-byte derivation index as [`ProductAccountId::derivation_index`].
+    pub suffix: DerivationIndex,
 }
 
 /// Request to create a ring VRF proof.

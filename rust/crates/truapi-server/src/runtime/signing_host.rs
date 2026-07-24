@@ -22,7 +22,7 @@ use super::connected_session_ui_info;
 use crate::host_logic::entropy::derive_product_entropy;
 use crate::host_logic::extrinsic::{Sr25519Signer, build_signed_extrinsic_v4};
 use crate::host_logic::product_account::{
-    ProductAccountError, SR25519_SIGNING_CONTEXT, derive_product_keypair,
+    ProductAccountError, SR25519_SIGNING_CONTEXT, derivation_index_bytes, derive_product_keypair,
     derive_root_keypair_from_entropy,
 };
 use crate::host_logic::session::SessionState;
@@ -87,8 +87,12 @@ impl SigningHost {
                     reason: err.to_string(),
                 }
             })?;
-        derive_product_keypair(&root, &product_id, account.derivation_index)
-            .map_err(product_authority_error)
+        derive_product_keypair(
+            &root,
+            &product_id,
+            derivation_index_bytes(&account.derivation_index),
+        )
+        .map_err(product_authority_error)
     }
 }
 
@@ -390,7 +394,7 @@ mod tests {
     use super::{BYTES_WRAP_PREFIX, BYTES_WRAP_SUFFIX, LocalActivation, raw_payload_bytes};
     use crate::host_logic::extrinsic::tests::split_v4;
     use crate::host_logic::product_account::{
-        derive_product_keypair, derive_root_keypair_from_entropy,
+        derive_product_keypair, derive_root_keypair_from_entropy, index_bytes,
     };
     use crate::test_support::{StubPlatform, test_spawner};
     use truapi::api::{Account, Entropy, Signing};
@@ -464,7 +468,7 @@ mod tests {
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_index: v01::DerivationIndex::Left(0),
             },
             payload: v01::RawPayload::Bytes {
                 bytes: b"hello world".to_vec(),
@@ -475,7 +479,7 @@ mod tests {
         assert!(response.signed_transaction.is_none());
 
         let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
-        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", index_bytes(0)).unwrap();
         let signature =
             schnorrkel::Signature::from_bytes(&response.signature).expect("64-byte signature");
         assert!(
@@ -495,7 +499,7 @@ mod tests {
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_index: v01::DerivationIndex::Left(0),
             },
             payload: v01::RawPayload::Bytes {
                 bytes: vec![1, 2, 3],
@@ -509,7 +513,7 @@ mod tests {
     fn product_account(index: u32) -> v01::ProductAccountId {
         v01::ProductAccountId {
             dot_ns_identifier: "myapp.dot".to_string(),
-            derivation_index: index,
+            derivation_index: v01::DerivationIndex::Left(index),
         }
     }
 
@@ -546,7 +550,7 @@ mod tests {
         assert_eq!(tail, vec![1, 0x00, 0x00], "body tail is extra ++ call_data");
 
         let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
-        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", index_bytes(0)).unwrap();
         assert_eq!(account, keypair.public.to_bytes());
 
         // Payload = call_data ++ extra ++ additional_signed (call first).
@@ -615,7 +619,7 @@ mod tests {
         let cx = CallContext::default();
 
         let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
-        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", index_bytes(0)).unwrap();
 
         let request = CreateTransactionAuthorityRequest::LegacyAccount {
             product_account: product_account(0),
@@ -694,7 +698,7 @@ mod tests {
         let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
             product_account_id: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_index: v01::DerivationIndex::Left(0),
             },
         });
         let err = futures::executor::block_on(runtime.get_account(&cx, request))
@@ -770,7 +774,7 @@ mod tests {
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_index: v01::DerivationIndex::Left(0),
             },
             payload: v01::RawPayload::Bytes {
                 bytes: b"<Bytes>hi</Bytes>".to_vec(),
@@ -779,7 +783,7 @@ mod tests {
         let HostSignRawResponse::V1(response) =
             futures::executor::block_on(runtime.sign_raw(&cx, request)).expect("sign_raw ok");
         let root = derive_root_keypair_from_entropy(&ENTROPY).unwrap();
-        let keypair = derive_product_keypair(&root, "myapp.dot", 0).unwrap();
+        let keypair = derive_product_keypair(&root, "myapp.dot", index_bytes(0)).unwrap();
         let signature =
             schnorrkel::Signature::from_bytes(&response.signature).expect("64-byte signature");
         assert!(
@@ -822,7 +826,7 @@ mod tests {
         let request = v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_index: v01::DerivationIndex::Left(0),
             },
             payload: v01::RawPayload::Bytes {
                 bytes: vec![1, 2, 3],
@@ -851,7 +855,7 @@ mod tests {
         let request = v01::HostSignRawRequest {
             account: v01::ProductAccountId {
                 dot_ns_identifier: "myapp.dot".to_string(),
-                derivation_index: 0,
+                derivation_index: v01::DerivationIndex::Left(0),
             },
             payload: v01::RawPayload::Bytes { bytes: vec![1] },
         };
