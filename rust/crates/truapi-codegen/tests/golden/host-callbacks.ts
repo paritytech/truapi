@@ -7,8 +7,8 @@
 import * as S from "@parity/truapi/scale";
 
 import {
+  AllocatableResource,
   HostDevicePermissionRequest,
-  HostRequestResourceAllocationRequest,
   HostSignPayloadRequest,
   HostSignPayloadWithLegacyAccountRequest,
   HostSignRawRequest,
@@ -223,6 +223,23 @@ export interface PreimageSubmitReview {
 }
 
 /**
+ * Review shown before allocating resources for a product. Names the
+ * beneficiary product so the user knows which product receives the
+ * (signing-capable) allowance key they are approving.
+ */
+export interface ResourceAllocationReview {
+  /**
+   * Product the allocation is requested for.
+   */
+  callingProductId: string;
+
+  /**
+   * Resources to allocate.
+   */
+  resources: Array<AllocatableResource>;
+}
+
+/**
  * Decoded session fields a host shell needs to render account UI without
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
@@ -305,7 +322,7 @@ export type UserConfirmationReview =
   /**
    * Allocate resources for the requesting product.
    */
-  | { tag: "ResourceAllocation"; value: HostRequestResourceAllocationRequest }
+  | { tag: "ResourceAllocation"; value: ResourceAllocationReview }
   /**
    * Submit a preimage to the host-selected backend.
    */
@@ -451,6 +468,20 @@ export const PreimageSubmitReview: S.Codec<PreimageSubmitReview> = S.lazy(
 );
 
 /**
+ * Review shown before allocating resources for a product. Names the
+ * beneficiary product so the user knows which product receives the
+ * (signing-capable) allowance key they are approving.
+ */
+export const ResourceAllocationReview: S.Codec<ResourceAllocationReview> =
+  S.lazy(
+    (): S.Codec<ResourceAllocationReview> =>
+      S.Struct({
+        callingProductId: S.str,
+        resources: S.Vector(AllocatableResource),
+      }) as S.Codec<ResourceAllocationReview>,
+  );
+
+/**
  * Decoded session fields a host shell needs to render account UI without
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
@@ -498,7 +529,7 @@ export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy(
       AccountAlias: AccountAliasReview,
       CreateProof: CreateProofReview,
       IdentityDisclosure: IdentityDisclosureReview,
-      ResourceAllocation: HostRequestResourceAllocationRequest,
+      ResourceAllocation: ResourceAllocationReview,
       PreimageSubmit: PreimageSubmitReview,
       AccountAccess: AccountAccessReview,
     }),
