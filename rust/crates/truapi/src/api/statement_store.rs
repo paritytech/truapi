@@ -13,6 +13,7 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Statement store methods.
+#[crate::async_trait]
 pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///

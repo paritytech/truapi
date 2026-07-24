@@ -9,6 +9,7 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Local key/value storage scoped to the calling product.
+#[crate::async_trait]
 pub trait LocalStorage: Send + Sync {
     /// Read a value by key.
     ///

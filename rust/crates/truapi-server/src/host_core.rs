@@ -580,6 +580,25 @@ mod tests {
         }
     }
 
+    fn assert_send<T: Send>(_: T) {}
+
+    fn assert_send_sync<T: Send + Sync>() {}
+
+    #[test]
+    fn product_runtime_and_dispatch_future_are_send() {
+        assert_send_sync::<ProductRuntime>();
+        let (host_config, product) = runtime_config("myapp.dot");
+        let runtime = ProductRuntime::from_platform_with_config(
+            Arc::new(StubPlatform::default()),
+            host_config,
+            product,
+            test_spawner(),
+            Arc::new(RecordingSink::default()),
+        );
+
+        assert_send(runtime.receive_frame(Vec::new()));
+    }
+
     #[test]
     fn dispose_cancels_active_subscriptions() {
         let theme_stream_dropped = Arc::new(AtomicBool::new(false));

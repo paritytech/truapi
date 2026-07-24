@@ -10,6 +10,7 @@ use crate::{CallContext, CallError};
 
 /// General-purpose TrUAPI methods for handshake, feature detection,
 /// and navigation.
+#[crate::async_trait]
 pub trait System: Send + Sync {
     /// Negotiate the wire codec version with the product.
     ///

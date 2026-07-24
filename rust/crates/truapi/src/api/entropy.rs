@@ -7,6 +7,7 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Deterministic entropy derivation.
+#[crate::async_trait]
 pub trait Entropy: Send + Sync {
     /// Derive deterministic entropy.
     ///

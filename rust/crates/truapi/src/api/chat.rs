@@ -11,6 +11,7 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Chat room, bot, and message APIs.
+#[crate::async_trait]
 pub trait Chat: Send + Sync {
     /// Create a chat room.
     ///

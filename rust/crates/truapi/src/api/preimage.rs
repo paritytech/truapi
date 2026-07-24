@@ -8,6 +8,7 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Preimage lookup and submission methods.
+#[crate::async_trait]
 pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
     ///
