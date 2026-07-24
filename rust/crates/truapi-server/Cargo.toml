@@ -6,7 +6,7 @@ description = "TrUAPI server runtime: dispatcher, frames, SCALE, streams"
 license = "MIT"
 
 [lib]
-crate-type = ["rlib", "cdylib"]
+crate-type = ["rlib", "cdylib", "staticlib"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = [
@@ -27,6 +27,7 @@ dwarf-debug-info = false
 
 [features]
 default = []
+ws-bridge = ["dep:tokio", "dep:tokio-tungstenite", "dep:rand"]
 
 [dependencies]
 truapi = { path = "../truapi" }
@@ -61,6 +62,11 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["r
 verifiable = { git = "https://github.com/paritytech/verifiable.git", rev = "19b03deb89b8dea484b143afc8bbe048a74bc1ff" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+futures = { version = "0.3", features = ["thread-pool"] }
+rand = { version = "0.8", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util"], optional = true }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["handshake"], optional = true }
+uniffi = "0.29.4"
 subxt = { version = "0.50.2", default-features = false, features = ["native"] }
 subxt-rpcs = { version = "0.50.1", default-features = false, features = ["jsonrpsee", "native"] }
 frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
@@ -83,6 +89,10 @@ scale-info = "2.11"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time"] }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect"] }
 
 [lints]
 workspace = true
