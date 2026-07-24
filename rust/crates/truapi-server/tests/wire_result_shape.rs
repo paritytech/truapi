@@ -238,7 +238,7 @@ fn deferred_payment_requests_return_dotli_not_implemented_errors() {
         into: None,
         amount: 1,
         source: v01::PaymentTopUpSource::ProductAccount {
-            derivation_index: 0,
+            derivation_index: v01::DerivationIndex::Left(0),
         },
     });
     assert_request_returns_domain_error(

@@ -21,9 +21,10 @@
 
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
-    AccountId, AllocatableResource, HostAccountCreateProofResponse, HostAccountGetAliasResponse,
-    HostSignPayloadRequest, HostSignRawRequest, LegacyAccountTxPayload, ProductAccountId,
-    ProductAccountTxPayload, ProductProofContext, RawPayload, RingLocation,
+    AccountId, AllocatableResource, DerivationIndex, HostAccountCreateProofResponse,
+    HostAccountGetAliasResponse, HostSignPayloadRequest, HostSignRawRequest,
+    LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext,
+    RawPayload, RingLocation,
 };
 
 use crate::host_logic::session::SsoSessionInfo;
@@ -339,9 +340,9 @@ pub enum SsoAllocatableResource {
     StatementStoreAllowance,
     /// Bulletin chain slot allowance for the product's allowance account.
     BulletinAllowance,
-    /// Pre-warmed PGAS balance for the smart-contract account at the given
+    /// Pre-warmed PGAS balance for the product account selected by this
     /// derivation index.
-    SmartContractAllowance(u32),
+    SmartContractAllowance(DerivationIndex),
     /// Transfer of the product subtree key so the host can sign locally.
     AutoSigning,
 }
@@ -788,7 +789,6 @@ mod tests {
     use p256::SecretKey as P256SecretKey;
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
-    use truapi::latest::DerivationIndex;
     use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
 
     fn account() -> ProductAccountId {
@@ -892,14 +892,14 @@ mod tests {
     }
 
     #[test]
-    fn resource_allocation_message_matches_host_papp_0_8_8_fixture() {
+    fn resource_allocation_message_wire_shape_pin() {
         let message = resource_allocation_message(
             "m-resource".to_string(),
             "truapi-playground.dot".to_string(),
             vec![
                 AllocatableResource::StatementStoreAllowance,
                 AllocatableResource::BulletinAllowance,
-                AllocatableResource::SmartContractAllowance(9),
+                AllocatableResource::SmartContractAllowance(DerivationIndex::Left(9)),
                 AllocatableResource::AutoSigning,
             ],
             OnExistingAllowancePolicy::Increase,
@@ -907,7 +907,7 @@ mod tests {
 
         assert_host_papp_0_8_8_fixture(
             message,
-            "0x286d2d7265736f757263650005547472756170692d706c617967726f756e642e646f7410000102090000000301",
+            "0x286d2d7265736f757263650005547472756170692d706c617967726f756e642e646f741000010200090000000301",
         );
     }
 
@@ -1051,7 +1051,7 @@ mod tests {
             vec![
                 AllocatableResource::StatementStoreAllowance,
                 AllocatableResource::BulletinAllowance,
-                AllocatableResource::SmartContractAllowance(9),
+                AllocatableResource::SmartContractAllowance(DerivationIndex::Left(9)),
                 AllocatableResource::AutoSigning,
             ],
             OnExistingAllowancePolicy::Increase,
@@ -1067,7 +1067,7 @@ mod tests {
             vec![
                 SsoAllocatableResource::StatementStoreAllowance,
                 SsoAllocatableResource::BulletinAllowance,
-                SsoAllocatableResource::SmartContractAllowance(9),
+                SsoAllocatableResource::SmartContractAllowance(DerivationIndex::Left(9)),
                 SsoAllocatableResource::AutoSigning,
             ]
         );

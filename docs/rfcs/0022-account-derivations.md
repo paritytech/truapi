@@ -27,12 +27,15 @@ account:
   keyed-hash chain, rooted at `hash(root_entropy, "ecdh")`, with paths
   `//{domain}`.
 
-It amends `ProductAccountId` (`derivation_index: u32` →
-`derivation_index: Either<u32, [u8; 32]>`) and `ProductProofContext.suffix`
-(arbitrary bytes → the same `Either`), adds one Accounts Protocol request
-for fetching a product's subtree public key, collapses RFC-0010's
-`AutoSigning` payload to a single product-root secret key, and assigns product
-identities to built-in app features. No truAPI methods are added or removed.
+It makes `Either<u32, [u8; 32]>` the single selector for an account within a
+product subtree, amending every wire field that carries one:
+`ProductAccountId.derivation_index`, `ProductProofContext.suffix`,
+`PaymentTopUpSource::ProductAccount.derivation_index`, and
+`AllocatableResource::SmartContractAllowance`. It also adds one Accounts
+Protocol request for fetching a product's subtree public key, collapses
+RFC-0010's `AutoSigning` payload to a single product-root secret key, and
+assigns product identities to built-in app features. No truAPI methods are
+added or removed.
 
 ## Definitions
 
@@ -130,7 +133,14 @@ parsing or normalization is involved. The string segments (`product`,
 
 A product's default account is index `0`, i.e. `index_bytes(0)`.
 
-#### `ProductAccountId`
+#### Selector-carrying wire types
+
+Every wire field that picks an account inside a product subtree carries the
+same `Either<u32, [u8; 32]>` selector, so a product spells an account the same
+way whether it is signing with it, proving against it, funding from it, or
+pre-warming it.
+
+##### `ProductAccountId`
 
 The wire-level `ProductAccountId` lets products choose between the two index
 forms:
@@ -148,7 +158,7 @@ ProductAccountId {
 Hosts map `Left(n)` to `index_bytes(n)` and pass `Right(bytes)` through
 unchanged; past the host API boundary only the 32-byte form exists.
 
-#### `ProductProofContext` (RFC-0004)
+##### `ProductProofContext` (RFC-0004)
 
 The contextual-alias suffix is the same selector. `ProductProofContext` is
 amended to:
@@ -167,6 +177,36 @@ The suffix expands to the same 32-byte value as an account's derivation
 index, so the alias ↔ account mapping is the identity on it. This obsoletes
 RFC-0004's `product_account_id_for_proof_context` convention (4-byte suffixes
 packed into a `u32`).
+
+##### `PaymentTopUpSource::ProductAccount` (RFC-0006)
+
+A top-up funded from the calling product's own accounts names one of them, so
+the source variant carries the selector rather than a bare index:
+
+```rust
+PaymentTopUpSource::ProductAccount {
+    /// Account selector within the calling product's subtree.
+    derivation_index: Either<u32, [u8; 32]>,
+}
+```
+
+The other `PaymentTopUpSource` variants (`PrivateKey`, `Coins`) are unchanged —
+they carry raw secret keys and name no derived account.
+
+##### `AllocatableResource::SmartContractAllowance` (RFC-0010)
+
+Pre-warming PGAS targets a product account, so the allowance names it with the
+same selector:
+
+```rust
+AllocatableResource::SmartContractAllowance(Either<u32, [u8; 32]>)
+```
+
+RFC-0010 spells this payload `dest: DerivationIndex`; `DerivationIndex` is the
+selector defined here. `ApAllocatableResource::SmartContractAllowance`, its
+Accounts Protocol counterpart, is amended identically. The allocated material
+(`SmartContractAllowance` in `ApAllocatedResource`) stays empty — pre-warming
+returns no key.
 
 #### Fetching the product subtree
 
@@ -342,8 +382,9 @@ game_domain = "game"
 ### Compatibility
 
 There are no production deployments of secret-component derivations or of the
-`derivation_index`-based `ProductAccountId`; breaking changes are made freely,
-with no migration path. Existing ring-VRF keys move to their `peopl.dot`
+`u32`-index wire types; the selector change is wire-breaking for
+`ProductAccountId`, `ProductProofContext`, `PaymentTopUpSource`, and
+`AllocatableResource`, and is made freely, with no migration path. Existing ring-VRF keys move to their `peopl.dot`
 paths; deployed encryption keys are handled by the encryption RFC.
 
 ## Drawbacks
@@ -375,6 +416,8 @@ paths; deployed encryption keys are handled by the encryption RFC.
 
 - **RFC-0004** — context-scoped proofs; its `product/<product_id>/` context
   prefix is the alias-side analogue of the hard product junction here.
+- **RFC-0006** — payments; its `PaymentTopUpSource::ProductAccount` selector is
+  amended here.
 - **RFC-0007** — `host_derive_entropy`; a separate per-product entropy
   namespace for products that need raw key material.
 - **RFC-0010** — allowance and `AutoSigning`; amended here, allowance
