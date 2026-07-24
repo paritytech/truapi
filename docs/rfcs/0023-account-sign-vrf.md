@@ -33,15 +33,15 @@ the bandersnatch ring-VRF path instead (`create_account_proof`, RFC-0004).
   and a `VRFProof` (64-byte DLEQ proof), both needed on-chain.
 - **Merlin transcript** — the STROBE-128 transcript schnorrkel signs over, built
   from a root domain-separation label and a sequence of labeled message appends.
-- **Product account** — an sr25519 account at `//product//{productId}/{suffix}`
-  (RFC-0022).
+- **Product account** — an sr25519 account the host derives per-product from the
+  user's root secret (RFC-0022).
 - **`AutoSigning`** — the RFC-0010 capability handing the host a product's
   subtree secret key so it can sign locally without a round trip.
 - **Host** / **Account Holder** — the runtime executing products, and the device
   holding the user's root secret (RFC-0010).
 - `Bytes` — a variable-length byte array (SCALE `Vec<u8>` on the wire).
-- `ProductAccountId` — `{ dot_ns_identifier: String, derivation_suffix: Bytes }`
-  (RFC-0022).
+- `ProductAccountId` — the existing identifier for a product account; this RFC
+  passes it through unchanged and does not depend on its shape.
 
 ## Motivation
 
@@ -181,7 +181,7 @@ simply always takes path 3 (a prompt), never a silent local-sign, and there is
 no account-ownership error. The prompt-free path is therefore confined to a
 product's own subtree, so a product can never *silently* obtain a VRF bound to
 another identity — only with the user's explicit per-call consent, exactly as
-with `sign_raw`. That, plus per-product hard derivation (RFC-0022) and the
+with `sign_raw`. That, plus per-product key separation (RFC-0022) and the
 consuming-runtime contract below, keeps the free-form transcript safe.
 
 ### Consuming-runtime contract
@@ -215,11 +215,29 @@ fn sign_account_vrf(
     account: ProductAccountId,
     transcript_label: Bytes,
     items: Vec<VrfTranscriptItem>,
-) -> Result<VrfSignature, SignVrfErr>;
+) -> Result<VrfSignature, SignVrfError>;
+
+/// SCALE-encoded across the Host ↔ Account Holder boundary; this variant order
+/// is the cross-host wire contract and MUST NOT be reordered. New variants
+/// append only.
+enum SignVrfError {
+    /// User or Account Holder declined the signing confirmation. (index 0)
+    Rejected,
+    /// Catch-all failure, carrying a diagnostic reason. (index 1)
+    Unknown { reason: String },
+}
 ```
 
 The Account Holder derives the account, presents the confirmation, and signs.
-`SignVrfErr` carries the `Rejected` / `Unknown` cases.
+
+`SignVrfError` deliberately omits `NotConnected`: this leg only exists once the
+Host and Account Holder are paired, so the RFC-0009 session gate is enforced
+before the request is ever sent. Its indices therefore do **not** line up with
+`HostAccountSignVrfError` (whose index 0 is `NotConnected`); the host maps
+`Rejected → Rejected` and `Unknown → Unknown` when returning to the product, and
+raises `NotConnected` itself without consulting the Account Holder. This mirrors
+`RingVrfError` — the existing RFC-0004 companion enum, which likewise pins its
+order as the wire contract and carries only the failures reachable on that leg.
 
 ## Implementation notes
 
@@ -304,8 +322,8 @@ widening `AutoSigning` to a game loop.
   members, complementary to this sr25519 path for non-members.
 - **RFC-0009** — the `NotConnected` gate and no-auto-login rule.
 - **RFC-0010** — allowance and `AutoSigning`.
-- **RFC-0022** — account key derivations; `ProductAccountId` and the
-  `//product//{productId}/{suffix}` scheme this method signs with.
+- **RFC-0022** — account key derivations; `ProductAccountId` and the per-product
+  derivation scheme this method signs with.
 - **Merlin / schnorrkel** — the transcript and VRF primitives; the static-label
   discussion and Jeff Burdges' input are in
   [Implementation notes](#implementation-notes).
