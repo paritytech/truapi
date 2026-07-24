@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- The UniFFI-generated bindings reference java.lang.ref.Cleaner (API 33)
+         but guard it at runtime with Class.forName("java.lang.ref.Cleaner"),
+         falling back to a JNA cleaner on API < 33. Lint can't see the
+         reflective guard, so NewApi is a false positive here. This file is
+         generated (uniffi-bindgen) and gitignored, so we can't annotate it. -->
+    <issue id="NewApi">
+        <ignore path="**/generated/uniffi/**" />
+    </issue>
+</lint>

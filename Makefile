@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test dotli-link dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
+.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test uniffi uniffi-kotlin android-jni android-publish-local check-android-parity dotli-link dev dev-bootstrap dev-link-check e2e-dotli headless install matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -68,6 +68,59 @@ wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
 dotli-link: ## Link dotli to this checkout's local @parity/truapi packages.
 	cd $(DOTLI) && TRUAPI_REPO="$(CURDIR)" bun run link:truapi
 
+# uniffi-bindgen scans the cdylib's metadata symbols, which `release` strips, so
+# codegen builds use the unstripped `codegen` profile (see [profile.codegen]).
+UNIFFI_CDYLIB_DIR := target/codegen
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.dylib
+else
+UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.so
+endif
+
+UNIFFI_SWIFT_TMP := target/uniffi-swift-out
+
+uniffi: ## Regenerate Swift bindings from truapi-server cdylib.
+	$(CARGO) build -p truapi-server --profile codegen --features ws-bridge
+	rm -rf $(UNIFFI_SWIFT_TMP)
+	mkdir -p $(UNIFFI_SWIFT_TMP)
+	$(CARGO) run -p uniffi-bindgen-cli -- generate \
+		--library $(UNIFFI_CDYLIB) \
+		--language swift \
+		--out-dir $(UNIFFI_SWIFT_TMP)
+	mkdir -p ios/truapi-host/Sources/truapi_serverFFI/include
+	cp $(UNIFFI_SWIFT_TMP)/truapi_server.swift \
+		ios/truapi-host/Sources/TrUAPIHost/truapi_server.swift
+	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.h \
+		ios/truapi-host/Sources/truapi_serverFFI/include/truapi_serverFFI.h
+	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.modulemap \
+		ios/truapi-host/Sources/truapi_serverFFI/include/module.modulemap
+
+UNIFFI_KOTLIN_OUT := android/truapi-host/src/main/kotlin/generated
+
+uniffi-kotlin: ## Regenerate Kotlin UniFFI bindings from the truapi-server cdylib.
+	$(CARGO) build -p truapi-server --profile codegen --features ws-bridge
+	rm -rf $(UNIFFI_KOTLIN_OUT)
+	mkdir -p $(UNIFFI_KOTLIN_OUT)
+	$(CARGO) run -p uniffi-bindgen-cli -- generate \
+		--library $(UNIFFI_CDYLIB) \
+		--language kotlin \
+		--out-dir $(UNIFFI_KOTLIN_OUT)
+
+# Android ABIs to cross-compile the cdylib for. arm64 + armv7 cover physical
+# devices; x86_64 covers the emulator on Intel/Apple-silicon hosts.
+ANDROID_ABIS ?= arm64-v8a armeabi-v7a x86_64
+ANDROID_JNILIBS := android/truapi-host/src/main/jniLibs
+
+android-jni: ## Cross-compile libtruapi_server.so for Android ABIs into jniLibs (needs cargo-ndk + NDK).
+	@command -v cargo-ndk >/dev/null || { echo "cargo-ndk not found: cargo install cargo-ndk"; exit 1; }
+	$(CARGO) ndk $(foreach abi,$(ANDROID_ABIS),-t $(abi)) \
+		-o $(ANDROID_JNILIBS) \
+		build --release -p truapi-server --features ws-bridge
+
+android-publish-local: uniffi-kotlin ## Generate Kotlin bindings, then publish the AAR to ~/.m2 (needs Gradle + JDK 17). The AAR does not bundle the cdylib; consumers build it per ABI (see android-jni).
+	gradle :truapi-host:publishReleasePublicationToMavenLocal
+
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace
 	cd $(TRUAPI_PKG) && npm test
@@ -82,6 +135,21 @@ check: ## Full verification suite (build, fmt, clippy, test, TS tests, playgroun
 	cd $(TRUAPI_PKG) && npm run build && npm test
 	cd $(JS_PACKAGES)/truapi-host && npm install --no-fund --no-audit && npm test
 	cd $(PLAYGROUND) && yarn build && yarn lint
+
+ANDROID_SHELL := android/truapi-host/src/main/kotlin/io/parity/truapi/TrUAPIHost.kt
+ANDROID_SHELL_VENDORED := hosts/android/bindings/truapi-host/src/main/kotlin/io/parity/truapi/TrUAPIHost.kt
+
+check-android-parity: ## Verify the canonical android/truapi-host shell matches the copy vendored in the app (hosts/android). Skips if the submodule is not initialized.
+	@if [ ! -f "$(ANDROID_SHELL_VENDORED)" ]; then \
+		echo "Skipping android parity check: hosts/android not initialized (run 'git submodule update --init hosts/android')."; \
+	elif diff -q "$(ANDROID_SHELL)" "$(ANDROID_SHELL_VENDORED)" >/dev/null; then \
+		echo "android/truapi-host shell matches the vendored app copy."; \
+	else \
+		echo "ERROR: $(ANDROID_SHELL) has drifted from $(ANDROID_SHELL_VENDORED)."; \
+		echo "The host adapter shell is duplicated in truapi and the app; keep them in sync."; \
+		diff "$(ANDROID_SHELL)" "$(ANDROID_SHELL_VENDORED)" || true; \
+		exit 1; \
+	fi
 
 clean: ## Remove local build/test artifacts without deleting dependencies.
 	cargo clean
