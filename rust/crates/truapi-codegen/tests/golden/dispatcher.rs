@@ -15,6 +15,7 @@ use truapi::api::{
     Entropy,
     LocalStorage,
     Notifications,
+    P2pMedia,
     Payment,
     Permissions,
     Preimage,
@@ -46,6 +47,7 @@ where
     register_entropy(dispatcher, host.clone());
     register_local_storage(dispatcher, host.clone());
     register_notifications(dispatcher, host.clone());
+    register_p2p_media(dispatcher, host.clone());
     register_payment(dispatcher, host.clone());
     register_permissions(dispatcher, host.clone());
     register_preimage(dispatcher, host.clone());
@@ -1177,6 +1179,238 @@ where
                     }
                 };
                 Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+}
+
+fn register_p2p_media<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
+where
+    P: P2pMedia + Send + Sync + 'static,
+{
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::P_2_P_MEDIA_STATUS, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::p2p_media::HostP2pStatusRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::p2p_media::HostP2pStatusError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::p2p_media::HostP2pStatusError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::p2p_media::HostP2pStatusResponse = match host.status(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::P_2_P_MEDIA_ROOM_CREATE, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::p2p_media::HostP2pRoomCreateRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::p2p_media::HostP2pRoomCreateError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::p2p_media::HostP2pRoomCreateError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::p2p_media::HostP2pRoomCreateResponse = match host.room_create(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::P_2_P_MEDIA_ROOM_JOIN, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::p2p_media::HostP2pRoomJoinRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::p2p_media::HostP2pRoomJoinError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::p2p_media::HostP2pRoomJoinError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::p2p_media::HostP2pRoomJoinResponse = match host.room_join(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::P_2_P_MEDIA_ROOM_LEAVE, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::p2p_media::HostP2pRoomLeaveRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::p2p_media::HostP2pRoomLeaveError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::p2p_media::HostP2pRoomLeaveError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::p2p_media::HostP2pRoomLeaveResponse = match host.room_leave(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::P_2_P_MEDIA_ENDPOINT_REFRESH, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::p2p_media::HostP2pEndpointRefreshRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::p2p_media::HostP2pEndpointRefreshError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::p2p_media::HostP2pEndpointRefreshError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::p2p_media::HostP2pEndpointRefreshResponse = match host.endpoint_refresh(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::P_2_P_MEDIA_PUBLISH, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::p2p_media::HostP2pPublishRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::p2p_media::HostP2pPublishError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::p2p_media::HostP2pPublishError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::p2p_media::HostP2pPublishResponse = match host.publish(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::P_2_P_MEDIA_UNPUBLISH, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::p2p_media::HostP2pUnpublishRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::p2p_media::HostP2pUnpublishError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::p2p_media::HostP2pUnpublishError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::p2p_media::HostP2pUnpublishResponse = match host.unpublish(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host;
+        dispatcher.on_subscription(wire_table::P_2_P_MEDIA_ROOM_EVENTS, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::p2p_media::HostP2pRoomEventsRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::p2p_media::HostP2pRoomEventsError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::p2p_media::HostP2pRoomEventsError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.room_events(&cx, request).await {
+                    Ok(sub) => sub,
+                    Err(err) => {
+                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                    }
+                };
+                Ok(subscription_stream::<versioned::p2p_media::HostP2pRoomEventsItem, _>(stream))
             })
         });
     }

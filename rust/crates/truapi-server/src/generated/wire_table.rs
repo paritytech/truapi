@@ -460,6 +460,56 @@ pub const COIN_PAYMENT_LISTEN_FOR_PAYMENT: SubscriptionFrameIds = SubscriptionFr
     receive_id: 163,
 };
 
+/// Wire discriminants for `p2p_media_status`.
+pub const P_2_P_MEDIA_STATUS: RequestFrameIds = RequestFrameIds {
+    request_id: 164,
+    response_id: 165,
+};
+
+/// Wire discriminants for `p2p_media_room_create`.
+pub const P_2_P_MEDIA_ROOM_CREATE: RequestFrameIds = RequestFrameIds {
+    request_id: 166,
+    response_id: 167,
+};
+
+/// Wire discriminants for `p2p_media_room_join`.
+pub const P_2_P_MEDIA_ROOM_JOIN: RequestFrameIds = RequestFrameIds {
+    request_id: 168,
+    response_id: 169,
+};
+
+/// Wire discriminants for `p2p_media_room_leave`.
+pub const P_2_P_MEDIA_ROOM_LEAVE: RequestFrameIds = RequestFrameIds {
+    request_id: 170,
+    response_id: 171,
+};
+
+/// Wire discriminants for `p2p_media_endpoint_refresh`.
+pub const P_2_P_MEDIA_ENDPOINT_REFRESH: RequestFrameIds = RequestFrameIds {
+    request_id: 172,
+    response_id: 173,
+};
+
+/// Wire discriminants for `p2p_media_publish`.
+pub const P_2_P_MEDIA_PUBLISH: RequestFrameIds = RequestFrameIds {
+    request_id: 174,
+    response_id: 175,
+};
+
+/// Wire discriminants for `p2p_media_unpublish`.
+pub const P_2_P_MEDIA_UNPUBLISH: RequestFrameIds = RequestFrameIds {
+    request_id: 176,
+    response_id: 177,
+};
+
+/// Wire discriminants for `p2p_media_room_events`.
+pub const P_2_P_MEDIA_ROOM_EVENTS: SubscriptionFrameIds = SubscriptionFrameIds {
+    start_id: 178,
+    stop_id: 179,
+    interrupt_id: 180,
+    receive_id: 181,
+};
+
 /// The full wire table. Ordering is part of the wire protocol;
 /// only ever append. Removed methods leave their slot empty.
 pub const WIRE_TABLE: &[WireEntry] = &[
@@ -718,5 +768,37 @@ pub const WIRE_TABLE: &[WireEntry] = &[
     WireEntry {
         method: "coin_payment_listen_for_payment",
         kind: WireKind::Subscription(COIN_PAYMENT_LISTEN_FOR_PAYMENT),
+    },
+    WireEntry {
+        method: "p2p_media_status",
+        kind: WireKind::Request(P_2_P_MEDIA_STATUS),
+    },
+    WireEntry {
+        method: "p2p_media_room_create",
+        kind: WireKind::Request(P_2_P_MEDIA_ROOM_CREATE),
+    },
+    WireEntry {
+        method: "p2p_media_room_join",
+        kind: WireKind::Request(P_2_P_MEDIA_ROOM_JOIN),
+    },
+    WireEntry {
+        method: "p2p_media_room_leave",
+        kind: WireKind::Request(P_2_P_MEDIA_ROOM_LEAVE),
+    },
+    WireEntry {
+        method: "p2p_media_endpoint_refresh",
+        kind: WireKind::Request(P_2_P_MEDIA_ENDPOINT_REFRESH),
+    },
+    WireEntry {
+        method: "p2p_media_publish",
+        kind: WireKind::Request(P_2_P_MEDIA_PUBLISH),
+    },
+    WireEntry {
+        method: "p2p_media_unpublish",
+        kind: WireKind::Request(P_2_P_MEDIA_UNPUBLISH),
+    },
+    WireEntry {
+        method: "p2p_media_room_events",
+        kind: WireKind::Subscription(P_2_P_MEDIA_ROOM_EVENTS),
     },
 ];
