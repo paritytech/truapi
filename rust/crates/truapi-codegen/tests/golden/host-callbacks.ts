@@ -7,13 +7,14 @@
 import * as S from "@parity/truapi/scale";
 
 import {
+  AllocatableResource,
   HostDevicePermissionRequest,
-  HostRequestResourceAllocationRequest,
   HostSignPayloadRequest,
   HostSignPayloadWithLegacyAccountRequest,
   HostSignRawRequest,
   HostSignRawWithLegacyAccountRequest,
   LegacyAccountTxPayload,
+  ProductAccountId,
   ProductAccountTxPayload,
   ProductProofContext,
   RemotePermissionRequest,
@@ -195,7 +196,11 @@ export type PermissionAuthorizationRequest =
   /**
    * Product-scoped permission to disclose the user's primary identity.
    */
-  | { tag: "IdentityDisclosure"; value?: undefined };
+  | { tag: "IdentityDisclosure"; value?: undefined }
+  /**
+   * Product-scoped permission to access another product's account context.
+   */
+  | { tag: "AccountAccess"; value: { targetProductId: string } };
 
 /**
  * Authorization status for a permission request.
@@ -216,6 +221,23 @@ export interface PreimageSubmitReview {
    * Size of the preimage in bytes.
    */
   size: bigint;
+}
+
+/**
+ * Review shown before allocating resources for a product. Names the
+ * beneficiary product so the user knows which product receives the
+ * (signing-capable) allowance key they are approving.
+ */
+export interface ResourceAllocationReview {
+  /**
+   * Product the allocation is requested for.
+   */
+  callingProductId: string;
+
+  /**
+   * Resources to allocate.
+   */
+  resources: Array<AllocatableResource>;
 }
 
 /**
@@ -271,6 +293,24 @@ export type SignRawReview =
   | { tag: "LegacyAccount"; value: HostSignRawWithLegacyAccountRequest };
 
 /**
+ * Review shown before a product account signs a Statement Store proof
+ * payload. Distinct from raw-message signing: the payload is the exact
+ * unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
+ * not present it with the raw-signing convention.
+ */
+export interface StatementStoreProductSignReview {
+  /**
+   * Product account that will sign the statement payload.
+   */
+  account: ProductAccountId;
+
+  /**
+   * Exact unsigned statement payload to be signed.
+   */
+  payload: Uint8Array;
+}
+
+/**
  * Review shown before a user-confirmed core action continues.
  */
 export type UserConfirmationReview =
@@ -282,6 +322,10 @@ export type UserConfirmationReview =
    * Sign raw bytes with a product or legacy account.
    */
   | { tag: "SignRaw"; value: SignRawReview }
+  /**
+   * Sign a Statement Store proof payload with a product account.
+   */
+  | { tag: "StatementStoreProductSign"; value: StatementStoreProductSignReview }
   /**
    * Create a transaction with a product or legacy account.
    */
@@ -301,7 +345,7 @@ export type UserConfirmationReview =
   /**
    * Allocate resources for the requesting product.
    */
-  | { tag: "ResourceAllocation"; value: HostRequestResourceAllocationRequest }
+  | { tag: "ResourceAllocation"; value: ResourceAllocationReview }
   /**
    * Submit a preimage to the host-selected backend.
    */
@@ -420,6 +464,9 @@ export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequ
         Device: HostDevicePermissionRequest,
         Remote: RemotePermissionRequest,
         IdentityDisclosure: S._void,
+        AccountAccess: S.Struct({ targetProductId: S.str }) as S.Codec<{
+          targetProductId: string;
+        }>,
       }),
   );
 
@@ -442,6 +489,20 @@ export const PreimageSubmitReview: S.Codec<PreimageSubmitReview> = S.lazy(
   (): S.Codec<PreimageSubmitReview> =>
     S.Struct({ size: S.u64 }) as S.Codec<PreimageSubmitReview>,
 );
+
+/**
+ * Review shown before allocating resources for a product. Names the
+ * beneficiary product so the user knows which product receives the
+ * (signing-capable) allowance key they are approving.
+ */
+export const ResourceAllocationReview: S.Codec<ResourceAllocationReview> =
+  S.lazy(
+    (): S.Codec<ResourceAllocationReview> =>
+      S.Struct({
+        callingProductId: S.str,
+        resources: S.Vector(AllocatableResource),
+      }) as S.Codec<ResourceAllocationReview>,
+  );
 
 /**
  * Decoded session fields a host shell needs to render account UI without
@@ -480,6 +541,21 @@ export const SignRawReview: S.Codec<SignRawReview> = S.lazy(
 );
 
 /**
+ * Review shown before a product account signs a Statement Store proof
+ * payload. Distinct from raw-message signing: the payload is the exact
+ * unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
+ * not present it with the raw-signing convention.
+ */
+export const StatementStoreProductSignReview: S.Codec<StatementStoreProductSignReview> =
+  S.lazy(
+    (): S.Codec<StatementStoreProductSignReview> =>
+      S.Struct({
+        account: ProductAccountId,
+        payload: S.Bytes(),
+      }) as S.Codec<StatementStoreProductSignReview>,
+  );
+
+/**
  * Review shown before a user-confirmed core action continues.
  */
 export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy(
@@ -487,11 +563,12 @@ export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy(
     S.TaggedUnion({
       SignPayload: SignPayloadReview,
       SignRaw: SignRawReview,
+      StatementStoreProductSign: StatementStoreProductSignReview,
       CreateTransaction: CreateTransactionReview,
       AccountAlias: AccountAliasReview,
       CreateProof: CreateProofReview,
       IdentityDisclosure: IdentityDisclosureReview,
-      ResourceAllocation: HostRequestResourceAllocationRequest,
+      ResourceAllocation: ResourceAllocationReview,
       PreimageSubmit: PreimageSubmitReview,
       AccountAccess: AccountAccessReview,
     }),

@@ -13,11 +13,16 @@ use crate::runtime::bulletin_rpc::BulletinRpc;
 use crate::runtime::statement_store_rpc::StatementStoreRpc;
 use crate::subscription::Spawner;
 use async_trait::async_trait;
+use truapi::latest;
 use truapi_platform::{JsonRpcConnection, Platform};
 
 /// Upper bound on the in-core preimage cache. The cache is a bridge until
 /// content propagates to the lookup backend, not a store, so it stays small.
 const PREIMAGE_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
+
+/// Upper bound on accepted statements retained while the remote Statement
+/// Store catches up.
+const STATEMENT_CACHE_MAX_ENTRIES: usize = 64;
 
 /// Infrastructure shared by all product runtimes created from one host role.
 pub(crate) struct RuntimeServices {
@@ -32,6 +37,9 @@ pub(crate) struct RuntimeServices {
     /// Values from confirmed in-core submissions, served to `lookup_subscribe`
     /// until the host's content backend has them. Byte-bounded, oldest-first.
     preimage_cache: Mutex<PreimageCache>,
+    /// Confirmed submissions served to new subscriptions until the remote
+    /// Statement Store reports them.
+    statement_cache: Mutex<StatementCache>,
     /// Task spawner for background runtime work.
     pub(crate) spawner: Spawner,
     next_core_instance: AtomicU64,
@@ -60,6 +68,7 @@ impl RuntimeServices {
             statement_store,
             bulletin,
             preimage_cache: Mutex::new(PreimageCache::default()),
+            statement_cache: Mutex::new(StatementCache::default()),
             spawner,
             next_core_instance: AtomicU64::new(1),
         })
@@ -85,6 +94,34 @@ impl RuntimeServices {
             .lock()
             .expect("preimage cache mutex poisoned")
             .get(key)
+    }
+
+    /// Retain a remotely accepted statement for read-after-write consistency.
+    pub(crate) fn cache_statement(&self, statement: latest::SignedStatement) {
+        self.statement_cache
+            .lock()
+            .expect("statement cache mutex poisoned")
+            .insert(statement);
+    }
+
+    /// Return accepted statements matching a Statement Store topic filter.
+    pub(crate) fn cached_statements(
+        &self,
+        kind: crate::host_logic::statement_store::TopicFilterKind,
+        topics: &[[u8; 32]],
+    ) -> Vec<latest::SignedStatement> {
+        self.statement_cache
+            .lock()
+            .expect("statement cache mutex poisoned")
+            .matching(kind, topics)
+    }
+
+    /// Drop bridge entries once a remote subscription reports them.
+    pub(crate) fn mark_statements_visible(&self, statements: &[latest::SignedStatement]) {
+        self.statement_cache
+            .lock()
+            .expect("statement cache mutex poisoned")
+            .remove_all(statements);
     }
 }
 
@@ -123,6 +160,52 @@ impl PreimageCache {
             .iter()
             .find(|(existing, _)| existing == key)
             .map(|(_, value)| value.clone())
+    }
+}
+
+/// Entry-bounded, insertion-ordered Statement Store propagation bridge.
+#[derive(Default)]
+struct StatementCache {
+    entries: VecDeque<latest::SignedStatement>,
+}
+
+impl StatementCache {
+    fn insert(&mut self, statement: latest::SignedStatement) {
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|existing| existing == &statement)
+        {
+            self.entries.remove(index);
+        }
+        self.entries.push_back(statement);
+        while self.entries.len() > STATEMENT_CACHE_MAX_ENTRIES {
+            self.entries.pop_front();
+        }
+    }
+
+    fn matching(
+        &self,
+        kind: crate::host_logic::statement_store::TopicFilterKind,
+        topics: &[[u8; 32]],
+    ) -> Vec<latest::SignedStatement> {
+        self.entries
+            .iter()
+            .filter(|statement| match kind {
+                crate::host_logic::statement_store::TopicFilterKind::MatchAll => {
+                    topics.iter().all(|topic| statement.topics.contains(topic))
+                }
+                crate::host_logic::statement_store::TopicFilterKind::MatchAny => {
+                    topics.iter().any(|topic| statement.topics.contains(topic))
+                }
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn remove_all(&mut self, statements: &[latest::SignedStatement]) {
+        self.entries
+            .retain(|cached| !statements.iter().any(|visible| visible == cached));
     }
 }
 

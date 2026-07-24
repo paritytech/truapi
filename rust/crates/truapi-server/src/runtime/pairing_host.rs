@@ -87,6 +87,7 @@ impl From<&CreateTransactionAuthorityRequest> for AuthorityRequestKind {
             CreateTransactionAuthorityRequest::LegacyAccount { .. } => {
                 Self::LegacyCreateTransaction
             }
+            CreateTransactionAuthorityRequest::IdentityAccount(_) => Self::LegacyCreateTransaction,
         }
     }
 }

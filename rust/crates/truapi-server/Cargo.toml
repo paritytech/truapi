@@ -36,6 +36,7 @@ derive_more = { version = "2", features = ["debug", "display", "error", "from"] 
 futures = "0.3"
 futures-timer = "3"
 parity-scale-codec = { version = "3", features = ["derive"] }
+scale-decode = { version = "0.16", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
@@ -57,10 +58,13 @@ tracing = "0.1"
 # `registry` + `std` only: pulls the Registry + per-layer filter/reload, but
 # not `env-filter` (which drags in `regex`, heavy on wasm).
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
+verifiable = { git = "https://github.com/paritytech/verifiable.git", rev = "19b03deb89b8dea484b143afc8bbe048a74bc1ff" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 subxt = { version = "0.50.2", default-features = false, features = ["native"] }
-subxt-rpcs = { version = "0.50.1", default-features = false, features = ["native"] }
+subxt-rpcs = { version = "0.50.1", default-features = false, features = ["jsonrpsee", "native"] }
+frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
+scale-info = { version = "2.11", default-features = false, features = ["decode"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 futures-timer = { version = "3", features = ["wasm-bindgen"] }

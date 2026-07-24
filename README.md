@@ -54,11 +54,11 @@ See [`js/packages/truapi/README.md`](js/packages/truapi/README.md) for the full 
 
 ```
 rust/crates/
-  truapi/                Rust trait and type definitions (v01, v02)
+  truapi/                Rust traits, versioned envelopes, and latest payload re-exports
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
-  truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM surface
+  truapi-server/         Host runtime: dispatcher, typed SCALE logic, chain signing, WASM surface
 js/packages/
   truapi/                  @parity/truapi TypeScript client
   truapi-host/            @parity/truapi-host: WASM-backed host runtime; entries `.`

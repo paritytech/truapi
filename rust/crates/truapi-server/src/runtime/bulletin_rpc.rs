@@ -177,6 +177,18 @@ impl BulletinRpc {
         }
     }
 
+    /// Open a raw RPC client over the configured Bulletin chain.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) async fn client(
+        &self,
+        label: &'static str,
+    ) -> Result<subxt_rpcs::RpcClient, RuntimeFailure> {
+        self.chain
+            .rpc_client(label, &self.genesis_hash)
+            .await
+            .map(subxt_rpcs::RpcClient::new)
+    }
+
     /// Submit `value` as a Bulletin preimage signed by `allowance`, returning
     /// the preimage key once the transaction is included and its dispatch
     /// succeeded.

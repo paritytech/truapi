@@ -30,9 +30,11 @@ pub mod latest {
     pub use crate::v01::{
         AccountId, AllocatableResource, AllocationOutcome, ContextualAlias, GenericError,
         HostSignPayloadData, NotificationId, OperationStartedResult, ProductAccountId,
-        ProductProofContext, RawPayload, RemotePermission, RingLocation, RuntimeApi, RuntimeSpec,
-        RuntimeType, StorageQueryItem, StorageQueryType, StorageResultItem, ThemeVariant,
-        TxPayloadExtension,
+        ProductProofContext, RawPayload, RemotePermission, RemoteStatementStoreCreateProofError,
+        RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
+        RemoteStatementStoreSubscribeItem, RemoteStatementStoreSubscribeRequest, RingLocation,
+        RuntimeApi, RuntimeSpec, RuntimeType, SignedStatement, Statement, StatementProof,
+        StorageQueryItem, StorageQueryType, StorageResultItem, ThemeVariant, TxPayloadExtension,
     };
 
     /// Latest payload type of a versioned envelope.
@@ -44,6 +46,9 @@ pub mod latest {
     /// Contextual alias derivation result.
     pub type HostAccountGetAliasResponse =
         LatestOf<versioned::account::HostAccountGetAliasResponse>;
+    /// Legacy account listing result.
+    pub type HostGetLegacyAccountsResponse =
+        LatestOf<versioned::account::HostGetLegacyAccountsResponse>;
     /// Transaction creation result.
     pub type HostCreateTransactionResponse =
         LatestOf<versioned::signing::HostCreateTransactionResponse>;

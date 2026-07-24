@@ -114,6 +114,13 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
                 )
                 .await
             }
+            PermissionAuthorizationRequest::AccountAccess { target_product_id } => {
+                authorization_status(
+                    self.storage,
+                    account_access_core_storage_key(self.product_id, target_product_id),
+                )
+                .await
+            }
         }
     }
 
@@ -148,6 +155,9 @@ impl<'a, S: CoreStorage + ?Sized, P: Permissions + ?Sized> PermissionsService<'a
             }
             PermissionAuthorizationRequest::IdentityDisclosure => {
                 identity_disclosure_core_storage_key(self.product_id)
+            }
+            PermissionAuthorizationRequest::AccountAccess { target_product_id } => {
+                account_access_core_storage_key(self.product_id, target_product_id)
             }
         };
         set_authorization_status(self.storage, key, status).await
@@ -265,6 +275,15 @@ fn identity_disclosure_core_storage_key(product_id: &str) -> CoreStorageKey {
     CoreStorageKey::PermissionAuthorization {
         product_id: product_id.to_string(),
         request: PermissionAuthorizationRequest::IdentityDisclosure,
+    }
+}
+
+fn account_access_core_storage_key(product_id: &str, target_product_id: &str) -> CoreStorageKey {
+    CoreStorageKey::PermissionAuthorization {
+        product_id: product_id.to_string(),
+        request: PermissionAuthorizationRequest::AccountAccess {
+            target_product_id: target_product_id.to_string(),
+        },
     }
 }
 
@@ -628,6 +647,41 @@ mod tests {
         assert_eq!(
             futures::executor::block_on(service.authorization_status(&request)).unwrap(),
             PermissionAuthorizationStatus::Authorized
+        );
+
+        let other_product_service = PermissionsService::new(&storage, &prompt, "other.dot");
+        assert_eq!(
+            futures::executor::block_on(other_product_service.authorization_status(&request))
+                .unwrap(),
+            PermissionAuthorizationStatus::NotDetermined
+        );
+    }
+
+    #[test]
+    fn account_access_authorization_is_scoped_by_requester_and_target() {
+        let storage = MemStorage::default();
+        let prompt = ScriptedPrompt::new(vec![], vec![]);
+        let service = PermissionsService::new(&storage, &prompt, "product.dot");
+        let request = PermissionAuthorizationRequest::AccountAccess {
+            target_product_id: "target.dot".to_string(),
+        };
+
+        futures::executor::block_on(
+            service.set_authorization_status(&request, PermissionAuthorizationStatus::Authorized),
+        )
+        .unwrap();
+        assert_eq!(
+            futures::executor::block_on(service.authorization_status(&request)).unwrap(),
+            PermissionAuthorizationStatus::Authorized
+        );
+        assert_eq!(
+            futures::executor::block_on(service.authorization_status(
+                &PermissionAuthorizationRequest::AccountAccess {
+                    target_product_id: "other.dot".to_string(),
+                }
+            ))
+            .unwrap(),
+            PermissionAuthorizationStatus::NotDetermined
         );
 
         let other_product_service = PermissionsService::new(&storage, &prompt, "other.dot");

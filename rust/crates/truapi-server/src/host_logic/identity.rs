@@ -8,7 +8,7 @@
 //! Host-spec G defines the cross-host identity model and lookup behavior:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/G-identity.md?plain=1#L5-L47>
 
-use parity_scale_codec::Decode;
+use parity_scale_codec::{Decode, Encode};
 use sp_crypto_hashing::{blake2_128, twox_128};
 
 /// Username fields read from a People-chain `Resources.Consumers` record.
@@ -20,8 +20,9 @@ pub struct PeopleIdentity {
     pub full_username: Option<String>,
 }
 
-#[derive(Debug, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 struct ConsumerUsernamePrefix {
+    identifier_key: [u8; 65],
     full_username: Option<Vec<u8>>,
     lite_username: Vec<u8>,
 }
@@ -45,9 +46,7 @@ pub fn decode_people_identity(value: &[u8]) -> Result<PeopleIdentity, String> {
         ));
     }
 
-    // ConsumerInfo starts with a fixed 65-byte P-256 identifier key. The
-    // username fields follow immediately after it.
-    let mut input = &value[65..];
+    let mut input = value;
     let decoded = ConsumerUsernamePrefix::decode(&mut input)
         .map_err(|err| format!("invalid Resources.Consumers record: {err}"))?;
     let lite_username = non_empty_string(decoded.lite_username)?;
@@ -74,7 +73,6 @@ fn non_empty_string(bytes: Vec<u8>) -> Result<Option<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parity_scale_codec::Encode;
 
     #[test]
     fn resources_consumers_key_uses_expected_prefix() {
@@ -104,6 +102,28 @@ mod tests {
 
         assert_eq!(decoded.full_username.as_deref(), Some("Alice Smith"));
         assert_eq!(decoded.lite_username.as_deref(), Some("alice.01"));
+    }
+
+    #[test]
+    fn consumer_username_prefix_matches_runtime_field_codec() {
+        let prefix = ConsumerUsernamePrefix {
+            identifier_key: [0x04; 65],
+            full_username: Some(b"Alice Smith".to_vec()),
+            lite_username: b"alice.01".to_vec(),
+        };
+        let encoded = prefix.encode();
+        let runtime_fields = (
+            prefix.identifier_key,
+            prefix.full_username.as_ref(),
+            prefix.lite_username.as_slice(),
+        )
+            .encode();
+
+        assert_eq!(encoded, runtime_fields);
+        assert_eq!(
+            ConsumerUsernamePrefix::decode(&mut encoded.as_slice()).unwrap(),
+            prefix
+        );
     }
 
     #[test]

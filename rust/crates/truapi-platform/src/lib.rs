@@ -16,12 +16,11 @@ use unicode_normalization::UnicodeNormalization;
 pub use async_trait::async_trait;
 
 use truapi::latest::{
-    GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
+    AllocatableResource, GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageReadError,
     HostNavigateToError, HostPushNotificationRequest, HostPushNotificationResponse,
-    HostRequestResourceAllocationRequest, HostSignPayloadRequest,
-    HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
-    HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId,
+    HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest,
+    HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, NotificationId, ProductAccountId,
     ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest,
     RemotePermissionResponse, RingLocation, ThemeVariant,
 };
@@ -323,6 +322,11 @@ pub enum PermissionAuthorizationRequest {
     Remote(RemotePermissionRequest),
     /// Product-scoped permission to disclose the user's primary identity.
     IdentityDisclosure,
+    /// Product-scoped permission to access another product's account context.
+    AccountAccess {
+        /// Product whose account context may be accessed.
+        target_product_id: String,
+    },
 }
 
 /// Authorization status for a permission request.
@@ -543,6 +547,18 @@ pub enum SignRawReview {
     LegacyAccount(HostSignRawWithLegacyAccountRequest),
 }
 
+/// Review shown before a product account signs a Statement Store proof
+/// payload. Distinct from raw-message signing: the payload is the exact
+/// unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
+/// not present it with the raw-signing convention.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct StatementStoreProductSignReview {
+    /// Product account that will sign the statement payload.
+    pub account: ProductAccountId,
+    /// Exact unsigned statement payload to be signed.
+    pub payload: Vec<u8>,
+}
+
 /// Review shown before a transaction-creation request is sent to the paired wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CreateTransactionReview {
@@ -576,6 +592,17 @@ pub struct CreateProofReview {
     pub message: Vec<u8>,
 }
 
+/// Review shown before allocating resources for a product. Names the
+/// beneficiary product so the user knows which product receives the
+/// (signing-capable) allowance key they are approving.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct ResourceAllocationReview {
+    /// Product the allocation is requested for.
+    pub calling_product_id: String,
+    /// Resources to allocate.
+    pub resources: Vec<AllocatableResource>,
+}
+
 /// Review shown before a product asks to access another product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct AccountAccessReview {
@@ -607,6 +634,8 @@ pub enum UserConfirmationReview {
     SignPayload(SignPayloadReview),
     /// Sign raw bytes with a product or legacy account.
     SignRaw(SignRawReview),
+    /// Sign a Statement Store proof payload with a product account.
+    StatementStoreProductSign(StatementStoreProductSignReview),
     /// Create a transaction with a product or legacy account.
     CreateTransaction(CreateTransactionReview),
     /// Allow a product to derive a contextual alias for a ring.
@@ -616,7 +645,7 @@ pub enum UserConfirmationReview {
     /// Allow a product to learn the user's primary identity.
     IdentityDisclosure(IdentityDisclosureReview),
     /// Allocate resources for the requesting product.
-    ResourceAllocation(HostRequestResourceAllocationRequest),
+    ResourceAllocation(ResourceAllocationReview),
     /// Submit a preimage to the host-selected backend.
     PreimageSubmit(PreimageSubmitReview),
     /// Allow a product to access another product account.

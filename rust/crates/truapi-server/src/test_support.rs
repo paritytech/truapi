@@ -37,8 +37,8 @@ use truapi_platform::{
     CoreStorage as PlatformCoreStorage, CoreStorageKey, Features as PlatformFeatures, HostInfo,
     JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
     PairingHostConfig, Permissions as PlatformPermissions, PlatformInfo, PreimageHost,
-    ProductContext, ProductStorage as PlatformProductStorage, ThemeHost, UserConfirmation,
-    UserConfirmationReview,
+    ProductContext, ProductStorage as PlatformProductStorage, ResourceAllocationReview,
+    StatementStoreProductSignReview, ThemeHost, UserConfirmation, UserConfirmationReview,
 };
 
 /// Test spawner that matches the current target.
@@ -84,10 +84,15 @@ pub(crate) struct StubPlatform {
     pub(crate) sign_payload_error: Option<&'static str>,
     pub(crate) sign_raw_confirmed: bool,
     pub(crate) sign_raw_error: Option<&'static str>,
+    /// Every `StatementStoreProductSign` review passed to `confirm_user_action`, in order.
+    pub(crate) statement_store_product_sign_reviews:
+        Arc<Mutex<Vec<StatementStoreProductSignReview>>>,
     pub(crate) create_transaction_confirmed: bool,
     pub(crate) create_transaction_error: Option<&'static str>,
     pub(crate) resource_allocation_confirmed: bool,
     pub(crate) resource_allocation_error: Option<&'static str>,
+    /// Every `ResourceAllocation` review passed to `confirm_user_action`, in order.
+    pub(crate) resource_allocation_reviews: Arc<Mutex<Vec<ResourceAllocationReview>>>,
     pub(crate) session_blob: Option<Vec<u8>>,
     pub(crate) session_error: Option<&'static str>,
     pub(crate) session_clears: Arc<Mutex<usize>>,
@@ -425,10 +430,12 @@ pub(crate) fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> St
 }
 
 fn statement_submit_ack_frame(request_id: &str) -> String {
+    // Mirror the real `statement_submit` result shape (`SubmitResult`); `submit`
+    // treats only `new`/`known` as accepted.
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": request_id,
-        "result": "0xok",
+        "result": { "status": "new" },
     })
     .to_string()
 }
@@ -1341,6 +1348,13 @@ impl UserConfirmation for StubPlatform {
                 (self.sign_payload_error, self.sign_payload_confirmed)
             }
             UserConfirmationReview::SignRaw(_) => (self.sign_raw_error, self.sign_raw_confirmed),
+            UserConfirmationReview::StatementStoreProductSign(review) => {
+                self.statement_store_product_sign_reviews
+                    .lock()
+                    .expect("statement store product sign review list mutex poisoned")
+                    .push(review);
+                (self.sign_raw_error, self.sign_raw_confirmed)
+            }
             UserConfirmationReview::CreateTransaction(_) => (
                 self.create_transaction_error,
                 self.create_transaction_confirmed,
@@ -1366,10 +1380,16 @@ impl UserConfirmation for StubPlatform {
                     self.identity_disclosure_confirmed,
                 )
             }
-            UserConfirmationReview::ResourceAllocation(_) => (
-                self.resource_allocation_error,
-                self.resource_allocation_confirmed,
-            ),
+            UserConfirmationReview::ResourceAllocation(review) => {
+                self.resource_allocation_reviews
+                    .lock()
+                    .expect("resource allocation review list mutex poisoned")
+                    .push(review);
+                (
+                    self.resource_allocation_error,
+                    self.resource_allocation_confirmed,
+                )
+            }
             UserConfirmationReview::PreimageSubmit(_) => (None, true),
         };
         if let Some(reason) = error {
