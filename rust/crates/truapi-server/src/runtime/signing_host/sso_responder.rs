@@ -11,7 +11,7 @@
 //! same seam browser hosts use for their confirmation modals; a headless host
 //! implements it with its approval policy.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -63,6 +63,44 @@ const CHAT_KEY_LABEL: &[u8] = b"chat-encryption";
 /// before its 300-second remote-authority deadline expires.
 #[cfg(not(target_arch = "wasm32"))]
 const BULLETIN_AUTHORIZATION_WAIT: std::time::Duration = std::time::Duration::from_secs(240);
+
+/// Upper bound on remembered request ids for replay dedup within a serve loop.
+/// A peer that holds the session open cannot grow this without bound; requests
+/// older than the eviction window are past their statement expiry and can no
+/// longer be validly replayed.
+const MAX_SERVED_REQUEST_IDS: usize = 1024;
+
+/// Bounded set of served request ids for replay dedup. Evicts the oldest id
+/// once the capacity is reached so a peer cannot force unbounded memory growth
+/// by streaming fresh request ids.
+struct ServedRequestIds {
+    seen: HashSet<String>,
+    order: VecDeque<String>,
+}
+
+impl ServedRequestIds {
+    fn new() -> Self {
+        Self {
+            seen: HashSet::new(),
+            order: VecDeque::new(),
+        }
+    }
+
+    /// Record `request_id`, returning `true` if it was not already served.
+    /// Evicts the oldest id when the capacity is exceeded.
+    fn insert(&mut self, request_id: String) -> bool {
+        if !self.seen.insert(request_id.clone()) {
+            return false;
+        }
+        self.order.push_back(request_id);
+        if self.order.len() > MAX_SERVED_REQUEST_IDS {
+            if let Some(evicted) = self.order.pop_front() {
+                self.seen.remove(&evicted);
+            }
+        }
+        true
+    }
+}
 
 /// Terminal outcome of one responder serve loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,7 +189,7 @@ async fn serve_session(
         statement_store_rpc::subscribe_match_all(&rpc_client, &[session.session_id_peer])
             .await
             .map_err(|err| format!("sso-responder subscribe failed: {err}"))?;
-    let mut served_request_ids = HashSet::new();
+    let mut served_request_ids = ServedRequestIds::new();
 
     while let Some(item) = subscription.next().await {
         let value = item.map_err(|err| format!("sso-responder subscription failed: {err}"))?;
@@ -1445,5 +1483,28 @@ mod tests {
                 .verify_simple(b"substrate", &[0x00, 0x00, 1, 2, 3], &signature)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn served_request_ids_dedup_and_bound() {
+        let mut served = ServedRequestIds::new();
+
+        // First sighting is served; an immediate duplicate is rejected.
+        assert!(served.insert("req-a".to_string()));
+        assert!(!served.insert("req-a".to_string()));
+
+        // Fill to capacity with distinct ids; the set never exceeds the bound.
+        for i in 0..MAX_SERVED_REQUEST_IDS {
+            served.insert(format!("fill-{i}"));
+        }
+        assert_eq!(served.seen.len(), MAX_SERVED_REQUEST_IDS);
+        assert_eq!(served.order.len(), MAX_SERVED_REQUEST_IDS);
+
+        // The oldest id ("req-a") has been evicted, so it is accepted again,
+        // while a recent id is still deduped — memory stays bounded regardless
+        // of how many ids a peer streams.
+        assert!(served.insert("req-a".to_string()));
+        assert!(!served.insert(format!("fill-{}", MAX_SERVED_REQUEST_IDS - 1)));
+        assert_eq!(served.seen.len(), MAX_SERVED_REQUEST_IDS);
     }
 }
