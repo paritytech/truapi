@@ -16,6 +16,7 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Signing operations.
+#[crate::async_trait]
 pub trait Signing: Send + Sync {
     /// Construct a signed transaction for a product account.
     ///

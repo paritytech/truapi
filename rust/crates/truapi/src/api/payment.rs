@@ -11,6 +11,7 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Payment request and balance/status subscription methods.
+#[crate::async_trait]
 pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
     ///

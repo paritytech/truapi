@@ -693,6 +693,7 @@ fn runtime_failure_to_call_error<E>(failure: RuntimeFailure) -> CallError<E> {
 // System
 // ---------------------------------------------------------------------------
 
+#[truapi::async_trait]
 impl System for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "system.feature_supported"))]
     async fn feature_supported(
@@ -742,6 +743,7 @@ impl System for ProductRuntimeHost {
 // Permissions
 // ---------------------------------------------------------------------------
 
+#[truapi::async_trait]
 impl Permissions for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "permissions.request_device_permission"))]
     async fn request_device_permission(
@@ -798,6 +800,7 @@ impl Permissions for ProductRuntimeHost {
 // LocalStorage
 // ---------------------------------------------------------------------------
 
+#[truapi::async_trait]
 impl LocalStorage for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "local_storage.read"))]
     async fn read(
@@ -855,6 +858,7 @@ impl LocalStorage for ProductRuntimeHost {
 // Account-management flows live in the Rust core itself, backed by the shared
 // session state and, for alias/proof/login success paths, the SSO service.
 
+#[truapi::async_trait]
 impl Account for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "account.get_account"))]
     async fn get_account(
@@ -1131,6 +1135,7 @@ fn transaction_call_error<E>(
     }))
 }
 
+#[truapi::async_trait]
 impl Signing for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "signing.sign_payload"))]
     async fn sign_payload(
@@ -1512,6 +1517,7 @@ impl Signing for ProductRuntimeHost {
 // translated into `RemoteChainHeadFollowItem` items on the subscription
 // stream.
 
+#[truapi::async_trait]
 impl Chain for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "chain.follow_head_subscribe"))]
     async fn follow_head_subscribe(
@@ -1743,8 +1749,11 @@ impl Chain for ProductRuntimeHost {
 
 const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 
+#[truapi::async_trait]
 impl Chat for ProductRuntimeHost {}
+#[truapi::async_trait]
 impl CoinPayment for ProductRuntimeHost {}
+#[truapi::async_trait]
 impl Payment for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "payment.balance_subscribe"))]
     async fn balance_subscribe(
@@ -1803,6 +1812,7 @@ impl Payment for ProductRuntimeHost {
     }
 }
 
+#[truapi::async_trait]
 impl ResourceAllocation for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "resource_allocation.request"))]
     async fn request(
@@ -1864,6 +1874,7 @@ impl ResourceAllocation for ProductRuntimeHost {
 // Entropy
 // ---------------------------------------------------------------------------
 
+#[truapi::async_trait]
 impl Entropy for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "entropy.derive"))]
     async fn derive(
@@ -1900,6 +1911,7 @@ impl Entropy for ProductRuntimeHost {
 // Preimage
 // ---------------------------------------------------------------------------
 
+#[truapi::async_trait]
 impl Preimage for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "preimage.lookup_subscribe"))]
     async fn lookup_subscribe(
@@ -2085,6 +2097,7 @@ fn bulletin_allowance_error_reason(err: AuthorityError) -> String {
 // Theme
 // ---------------------------------------------------------------------------
 
+#[truapi::async_trait]
 impl Theme for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "theme.subscribe"))]
     async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
@@ -2109,6 +2122,7 @@ impl Theme for ProductRuntimeHost {
 
 // `Notifications` delegates to the platform so hosts can own scheduling and
 // cancellation while the core preserves the typed TrUAPI wire shape.
+#[truapi::async_trait]
 impl Notifications for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "notifications.send_push_notification"))]
     async fn send_push_notification(

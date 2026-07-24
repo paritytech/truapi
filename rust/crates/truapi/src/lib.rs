@@ -2,8 +2,9 @@
 //!
 //! Concrete wire types live in per-version modules. Versioned envelopes are in
 //! [`versioned`].
-
-#![allow(async_fn_in_trait)]
+//! Async API traits use the `async_trait` macro so their concise `async fn` methods
+//! still guarantee `Send` futures. Implementations must annotate their impl
+//! blocks with `#[truapi::async_trait]`.
 
 use core::convert::Infallible;
 use core::fmt;
@@ -17,6 +18,8 @@ use std::sync::Mutex;
 
 use futures::Stream;
 use parity_scale_codec::{Decode, Encode};
+
+pub use async_trait::async_trait;
 
 pub mod api;
 pub mod v01;

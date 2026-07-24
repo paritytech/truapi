@@ -23,8 +23,8 @@ type StopFn = Box<dyn FnOnce() + Send>;
 /// future is `Send` because the inner [`SubscriptionStream`] is a
 /// `BoxStream<'static, _>` and every captured value the manager threads
 /// through it is also `Send`. Each platform bridge supplies an
-/// implementation that hands the future to the runtime driving its
-/// transport (tokio `LocalSet`, `wasm_bindgen_futures::spawn_local`, ...).
+/// implementation that hands the future to the runtime driving its transport
+/// (`tokio::spawn`, `wasm_bindgen_futures::spawn_local`, ...).
 pub type Spawner = Arc<dyn Fn(BoxFuture<'static, ()>) + Send + Sync>;
 
 /// Convenience spawner for tests and embedders that don't yet wire a

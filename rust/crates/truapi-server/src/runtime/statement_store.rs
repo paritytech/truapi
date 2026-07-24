@@ -35,6 +35,7 @@ use truapi::versioned::statement_store::{
 };
 use truapi::{CallContext, CallError, Subscription};
 
+#[truapi::async_trait]
 impl StatementStore for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "statement_store.subscribe"))]
     async fn subscribe(

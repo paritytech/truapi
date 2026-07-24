@@ -8,6 +8,7 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Permission request methods.
+#[crate::async_trait]
 pub trait Permissions: Send + Sync {
     /// Request a device-capability permission from the user.
     ///

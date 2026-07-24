@@ -8,6 +8,7 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Resource pre-allocation (allowance management).
+#[crate::async_trait]
 pub trait ResourceAllocation: Send + Sync {
     /// Request the host to pre-allocate one or more resources.
     ///

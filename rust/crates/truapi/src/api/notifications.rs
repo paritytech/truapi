@@ -9,6 +9,7 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Notification methods for locally-rendered push notifications.
+#[crate::async_trait]
 pub trait Notifications: Send + Sync {
     /// Send a push notification to the user.
     ///

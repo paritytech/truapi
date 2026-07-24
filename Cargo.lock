@@ -3961,6 +3961,7 @@ dependencies = [
 name = "truapi"
 version = "0.5.1"
 dependencies = [
+ "async-trait",
  "derive_more 2.1.1",
  "futures",
  "hex",

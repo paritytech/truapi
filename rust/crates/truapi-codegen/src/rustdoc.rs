@@ -650,7 +650,8 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
     let raw_output = sig
         .get("output")
         .with_context(|| format!("Method `{name}` missing rustdoc return type"))?;
-    let output = raw_output;
+    let output = unwrap_future_output(raw_output)
+        .with_context(|| format!("Method `{name}` has an invalid Future return type"))?;
 
     let (kind, return_type) = if is_result_subscription_return(output) {
         (
@@ -829,6 +830,92 @@ fn is_subscription_return(output: &serde_json::Value) -> bool {
     get_resolved_name(output)
         .map(|name| name == "Subscription")
         .unwrap_or(false)
+}
+
+/// Resolve the `Output = T` binding from a Send future method return.
+///
+/// `async_trait` represents `async fn` as
+/// `Pin<Box<dyn Future<Output = T> + Send + 'async_trait>>` in rustdoc JSON.
+/// Explicit `impl Future<Output = T> + Send` returns are also accepted so the
+/// parser remains compatible with older TrUAPI trait snapshots.
+fn unwrap_future_output(output: &serde_json::Value) -> Result<&serde_json::Value> {
+    if let Some(future_output) = extract_async_trait_future_output(output) {
+        return Ok(future_output);
+    }
+    let Some(bounds) = output
+        .get("impl_trait")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Ok(output);
+    };
+    let future = bounds
+        .iter()
+        .filter_map(|bound| bound.get("trait_bound"))
+        .filter_map(|bound| bound.get("trait"))
+        .find(|bound| {
+            bound
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|path| path_suffix(path) == "Future")
+        })
+        .context("impl Trait return is missing its Future bound")?;
+    let constraints = future
+        .get("args")
+        .and_then(|args| args.get("angle_bracketed"))
+        .and_then(|args| args.get("constraints"))
+        .and_then(serde_json::Value::as_array)
+        .context("Future bound is missing its associated-type constraints")?;
+    constraints
+        .iter()
+        .find(|constraint| {
+            constraint.get("name").and_then(serde_json::Value::as_str) == Some("Output")
+        })
+        .and_then(|constraint| constraint.get("binding"))
+        .and_then(|binding| binding.get("equality"))
+        .and_then(|equality| equality.get("type"))
+        .context("Future bound is missing its Output equality")
+}
+
+fn extract_async_trait_future_output(output: &serde_json::Value) -> Option<&serde_json::Value> {
+    let pin = output.get("resolved_path")?;
+    if resolved_path_leaf(pin) != Some("Pin") {
+        return None;
+    }
+    let boxed = generic_type_arg(pin, 0)?.get("resolved_path")?;
+    if resolved_path_leaf(boxed) != Some("Box") {
+        return None;
+    }
+    let dyn_trait = generic_type_arg(boxed, 0)?.get("dyn_trait")?;
+    let traits = dyn_trait.get("traits")?.as_array()?;
+    traits
+        .iter()
+        .filter_map(|entry| entry.get("trait"))
+        .find(|trait_| resolved_path_leaf(trait_) == Some("Future"))?
+        .get("args")?
+        .get("angle_bracketed")?
+        .get("constraints")?
+        .as_array()?
+        .iter()
+        .find(|constraint| constraint.get("name").and_then(|name| name.as_str()) == Some("Output"))?
+        .get("binding")?
+        .get("equality")?
+        .get("type")
+}
+
+fn resolved_path_leaf(resolved: &serde_json::Value) -> Option<&str> {
+    let path = resolved.get("path")?.as_str()?;
+    Some(path_suffix(path))
+}
+
+fn generic_type_arg(resolved: &serde_json::Value, index: usize) -> Option<&serde_json::Value> {
+    resolved
+        .get("args")?
+        .get("angle_bracketed")?
+        .get("args")?
+        .as_array()?
+        .iter()
+        .filter_map(|entry| entry.get("type"))
+        .nth(index)
 }
 
 fn is_result_subscription_return(output: &serde_json::Value) -> bool {
@@ -1397,5 +1484,123 @@ mod tests {
             format!("{err}").contains("older than the tested minimum"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn unwraps_send_future_output() {
+        let output = serde_json::json!({
+            "impl_trait": [
+                {
+                    "trait_bound": {
+                        "trait": {
+                            "path": "core::future::Future",
+                            "args": {
+                                "angle_bracketed": {
+                                    "args": [],
+                                    "constraints": [
+                                        {
+                                            "name": "Output",
+                                            "binding": {
+                                                "equality": {
+                                                    "type": {
+                                                        "resolved_path": {
+                                                            "path": "Result",
+                                                            "id": 1,
+                                                            "args": null
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "trait_bound": {
+                        "trait": {
+                            "path": "Send",
+                            "id": 2,
+                            "args": null
+                        }
+                    }
+                }
+            ]
+        });
+
+        let unwrapped = unwrap_future_output(&output).expect("future output");
+
+        assert_eq!(get_resolved_name(unwrapped).as_deref(), Some("Result"));
+    }
+
+    #[test]
+    fn unwraps_async_trait_send_future_output() {
+        let output = serde_json::json!({
+            "resolved_path": {
+                "path": "::core::pin::Pin",
+                "args": {
+                    "angle_bracketed": {
+                        "args": [{
+                            "type": {
+                                "resolved_path": {
+                                    "path": "Box",
+                                    "args": {
+                                        "angle_bracketed": {
+                                            "args": [{
+                                                "type": {
+                                                    "dyn_trait": {
+                                                        "traits": [
+                                                            {
+                                                                "trait": {
+                                                                    "path": "::core::future::Future",
+                                                                    "args": {
+                                                                        "angle_bracketed": {
+                                                                            "args": [],
+                                                                            "constraints": [{
+                                                                                "name": "Output",
+                                                                                "binding": {
+                                                                                    "equality": {
+                                                                                        "type": {
+                                                                                            "resolved_path": {
+                                                                                                "path": "Result",
+                                                                                                "id": 1,
+                                                                                                "args": null
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            }]
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            {
+                                                                "trait": {
+                                                                    "path": "::core::marker::Send",
+                                                                    "args": null
+                                                                }
+                                                            }
+                                                        ],
+                                                        "lifetime": "'async_trait"
+                                                    }
+                                                }
+                                            }],
+                                            "constraints": []
+                                        }
+                                    }
+                                }
+                            }
+                        }],
+                        "constraints": []
+                    }
+                }
+            }
+        });
+
+        let unwrapped = unwrap_future_output(&output).expect("async-trait future output");
+
+        assert_eq!(get_resolved_name(unwrapped).as_deref(), Some("Result"));
     }
 }

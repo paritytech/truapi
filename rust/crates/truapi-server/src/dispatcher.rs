@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use futures::future::LocalBoxFuture;
+use futures::future::BoxFuture;
 use tracing::instrument;
 
 use crate::frame::{Payload, ProtocolMessage};
@@ -17,19 +17,20 @@ use crate::generated::wire_table::{RequestFrameIds, SubscriptionFrameIds};
 use crate::subscription::{Spawner, SubscriptionManager, SubscriptionStream};
 use crate::transport::Transport;
 
-/// A handler for a request-response method. The returned future is not
-/// required to be `Send` because the truapi trait uses `async fn`, whose
-/// auto-Send-ness is not guaranteed. The `request_id` is the per-frame
-/// identifier; handlers thread it into the `CallContext` so trait methods
-/// can correlate logs/cancellation with the originating request. On the
-/// error path handlers return the complete SCALE-encoded response payload.
+/// A handler for a request-response method. TrUAPI service traits require
+/// their returned futures to be [`Send`], allowing native dispatch to move
+/// across executor threads while WASM remains free to poll the same future on
+/// its local executor. The `request_id` is the per-frame identifier; handlers
+/// thread it into the `CallContext` so trait methods can correlate
+/// logs/cancellation with the originating request. On the error path handlers
+/// return the complete SCALE-encoded response payload.
 pub type RequestHandler =
-    Arc<dyn Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<Vec<u8>, Vec<u8>>> + Send + Sync>;
+    Arc<dyn Fn(String, Vec<u8>) -> BoxFuture<'static, Result<Vec<u8>, Vec<u8>>> + Send + Sync>;
 
 /// A handler for a subscription method. On the error path the handler returns
 /// the complete SCALE-encoded `_interrupt` payload.
 pub type SubscriptionHandler = Arc<
-    dyn Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<SubscriptionStream, Vec<u8>>>
+    dyn Fn(String, Vec<u8>) -> BoxFuture<'static, Result<SubscriptionStream, Vec<u8>>>
         + Send
         + Sync,
 >;
@@ -72,7 +73,7 @@ impl Dispatcher {
     /// since each request id must own exactly one handler.
     pub fn on_request<F>(&mut self, ids: RequestFrameIds, handler: F) -> Option<RequestEntry>
     where
-        F: Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<Vec<u8>, Vec<u8>>>
+        F: Fn(String, Vec<u8>) -> BoxFuture<'static, Result<Vec<u8>, Vec<u8>>>
             + Send
             + Sync
             + 'static,
@@ -95,7 +96,7 @@ impl Dispatcher {
         handler: F,
     ) -> Option<SubscriptionEntry>
     where
-        F: Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<SubscriptionStream, Vec<u8>>>
+        F: Fn(String, Vec<u8>) -> BoxFuture<'static, Result<SubscriptionStream, Vec<u8>>>
             + Send
             + Sync
             + 'static,

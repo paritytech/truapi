@@ -5,6 +5,7 @@ use crate::wire;
 use crate::{CallContext, Subscription};
 
 /// Host theme subscription.
+#[crate::async_trait]
 pub trait Theme: Send + Sync {
     /// Subscribe to host theme changes.
     ///
