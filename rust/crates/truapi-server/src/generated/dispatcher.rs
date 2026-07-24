@@ -176,6 +176,42 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
+            wire_table::ACCOUNT_SIGN_VRF,
+            move |request_id: String, bytes: Vec<u8>| {
+                let host = host.clone();
+                Box::pin(async move {
+                    let request: versioned::account::HostAccountSignVrfRequest =
+                        match Decode::decode(&mut &bytes[..]) {
+                            Ok(request) => request,
+                            Err(err) => {
+                                let error: truapi::CallError<
+                                    versioned::account::HostAccountSignVrfError,
+                                > = truapi::CallError::MalformedFrame {
+                                    reason: err.to_string(),
+                                };
+                                return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::account::HostAccountSignVrfError as Versioned>::LATEST,
+                        ));
+                            }
+                        };
+                    let target_version = request.version();
+                    let cx = CallContext::with_request_id(request_id.clone());
+                    let response: versioned::account::HostAccountSignVrfResponse =
+                        match host.sign_vrf(&cx, request).await {
+                            Ok(value) => value,
+                            Err(err) => {
+                                return Ok(encode_versioned_err_payload(err, target_version));
+                            }
+                        };
+                    Ok(encode_versioned_ok_payload(response))
+                })
+            },
+        );
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(
             wire_table::ACCOUNT_GET_LEGACY_ACCOUNTS,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();

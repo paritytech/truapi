@@ -4,7 +4,8 @@ use crate::versioned::account::{
     HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
     HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
     HostAccountGetAliasRequest, HostAccountGetAliasResponse, HostAccountGetError,
-    HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsError,
+    HostAccountGetRequest, HostAccountGetResponse, HostAccountSignVrfError,
+    HostAccountSignVrfRequest, HostAccountSignVrfResponse, HostGetLegacyAccountsError,
     HostGetLegacyAccountsRequest, HostGetLegacyAccountsResponse, HostGetUserIdError,
     HostGetUserIdRequest, HostGetUserIdResponse, HostRequestLoginError, HostRequestLoginRequest,
     HostRequestLoginResponse,
@@ -120,6 +121,37 @@ pub trait Account: Send + Sync {
         _cx: &CallContext,
         _request: HostAccountCreateProofRequest,
     ) -> Result<HostAccountCreateProofResponse, CallError<HostAccountCreateProofError>> {
+        Err(CallError::unavailable())
+    }
+
+    /// Produce an sr25519 (schnorrkel) VRF signature from a product account.
+    ///
+    /// The host builds a Merlin transcript from `transcriptLabel` and `items`
+    /// and signs it with the account's key, returning the VRF pre-output and
+    /// proof. Authorized like signing: local when `AutoSigning` covers the
+    /// account, otherwise a per-call user confirmation.
+    ///
+    /// ```ts
+    /// const result = await truapi.account.signVrf({
+    ///   account: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   transcriptLabel: "0x706f703a61697264726f70",
+    ///   items: [
+    ///     { label: "0x646f6d61696e", value: "0x706f703a61697264726f70" },
+    ///     { label: "0x7369676e6572", value: "0x00" },
+    ///   ],
+    /// });
+    /// assert(result.isOk(), "signVrf failed:", result);
+    /// console.log("vrf signature:", result.value);
+    /// ```
+    #[wire(request_id = 164)]
+    async fn sign_vrf(
+        &self,
+        _cx: &CallContext,
+        _request: HostAccountSignVrfRequest,
+    ) -> Result<HostAccountSignVrfResponse, CallError<HostAccountSignVrfError>> {
         Err(CallError::unavailable())
     }
 

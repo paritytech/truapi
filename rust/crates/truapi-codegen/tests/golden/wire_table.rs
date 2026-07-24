@@ -460,6 +460,12 @@ pub const COIN_PAYMENT_LISTEN_FOR_PAYMENT: SubscriptionFrameIds = SubscriptionFr
     receive_id: 163,
 };
 
+/// Wire discriminants for `account_sign_vrf`.
+pub const ACCOUNT_SIGN_VRF: RequestFrameIds = RequestFrameIds {
+    request_id: 164,
+    response_id: 165,
+};
+
 /// The full wire table. Ordering is part of the wire protocol;
 /// only ever append. Removed methods leave their slot empty.
 pub const WIRE_TABLE: &[WireEntry] = &[
@@ -718,5 +724,9 @@ pub const WIRE_TABLE: &[WireEntry] = &[
     WireEntry {
         method: "coin_payment_listen_for_payment",
         kind: WireKind::Subscription(COIN_PAYMENT_LISTEN_FOR_PAYMENT),
+    },
+    WireEntry {
+        method: "account_sign_vrf",
+        kind: WireKind::Request(ACCOUNT_SIGN_VRF),
     },
 ];

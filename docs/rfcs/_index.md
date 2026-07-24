@@ -23,3 +23,5 @@ created: 2026-03-13
 | 0019   | [Scheduled Push Notifications](0019-scheduled-notifications.md)                                          | accepted | @johnthecat       | —                                                               |
 | 0020   | [Remove `context` from `create_transaction` and mirror in Accounts Protocol](0020-create-transaction.md) | accepted | Valentin Sergeev  | —                                                               |
 | 0021   | [Add Coins variant to PaymentTopUpSource](0021-payment-topup-coins.md)                                   | accepted | @filippovecchiato | —                                                               |
+| 0022   | [Account key derivations](0022-account-derivations.md)                                                   | draft    | Valentin Sergeev  | —                                                               |
+| 0023   | [sr25519 VRF signing for product accounts](0023-account-sign-vrf.md)                                     | draft    | Valentin Sergeev  | —                                                               |
