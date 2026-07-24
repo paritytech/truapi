@@ -710,10 +710,11 @@ struct CallbackPlatform {
 /// Run a host callback that may block awaiting a user decision.
 ///
 /// UI-decision callbacks are allowed to block their calling thread until the
-/// user decides. Running them inline would stall the single-threaded
-/// WS-bridge dispatcher (and deadlock if the decision UI itself issues a
-/// TrUAPI call), so inside a tokio runtime the callback is moved to the
-/// blocking pool. Outside a tokio context the callback runs inline.
+/// user decides. Running them inline would occupy a WS-bridge async worker and
+/// concurrent decisions could exhaust the dispatch pool (or deadlock if the
+/// decision UI itself issues a TrUAPI call), so inside a tokio runtime the
+/// callback is moved to the blocking pool. Outside a tokio context the
+/// callback runs inline.
 async fn run_blocking_callback<T, F>(callback: F) -> T
 where
     T: Send + 'static,

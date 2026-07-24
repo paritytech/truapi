@@ -27,7 +27,6 @@ use futures::{SinkExt, StreamExt};
 use rand::RngCore;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::LocalSet;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::http::{Response as HttpResponse, StatusCode};
@@ -41,6 +40,10 @@ use crate::{FrameSink, ProductRuntime};
 /// a single connection; the cap bounds resource use from a buggy or hostile
 /// local peer opening many sockets.
 const MAX_WS_BRIDGE_CONNECTIONS: usize = 32;
+
+/// Keep the product-scoped executor large enough for concurrent dispatch
+/// without creating an unbounded worker pool for every open product.
+const MAX_WS_BRIDGE_WORKER_THREADS: usize = 4;
 
 /// Bound on the per-connection outbound frame queue. A peer that stops reading
 /// cannot make the core buffer responses without limit; once the queue fills
@@ -108,10 +111,10 @@ where
 
 /// Running bridge handle. Drop or call [`WsBridge::stop`] to shut down.
 ///
-/// The bridge owns a dedicated OS thread that runs a `tokio` current-thread
-/// runtime + `LocalSet`. Using `spawn_local` is required because the
-/// dispatcher's per-method futures are `LocalBoxFuture` (the truapi trait
-/// uses `async fn`, whose auto-generated futures are not `Send`).
+/// The bridge owns a dedicated OS thread that drives a multithreaded `tokio`
+/// runtime. TrUAPI dispatch futures are `Send`, so connections and independent
+/// frames can execute across worker threads instead of sharing one local task
+/// queue.
 pub struct WsBridge {
     shutdown: Option<oneshot::Sender<()>>,
     thread: Option<thread::JoinHandle<()>>,
@@ -148,17 +151,18 @@ impl WsBridge {
         let thread = thread::Builder::new()
             .name("truapi-ws-bridge".to_string())
             .spawn(move || {
-                let rt = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
+                let worker_threads = ws_bridge_worker_threads();
+                let rt = match build_ws_bridge_runtime(worker_threads) {
                     Ok(rt) => rt,
                     Err(err) => {
-                        let _ = ready_tx.send(Err(io::Error::other(err.to_string())));
+                        let _ = ready_tx.send(Err(err));
                         return;
                     }
                 };
-                let local = LocalSet::new();
+                worker_logger(
+                    "truapi.ws_bridge.runtime_started",
+                    &format!("worker_threads={worker_threads}"),
+                );
                 let listener_setup = rt.block_on(async { TcpListener::from_std(std_listener) });
                 let listener = match listener_setup {
                     Ok(listener) => {
@@ -170,16 +174,13 @@ impl WsBridge {
                         return;
                     }
                 };
-                local.block_on(
-                    &rt,
-                    accept_loop(
-                        listener,
-                        runtime_factory,
-                        accept_token,
-                        accept_logger,
-                        shutdown_rx,
-                    ),
-                );
+                rt.block_on(accept_loop(
+                    listener,
+                    runtime_factory,
+                    accept_token,
+                    accept_logger,
+                    shutdown_rx,
+                ));
                 worker_logger("truapi.ws_bridge.worker_exit", "worker thread exiting");
             })?;
 
@@ -223,6 +224,22 @@ impl Drop for WsBridge {
     }
 }
 
+fn ws_bridge_worker_threads() -> usize {
+    thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(2)
+        .clamp(2, MAX_WS_BRIDGE_WORKER_THREADS)
+}
+
+fn build_ws_bridge_runtime(worker_threads: usize) -> io::Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(worker_threads)
+        .thread_name("truapi-ws-worker")
+        .enable_all()
+        .build()
+        .map_err(|err| io::Error::other(err.to_string()))
+}
+
 async fn accept_loop(
     listener: TcpListener,
     runtime_factory: Arc<dyn WsProductRuntimeFactory>,
@@ -257,7 +274,7 @@ async fn accept_loop(
                 let runtime_factory = runtime_factory.clone();
                 let logger = logger.clone();
                 let expected = expected_token.clone();
-                handles.push(tokio::task::spawn_local(async move {
+                handles.push(tokio::spawn(async move {
                     handle_connection(stream, peer, runtime_factory, expected, logger).await;
                 }));
             }
@@ -316,7 +333,7 @@ async fn handle_connection(
     let product_runtime = Arc::new(runtime_factory.product_runtime(frame_sink));
 
     let pump_logger = logger.clone();
-    let pump = tokio::task::spawn_local(async move {
+    let pump = tokio::spawn(async move {
         while let Some(bytes) = out_rx.recv().await {
             if let Err(err) = sink.send(WsMessage::Binary(bytes)).await {
                 pump_logger("truapi.ws_bridge.send_error", &err.to_string());
@@ -332,18 +349,17 @@ async fn handle_connection(
         let _ = sink.close().await;
     });
 
-    // Dispatch each inbound frame on its own local task so a slow request
-    // handler cannot stall the read loop and starve later frames on the same
-    // connection. Responses may interleave; the wire protocol matches them by
-    // request id, and `WsFrameSink::emit_frame` is safe to call from concurrent
-    // local tasks.
+    // Dispatch each inbound frame on its own `Send` task so a slow request
+    // handler cannot stall the read loop and independent frames can run on
+    // different executor workers. Responses may interleave; the wire protocol
+    // matches them by request id, and `WsFrameSink::emit_frame` is thread-safe.
     let mut in_flight: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     while let Some(frame) = source.next().await {
         match frame {
             Ok(WsMessage::Binary(bytes)) => {
                 in_flight.retain(|task| !task.is_finished());
                 let product_runtime = product_runtime.clone();
-                in_flight.push(tokio::task::spawn_local(async move {
+                in_flight.push(tokio::spawn(async move {
                     let _ = product_runtime.receive_frame(bytes.to_vec()).await;
                 }));
             }
@@ -475,6 +491,36 @@ mod tests {
         assert!(!path_token_matches(Some("/?token=abc"), "abc"));
         assert!(!path_token_matches(Some("/"), "abc"));
         assert!(!path_token_matches(None, "abc"));
+    }
+
+    #[test]
+    fn bridge_runtime_executes_send_tasks_on_multiple_workers() {
+        let runtime = build_ws_bridge_runtime(2).expect("multithreaded bridge runtime");
+        assert_eq!(runtime.metrics().num_workers(), 2);
+
+        // Each task blocks one runtime worker at the barrier. They can only
+        // both complete if the executor actually schedules them concurrently
+        // on distinct worker threads.
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let first = runtime.spawn({
+            let barrier = barrier.clone();
+            async move {
+                let worker = thread::current().id();
+                barrier.wait();
+                worker
+            }
+        });
+        let second = runtime.spawn(async move {
+            let worker = thread::current().id();
+            barrier.wait();
+            worker
+        });
+
+        let (first, second) = runtime.block_on(async { tokio::join!(first, second) });
+        assert_ne!(
+            first.expect("first dispatch task"),
+            second.expect("second dispatch task"),
+        );
     }
 
     /// Spin the bridge up on `127.0.0.1:0`, dial it with a real
