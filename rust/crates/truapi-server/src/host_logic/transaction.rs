@@ -14,14 +14,6 @@ use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
 /// Preimages longer than this are hashed before signing.
 const MAX_SIGNED_PREIMAGE_LEN: usize = 256;
 
-/// Signed extension contributing the `asset_id` extra after `tip`.
-const CHARGE_ASSET_TX_PAYMENT: &str = "ChargeAssetTxPayment";
-/// Signed extension contributing the `mode` extra and `metadata_hash` implicit.
-const CHECK_METADATA_HASH: &str = "CheckMetadataHash";
-
-/// Standard signed extensions with no extra or implicit bytes.
-const EMPTY_EXTENSIONS: &[&str] = &["CheckNonZeroSender", "CheckWeight"];
-
 /// Encode the standard signed extensions in the order declared by the target
 /// runtime. Unknown extensions are rejected because this wire payload has no
 /// field carrying their extra or implicit bytes.
@@ -33,14 +25,14 @@ pub(crate) fn extrinsic_payload_extensions(
         .iter()
         .map(|id| {
             let (extra, additional_signed) = match id.as_str() {
-                id if EMPTY_EXTENSIONS.contains(&id) => (Vec::new(), Vec::new()),
+                "CheckNonZeroSender" | "CheckWeight" => (Vec::new(), Vec::new()),
                 "CheckSpecVersion" => (Vec::new(), payload.spec_version.clone()),
                 "CheckTxVersion" => (Vec::new(), payload.transaction_version.clone()),
                 "CheckGenesis" => (Vec::new(), payload.genesis_hash.clone()),
                 "CheckMortality" => (payload.era.clone(), payload.block_hash.clone()),
                 "CheckNonce" => (payload.nonce.clone(), Vec::new()),
                 "ChargeTransactionPayment" => (payload.tip.clone(), Vec::new()),
-                CHARGE_ASSET_TX_PAYMENT => {
+                "ChargeAssetTxPayment" => {
                     let mut extra = payload.tip.clone();
                     match &payload.asset_id {
                         Some(asset_id) => extra.extend_from_slice(asset_id),
@@ -48,7 +40,7 @@ pub(crate) fn extrinsic_payload_extensions(
                     }
                     (extra, Vec::new())
                 }
-                CHECK_METADATA_HASH => {
+                "CheckMetadataHash" => {
                     let mode = payload.mode.unwrap_or(0);
                     let mode = u8::try_from(mode).map_err(|_| {
                         format!("CheckMetadataHash mode {mode} does not fit in a u8")
