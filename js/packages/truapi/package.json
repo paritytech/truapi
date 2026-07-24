@@ -35,6 +35,10 @@
       "types": "./dist/scale.d.ts",
       "import": "./dist/scale.js"
     },
+    "./debug": {
+      "types": "./dist/debug.d.ts",
+      "import": "./dist/debug.js"
+    },
     "./wire-table": {
       "types": "./dist/generated/wire-table.d.ts",
       "import": "./dist/generated/wire-table.js"

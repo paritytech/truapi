@@ -28,6 +28,56 @@ import * as W from "./generated/wire-table.js";
 export type { Subscription, TrUApiTransport };
 
 /**
+ * Direction of an observed wire frame relative to this transport.
+ */
+export type FrameDirection = "out" | "in";
+
+/**
+ * Role of an observed frame within the request/subscription lifecycle, derived
+ * from its wire discriminant against the method's frame ids.
+ */
+export type FrameRole =
+  | "request"
+  | "response"
+  | "start"
+  | "stop"
+  | "receive"
+  | "interrupt"
+  | "handshake"
+  | "unknown";
+
+/**
+ * A single wire frame surfaced to an {@link TransportObserver}. Carries the
+ * correlation `requestId`, the wire discriminant, a best-effort lifecycle
+ * `role`, and the encoded byte length — but never the decoded payload, so the
+ * observe surface is host-agnostic and leaks no application contents. This is
+ * the seam the host-side debugger (sdk-team #26) consumes: every dispatched
+ * frame is keyed on the same `requestId` the product-sdk spans correlate on.
+ */
+export interface ObservedFrame {
+  /** Whether the frame was sent by this transport (`out`) or received (`in`). */
+  direction: FrameDirection;
+  /** Correlation id shared by every frame of one request/subscription. */
+  requestId: string;
+  /** Wire-table numeric discriminant of the frame's payload. */
+  frameId: number;
+  /** Best-effort lifecycle role inferred from the frame id. */
+  role: FrameRole;
+  /** Encoded SCALE payload length in bytes (shape only, never contents). */
+  byteLength: number;
+  /** Epoch ms at which the frame crossed this transport. */
+  timestamp: number;
+}
+
+/**
+ * Emit-only observer of wire frames crossing the transport. Set via
+ * {@link CreateTransportOptions.observe}. Invoked for every outbound and
+ * inbound frame; a throwing observer is swallowed so it can never break message
+ * delivery. Zero-cost when unset.
+ */
+export type TransportObserver = (frame: ObservedFrame) => void;
+
+/**
  * Version overrides used when constructing a transport.
  */
 export interface CreateTransportOptions {
@@ -39,6 +89,15 @@ export interface CreateTransportOptions {
    * `TRUAPI_CODEC_VERSION` directly.
    */
   codecVersion?: number;
+
+  /**
+   * Optional emit-only observer of every wire frame crossing this transport,
+   * keyed on `requestId`. The host-agnostic observe surface for the debugger
+   * (sdk-team #26): logs/relays each dispatched frame so a single op can be
+   * followed across product → wire → host under one id. Default-off and
+   * zero-cost when unset; never receives decoded payloads.
+   */
+  observe?: TransportObserver;
 }
 
 /**
@@ -151,7 +210,38 @@ export function createTransport(
   options: CreateTransportOptions = {},
 ): TrUApiTransport {
   const codecVersion = options.codecVersion ?? TRUAPI_CODEC_VERSION;
+  const observe = options.observe;
   let idCounter = 0;
+
+  /**
+   * Surface a frame to the observer, if one is configured. Swallows observer
+   * errors so a faulty debugger can never break message delivery. The
+   * `requestId`/`role`/`frameId` are passed in by the call site; `byteLength`
+   * is read from the payload without decoding it.
+   */
+  function notifyObserve(
+    direction: FrameDirection,
+    requestId: string,
+    frameId: number,
+    role: FrameRole,
+    byteLength: number,
+  ): void {
+    if (!observe) {
+      return;
+    }
+    try {
+      observe({
+        direction,
+        requestId,
+        frameId,
+        role,
+        byteLength,
+        timestamp: Date.now(),
+      });
+    } catch {
+      // An observer must never break the transport's message loop.
+    }
+  }
   let closedError: Error | null = null;
   const pending = new Map<
     string,
@@ -217,6 +307,17 @@ export function createTransport(
     }
     const { requestId, payload } = decoded.value;
 
+    // Surface every inbound frame to the observer before dispatch. Role is
+    // inferred from the matching pending request / live subscription, falling
+    // back to a handshake / unknown classification.
+    notifyObserve(
+      "in",
+      requestId,
+      payload.id,
+      inboundRole(requestId, payload.id),
+      payload.value.length,
+    );
+
     if (payload.id === W.SYSTEM_HANDSHAKE.request) {
       // Auto-respond to inbound `host_handshake_request` frames.
       //
@@ -244,13 +345,16 @@ export function createTransport(
         return;
       }
       try {
-        send({
-          requestId,
-          payload: {
-            id: W.SYSTEM_HANDSHAKE.response,
-            value: response,
+        send(
+          {
+            requestId,
+            payload: {
+              id: W.SYSTEM_HANDSHAKE.response,
+              value: response,
+            },
           },
-        });
+          "handshake",
+        );
       } catch {
         // provider already closed
       }
@@ -292,12 +396,46 @@ export function createTransport(
   });
 
   /**
-   * Encode and post a protocol message through the underlying provider.
+   * Infer the lifecycle role of an inbound frame from the request id it
+   * correlates to and its wire discriminant. Used only for the observe surface;
+   * dispatch itself still matches on the concrete frame ids below.
    */
-  function send(message: ProtocolMessage) {
+  function inboundRole(requestId: string, frameId: number): FrameRole {
+    if (
+      frameId === W.SYSTEM_HANDSHAKE.request ||
+      frameId === W.SYSTEM_HANDSHAKE.response
+    ) {
+      return "handshake";
+    }
+    const p = pending.get(requestId);
+    if (p) {
+      return frameId === p.ids.response ? "response" : "unknown";
+    }
+    const sub = subscriptions.get(requestId);
+    if (sub) {
+      if (frameId === sub.ids.receive) return "receive";
+      if (frameId === sub.ids.interrupt) return "interrupt";
+    }
+    return "unknown";
+  }
+
+  /**
+   * Encode and post a protocol message through the underlying provider.
+   * `role` is the outbound frame's lifecycle role, surfaced to the observer.
+   */
+  function send(message: ProtocolMessage, role: FrameRole = "unknown") {
     if (closedError) {
       throw closedError;
     }
+
+    // Keep the observed outbound role consistent with `inboundRole`: any frame
+    // on the handshake wire id is a "handshake", whether it came from the
+    // internal negotiation ping or the `system.handshake()` request method.
+    const observedRole: FrameRole =
+      message.payload.id === W.SYSTEM_HANDSHAKE.request ||
+      message.payload.id === W.SYSTEM_HANDSHAKE.response
+        ? "handshake"
+        : role;
 
     const encoded = encodeWireMessage(message);
     if (encoded.isErr()) {
@@ -305,6 +443,19 @@ export function createTransport(
       throw encoded.error;
     }
 
+    // Observe BEFORE handing the frame to the provider, so traces stay
+    // causally ordered even when the provider delivers synchronously (an
+    // in-memory test link): the outbound frame must precede any inbound
+    // frames the host emits while processing it. A frame that then fails in
+    // `postMessage` still belongs in the trace — it was attempted, and the
+    // failure closes the transport right below.
+    notifyObserve(
+      "out",
+      message.requestId,
+      message.payload.id,
+      observedRole,
+      message.payload.value.length,
+    );
     try {
       provider.postMessage(encoded.value);
     } catch (error) {
@@ -337,13 +488,16 @@ export function createTransport(
           reject,
         });
         try {
-          send({
-            requestId,
-            payload: {
-              id: ids.request,
-              value: payload,
+          send(
+            {
+              requestId,
+              payload: {
+                id: ids.request,
+                value: payload,
+              },
             },
-          });
+            "request",
+          );
         } catch (error) {
           pending.delete(requestId);
           reject(toError(error));
@@ -378,13 +532,16 @@ export function createTransport(
         onClose,
       });
       try {
-        send({
-          requestId,
-          payload: {
-            id: ids.start,
-            value: payload,
+        send(
+          {
+            requestId,
+            payload: {
+              id: ids.start,
+              value: payload,
+            },
           },
-        });
+          "start",
+        );
       } catch (error) {
         subscriptions.delete(requestId);
         onClose?.(toError(error));
@@ -398,13 +555,16 @@ export function createTransport(
           if (!subscriptions.has(requestId)) return;
           subscriptions.delete(requestId);
           try {
-            send({
-              requestId,
-              payload: {
-                id: ids.stop,
-                value: _void.enc(undefined),
+            send(
+              {
+                requestId,
+                payload: {
+                  id: ids.stop,
+                  value: _void.enc(undefined),
+                },
               },
-            });
+              "stop",
+            );
           } catch {
             // provider already closed
           }
