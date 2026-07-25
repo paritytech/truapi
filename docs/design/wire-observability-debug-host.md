@@ -23,7 +23,10 @@ integration surface that makes this usable by a real product with no application
 `@parity/truapi/sandbox` bootstrap installs the wire debugger when the embedding URL carries
 `?debug=wire`, and the TrUAPI playground renders a live per-`requestId` trace panel off it.
 Everything is in `@parity/truapi` and carries frame shape and timing only - never decoded payloads
-or key material - so the recorder is safe to leave on anywhere, including production.
+or key material - so the recorder is safe to leave on anywhere, including production. On top of that
+payload-blind default, a dev-gated `?debug=wire-decode` mode decodes frames to typed request/response
+values through a codegen-emitted `WIRE_DECODE_TABLE`; it is off by default and never runs in the
+payload-blind path.
 
 ## Motivation
 
@@ -103,6 +106,29 @@ Enforced properties (all in `client.ts`):
   transport closes, so a decode failure is recorded rather than the trace going dark. Malformed
   payload *values* are not seen here (the seam never decodes values); those errors reach the
   caller.
+
+### The decoded view
+
+The payload-blind seam is the safe foundation; the decoded view is what lets a developer see the
+typed request and response values, not just frame shapes. It is a second, dev-gated layer built on
+top of the seam, and the core never decodes - decoding is a consumer concern.
+
+- **`exposeFrameBytes`.** A dev-gated `createTransport` option that attaches each frame's raw SCALE
+  `bytes` to its `ObservedFrame`. Without it, `ObservedFrame` stays shape-and-timing only; the byte
+  attachment exists solely so a consumer can decode.
+- **`WIRE_DECODE_TABLE`.** A codegen-emitted table exported at `@parity/truapi/wire-decode`, a
+  `Record<number, (payload: Uint8Array) => unknown>` with one entry per request/response frame id
+  plus subscription start/receive, produced by `truapi-codegen`. Decoding is therefore always
+  against the generated client - the same source of truth as the wire codecs - so a decoded value
+  cannot drift from the wire schema.
+- **The `?debug=wire-decode` flag.** It enables `exposeFrameBytes` and turns on the consumer-side
+  decode. A dev consumer - the playground trace panel - looks each frame's id up in
+  `WIRE_DECODE_TABLE`, decodes the attached bytes, and renders the decoded request/response value
+  inline under the payload-blind row.
+
+Off by default: with no `?debug=wire-decode`, `exposeFrameBytes` is never set, no bytes are
+attached, and `WIRE_DECODE_TABLE` is not imported, so the decode path is dead-code-eliminable in a
+production build.
 
 ### The wire debugger
 
@@ -220,7 +246,10 @@ builds the transport for browser-embedded products (including the TrUAPI playgro
 embedding URL: with `?debug=wire`, `getClientSync()` installs a `createWireDebugger` on the
 transport's `observe` hook and exposes it via `getWireDebugger()` (and
 `window.__truapiWireDebugger__`). The playground renders a live per-`requestId` trace panel off
-that. So enabling the debugger for a sandbox-based product is a **URL flag**, not a code change.
+that. Adding `?debug=wire-decode` does everything `?debug=wire` does and also sets
+`exposeFrameBytes`, so the playground panel decodes each frame through `WIRE_DECODE_TABLE` and
+renders the typed request/response value inline. So enabling the debugger for a sandbox-based
+product is a **URL flag**, not a code change.
 
 ### Testing and verification
 
@@ -229,9 +258,12 @@ across the full wire-table, payload-blindness key-set assertions, observer/sink/
 isolation, LRU eviction at the cap, the debug host's mock/forward/unhandled routing and marking,
 entry-precedence over the forward pipe, the dispose-time upstream stop (with a cross-service drift
 guard), and the start-pending-vs-stop race; the relay's envelope round-trip, router routing +
-join-order buffering + dev gate, and two end-to-end flows over a loopback relay; and the sandbox
-`?debug=wire` opt-in. The suite is green (199 pass); `tsc -b` is clean, and the TrUAPI playground
-(which mounts the trace panel) builds and lints clean.
+join-order buffering + dev gate, and two end-to-end flows over a loopback relay; the sandbox
+`?debug=wire` opt-in; and a codegen test asserting `WIRE_DECODE_TABLE` is emitted with one entry
+per request/response frame id plus subscription start/receive. A Playwright e2e asserts both the
+payload-blind panel under `?debug=wire` and the decoded typed-value view under `?debug=wire-decode`.
+The suite is green (203 pass); `tsc -b` is clean, and the TrUAPI playground (which mounts the trace
+panel) builds and lints clean.
 
 Validated end to end against the genuine Rust core run headless as WASM: a real `localStorage.read`
 round trip observed under one `requestId` and forwarded verbatim through the debug host (the host
@@ -244,9 +276,17 @@ host.
 
 ### Privacy
 
-Load-bearing and by design: `ObservedFrame` carries no decoded payload and no key material, so the
-seam is safe to run in production. No component here introduces decoded payloads - the relay
-carries frames as opaque bytes; mocked responses are always marked (`tier: "mock"`).
+Load-bearing and by design: the **default** observe surface carries no decoded payload and no key
+material, so the seam is safe to run in production. The relay carries frames as opaque bytes, and
+mocked responses are always marked (`tier: "mock"`).
+
+Decoded payloads exist **only** under the dev-gated `?debug=wire-decode` mode: `exposeFrameBytes`
+attaches raw bytes and the consumer decodes them through `WIRE_DECODE_TABLE`. That mode is off by
+default and dead-code-eliminable in a production build. This dev-gating is a hard requirement, not a
+convenience: the raw wire can carry key material - the truapi#264 review found secret key material
+reachable on the SSO response path - so the dev gate is the structural defense that keeps decoded
+payloads out of production. The decoded mode is a developer tool and is not claimed to be safe to
+run in production.
 
 ### Compatibility and performance
 
@@ -261,9 +301,10 @@ session length.
 
 No interactive UI beyond the playground trace panel (a host-panel bridge and a handler editor are
 later); no host-side observe hook; no generated method-name constant (the runtime
-`createMethodNameMap` is the source today); no decoded payloads anywhere. Relay session pairing
-(minting a short `sessionId`) and a dev-preview-server mount for the reference relay are also
-deferred.
+`createMethodNameMap` is the source today). Decoded payloads are in scope, but only as the dev-gated
+`?debug=wire-decode` mode - the default observe surface stays payload-blind and the core never
+decodes. Relay session pairing (minting a short `sessionId`) and a dev-preview-server mount for the
+reference relay are also deferred.
 
 ## Drawbacks
 
@@ -299,3 +340,6 @@ deferred.
   and the TrUAPI playground trace panel.
 - Peers in the "headless / mock host" space: the mock host (truapi#294) and the headless host
   (truapi#264).
+- Requirement source: the debugger tracker (sdk-team#26), which asks to see what a product sends
+  and what the host returns, "decoded to typed values" - the requirement the dev-gated
+  `?debug=wire-decode` view fulfills on top of the payload-blind seam.
