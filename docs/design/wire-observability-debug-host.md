@@ -9,377 +9,181 @@ owner: "@decrypto21"
 | ------------------ | ------------------------------------------------------------------------------- |
 | **Start Date**     | 2026-07-25 |
 | **Authors**        | Nidish Ramakrishnan |
-| **Implementation** | truapi#295 |
-| **Description**    | A payload-blind observe seam on the TrUAPI transport, a wire debugger, a mock/forward debug host, and a WebSocket relay - all correlated by the wire `requestId`. |
+| **Implementation** | truapi#295 (Rust tap in `truapi-server`) |
+| **Description**    | A payload-blind tap in the Rust host that streams every product↔host frame, under one correlation id, to a debugger app the host dials out to. |
 
-This is a **specification of the contract**, not a walkthrough of the implementation: it fixes the
-interfaces, the observable behavior, and the invariants each layer must uphold. Implementation
-detail, tests, and file layout live in truapi#295; where the two disagree, this document is the
-intent and the code is the bug.
+This is a **specification of the contract**, not a walkthrough of the implementation:
+it fixes where the tap lives, the topology, the event shape, and the invariants each
+layer upholds. Where this doc and the code disagree, this doc is the intent.
 
-## Requirements
+## Where the tap lives
 
-Every TrUAPI operation crosses the wire as an opaque frame `{ requestId, payload: { id, value } }`.
-When one misbehaves - a wrong response, a subscription that never delivers, a silently dropped
-frame - the question is *"what did this put on the wire, and where did it stall?"* Answering it
-today means hand-decoding SCALE or forking the transport to add logging. This design must:
+The tap is in the **Rust host (`truapi-server`)**, behind a sink trait — **not** in the
+TypeScript transport and **not** turned on from the product side. `truapi-server` has
+exactly two frame choke points, and every host (web via `wasm.rs`, native via a
+`ws_bridge` `FrameSink`) funnels through them:
 
-1. **Observe every frame without decoding it.** Shape and timing are visible by default; payloads
-   and key material are not, so the same recorder is safe to run in production.
-2. **Use one correlation id.** An operation is followable end to end - wire trace and host dispatch
-   under a single id - with no second correlation scheme introduced.
-3. **Be host-agnostic.** The seam sits on the protocol's own transport, not on any host's
-   internals, so it works against any host that speaks TrUAPI.
-4. **Be active, not only passive.** A developer can answer a frame with a scripted response (to
-   develop against behavior that doesn't exist yet, or reproduce an error path) or forward it
-   verbatim to a real host - without modifying that host.
-
-## Model
-
-**One payload-blind seam emits an `ObservedFrame` per wire frame, keyed on the transport-minted
-`requestId`; a wire debugger groups those into traces; a debug host answers or forwards frames on
-the same id.** The transport mints `requestId` (`p:1`, `p:2`, …) when a product starts an operation
-and stamps it on every frame; the same id appears on the wire envelope and in the host's
-`CallContext.requestId`. No second correlation id exists.
-
-```
- product code        transport            wire debugger        host dispatch
-      │  getAccount()    │                       │                    │
-      │────────────────▶│ mint requestId = p:1   │                    │
-      │                  │─ observe(out, p:1) ───▶│ push → WireTrace   │
-      │                  │─ frame{ p:1 } ───────────────────────────▶  │ ctx.requestId=p:1
-      │                  │◀ frame{ p:1 } ─────────────────────────────│
-      │                  │─ observe(in, p:1) ────▶│ push → WireTrace   │
-      │◀ Ok(response) ──│                        │                    │
-```
-
-## Interface
-
-The signatures below are the normative surface, all in `@parity/truapi`.
-
-### Transport observe seam
-
-```ts
-function createTransport(provider: WireProvider, options?: CreateTransportOptions): TrUApiTransport;
-interface CreateTransportOptions {
-  codecVersion?: number;
-  observe?: TransportObserver;   // emit-only; the whole seam
-  exposeFrameBytes?: boolean;    // dev-gated; see "Decoded view"
-}
-type TransportObserver = (frame: ObservedFrame) => void;
-
-interface ObservedFrame {
-  direction: "out" | "in";   // out = sent by this transport, in = received
-  requestId: string;         // the one correlation id, e.g. "p:1"
-  frameId: number;           // wire-table discriminant, e.g. 22
-  role: FrameRole;           // request|response|start|receive|interrupt|stop|handshake|malformed|unknown
-  byteLength: number;        // encoded SCALE length - shape only
-  timestamp: number;         // epoch ms
-  bytes?: Uint8Array;        // present only when exposeFrameBytes is set
-}
-```
-
-Guarantees (enforced in `client.ts`):
-
-- **Payload-blind by default.** `ObservedFrame` carries shape and timing only; `byteLength` is read
-  off the encoded bytes without decoding them. The key-set is frozen (additive evolution only).
-- **Causally ordered.** The outbound frame is observed *before* `provider.postMessage`, so a
-  request precedes its responses even over a synchronous provider.
-- **Failure-isolated.** A throwing observer is swallowed; it can never break the message loop.
-- **Zero-cost when unset.** The notify path short-circuits before allocating anything.
-- **Corrupt inbound frames are recorded.** An *inbound* frame that fails envelope decode surfaces as
-  a `malformed` observed frame (sentinel `requestId`/`frameId`; under `exposeFrameBytes` it also
-  carries the raw envelope `bytes`, which is what you want when diagnosing the corruption) before the
-  transport closes, so the trace never goes dark. Malformed payload *values* are not seen here - the
-  seam never decodes values. This covers the inbound path only: an *outbound* frame that fails to
-  encode closes the transport before the observe hook runs, so it is not recorded.
-
-### Wire debugger
-
-```ts
-function createWireDebugger(options?: WireDebuggerOptions): WireDebugger;
-interface WireDebuggerOptions {
-  sink?: (line: string, frame: ObservedFrame) => void; // formatted line + its frame; defaults to console.debug
-  forward?: TransportObserver;        // a second observer (e.g. onward to a panel)
-  maxTraces?: number;                 // LRU cap on trace count, default 256
-  maxFramesPerTrace?: number;         // ring-buffer cap on frames within one trace, default 1024
-  methodNames?: ReadonlyMap<number, WireMethodInfo>;
-}
-interface WireDebugger {
-  readonly observe: TransportObserver; // hand to createTransport({ observe })
-  traces(): WireTrace[];
-  trace(requestId: string): WireTrace | undefined;
-  clear(): void;
-}
-interface WireTrace { requestId: string; frames: ObservedFrame[]; startedAt: number; lastAt: number; }
-
-function createMethodNameMap(table: Record<string, unknown>, services: readonly string[]): ReadonlyMap<number, WireMethodInfo>;
-interface WireMethodInfo { method: string; kind: WireFrameKind; }
-```
-
-Behavior:
-
-- Frames group into a `WireTrace` by `requestId`. Traces are held in an insertion-ordered map,
-  **LRU-capped at `maxTraces`**; each trace's `frames` are **ring-buffered at `maxFramesPerTrace`**,
-  so a long-lived subscription (whose frames all share one `requestId` that never LRU-evicts) cannot
-  grow without bound. Memory is therefore bounded on both axes regardless of session length.
-- `sink` and `forward` are each isolated in `try/catch`.
-- `createMethodNameMap` inverts the generated wire-table into `frameId → { method, kind }`,
-  resolving the longest service prefix first (`LOCAL_STORAGE_READ → localStorage.read`, not
-  `local.storageRead`). It is the runtime source of readable names; a generated constant is a
-  non-goal (below). A trace reads:
-
-  ```text
-  [wire p:1] → request  account.getAccount (id=22, 14B)
-  [wire p:1] ← response account.getAccount (id=23, 35B)
-  ```
-
-### Decoded view (dev-gated)
-
-The payload-blind seam is the safe foundation; the decoded view lets a developer see typed
-request/response values. It is a second layer on top of the seam, and the core never decodes -
-decoding is a consumer concern.
-
-- **`exposeFrameBytes`** attaches each frame's raw SCALE `bytes` to its `ObservedFrame`. Without it,
-  frames stay shape-and-timing only.
-- **`WIRE_DECODE_TABLE`** (`@parity/truapi/wire-decode`) is a codegen-emitted
-  `Record<number, (payload: Uint8Array) => unknown>` with one entry per request/response id plus
-  subscription start/receive. Decoding is always against the generated client - the same source of
-  truth as the wire codecs - so a decoded value cannot drift from the wire schema.
-- **`?debug=wire:decode`** (see [the grammar](#the-debug-grammar)) requests the decoded view, but is
-  **build-gated**: it enables `exposeFrameBytes` only when the bundle was built with
-  `TRUAPI_WIRE_DECODE=1` (`NEXT_PUBLIC_TRUAPI_WIRE_DECODE=1` for the Next-built playground, so webpack
-  inlines it), mirroring the relay's `TRUAPI_RELAY` gate. Without the build flag it degrades to a
-  plain payload-blind `?debug=wire` trace. The production playground deploy leaves the gate unset.
-
-**Bundle isolation.** The decode table is **not** statically imported. The playground trace panel
-`import()`s `@parity/truapi/wire-decode` lazily, and only when a frame actually carries `bytes`. Under
-`next dev` this code-splits into a separate chunk; the production static export forces a single chunk
-(`splitChunks:false` + `maxChunks:1`), so there the module lands in the main bundle but its factory
-never runs in payload-blind mode - the gate keeps it out of the *execution path*, not the bundle. The
-table is non-sensitive generated codecs, and byte exposure is separately gated, so this is a
-bundle-hygiene note, not a security boundary.
-
-### Debug host
-
-A `WireProvider`-shaped man-in-the-middle: it answers frames it is scripted to claim and forwards
-the rest verbatim to a real host.
-
-```ts
-function createWireDebugHost(options: CreateWireDebugHostOptions): WireDebugHost;
-interface CreateWireDebugHostOptions {
-  provider: WireProvider;              // the product side
-  entries?: readonly WireDebugHostEntry[]; // mock entries, each claiming its wire ids
-  forward?: WireProvider;              // optional pipe to a real host
-  observe?: TransportObserver;         // payload-blind, host vantage
-  onDecision?: (d: WireDebugHostDecision) => void;
-}
-interface WireDebugHost { dispose(): void; }
-
-interface DebugRequestEntry {
-  readonly kind: "request";
-  readonly ids: RequestFrameIds;                          // { request, response }
-  handle(ctx: DebugCallContext, payload: Uint8Array): Uint8Array | Promise<Uint8Array>;
-}
-interface DebugSubscriptionEntry {
-  readonly kind: "subscription";
-  readonly ids: SubscriptionFrameIds;                     // { start, receive, interrupt, stop }
-  start(ctx: DebugCallContext, payload: Uint8Array, port: DebugSubscriptionPort): DebugSubscriptionCleanup | Promise<DebugSubscriptionCleanup>;
-}
-type WireDebugHostEntry = DebugRequestEntry | DebugSubscriptionEntry;
-interface WireDebugHostDecision { tier: "mock" | "forward" | "unhandled"; method?: string; frame: ObservedFrame; }
-```
-
-Behavior:
-
-- **Entries are byte-level, keyed by wire id** - a flat list, not a nested handler tree, and there
-  is no internal loopback dispatcher. `handle` takes and returns raw SCALE bytes. "A mock cannot
-  emit a malformed frame" holds by the *convention* that the caller encodes answers with the
-  generated codecs (`encodeWireMessage`/`decodeWireMessage`), not by the type of `handle`. Two
-  entries claiming the same inbound (`request`/`start`) wire id is a construction error:
-  `createWireDebugHost` throws rather than silently letting one shadow the other.
-- **Routing.** A claiming request/subscription entry answers (`tier: "mock"`); a claimed `stop` is
-  terminal. Otherwise, with a `forward` pipe set the frame travels it **byte-verbatim, `requestId`
-  untouched** (`tier: "forward"`) and the answer relays back; with no forward pipe it surfaces
-  loudly as `tier: "unhandled"` (via `onDecision`, or a `console.warn` when no listener is
-  set - so the stall is loud rather than silent; the caller still hangs, as no answer is sent).
-- **Every frame is marked** via `onDecision`, so a scripted answer is never silently mistaken for
-  real host behavior.
-- **Errors are loud, never a silent wrong answer.** A mock `handle`/`start` that throws, or a
-  response that fails to encode, emits a `console.warn` and sends nothing - the caller hangs loudly,
-  the same policy as `unhandled`. An undecodable *inbound* envelope is forwarded byte-transparent
-  when a `forward` pipe is set, or `console.warn`ed when headless - the host-side analogue of the
-  transport's `malformed` recording. (Repeated unhandled frames for one wire id warn once.)
-- **Teardown.** `dispose()` sends `stop` upstream for any live forwarded subscription (so the real
-  host stops streaming into a detached pipe) and runs cleanup for every live *mock* subscription, so
-  a torn-down session leaks nothing on either side.
-
-This is an **observability seam, not a test host.** With no forward pipe it answers scripted bytes
-with no core behind it (no dispatch, permissions, or storage) - a debugging convenience, not a
-fidelity tier. The deterministic testing tier is the mock host (truapi#294); the canonical headless
-host is truapi#264. The debug host sits *in front of* those and forwards *to* them.
-
-### Relay
-
-```ts
-function createRelayProvider(opts: { url: string; sessionId: string; productId: string; role: "product" | "host" | "debugger"; optIn?: boolean }): WireProvider;
-interface RelayEnvelope { v: 1; role: "product" | "host" | "debugger"; sessionId: string; productId: string; frame: Uint8Array; }
-class RelayRouter { join(sessionId, peer): void; leave(sessionId, peer): void; handleEnvelope(from, bytes): void; }
-function connectRelaySocket(router: RelayRouter, socket: { send(bytes: Uint8Array): void }): { message(bytes: Uint8Array): void; close(): void };
-```
-
-`createRelayProvider` carries frames over a WebSocket in a routing envelope; the relay routes by
-`(sessionId, role)` and never parses a frame. Because it is a plain `WireProvider`, pointing a
-product at a debug host in another process is a **provider swap** - transport and product code
-untouched, and the same provider drops into a debug host's `provider`/`forward` slots. It is
-**dev-gated**: `createRelayProvider` throws unless built with `TRUAPI_RELAY=1` or passed
-`{ optIn: true }` (no silent fallback; a session that cannot reach its relay fails loudly).
-`RelayRouter` is the transport-agnostic core (join-order-independent: frames arriving before the
-counterpart joins are buffered - capped at 1024 per session, excess dropped with a one-time warning -
-and flushed on join); `createLoopbackSocketFactory` runs a relay in-process, with no network hop, for
-tests and single-tab use.
-
-Only `v: 1` envelopes are accepted; any other version fails to decode and the frame is dropped (the
-envelope is versioned so the wire can evolve without silently mis-routing an unknown shape).
-`connectRelaySocket(router, socket)` is the shipped, runtime-agnostic carrier core: a relay server
-is a WS loop that calls `.message(bytes)` per frame and `.close()` on disconnect (which calls
-`RelayRouter.leave()`, dropping the peer and deleting the session + its pending buffer once empty),
-so the same routing runs under `Bun.serve`, `ws`, a dev preview server, or a `truapi-host`
-subcommand; `createRelayProvider().dispose()` closes the client socket and clears subscribers.
-
-## Enablement
-
-Enablement is a **host-side dev capability, not a URL** - the seam and the relay are transport-level
-and URL-independent, so the debugger turns on the same way whether the product runs in a browser
-iframe, a desktop webview, or a mobile webview (sdk-team#26). No product changes its call sites; the
-`@parity/truapi/sandbox` bootstrap reads the config once at module load (snapshotted, so a product
-rewriting its own URL can't drop it before the first `getClientSync()`) and wires the transport
-accordingly.
-
-### Two enablement sources, one config
-
-The bootstrap merges two sources so no host shape is left out (`resolveDebugConfig`):
-
-| Host | How it's turned on |
+| Direction | Choke point |
 |---|---|
-| **Browser / iframe** (e.g. the playground) | the `?debug=` query on the embedding URL - dotli forwards unknown query params into the product iframe |
-| **Native / webview** (no address bar) | the host's dev build injects `window.__truapiDebug__` before the product boots - the same host-injection path already used for `window.__HOST_API_PORT__` |
+| inbound (product → core) | `ProductRuntime::receive_frame()` — `host_core.rs` |
+| outbound (core → product) | `FrameSink::emit_frame()` / `SinkTransport::send()` — `host_core.rs` |
 
-```ts
-// native host, dev build only - a production host must not set this
-window.__truapiDebug__ = {
-  debug: "wire:decode",                                            // same grammar as ?debug=
-  relay: { url: "ws://127.0.0.1:5199/relay", sessionId: "abc" },   // optional - see "Routing at a relay"
-};
+One tap implementation covers both platforms, and **nothing in `@parity/truapi` changes**
+— the product is genuinely untouched. That the product package does not change at all is the
+test for the tap being in the right place: a seam in the product transport would fail it.
+
+## Topology: the host dials the debugger
+
+The **debugger app is a WS server** on the dev machine; **every host dials outward** to it.
+This is forced, not a preference — only the inside can initiate a connection:
+
+- native: `ws_bridge` binds `127.0.0.1` on the device; a debugger on a dev machine cannot
+  dial into it (the iOS Simulator "works" only because it shares the Mac's network stack —
+  an accident of the simulator, not a design);
+- web: nothing outside the browser can dial into a Worker.
+
+```
+ WEB                                      NATIVE / DESKTOP
+ ┌─ browser ──────────────────┐           ┌─ device ───────────────────┐
+ │  product (iframe)          │           │  product (webview)         │
+ │      │ MessagePort         │           │      │ ws loopback         │
+ │      ▼                     │           │      ▼                     │
+ │  host worker ── tap        │           │  ws_bridge ── tap          │
+ │      │        rust wasm    │           │      │       rust core     │
+ └──────┼─────────────────────┘           └──────┼─────────────────────┘
+        │ ws, dialed outward                     │ ws, dialed outward
+        └──────────────┬─────────────────────────┘
+                       ▼
+           ┌──────────────────────┐
+           │    debugger app      │   ws server on the dev machine
+           └──────────────────────┘
 ```
 
-### The `?debug=` grammar
+There is **no relay service** — the debugger app is the server, so the envelope carries no
+routing metadata (no session/role/product fields, no join-order buffering). It is just:
 
-This is the config value shared by both sources above (the URL query and the injected global's
-`debug` field):
-
-```text
-wire            payload-blind observe seam + wire debugger        (safe anywhere)
-wire:decode     + typed-value decode of each frame                (build-gated)
-<channel>[:<modifier>…][,<channel>…]                               (extensible, composable)
+```
+ host → debugger    { channelId, dir: "out" | "in", frame: bytes }
 ```
 
-`wire` installs `createWireDebugger` on the transport's `observe` hook (exposed via
-`getWireDebugger()` / `window.__truapiWireDebugger__`); `wire:decode` additionally sets
-`exposeFrameBytes` **iff the `TRUAPI_WIRE_DECODE` build gate is on**, else it degrades to a
-payload-blind trace. Unknown channels/modifiers are ignored (forward-compatible), and `wire-decode`
-is a legacy alias for `wire:decode`.
+### One call, end to end
 
-### Routing at a relay (the host-agnostic path)
+```
+ product                host edge               rust core           debugger app
+(iframe / webview)        (tap)                                       (remote)
+    │  getAccount()         │                       │                     │
+    ├─ frame{ p:1, id=22 } ─▶                       │                     │
+    │                       ├┈┈ { dir:out, frame } ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈▶│  log ▲ out p:1
+    │                       ├ delivered immediately ▶  ctx.requestId="p:1" │
+    │                       ◀─ frame{ p:1, id=23 } ─┤                     │
+    ◀ delivered immediately ┤                       │                     │
+    │  Ok(response)         ├┈┈ { dir:in, frame } ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈▶│  log ▼ in  p:1
+```
 
-This is sdk-team#26's core mechanism and the answer for native hosts. When the injected config
-carries a `relay` endpoint - and the relay build gate (`TRUAPI_RELAY=1` /
-`NEXT_PUBLIC_TRUAPI_RELAY=1`) is on - the bootstrap points the product's transport at
-`createRelayProvider(...)` instead of the host channel. The product's frames then flow to a debugger
-process (a standalone app, a CLI, or a panel) over the relay, which forwards to the real host or
-mocks - all without an address bar and without touching the product. This is the **C8 "debuggable
-host" contract**: a host is debuggable iff it exposes the observe hook and can point its product's
-transport at a relay provider.
+`emit` is fire-and-forget in both legs. **Outbound** the tap delivers to the product
+first, then emits; **inbound** it emits before dispatch, so an undecodable frame is still
+observed. The order differs; the off-the-critical-path guarantee does not (see Invariants).
 
-**Scope, precisely:** every TrUAPI-side piece the native path needs is shipped here - the product
-hook (`sandbox` reads `window.__truapiDebug__`), the transport-at-relay swap, the reusable relay
-carrier (`connectRelaySocket`), and the debug host. So a native host's integration is a config swap,
-not a fork: its dev build sets `window.__truapiDebug__` (a one-liner, exactly like the
-`window.__HOST_API_PORT__` it already injects) and stands up a relay with `connectRelaySocket` in
-whatever WS runtime it runs. That last step is the native app's own code, in its own repo - the only
-piece not in this PR, because it is not TrUAPI's to write, not because it is unbuilt.
+## Invariants
+
+1. **In the path, not in the critical path.** The tap carries every frame, so it sees them
+   all, yet a slow, absent, or crashed debugger can never stall a session — only the trace is
+   lost. The ordering is **asymmetric by design**: outbound (core → product) the tap forwards
+   to the product first, then emits; inbound (product → core) it emits first, before
+   decode/dispatch, so an undecodable frame is still observed. The guarantee holds either way
+   because of invariant 2, not because of a single fixed ordering.
+2. **Emit, never wait.** `emit` is fire-and-forget: no reply is read from the debugger socket,
+   and it must never block or fail the frame path. That is what keeps the tap off the critical
+   path wherever in each leg it fires.
+
+**The second invariant is also the extension point.** Mocking/mutation later needs no
+topology or envelope change — the tap starts *reading a reply* on the frames it cares about:
+deliver unchanged is today's behaviour, deliver modified is mutation, respond is a mock.
+This is why the one-way version ships first.
+
+## Interface (`truapi-server`)
+
+The tap is a **sink trait**, not a hardcoded socket — both to keep the WS transport out of
+the core, and because wire frames aren't the only thing worth observing (host-internal
+events like SSO have no frame to hang off). The enum leaves room for them.
+
+```rust
+/// Dev-only sink for host debug events. Unset ⇒ the tap is inert.
+pub trait DebugSink: Send + Sync {
+    /// Fire-and-forget: must not block the frame path or fail the operation.
+    fn emit(&self, event: DebugEvent);
+}
+
+pub struct ChannelId(pub String);
+
+pub enum FrameDirection { In, Out }
+
+#[non_exhaustive] // room for non-frame events (e.g. SSO); adding one is not breaking
+pub enum DebugEvent {
+    /// A SCALE wire frame crossing a product channel.
+    Frame { channel_id: ChannelId, dir: FrameDirection, bytes: Vec<u8> },
+}
+```
+
+- Installed per product channel via `ProductRuntime::set_debug_sink(channel_id, sink)`;
+  `None` by default, so production pays nothing.
+- The concrete sink (the outward WS dial) is provided by the **host adapter**, not the core:
+  web bridges `emit` to a JS `WebSocket`, native to a `ws_bridge` `URLSession`/OkHttp socket.
+- `bytes` are the untouched `ProtocolMessage`; **the debugger app decodes, the core never does.**
+
+## Configuration and transport
+
+- The debugger **URL is configurable**, not loopback-derived: with the app on a device and
+  the debugger on a Mac, `127.0.0.1` is wrong and the link is LAN.
+- The LAN hop is why **`wss://`** is right: it keeps iOS `Info.plist` `NSAppTransportSecurity`
+  empty (TLS is already required and `wss` satisfies it, no exception needed), and the trace
+  doesn't cross the office network in the clear.
+- The cost moves to **certificates**: iOS still evaluates trust, so a self-signed debugger cert
+  is rejected until its CA is installed and enabled under **Settings → General → About →
+  Certificate Trust Settings**. This is a named setup step — "use wss" is not free.
 
 ## Privacy and security
 
-- **Payload-blind default is the boundary.** The default surface carries no decoded payload and no
-  key material, so it is safe in production. The relay carries frames as opaque bytes; mocked
-  responses are always marked `tier: "mock"`.
-- **Byte exposure is build-gated, deliberately.** A URL cannot turn on `exposeFrameBytes` by itself -
-  which matters because the playground is a deployed site and dotli forwards unknown query params
-  through to the product iframe, so the URL is attacker-influenceable. The raw wire can carry key
-  material (the truapi#264 review found secret key material reachable on the SSO response path), so
-  the build gate is the structural defense that keeps decoded payloads out of production. The
-  decoded mode is a developer tool and is not claimed to be production-safe.
-- **Residual metadata exposure (accepted).** `?debug=wire` publishes the debugger on
-  `window.__truapiWireDebugger__`, so any script already on the page can read the traces - but they
-  are shape-and-timing only, the same metadata already in devtools' network view, so this is
-  defense-in-depth against a third-party script, not a payload leak. And frame shape plus timing is
-  what traffic analysis works from: "safe in production" means it leaks no application *content*, not
-  that the metadata is zero-knowledge.
+- Frames stream as **opaque bytes**; the core never decodes them, so nothing at the tap
+  reads application content or key material. Decoding happens only in the debugger app.
+- **Dev-only**, off in production (the sink is unset). The debugger app is on a trusted dev
+  machine; `wss` keeps the LAN hop encrypted.
 
-## Compatibility
+## Hosts and scope
 
-Purely additive. `observe`/`exposeFrameBytes` are new optional fields on `CreateTransportOptions`;
-`debug.ts`, `debug-host.ts`, and `relay.ts` are new modules with new barrel exports. No existing
-interface changes; no migration. The observe hook is zero-cost when unset and, when set, allocates
-one small record per frame into the doubly-capped map.
+Every host taps at its `truapi-server` choke points and dials the debugger app: **dotli**
+(web), **Polkadot Desktop**, **iOS**, **Android**. Today those hosts run the
+`@novasamatech/host-*` stack, so each adopts this once it runs `truapi-server`; the tap and
+envelope are identical across all of them. Each host supplies its own outward-dial sink for
+its platform — web bridges `emit` to a JS `WebSocket` (built); native binds a `ws_bridge`
+`URLSession`/OkHttp WebSocket — dev-gated and configured with the debugger URL. Pinning the
+provisional host→debugger framing (base64-in-JSON) is a prerequisite before the native sinks land.
 
-## Non-goals and deferred work
+## Non-goals
 
-- **No interactive UI beyond the playground trace panel.** A host-panel bridge and a mock-handler
-  editor are later.
-- **No host-side observe hook** in this design; the seam is client-transport-side only.
-- **No generated method-name constant.** `createMethodNameMap` is the runtime source today.
-- **`requestId` stays transport-local.** Each `createTransport` mints from zero, so a debugger/debug
-  host is 1:1 with a transport; cross-transport aggregation (namespacing the trace key) is deferred
-  until a use case appears.
-- **Relay session pairing** (minting a short `sessionId`) and a dev-preview-server mount for a
-  reference relay are deferred.
+- No tap in `@parity/truapi` / the TS transport (the whole point of putting it in the core).
+- No relay service (the debugger app is the server).
+- No mocking/mutation in v1 — but the envelope and topology already accommodate it.
 
 ## Validation status
 
-What is automated versus proven by hand, so no claim here reads as more validated than it is:
-
-- **Automated in truapi#295** (the `js/packages/truapi/test/*.test.mjs` suite): correlation,
-  mock/forward/unhandled routing, dispose-time upstream stop, the relay envelope round-trip and the
-  loopback mock/forward flows, and the debugger driven over a real WebSocket carrier (a single
-  process with a real loopback socket, not separate OS processes). The playground e2e
-  (`playground/tests/e2e/wire-debug.spec.ts`) covers the `?debug=wire` and `?debug=wire:decode`
-  panel paths.
-- **Verified manually, not yet automated:** end-to-end decode against the genuine Rust core running
-  headless as WASM (a `localStorage.read` observed under one `requestId` and forwarded verbatim
-  through the debug host). This was reproduced by hand; there is no WASM-core test in the package.
-- **Not yet validated at all:** auth-gated methods (signing needs a paired session) and a live
-  in-browser playground run inside a host.
-
-## Alternatives considered
-
-- **Host-specific debugger (rejected).** Tapping one host's internal hook (prior art: a dotli-only
-  read-only panel) ties the tool to that host's unstable internals and cannot mock or forward.
-  Hooking the protocol's own transport is host-agnostic and active.
-- **A second correlation id (rejected).** Every layer keys on the transport-minted `requestId`,
-  which already appears on the wire and in host dispatch; a second id is pure plumbing.
-- **Frame rewriting instead of codec-backed mock entries (deferred).** Entries answer through the
-  generated codecs so mocked frames stay well-formed; raw rewriting remains possible later at the
-  relay layer.
-- **A standalone debugger app (deferred).** The playground panel plus the relay cover the near-term
-  need without a new app to ship.
+- **Automated (Rust tap):** both choke points tapped, `channel_id` per event, bytes untouched and
+  in order — proven by `cargo test` (`debug_sink_taps_frames_in_both_directions`); the product-vantage
+  direction convention (`out` = left the product) by `frame_direction_wire_str_is_product_vantage`.
+  Inert-when-unset is structural (the `has_debug` fast path skips the tap when no sink is installed);
+  off-the-critical-path follows from invariant 2 — `emit`'s result is discarded and never awaited, and
+  the sink contract forbids blocking or panicking.
+- **Automated (debugger app):** the WS server end (`@parity/truapi-debugger`, in-repo) — a host
+  dials in, streams a frame, the server decodes + groups it and serves it on `/traces` — proven by
+  its `bun test` against a live server. The exact host→debugger framing (base64-in-JSON today) is
+  still provisional pending the envelope spec.
+- **Built (web outward dial):** the web host's sink — `WasmDebugSink` bridging `emit` to a JS
+  `WebSocket`, dev-gated via a `localStorage` debugger URL that the host worker reads — is wired end
+  to end, and a product running under the `@parity/truapi-host` WASM host streams every frame to the
+  debugger, verified against a local host harness.
+- **Not yet built:** the native outward-dial sink (`ws_bridge` `URLSession`/OkHttp) and the
+  `wss`/cert setup. These are the native-integration tracks.
 
 ## References
-
-- Implementation: truapi#295
-  (`js/packages/truapi/src/{client,debug,debug-host,relay,sandbox}.ts`, the playground trace panel).
-  Automated coverage: `js/packages/truapi/test/*.test.mjs` and
-  `playground/tests/e2e/wire-debug.spec.ts` (scope as listed under Non-goals → Automated).
-- Peers in the "headless / mock host" space: mock host (truapi#294), headless host (truapi#264).
+- Implementation: truapi#295 (`rust/crates/truapi-server/src/host_core.rs` — `DebugSink`/`DebugEvent`/tap).
 - Requirement source: the debugger tracker (sdk-team#26).
