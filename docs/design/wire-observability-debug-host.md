@@ -8,7 +8,7 @@ owner: "@decrypto21"
 |                    |                                                                                 |
 | ------------------ | ------------------------------------------------------------------------------- |
 | **Start Date**     | 2026-07-25 |
-| **Authors**        | @decrypto21 |
+| **Authors**        | Nidish Ramakrishnan |
 | **Implementation** | truapi#295 |
 | **Description**    | A payload-blind observe seam on the TrUAPI transport, a wire debugger, a mock/forward debug host, and a WebSocket relay - all correlated by the wire `requestId`. |
 
@@ -225,6 +225,7 @@ host is truapi#264. The debug host sits *in front of* those and forwards *to* th
 function createRelayProvider(opts: { url: string; sessionId: string; productId: string; role: "product" | "host" | "debugger"; optIn?: boolean }): WireProvider;
 interface RelayEnvelope { v: 1; role: "product" | "host" | "debugger"; sessionId: string; productId: string; frame: Uint8Array; }
 class RelayRouter { join(sessionId, peer): void; leave(sessionId, peer): void; handleEnvelope(from, bytes): void; }
+function connectRelaySocket(router: RelayRouter, socket: { send(bytes: Uint8Array): void }): { message(bytes: Uint8Array): void; close(): void };
 ```
 
 `createRelayProvider` carries frames over a WebSocket in a routing envelope; the relay routes by
@@ -239,44 +240,74 @@ and flushed on join); `createLoopbackSocketFactory` runs a relay in-process, wit
 tests and single-tab use.
 
 Only `v: 1` envelopes are accepted; any other version fails to decode and the frame is dropped (the
-envelope is versioned so the wire can evolve without silently mis-routing an unknown shape). A
-carrier must call `RelayRouter.leave()` on disconnect - it drops the peer and, once the session is
-empty, deletes the session and its pending buffer; `createRelayProvider().dispose()` closes the
-socket and clears subscribers.
+envelope is versioned so the wire can evolve without silently mis-routing an unknown shape).
+`connectRelaySocket(router, socket)` is the shipped, runtime-agnostic carrier core: a relay server
+is a WS loop that calls `.message(bytes)` per frame and `.close()` on disconnect (which calls
+`RelayRouter.leave()`, dropping the peer and deleting the session + its pending buffer once empty),
+so the same routing runs under `Bun.serve`, `ws`, a dev preview server, or a `truapi-host`
+subcommand; `createRelayProvider().dispose()` closes the client socket and clears subscribers.
 
 ## Enablement
 
-No product changes its call sites. The `@parity/truapi/sandbox` bootstrap - the shared transport
-builder for browser-embedded products, including the playground - reads the embedding URL once at
-module load (snapshotted, so a product that rewrites its own URL can't drop the flag before the
-first `getClientSync()`).
+Enablement is a **host-side dev capability, not a URL** - the seam and the relay are transport-level
+and URL-independent, so the debugger turns on the same way whether the product runs in a browser
+iframe, a desktop webview, or a mobile webview (sdk-team#26). No product changes its call sites; the
+`@parity/truapi/sandbox` bootstrap reads the config once at module load (snapshotted, so a product
+rewriting its own URL can't drop it before the first `getClientSync()`) and wires the transport
+accordingly.
+
+### Two enablement sources, one config
+
+The bootstrap merges two sources so no host shape is left out (`resolveDebugConfig`):
+
+| Host | How it's turned on |
+|---|---|
+| **Browser / iframe** (e.g. the playground) | the `?debug=` query on the embedding URL - dotli forwards unknown query params into the product iframe |
+| **Native / webview** (no address bar) | the host's dev build injects `window.__truapiDebug__` before the product boots - the same host-injection path already used for `window.__HOST_API_PORT__` |
+
+```ts
+// native host, dev build only - a production host must not set this
+window.__truapiDebug__ = {
+  debug: "wire:decode",                                            // same grammar as ?debug=
+  relay: { url: "ws://127.0.0.1:5199/relay", sessionId: "abc" },   // optional - see "Routing at a relay"
+};
+```
 
 ### The `?debug=` grammar
 
-Debug surfaces are selected by a single, extensible query key rather than a new flag per feature. A
-debugger accretes modes; the grammar is built to accrete with it:
+This is the config value shared by both sources above (the URL query and the injected global's
+`debug` field):
 
 ```text
-?debug=<channel>[:<modifier>[:<modifier>…]][,<channel>…]
-
-  wire            payload-blind observe seam + wire debugger        (safe anywhere)
-  wire:decode     + typed-value decode of each frame                (build-gated; see below)
+wire            payload-blind observe seam + wire debugger        (safe anywhere)
+wire:decode     + typed-value decode of each frame                (build-gated)
+<channel>[:<modifier>…][,<channel>…]                               (extensible, composable)
 ```
 
-- **Channels** name a debug surface (`wire` today; a `relay` channel and others slot in without a
-  new query key). **Modifiers** are additive verbosity levels on a channel: `wire` is the safe
-  baseline; `wire:decode` raises it to expose payload bytes.
-- **Composes:** `?debug=wire:decode,relay` opts several channels in at once.
-- **Forward-compatible:** unknown channels and modifiers are ignored, not errors, so a newer link
-  opened against an older build degrades to whatever that build understands instead of failing.
-- **Legacy alias:** `?debug=wire-decode` is accepted as `wire:decode`.
+`wire` installs `createWireDebugger` on the transport's `observe` hook (exposed via
+`getWireDebugger()` / `window.__truapiWireDebugger__`); `wire:decode` additionally sets
+`exposeFrameBytes` **iff the `TRUAPI_WIRE_DECODE` build gate is on**, else it degrades to a
+payload-blind trace. Unknown channels/modifiers are ignored (forward-compatible), and `wire-decode`
+is a legacy alias for `wire:decode`.
 
-Effect: `wire` installs a `createWireDebugger` on the transport's `observe` hook and exposes it via
-`getWireDebugger()` and `window.__truapiWireDebugger__` (the playground renders its trace panel off
-this). `wire:decode` additionally sets `exposeFrameBytes` **iff the `TRUAPI_WIRE_DECODE` build gate
-is on**, so the panel decodes each frame through `WIRE_DECODE_TABLE`; otherwise it degrades to a
-payload-blind trace. So enabling the payload-blind debugger is a **URL flag**, not a code change;
-byte-level decoding additionally takes a build-time opt-in.
+### Routing at a relay (the host-agnostic path)
+
+This is sdk-team#26's core mechanism and the answer for native hosts. When the injected config
+carries a `relay` endpoint - and the relay build gate (`TRUAPI_RELAY=1` /
+`NEXT_PUBLIC_TRUAPI_RELAY=1`) is on - the bootstrap points the product's transport at
+`createRelayProvider(...)` instead of the host channel. The product's frames then flow to a debugger
+process (a standalone app, a CLI, or a panel) over the relay, which forwards to the real host or
+mocks - all without an address bar and without touching the product. This is the **C8 "debuggable
+host" contract**: a host is debuggable iff it exposes the observe hook and can point its product's
+transport at a relay provider.
+
+**Scope, precisely:** every TrUAPI-side piece the native path needs is shipped here - the product
+hook (`sandbox` reads `window.__truapiDebug__`), the transport-at-relay swap, the reusable relay
+carrier (`connectRelaySocket`), and the debug host. So a native host's integration is a config swap,
+not a fork: its dev build sets `window.__truapiDebug__` (a one-liner, exactly like the
+`window.__HOST_API_PORT__` it already injects) and stands up a relay with `connectRelaySocket` in
+whatever WS runtime it runs. That last step is the native app's own code, in its own repo - the only
+piece not in this PR, because it is not TrUAPI's to write, not because it is unbuilt.
 
 ## Privacy and security
 
