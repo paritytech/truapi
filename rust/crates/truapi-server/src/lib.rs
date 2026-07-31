@@ -10,6 +10,8 @@
 //!   native WebView hosts (Android/iOS).
 //! - [`native`]: UniFFI surface exposing the native host runtime + callbacks.
 //! - `wasm` (wasm32 only): wasm-bindgen surface exposing `WasmProductRuntime`.
+//! - `native_debug` (non-wasm32 only): a loopback WebSocket [`DebugSink`] that
+//!   streams tapped frames to the `@parity/truapi-debugger` app.
 
 #![forbid(unsafe_code)]
 
@@ -39,10 +41,15 @@ pub mod native;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "ws-bridge"))]
+pub mod native_debug;
+
 pub use host_core::{
-    FrameSink, HostAdmin, PairingHostRuntime, ProductRuntime, ProductRuntimeError,
-    SigningHostRuntime,
+    ChannelId, DebugEvent, DebugSink, FrameDirection, FrameSink, HostAdmin, PairingHostRuntime,
+    ProductRuntime, ProductRuntimeError, SigningHostRuntime,
 };
+#[cfg(all(not(target_arch = "wasm32"), feature = "ws-bridge"))]
+pub use native_debug::{DebugSinkError, WsDebugSink};
 pub use runtime::ResponderExit;
 #[cfg(not(target_arch = "wasm32"))]
 pub use runtime::statement_allowance;

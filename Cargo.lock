@@ -5097,6 +5097,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "async-trait",
+ "base64",
  "blake2b_simd",
  "console_error_panic_hook",
  "derive_more 2.1.1",

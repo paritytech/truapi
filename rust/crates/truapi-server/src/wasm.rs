@@ -31,8 +31,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::subscription::Spawner;
 use crate::{
-    FrameSink, PairingHostRuntime, PermissionAuthorizationRequest, PermissionAuthorizationStatus,
-    ProductRuntime,
+    ChannelId, DebugEvent, DebugSink, FrameSink, PairingHostRuntime,
+    PermissionAuthorizationRequest, PermissionAuthorizationStatus, ProductRuntime,
 };
 
 mod generated_bridge;
@@ -62,6 +62,33 @@ impl FrameSink for WasmFrameSink {
     fn emit_frame(&self, frame: Vec<u8>) {
         let frame = Uint8Array::from(frame.as_slice());
         if let Err(err) = self.emit_frame.call1(&JsValue::NULL, &frame) {
+            web_sys::console::error_1(&err);
+        }
+    }
+}
+
+/// Streams tapped debug frames out to a JS `debugEmit(channelId, dir, frame)`
+/// callback so the host worker can forward them to the debugger it dials.
+/// Dev-only: installed only when the host provides the callback, and
+/// fire-and-forget - a failing callback is logged, never propagated.
+struct WasmDebugSink {
+    emit: SendWrapper<Function>,
+}
+
+impl DebugSink for WasmDebugSink {
+    fn emit(&self, event: DebugEvent) {
+        let DebugEvent::Frame {
+            channel_id,
+            dir,
+            bytes,
+        } = event;
+        let frame = Uint8Array::from(bytes.as_slice());
+        if let Err(err) = self.emit.call3(
+            &JsValue::NULL,
+            &JsValue::from_str(&channel_id.0),
+            &JsValue::from_str(dir.wire_str()),
+            &frame,
+        ) {
             web_sys::console::error_1(&err);
         }
     }
@@ -705,10 +732,20 @@ impl WasmPairingHostRuntime {
     ) -> Result<WasmProductRuntime, JsValue> {
         let product = product_context_from_js(&product)?;
         let channel = CoreChannel::from_js(&core_callbacks)?;
+        let debug_emit = get_optional_function(&core_callbacks, "debugEmit")?;
+        let channel_id = product.product_id.clone();
         let sink = Arc::new(WasmFrameSink {
             emit_frame: SendWrapper::new(channel.emit_frame),
         });
         let runtime = self.runtime.product_runtime(product, sink);
+        if let Some(debug_emit) = debug_emit {
+            runtime.set_debug_sink(
+                ChannelId(channel_id),
+                Arc::new(WasmDebugSink {
+                    emit: SendWrapper::new(debug_emit),
+                }),
+            );
+        }
         Ok(WasmProductRuntime::from_parts(runtime, channel.dispose))
     }
 
