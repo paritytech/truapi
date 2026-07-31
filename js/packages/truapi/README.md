@@ -69,7 +69,7 @@ sub.unsubscribe();
 - **Generated domain clients and types** produced from the Rust API contract.
 - **SCALE codec helpers** used by the generated code, also re-exported for direct use.
 - **Sandbox bootstrap** (`@parity/truapi/sandbox`) that detects the host environment, builds the
-  matching provider, and exposes a cached client — see below.
+  matching provider, and exposes a cached client - see below.
 
 ## Sandbox bootstrap
 
@@ -100,6 +100,22 @@ const unsubscribe = subscribeConnectionStatus((status) => {
 | `isCorrectEnvironment(): boolean`           | Synchronous host-environment detection.         |
 | `getClientSync(): TrUApiClient \| null`     | Cached client; `null` outside a host container. |
 | `subscribeConnectionStatus(cb): () => void` | Connected / disconnected status listener.       |
+
+## Observability / debugging
+
+The debugger does not live in this package, and the product transport carries no debug seam -
+`@parity/truapi` is genuinely untouched by observability. The host taps every product↔host frame in
+its Rust core (`truapi-server`'s `DebugSink`) and streams each one - as `{ channelId, dir, frame:
+bytes }`, opaque bytes - to a separate debugger app, which decodes and groups them.
+
+- Architecture (the tap, the envelope, the host-dials-debugger topology, `wss`/cert setup):
+  `docs/design/wire-observability-debug-host.md`.
+- The debugger app itself (trace + envelope-decode engines + the WS server): `@parity/truapi-debugger`.
+
+The generated `WIRE_DECODE_TABLE` on the `./wire-decode` subpath (raw SCALE bytes → typed value)
+stays here, since it is generated from this package's contract. The debugger app is payload-blind
+today - it decodes only the wire envelope (`requestId`, frame id) via `decodeWireMessage`, not
+payloads - so this table is unused for now; it is the decode source for a future typed-value view.
 
 ## Wire format
 

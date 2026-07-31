@@ -39,6 +39,10 @@
       "types": "./dist/generated/wire-table.d.ts",
       "import": "./dist/generated/wire-table.js"
     },
+    "./wire-decode": {
+      "types": "./dist/generated/wire-decode.d.ts",
+      "import": "./dist/generated/wire-decode.js"
+    },
     "./playground/services": {
       "types": "./dist/playground/codegen/services.d.ts",
       "import": "./dist/playground/codegen/services.js"

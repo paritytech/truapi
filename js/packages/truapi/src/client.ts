@@ -152,6 +152,7 @@ export function createTransport(
 ): TrUApiTransport {
   const codecVersion = options.codecVersion ?? TRUAPI_CODEC_VERSION;
   let idCounter = 0;
+
   let closedError: Error | null = null;
   const pending = new Map<
     string,
@@ -212,6 +213,7 @@ export function createTransport(
 
     const decoded = decodeWireMessage(message);
     if (decoded.isErr()) {
+      // A corrupt/truncated inbound frame tears the transport down.
       closeWithError(decoded.error);
       return;
     }

@@ -116,7 +116,7 @@ pub trait Account: Send + Sync {
     /// assert(result.isOk(), "createAccountProof failed:", result);
     /// console.log("account proof created:", result.value);
     /// ```
-    #[wire(request_id = 26)]
+    #[wire(request_id = 26, sensitive)]
     async fn create_account_proof(
         &self,
         _cx: &CallContext,
@@ -147,7 +147,7 @@ pub trait Account: Send + Sync {
     /// assert(result.isOk(), "signVrf failed:", result);
     /// console.log("vrf signature:", result.value);
     /// ```
-    #[wire(request_id = 164)]
+    #[wire(request_id = 164, sensitive)]
     async fn sign_vrf(
         &self,
         _cx: &CallContext,
@@ -182,7 +182,7 @@ pub trait Account: Send + Sync {
     /// assert(result.isOk(), "getUserId failed:", result);
     /// console.log("user id:", result.value);
     /// ```
-    #[wire(request_id = 110)]
+    #[wire(request_id = 110, sensitive)]
     async fn get_user_id(
         &self,
         _cx: &CallContext,
@@ -203,7 +203,7 @@ pub trait Account: Send + Sync {
     /// assert(result.isOk(), "requestLogin failed:", result);
     /// console.log("login completed:", result.value);
     /// ```
-    #[wire(request_id = 112)]
+    #[wire(request_id = 112, sensitive)]
     async fn request_login(
         &self,
         _cx: &CallContext,

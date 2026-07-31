@@ -141,7 +141,7 @@ pub trait CoinPayment: Send + Sync {
     /// assert(result.isOk(), "createCheque failed:", result);
     /// console.log("cheque created:", result.value.cheque);
     /// ```
-    #[wire(request_id = 150)]
+    #[wire(request_id = 150, sensitive)]
     async fn create_cheque(
         &self,
         _cx: &CallContext,
@@ -168,7 +168,7 @@ pub trait CoinPayment: Send + Sync {
     /// );
     /// console.log("deposit status:", status);
     /// ```
-    #[wire(start_id = 152)]
+    #[wire(start_id = 152, sensitive)]
     async fn deposit(
         &self,
         _cx: &CallContext,
@@ -222,7 +222,7 @@ pub trait CoinPayment: Send + Sync {
     /// );
     /// console.log("payment received:", item);
     /// ```
-    #[wire(start_id = 160)]
+    #[wire(start_id = 160, sensitive)]
     async fn listen_for_payment(
         &self,
         _cx: &CallContext,
