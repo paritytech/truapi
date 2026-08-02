@@ -1,8 +1,3 @@
----
-title: "Wire Observability and Debug Host"
-owner: "@decrypto21"
----
-
 # Wire Observability and Debug Host
 
 |                    |                                                                                 |
@@ -37,9 +32,7 @@ test for the tap being in the right place: a seam in the product transport would
 The **debugger app is a WS server** on the dev machine; **every host dials outward** to it.
 This is forced, not a preference — only the inside can initiate a connection:
 
-- native: `ws_bridge` binds `127.0.0.1` on the device; a debugger on a dev machine cannot
-  dial into it (the iOS Simulator "works" only because it shares the Mac's network stack —
-  an accident of the simulator, not a design);
+- native: nothing on a dev machine can dial into a host running inside a device;
 - web: nothing outside the browser can dial into a Worker.
 
 ```
@@ -59,8 +52,7 @@ This is forced, not a preference — only the inside can initiate a connection:
            └──────────────────────┘
 ```
 
-There is **no relay service** — the debugger app is the server, so the envelope carries no
-routing metadata (no session/role/product fields, no join-order buffering). It is just:
+Because the host dials the debugger directly, the envelope needs no routing metadata — it is just:
 
 ```
  host → debugger    { channelId, dir: "out" | "in", frame: bytes }
@@ -128,26 +120,15 @@ pub enum DebugEvent {
 - Installed per product channel via `ProductRuntime::set_debug_sink(channel_id, sink)`;
   `None` by default, so production pays nothing.
 - The concrete sink (the outward WS dial) is provided by the **host adapter**, not the core:
-  web bridges `emit` to a JS `WebSocket`, native to a `ws_bridge` `URLSession`/OkHttp socket.
+  the web host bridges `emit` to a JS `WebSocket`; native hosts do the equivalent on their platform.
 - `bytes` are the untouched `ProtocolMessage`; **the debugger app decodes, the core never does.**
-
-## Configuration and transport
-
-- The debugger **URL is configurable**, not loopback-derived: with the app on a device and
-  the debugger on a Mac, `127.0.0.1` is wrong and the link is LAN.
-- The LAN hop is why **`wss://`** is right: it keeps iOS `Info.plist` `NSAppTransportSecurity`
-  empty (TLS is already required and `wss` satisfies it, no exception needed), and the trace
-  doesn't cross the office network in the clear.
-- The cost moves to **certificates**: iOS still evaluates trust, so a self-signed debugger cert
-  is rejected until its CA is installed and enabled under **Settings → General → About →
-  Certificate Trust Settings**. This is a named setup step — "use wss" is not free.
 
 ## Privacy and security
 
 - Frames stream as **opaque bytes**; the core never decodes them, so nothing at the tap
   reads application content or key material. Decoding happens only in the debugger app.
-- **Dev-only**, off in production (the sink is unset). The debugger app is on a trusted dev
-  machine; `wss` keeps the LAN hop encrypted.
+- **Dev-only**, off in production (the sink is unset). The debugger app runs on a trusted
+  dev machine.
 
 ## Hosts and scope
 
@@ -155,14 +136,12 @@ Every host taps at its `truapi-server` choke points and dials the debugger app: 
 (web), **Polkadot Desktop**, **iOS**, **Android**. Today those hosts run the
 `@novasamatech/host-*` stack, so each adopts this once it runs `truapi-server`; the tap and
 envelope are identical across all of them. Each host supplies its own outward-dial sink for
-its platform — web bridges `emit` to a JS `WebSocket` (built); native binds a `ws_bridge`
-`URLSession`/OkHttp WebSocket — dev-gated and configured with the debugger URL. Pinning the
-provisional host→debugger framing (base64-in-JSON) is a prerequisite before the native sinks land.
+its platform — the web sink (bridging `emit` to a JS `WebSocket`) is built; the native sinks
+are phase-2.
 
 ## Non-goals
 
 - No tap in `@parity/truapi` / the TS transport (the whole point of putting it in the core).
-- No relay service (the debugger app is the server).
 - No mocking/mutation in v1 — but the envelope and topology already accommodate it.
 
 ## Validation status
@@ -181,9 +160,7 @@ provisional host→debugger framing (base64-in-JSON) is a prerequisite before th
   `WebSocket`, dev-gated via a `localStorage` debugger URL that the host worker reads — is wired end
   to end, and a product running under the `@parity/truapi-host` WASM host streams every frame to the
   debugger, verified against a local host harness.
-- **Not yet built:** the native outward-dial sink (`ws_bridge` `URLSession`/OkHttp) and the
-  `wss`/cert setup. These are the native-integration tracks.
+- **Not yet built:** the native outward-dial sink. This is the native-integration track (phase-2).
 
 ## References
 - Implementation: truapi#295 (`rust/crates/truapi-server/src/host_core.rs` — `DebugSink`/`DebugEvent`/tap).
-- Requirement source: the debugger tracker (sdk-team#26).
