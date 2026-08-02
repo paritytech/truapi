@@ -9,7 +9,9 @@ import { expect, type FrameLocator, type Page } from "@playwright/test";
  * We hand back the FrameLocator scoped to that iframe so individual specs only
  * need to know about playground selectors.
  */
-export async function openPlaygroundInDotli(page: Page): Promise<FrameLocator> {
+export async function openPlaygroundInDotli(
+  page: Page,
+): Promise<FrameLocator> {
   await page.addInitScript(() => {
     localStorage.setItem("dotli:mode", "gateway");
     localStorage.setItem("dotli:chain-backend", "rpc");
@@ -24,7 +26,7 @@ export async function openPlaygroundInDotli(page: Page): Promise<FrameLocator> {
       window as typeof window & { __TRUAPI_PLAYGROUND_E2E__?: boolean }
     ).__TRUAPI_PLAYGROUND_E2E__ = true;
   });
-  await page.goto("/localhost:3000?dotliProductId=truapi-playground.dot");
+  await page.goto(`/localhost:3000?dotliProductId=truapi-playground.dot`);
   // dotli renders an additional hidden iframe (host.localhost:5173?mode=direct)
   // alongside the proxied playground; scope to the playground src so the
   // FrameLocator is unique under Playwright strict mode.

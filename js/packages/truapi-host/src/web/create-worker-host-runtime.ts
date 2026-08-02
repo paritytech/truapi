@@ -116,6 +116,17 @@ function readPersistedLogLevel(): LogLevel | null {
   return globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
 }
 
+// Dev-only, host-agnostic enablement for the wire debugger: set
+// `localStorage["truapi:debugger"] = "ws://<host>:9231"` in the browser and the
+// host worker dials that debugger and streams frames to it. Unset in production,
+// so nothing dials and the Rust host tap stays inert. Read here (host page) and
+// forwarded to the worker in `init`; no cooperation from the embedding shell.
+const DEV_DEBUGGER_URL_KEY = "truapi:debugger";
+
+function readPersistedDebuggerUrl(): string | null {
+  return globalThis.localStorage?.getItem(DEV_DEBUGGER_URL_KEY) ?? null;
+}
+
 function persistLogLevel(level: LogLevel): void {
   globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
 }
@@ -603,6 +614,7 @@ export function createWebWorkerPairingHostRuntime(
           kind: "init",
           logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
           hostConfig: options.hostConfig,
+          debuggerUrl: readPersistedDebuggerUrl(),
         } satisfies MainToWorker);
       } else if (msg.kind === "ready") {
         cleanupInit();

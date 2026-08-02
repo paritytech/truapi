@@ -187,13 +187,124 @@ function buildRawCallbacks() {
   });
 }
 
-function buildCoreCallbacks(coreId: number) {
+/** Encode raw frame bytes as base64 (JSON can't carry binary over the WS). */
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+/**
+ * Dev-only link to the debugger the host dials. Fire-and-forget by construction:
+ * it opens lazily, buffers a bounded backlog until the socket is up, retries a
+ * dropped connection, and swallows every error - a slow, absent, or crashed
+ * debugger only loses the trace, it can never throw into the frame path.
+ */
+/**
+ * Is `url` a WebSocket URL on a loopback host? The debug tap forwards raw frames
+ * (including sensitive payloads, before the debugger's denylist runs), so it is
+ * loopback-only: refuse to stream them off the local machine.
+ */
+function isLoopbackWsUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "ws:" && u.protocol !== "wss:") return false;
+    const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "::1" ||
+      /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+      // IPv4-mapped loopback: WHATWG serializes ::ffff:127.x.y.z as ::ffff:7fxx:yyyy.
+      /^::ffff:7f[0-9a-f]{2}:/.test(host)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function createDebuggerLink(url: string): {
+  emit(channelId: string, dir: string, frame: Uint8Array): void;
+} {
+  // Loopback-only, dev-only: a non-loopback debugger URL yields an inert link
+  // rather than streaming frames across the network.
+  if (!isLoopbackWsUrl(url)) return { emit() {} };
+  let socket: WebSocket | null = null;
+  let open = false;
+  const queue: string[] = [];
+  const MAX_QUEUE = 1000;
+
+  function connect(): void {
+    try {
+      socket = new WebSocket(url);
+    } catch {
+      socket = null;
+      return;
+    }
+    socket.addEventListener("open", () => {
+      open = true;
+      for (const message of queue.splice(0)) send(message);
+    });
+    socket.addEventListener("close", () => {
+      open = false;
+      socket = null;
+    });
+    socket.addEventListener("error", () => {
+      // A socket that fired `error` is dead: close it explicitly (tidiness), then
+      // null it so `emit`'s `if (!socket) connect()` reconnects. Without the null,
+      // a runtime that fires `error` without a following `close` would leave
+      // `socket` non-null and frames would buffer then drop.
+      open = false;
+      const dead = socket;
+      socket = null;
+      try {
+        dead?.close();
+      } catch {
+        // already closed / closing
+      }
+    });
+  }
+
+  function send(message: string): void {
+    try {
+      socket?.send(message);
+    } catch {
+      // A dead socket must never break the frame path.
+    }
+  }
+
+  connect();
+
   return {
+    emit(channelId, dir, frame) {
+      const message = JSON.stringify({ channelId, dir, frame: toBase64(frame) });
+      if (open && socket) {
+        send(message);
+        return;
+      }
+      if (queue.length < MAX_QUEUE) queue.push(message);
+      if (!socket) connect();
+    },
+  };
+}
+
+let debuggerLink: ReturnType<typeof createDebuggerLink> | null = null;
+
+function buildCoreCallbacks(coreId: number) {
+  const callbacks = {
     emitFrame(frame: Uint8Array): void {
       postToMain({ kind: "frame", coreId, bytes: frame });
     },
     dispose(): void {
       // Main thread owns lifecycle and disposes explicitly.
+    },
+  };
+  if (!debuggerLink) return callbacks;
+  // Adding `debugEmit` is what makes the Rust host install its debug sink; when
+  // no debugger is configured it is absent and the tap stays inert.
+  return {
+    ...callbacks,
+    debugEmit(channelId: string, dir: string, frame: Uint8Array): void {
+      debuggerLink?.emit(channelId, dir, frame);
     },
   };
 }
@@ -231,6 +342,9 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         break;
       }
       wasm.setLogLevel?.(msg.logLevel);
+      if (msg.debuggerUrl && !debuggerLink) {
+        debuggerLink = createDebuggerLink(msg.debuggerUrl);
+      }
       try {
         runtime = new wasm.WasmPairingHostRuntime(
           buildRawCallbacks(),
