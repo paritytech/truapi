@@ -21,7 +21,7 @@
 //! the tap inert.
 
 use core::net::SocketAddr;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use core::time::Duration;
 use std::sync::Arc;
 
@@ -37,11 +37,27 @@ use tokio_tungstenite::client_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::debug;
 
+use crate::generated::wire_table::TRUAPI_WIRE_SCHEMA_HASH;
 use crate::host_core::{DebugEvent, DebugSink};
 
 /// Bounded so a stalled or absent debugger applies backpressure as counted
 /// drops, never unbounded memory growth on the observed session.
 const QUEUE_CAPACITY: usize = 4096;
+
+/// Byte budget alongside [`QUEUE_CAPACITY`]: one `ProtocolMessage` can be MBs, so
+/// a count-only cap could still buffer unbounded RSS while the debugger is
+/// absent. Whichever ceiling hits first drops the frame (counted), never blocks.
+const MAX_QUEUE_BYTES: usize = 8 * 1024 * 1024;
+
+/// Envelope version, mirroring the debugger's `WIRE_ENVELOPE_VERSION` and the web
+/// host's constant. Kept in sync by hand.
+const WIRE_ENVELOPE_VERSION: u32 = 1;
+
+/// The host's wire codec version, mirroring `@parity/truapi`'s
+/// `TRUAPI_CODEC_VERSION` (the handshake `codec_version`). Stamped on the
+/// envelope so the debugger refuses to decode a frame whose codec differs from
+/// its own, rather than resolving `u8` frame ids against the wrong contract.
+const WIRE_CODEC_VERSION: u32 = 1;
 
 /// Initial reconnect delay; doubles on each failed dial up to [`MAX_BACKOFF`].
 const INITIAL_BACKOFF: Duration = Duration::from_millis(200);
@@ -76,12 +92,17 @@ pub enum DebugSinkError {
 pub struct WsDebugSink {
     outbound: mpsc::Sender<String>,
     dropped: Arc<AtomicU64>,
+    queued_bytes: Arc<AtomicUsize>,
 }
 
 /// The wire envelope, matching the debugger's `parseWireMessage` / ingest
 /// `DebugFrameEnvelope`: `dir` is product-vantage, `frame` is base64 SCALE bytes.
+/// `v`/`codec` are the identity the debugger checks before decoding.
 #[derive(Serialize)]
 struct WireMessage<'a> {
+    v: u32,
+    codec: u32,
+    schema: &'static str,
     #[serde(rename = "channelId")]
     channel_id: &'a str,
     dir: &'a str,
@@ -130,13 +151,19 @@ impl WsDebugSink {
 
         let (outbound, inbox) = mpsc::channel::<String>(QUEUE_CAPACITY);
         let dropped = Arc::new(AtomicU64::new(0));
+        let queued_bytes = Arc::new(AtomicUsize::new(0));
         tokio::spawn(writer_loop(
             url.to_string(),
             addr,
             inbox,
             Arc::clone(&dropped),
+            Arc::clone(&queued_bytes),
         ));
-        Ok(Arc::new(Self { outbound, dropped }))
+        Ok(Arc::new(Self {
+            outbound,
+            dropped,
+            queued_bytes,
+        }))
     }
 
     /// Number of frames dropped because the outbound queue was full (debugger
@@ -154,6 +181,9 @@ impl DebugSink for WsDebugSink {
             bytes,
         } = event;
         let message = WireMessage {
+            v: WIRE_ENVELOPE_VERSION,
+            codec: WIRE_CODEC_VERSION,
+            schema: TRUAPI_WIRE_SCHEMA_HASH,
             channel_id: &channel_id.0,
             // Product-vantage string; never hand-mapped, so it cannot invert.
             dir: dir.wire_str(),
@@ -163,8 +193,28 @@ impl DebugSink for WsDebugSink {
             self.dropped.fetch_add(1, Ordering::Relaxed);
             return;
         };
+        // Byte budget on top of the channel's count cap: one frame can be MBs, so
+        // a count-only bound could still grow RSS without limit while the debugger
+        // is absent. Reserve the frame's bytes BEFORE handing the line to the
+        // channel: the writer task can recv and release (fetch_sub) the instant
+        // try_send succeeds, so adding *after* would let that sub run first and
+        // wrap the counter - an overflow panic in debug builds, on the frame path.
+        // Reserve atomically, then release on any failure.
+        let len = line.len();
+        if self.queued_bytes.fetch_add(len, Ordering::Relaxed) + len > MAX_QUEUE_BYTES {
+            // This reservation pushed us past the budget: back it out and drop.
+            self.queued_bytes.fetch_sub(len, Ordering::Relaxed);
+            let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
+            debug!("truapi debug sink: byte budget full, frame dropped (total {dropped})");
+            return;
+        }
         if self.outbound.try_send(line).is_err() {
-            self.dropped.fetch_add(1, Ordering::Relaxed);
+            // Not enqueued after all: release the reservation. The frame is lost
+            // (never the session); count it and log so the gap is attributable to
+            // the link, not to the host.
+            self.queued_bytes.fetch_sub(len, Ordering::Relaxed);
+            let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
+            debug!("truapi debug sink: outbound queue full, frame dropped (total {dropped})");
         }
     }
 }
@@ -176,6 +226,7 @@ async fn writer_loop(
     addr: SocketAddr,
     mut inbox: mpsc::Receiver<String>,
     dropped: Arc<AtomicU64>,
+    queued_bytes: Arc<AtomicUsize>,
 ) {
     let mut backoff = INITIAL_BACKOFF;
     loop {
@@ -217,15 +268,20 @@ async fn writer_loop(
         loop {
             tokio::select! {
                 queued = inbox.recv() => match queued {
-                    Some(line) => match write.send(Message::Text(line)).await {
-                        Ok(()) => backoff = INITIAL_BACKOFF,
-                        Err(_) => {
-                            debug!("truapi debug sink: socket closed, reconnecting");
-                            // The in-flight line is lost across this reconnect.
-                            dropped.fetch_add(1, Ordering::Relaxed);
-                            break;
+                    Some(line) => {
+                        // Off the queue now: release its bytes from the budget
+                        // before the (moving) send so the counter can't drift.
+                        queued_bytes.fetch_sub(line.len(), Ordering::Relaxed);
+                        match write.send(Message::Text(line)).await {
+                            Ok(()) => backoff = INITIAL_BACKOFF,
+                            Err(_) => {
+                                debug!("truapi debug sink: socket closed, reconnecting");
+                                // The in-flight line is lost across this reconnect.
+                                dropped.fetch_add(1, Ordering::Relaxed);
+                                break;
+                            }
                         }
-                    },
+                    }
                     // All senders dropped: the sink is gone, so is the host. Done.
                     None => return,
                 },
@@ -286,6 +342,10 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
 
         assert_eq!(value["channelId"], "myapp.dot");
+        // Identity the debugger checks before decoding.
+        assert_eq!(value["v"], WIRE_ENVELOPE_VERSION);
+        assert_eq!(value["codec"], WIRE_CODEC_VERSION);
+        assert_eq!(value["schema"], TRUAPI_WIRE_SCHEMA_HASH);
         // Guard against re-inversion: In must serialize as product-vantage "out".
         assert_eq!(value["dir"], FrameDirection::In.wire_str());
         assert_eq!(value["dir"], "out");
@@ -331,6 +391,32 @@ mod tests {
         assert!(
             sink.dropped() > 0,
             "a full queue must count drops, not block"
+        );
+    }
+
+    #[tokio::test]
+    async fn byte_budget_drops_large_frames_before_the_count_cap() {
+        // Nothing listening: the writer never drains, so queued bytes accumulate.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let sink = WsDebugSink::connect(&format!("ws://127.0.0.1:{port}")).unwrap();
+        // ~2 MiB per frame; a handful blows past the 8 MiB byte budget long before
+        // the 4096-frame count cap, so the BYTE cap is what drops here. Also
+        // exercises reserve-before-send: emit must never panic on the counter even
+        // as the writer task races it.
+        let big = vec![0u8; 2 * 1024 * 1024];
+        for _ in 0..8 {
+            sink.emit(DebugEvent::Frame {
+                channel_id: ChannelId("myapp.dot".to_string()),
+                dir: FrameDirection::Out,
+                bytes: big.clone(),
+            });
+        }
+        assert!(
+            sink.dropped() > 0,
+            "the byte budget must drop large frames well under the count cap"
         );
     }
 }

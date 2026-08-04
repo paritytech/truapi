@@ -86,6 +86,22 @@ impl FrameDirection {
     }
 }
 
+/// Hand one event to a [`DebugSink`] without letting a misbehaving out-of-repo
+/// implementation take down a live dispatch.
+///
+/// The trait contract forbids `emit` from panicking, but the trait is `pub`, so
+/// this guards the two in-path call sites: a panic is caught, logged, and
+/// swallowed. `DebugEvent` is `UnwindSafe` (a `ChannelId`/`Vec<u8>`), so the
+/// caught closure carries no broken invariant across the boundary.
+fn emit_debug(sink: &dyn DebugSink, event: DebugEvent) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        sink.emit(event);
+    }));
+    if result.is_err() {
+        tracing::error!("truapi debug sink panicked in emit; frame dropped, session unaffected");
+    }
+}
+
 /// One observable host debug event. Frame bytes are the untouched
 /// `ProtocolMessage`; the debugger decodes them, so the core never does. The
 /// enum leaves room for host-internal events (e.g. SSO) that have no wire frame,
@@ -559,11 +575,14 @@ impl ProductRuntime {
 
         // Tap inbound before decode, so a corrupt frame is still observed.
         if let Some((channel_id, debug)) = self.transport.debug() {
-            debug.emit(DebugEvent::Frame {
-                channel_id,
-                dir: FrameDirection::In,
-                bytes: frame.clone(),
-            });
+            emit_debug(
+                debug.as_ref(),
+                DebugEvent::Frame {
+                    channel_id,
+                    dir: FrameDirection::In,
+                    bytes: frame.clone(),
+                },
+            );
         }
 
         let message = ProtocolMessage::decode(&mut frame.as_slice()).map_err(|err| {
@@ -701,11 +720,14 @@ impl Transport for SinkTransport {
         match self.debug() {
             Some((channel_id, debug)) => {
                 self.sink.emit_frame(encoded.clone());
-                debug.emit(DebugEvent::Frame {
-                    channel_id,
-                    dir: FrameDirection::Out,
-                    bytes: encoded,
-                });
+                emit_debug(
+                    debug.as_ref(),
+                    DebugEvent::Frame {
+                        channel_id,
+                        dir: FrameDirection::Out,
+                        bytes: encoded,
+                    },
+                );
             }
             None => self.sink.emit_frame(encoded),
         }
@@ -866,6 +888,48 @@ mod tests {
         assert_eq!(
             outbound, delivered,
             "every delivered outbound frame is tapped, in order"
+        );
+    }
+
+    struct PanickingDebugSink;
+
+    impl DebugSink for PanickingDebugSink {
+        fn emit(&self, _event: DebugEvent) {
+            panic!("misbehaving out-of-repo debug sink");
+        }
+    }
+
+    #[test]
+    fn a_panicking_debug_sink_does_not_take_down_the_dispatch() {
+        // The trait forbids panicking, but it is `pub`, so a bad out-of-repo sink
+        // could. `emit_debug` catches it: `receive_frame` must still succeed.
+        let (host_config, product) = runtime_config("myapp.dot");
+        let runtime = ProductRuntime::from_platform_with_config(
+            Arc::new(StubPlatform::default()),
+            host_config,
+            product,
+            test_spawner(),
+            Arc::new(RecordingSink::default()),
+        );
+        runtime.set_debug_sink(
+            ChannelId("myapp.dot".to_string()),
+            Arc::new(PanickingDebugSink),
+        );
+
+        let ids = subscription_ids("theme_subscribe").expect("known subscription");
+        let raw = ProtocolMessage {
+            request_id: "theme:1".to_string(),
+            payload: Payload {
+                id: ids.start_id,
+                value: Vec::new(),
+            },
+        }
+        .encode();
+        // The inbound tap panics inside receive_frame; the guard swallows it.
+        let result = futures::executor::block_on(runtime.receive_frame(raw));
+        assert!(
+            result.is_ok(),
+            "a panicking sink must not fail the dispatch"
         );
     }
 

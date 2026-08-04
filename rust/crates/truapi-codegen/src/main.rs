@@ -150,7 +150,16 @@ fn main() -> Result<()> {
         println!("Generated client examples in {path}");
     }
     if let Some(path) = &cli.rust_output {
-        rust::generate(&api, path)
+        // The Rust routing table (wire_table.rs) is version-*unfiltered* - the
+        // native host can route any method the crate defines - so its stamp hashes
+        // the full/latest table, not the client-pinned subset. Otherwise a
+        // `--client-version`-pinned build would route a newer #[wire(sensitive)]
+        // frame under an older hash that a same-pinned debugger would accept and
+        // decode. At the default (latest) client version this equals the TS hash.
+        let schema_hash =
+            ts::wire_schema_hash(&api, ts::latest_wire_version(&api), cli.codec_version)
+                .context("computing wire schema hash")?;
+        rust::generate(&api, path, &schema_hash)
             .with_context(|| format!("writing Rust dispatcher to {}", path.display()))?;
         println!("Wrote Rust dispatcher to {}", path.display());
     }

@@ -36,6 +36,8 @@ export interface TracesFrame {
 export interface TracesEntry {
   channelId: string;
   requestId: string;
+  /** Which reuse of `(channelId, requestId)` this op is; see {@link TraceView.generation}. */
+  generation?: number;
   startedAt: number;
   lastAt: number;
   /** Op-level badges the server computed (incl. the cross-op retry-storm). */
@@ -56,6 +58,7 @@ export function toView(entry: TracesEntry): TraceView {
   const input: TraceViewInput = {
     requestId: entry.requestId,
     channelId: entry.channelId,
+    generation: entry.generation,
     startedAt: entry.startedAt,
     lastAt: entry.lastAt,
     // Cross-op badges (retry-storm) are computed server-side and passed through,

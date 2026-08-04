@@ -38,8 +38,10 @@ import type { WireMethodInfo, WireTrace } from "./wire-debugger.js";
  *    This is a *cross-op* signal the single-trace renderer cannot see on its
  *    own, so it is supplied by the caller (the list/engine layer) rather than
  *    derived here. Left as a follow-up for the engine to compute.
+ *  - `truncated`: older frames of this op were dropped to stay under the engine's
+ *    frame/byte cap, so the sequence shown is not the whole op.
  */
-export type TraceBadge = "orphaned" | "malformed" | "retry-storm";
+export type TraceBadge = "orphaned" | "malformed" | "retry-storm" | "truncated";
 
 /** A per-frame badge, surfaced against a single row in the frame sequence. */
 export type TraceFrameBadge = "malformed" | "orphaned";
@@ -63,11 +65,17 @@ export interface TraceFrameView {
   byteLength?: number;
   /** Epoch ms the frame was observed. */
   timestamp: number;
-  /** Offset in ms from the trace's first frame. */
+  /**
+   * Offset in ms from the trace's first frame. Debugger-observed: measured from
+   * the debugger's envelope-arrival clock, so it includes WS transport and
+   * queueing delay. Reliable for ordering and presence, not a host-side latency.
+   */
   latencyFromStartMs: number;
   /**
    * Round-trip in ms from this frame back to the opening frame it answers,
-   * present only on a closing frame that has a matched opener.
+   * present only on a closing frame that has a matched opener. Debugger-observed
+   * (see {@link latencyFromStartMs}): it includes transport/queueing, so it is
+   * not the host's "this call took N ms".
    */
   roundTripMs?: number;
   /** Badges for this frame alone. */
@@ -97,6 +105,12 @@ export interface TraceView {
    * so the op list keys and filters on `(channelId, requestId)`.
    */
   channelId?: string;
+  /**
+   * Which reuse of `(channelId, requestId)` this op is, from `0`. A product may
+   * recycle a requestId for a later call; this lets the op list and drill-down
+   * address the right op instead of merging or masking one.
+   */
+  generation?: number;
   /** Epoch ms of the first frame. */
   startedAt: number;
   /** Epoch ms of the most recent frame. */
@@ -150,6 +164,8 @@ export interface TraceViewInput {
   requestId: string;
   /** Channel/host the op belongs to, when the vantage supplies it. */
   channelId?: string;
+  /** Which reuse of `(channelId, requestId)` this op is; see {@link TraceView.generation}. */
+  generation?: number;
   startedAt: number;
   lastAt: number;
   frames: readonly TraceFrameInput[];
@@ -187,6 +203,7 @@ export function buildTraceView(input: TraceViewInput): TraceView {
   return {
     requestId: input.requestId,
     channelId: input.channelId,
+    generation: input.generation,
     startedAt: input.startedAt,
     lastAt: input.lastAt,
     durationMs: input.lastAt - input.startedAt,
@@ -222,13 +239,15 @@ export function wireTraceToView(
   return buildTraceView({
     requestId: trace.requestId,
     channelId: trace.channelId,
+    generation: trace.generation,
     startedAt: trace.startedAt,
     lastAt: trace.lastAt,
-    extraBadges,
+    // Surface engine-level frame/byte-cap eviction as an op badge.
+    extraBadges: trace.truncated ? [...extraBadges, "truncated"] : extraBadges,
     frames: trace.frames.map((frame): TraceFrameInput => {
-      // The wire ingest leaves `role` as `"unknown"` (lifecycle is not on the
-      // wire); the frameId's wire-table `kind` is the lifecycle role, so use it
-      // when the frame has no better one. A `"malformed"` sentinel is kept.
+      // A frame may still arrive `role: "unknown"` (a vantage with no wire
+      // frameId, or an off-table id); the frameId's wire-table `kind` is the
+      // lifecycle role, so use it as the fallback. A `"malformed"` sentinel is kept.
       const info = methodNames?.get(frame.frameId);
       const role =
         frame.role === "unknown" && info !== undefined ? info.kind : frame.role;

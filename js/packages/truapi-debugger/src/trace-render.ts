@@ -127,6 +127,7 @@ const OP_BADGE_LABEL: Record<TraceBadge, string> = {
   orphaned: "orphaned",
   malformed: "malformed",
   "retry-storm": "retry storm",
+  truncated: "truncated",
 };
 
 function renderOpBadge(badge: TraceBadge): string {
@@ -141,6 +142,8 @@ function badgeTitle(badge: TraceBadge): string {
       return "A frame failed to decode on the wire";
     case "retry-storm":
       return "This op is one of a burst of like ops in a short window";
+    case "truncated":
+      return "Older frames were dropped to stay under the frame/byte cap";
   }
 }
 
@@ -210,12 +213,12 @@ function renderLatency(frame: TraceFrameView): string {
   // A closing frame that answers an opener shows its round-trip; everything
   // else shows its offset from the op's first frame.
   if (frame.roundTripMs !== undefined) {
-    return `<span class="td-frame-latency" title="round trip from the frame it answers">⟳ ${formatMs(frame.roundTripMs)}</span>`;
+    return `<span class="td-frame-latency" title="round trip to the frame it answers — debugger-observed, includes transport/queueing delay">⟳ ${formatMs(frame.roundTripMs)}</span>`;
   }
   if (frame.latencyFromStartMs === 0) {
     return `<span class="td-frame-latency td-latency-start">+0</span>`;
   }
-  return `<span class="td-frame-latency" title="offset from the op's first frame">+${formatMs(frame.latencyFromStartMs)}</span>`;
+  return `<span class="td-frame-latency" title="offset from the op's first frame — debugger-observed, includes transport/queueing delay">+${formatMs(frame.latencyFromStartMs)}</span>`;
 }
 
 /**
@@ -373,13 +376,16 @@ export function renderOperationRow(view: TraceView): string {
   // Op-row privacy marker + a filterable attribute: this op touches a method
   // whose payload stays redacted by default.
   const sensitiveAttr = view.sensitive ? ` data-sensitive="1"` : "";
+  // Generation disambiguates ops that recycle a `(channelId, requestId)`; the
+  // client keys rows and the drill-down on it so reused ids stay distinct.
+  const genAttr = ` data-generation="${String(view.generation ?? 0)}"`;
   const lock = view.sensitive
     ? `<span class="td-op-lock" title="carries a sensitive method — payload redacted by default" aria-hidden="true">🔒</span>`
     : "";
 
   return (
     `<div class="td-op ${kindClass}${live ? " td-op-live" : ""}" ` +
-    `data-request-id="${esc(view.requestId)}"${channelAttr}${sensitiveAttr} role="listitem" tabindex="-1">` +
+    `data-request-id="${esc(view.requestId)}"${channelAttr}${genAttr}${sensitiveAttr} role="listitem" tabindex="-1">` +
     `<span class="td-op-kind" aria-hidden="true">${kindGlyph}</span>` +
     methodHtml +
     lock +

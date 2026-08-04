@@ -677,6 +677,60 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
     Ok(out)
 }
 
+/// Every wire frame id (sorted), its method-leg tag, and whether the method is
+/// `#[wire(..., sensitive)]`. The one iteration the schema-hash fingerprint is
+/// derived from, so the fingerprint tracks exactly what the wire table
+/// publishes.
+fn wire_id_rows(api: &ApiDefinition, target_version: u32) -> Result<Vec<(u8, String, bool)>> {
+    let wrappers = collect_versioned_wrappers(api);
+    let mut seen: BTreeMap<u8, (String, bool)> = BTreeMap::new();
+    for trait_def in &api.traits {
+        for method in &trait_def.methods {
+            if !method_is_included(trait_def, method, &wrappers, target_version)? {
+                continue;
+            }
+            let wire_ids = wire_ids_for_method(trait_def, method)?;
+            for (id, tag) in wire_ids.entries(&method.name) {
+                if let Some((existing, _)) = seen.insert(id, (tag.clone(), method.wire.sensitive)) {
+                    bail!("wire id {id} reused: `{existing}` and `{tag}` collide");
+                }
+            }
+        }
+    }
+    Ok(seen
+        .into_iter()
+        .map(|(id, (tag, sensitive))| (id, tag, sensitive))
+        .collect())
+}
+
+/// A stable fingerprint of the wire contract: every frame id, the method leg it
+/// resolves to, and its sensitivity, folded together with the codec version.
+/// Two builds whose frame tables differ - a reassigned id, a renamed or
+/// added/removed method, or a flipped `#[wire(sensitive)]` - produce different
+/// hashes even when the handshake `codec_version` is unchanged, which is the
+/// case the coarse codec number cannot see. Emitted as `TRUAPI_WIRE_SCHEMA_HASH`
+/// on both the TS and Rust sides so a host stamps it on every debug envelope and
+/// the debugger refuses to decode a frame whose contract differs from its own.
+pub(crate) fn wire_schema_hash(
+    api: &ApiDefinition,
+    target_version: u32,
+    codec_version: u8,
+) -> Result<String> {
+    let mut canonical = format!("codec={codec_version}\n");
+    for (id, tag, sensitive) in wire_id_rows(api, target_version)? {
+        let flag = u8::from(sensitive);
+        canonical.push_str(&format!("{id}:{tag}:{flag}\n"));
+    }
+    // FNV-1a 64-bit: deterministic across platforms and Rust versions (unlike
+    // `DefaultHasher`), dependency-free, and ample for a contract fingerprint.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in canonical.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    Ok(format!("{hash:016x}"))
+}
+
 fn method_is_included(
     trait_def: &TraitDef,
     method: &MethodDef,
@@ -951,6 +1005,7 @@ fn generate_types(api: &ApiDefinition, target_version: u32) -> Result<String> {
 fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) -> Result<String> {
     validate_versioned_wrapper_shapes(api)?;
 
+    let schema_hash = wire_schema_hash(api, target_version, codec_version)?;
     let mut out = String::new();
     writedoc!(
         out,
@@ -969,6 +1024,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
         export type {{ ObservableLike, Observer, Result, Subscription, TrUApiTransport }};
         export const TRUAPI_VERSION = {target_version} as const;
         export const TRUAPI_CODEC_VERSION = {codec_version} as const;
+        export const TRUAPI_WIRE_SCHEMA_HASH = "{schema_hash}" as const;
 
         function toSubscriptionError<Reason = never>(error: unknown): SubscriptionError<Reason> {{
           if (error instanceof SubscriptionError) return error as SubscriptionError<Reason>;

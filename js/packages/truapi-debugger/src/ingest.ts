@@ -13,6 +13,25 @@
 
 import { decodeWireMessage } from "@parity/truapi";
 import type { ObservedFrame, TransportObserver } from "./observed-frame.js";
+import type { WireMethodInfo } from "./wire-debugger.js";
+
+/**
+ * Version of the host→debugger wire envelope (`{ channelId, dir, frame }`).
+ * Bumped when the envelope shape changes. Producers (the Rust `WsDebugSink`, the
+ * web host's debugger link) stamp it alongside a codec identity so the debugger
+ * can refuse to decode a frame against a wire contract that isn't its own -
+ * frame ids are `u8` discriminants that get reassigned as the API evolves, so an
+ * unversioned envelope from an older host would resolve to the wrong method, the
+ * wrong value, and worst case decode a frame the host's build marks sensitive.
+ */
+export const WIRE_ENVELOPE_VERSION = 1;
+
+/**
+ * Default cap on retained `channelId` / `requestId` length. Shared so the
+ * debugger server's channel registry clamps to the same bound as ingest and the
+ * two keys stay equal (the UI filters by the clamped key).
+ */
+export const DEFAULT_MAX_ID_CHARS = 256;
 
 /**
  * One wire frame as it crosses the host tap, matching the Rust
@@ -41,6 +60,21 @@ export interface DebugIngestOptions {
    * either way; retaining them only makes the drill-down decoder able to run.
    */
   retainBytes?: boolean;
+  /**
+   * Reverse map from wire `frameId` to method info (build one with
+   * {@link createMethodNameMap}). When set, each frame's lifecycle `role` is
+   * resolved here from the frame id's wire-table `kind`, so *every* consumer -
+   * the default console sink, the `forward` hook, and the trace engine - sees the
+   * real role. Without it, `role` is left `"unknown"` and only the view adapter
+   * recovers it.
+   */
+  methodNames?: ReadonlyMap<number, WireMethodInfo>;
+  /**
+   * Cap on retained `channelId` / `requestId` length. Anything able to reach the
+   * host tap could otherwise send 200k-char ids, one copy per frame; real ids are
+   * short (`myapp.dot`, `p:1`). Default 256.
+   */
+  maxIdChars?: number;
 }
 
 /**
@@ -63,11 +97,16 @@ export function createDebugIngest(
   options: DebugIngestOptions = {},
 ): (envelope: DebugFrameEnvelope) => void {
   const retainBytes = options.retainBytes ?? false;
+  const methodNames = options.methodNames;
+  const maxIdChars = options.maxIdChars ?? DEFAULT_MAX_ID_CHARS;
+  const clampId = (id: string): string =>
+    id.length > maxIdChars ? id.slice(0, maxIdChars) : id;
   return (envelope) => {
+    const channelId = clampId(envelope.channelId);
     const decoded = decodeWireMessage(envelope.frame);
     if (decoded.isErr()) {
       sink({
-        channelId: envelope.channelId,
+        channelId,
         direction: envelope.dir,
         requestId: "malformed",
         frameId: -1,
@@ -79,11 +118,14 @@ export function createDebugIngest(
     }
     const { requestId, payload } = decoded.value;
     const frame: ObservedFrame = {
-      channelId: envelope.channelId,
+      channelId,
       direction: envelope.dir,
-      requestId,
+      requestId: clampId(requestId),
       frameId: payload.id,
-      role: "unknown",
+      // Resolve the lifecycle role from the frame id's wire-table kind (the same
+      // kind wireTraceToView falls back to). Left "unknown" when no map is given
+      // or the id is off-table.
+      role: methodNames?.get(payload.id)?.kind ?? "unknown",
       byteLength: payload.value.length,
       timestamp: Date.now(),
       ...(retainBytes ? { bytes: payload.value } : {}),

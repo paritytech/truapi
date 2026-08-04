@@ -48,6 +48,10 @@ export interface CliStats {
   malformed: number;
   orphaned: number;
   retryStorms: number;
+  truncated: number;
+  evictedTraces: number;
+  droppedByHost: number;
+  codecMismatch: boolean;
   sensitive: number;
   out: number;
   in: number;
@@ -63,7 +67,9 @@ export function formatStats(s: CliStats): string {
     `${bold(String(s.frames))} ${dim(`frames (${String(s.out)}▶ ${String(s.in)}◀)`)}`,
     `${bold(fmtBytes(s.bytes))} ${dim("data")}`,
     `${bold(String(s.subscriptions))} ${dim("subs")}${s.liveSubscriptions ? ` ${green(`(${String(s.liveSubscriptions)} live)`)}` : ""}`,
-    `${bold(fmtMs(s.avgDurationMs))} ${dim(`avg (max ${fmtMs(s.maxDurationMs)})`)}`,
+    // "observed": these times are the debugger's own WS-arrival clock, so they
+    // include transport + queueing delay and are not the true host call latency.
+    `${bold(fmtMs(s.avgDurationMs))} ${dim(`avg (max ${fmtMs(s.maxDurationMs)}, observed)`)}`,
     s.sensitive
       ? red(`\u{1f512} ${String(s.sensitive)} sensitive`)
       : dim("\u{1f512} 0 sensitive"),
@@ -71,6 +77,13 @@ export function formatStats(s: CliStats): string {
   if (s.malformed) parts.push(red(`${String(s.malformed)} malformed`));
   if (s.orphaned) parts.push(yellow(`${String(s.orphaned)} orphaned`));
   if (s.retryStorms) parts.push(yellow(`${String(s.retryStorms)} retry-storms`));
+  // Loss the op list can't show: frames dropped within a kept op, whole ops
+  // evicted, and frames the host dropped before delivery. A codec mismatch means
+  // a connected host's wire contract differs, so its method names may be wrong.
+  if (s.truncated) parts.push(yellow(`${String(s.truncated)} truncated`));
+  if (s.evictedTraces) parts.push(yellow(`${String(s.evictedTraces)} evicted`));
+  if (s.droppedByHost) parts.push(yellow(`${String(s.droppedByHost)} dropped`));
+  if (s.codecMismatch) parts.push(red("⚠ codec mismatch"));
   return parts.join(dim(" · "));
 }
 
@@ -106,8 +119,11 @@ export function formatOpDetail(
   decoded: ReadonlyMap<number, FrameValueDetail>,
 ): string {
   const lines: string[] = [];
+  // Durations here (and the per-frame ⟳/+ below) are the debugger's own
+  // WS-arrival clock — transport + queueing included — so label them "observed"
+  // rather than let a Network-tab-shaped readout imply true host call latency.
   lines.push(
-    `${bold(viewMethod(view))}  ${dim(`${view.requestId} · ${String(view.frames.length)} frames · ${fmtMs(view.durationMs)}`)}${view.sensitive ? red("  \u{1f512} sensitive") : ""}`,
+    `${bold(viewMethod(view))}  ${dim(`${view.requestId} · ${String(view.frames.length)} frames · ${fmtMs(view.durationMs)} observed`)}${view.sensitive ? red("  \u{1f512} sensitive") : ""}`,
   );
   for (const f of view.frames) {
     lines.push(formatFrameRow(f));

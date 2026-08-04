@@ -169,6 +169,11 @@ export const TRACE_DETAIL_CSS = String.raw`
   background: rgba(251, 146, 60, 0.12);
   border-color: rgba(251, 146, 60, 0.3);
 }
+.td-badge-truncated {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.3);
+}
 /* Level-2 decode affordance (standalone app vantage; dotli keeps bytes off). */
 .td-frame-decode-btn {
   font: inherit;

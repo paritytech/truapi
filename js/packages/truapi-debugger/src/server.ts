@@ -19,9 +19,15 @@
  * @module
  */
 
+import { TRUAPI_CODEC_VERSION, TRUAPI_WIRE_SCHEMA_HASH } from "@parity/truapi";
 import { createDebugSession } from "./session.js";
-import type { DebugFrameEnvelope } from "./ingest.js";
-import { wireTraceToView } from "./trace-view.js";
+import {
+  DEFAULT_MAX_ID_CHARS,
+  WIRE_ENVELOPE_VERSION,
+  type DebugFrameEnvelope,
+} from "./ingest.js";
+import { wireTraceToView, type TraceView } from "./trace-view.js";
+import type { CliStats } from "./trace-text.js";
 import {
   renderFrameValueDetail,
   renderOperationRow,
@@ -41,15 +47,87 @@ const SUBSCRIPTION_ROLES = new Set<string>([
   "interrupt",
 ]);
 
-/** The text message a host sends per frame: the envelope with a base64 frame. */
+/**
+ * The text message a host sends per frame: the envelope with a base64 frame,
+ * plus the optional identity fields (`v`, `codec`) a versioned host stamps.
+ */
 interface WireMessage {
   channelId: string;
   dir: "in" | "out";
   frame: string;
+  /** Envelope version; see {@link WIRE_ENVELOPE_VERSION}. */
+  v?: number;
+  /** The host's wire codec version (`TRUAPI_CODEC_VERSION`). */
+  codec?: number;
+  /**
+   * The host's wire-contract fingerprint (`TRUAPI_WIRE_SCHEMA_HASH`): a hash of
+   * every frame id, its method leg, and its sensitivity. Unlike `codec` (the
+   * coarse handshake number, bumped ~never), this changes whenever a frame id is
+   * reassigned or a `#[wire(sensitive)]` flag flips - the case where a
+   * host-sensitive frame could otherwise decode off this debugger's denylist.
+   */
+  schema?: string;
+  /** Frames this host dropped (link backlog full) before this one; surfaced in stats. */
+  dropped?: number;
 }
 
-/** Parse and validate one inbound WS text message into an envelope, or `null`. */
-function parseWireMessage(raw: string): DebugFrameEnvelope | null {
+/** A parsed inbound message: the envelope plus its wire-identity verdict. */
+interface ParsedWireMessage {
+  envelope: DebugFrameEnvelope;
+  /**
+   * `true` when the host stamped a `v`/`codec`/`schema` that does not match this
+   * debugger's - the API-evolved-underneath case. Blocks the value-decode path.
+   */
+  identityMismatch: boolean;
+  /**
+   * `true` only when the host affirmatively stamped a `schema` equal to this
+   * debugger's. Decode is allowed only for confirmed channels: an absent schema
+   * (a foreign or pre-identity host) is NOT trusted to decode, closing the
+   * omit-identity-to-bypass hole. Payload-blind grouping is unaffected.
+   */
+  identityConfirmed: boolean;
+  /** Frames the host reported dropping before this one. */
+  dropped: number;
+}
+
+/**
+ * Whether a WebSocket upgrade may proceed. Non-browser clients (the CLI, curl)
+ * send no Origin and are allowed; a browser sends its page Origin, which must be
+ * a loopback host - a cross-origin page dialing the debugger to inject frames is
+ * refused (CSWSH), which binding to loopback alone does not prevent.
+ */
+function originAllowed(origin: string | null): boolean {
+  if (origin === null) return true;
+  try {
+    const host = new URL(origin).hostname;
+    // `new URL("http://[::1]").hostname` keeps the brackets ("[::1]"), so match
+    // that form (a bare "::1" never occurs, but accept it defensively).
+    return (
+      host === "127.0.0.1" ||
+      host === "localhost" ||
+      host === "[::1]" ||
+      host === "::1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Parse an optional integer query param: `undefined` if absent, `null` if
+ * malformed. Requires a canonical integer so `""`, `" "`, `"1e3"`, `"0x10"`,
+ * `"1.5"`, and `"+1"` all reject rather than silently coercing (`Number("")===0`).
+ */
+function optionalInt(raw: string | null): number | null | undefined {
+  if (raw === null) return undefined;
+  const t = raw.trim();
+  if (!/^-?\d+$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isInteger(n) ? n : null;
+}
+
+/** Parse and validate one inbound WS text message, or `null`. */
+function parseWireMessage(raw: string): ParsedWireMessage | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -61,10 +139,20 @@ function parseWireMessage(raw: string): DebugFrameEnvelope | null {
   if (typeof m.channelId !== "string") return null;
   if (m.dir !== "in" && m.dir !== "out") return null;
   if (typeof m.frame !== "string") return null;
+  const schema = typeof m.schema === "string" ? m.schema : undefined;
+  const identityMismatch =
+    (typeof m.v === "number" && m.v !== WIRE_ENVELOPE_VERSION) ||
+    (typeof m.codec === "number" && m.codec !== TRUAPI_CODEC_VERSION) ||
+    (schema !== undefined && schema !== TRUAPI_WIRE_SCHEMA_HASH);
   return {
-    channelId: m.channelId,
-    dir: m.dir,
-    frame: new Uint8Array(Buffer.from(m.frame, "base64")),
+    envelope: {
+      channelId: m.channelId,
+      dir: m.dir,
+      frame: new Uint8Array(Buffer.from(m.frame, "base64")),
+    },
+    identityMismatch,
+    identityConfirmed: schema === TRUAPI_WIRE_SCHEMA_HASH,
+    dropped: typeof m.dropped === "number" && m.dropped > 0 ? m.dropped : 0,
   };
 }
 
@@ -118,6 +206,31 @@ export function startDebugServer(
   const revealSensitive = decodeValues && (options.revealSensitive ?? false);
   const session = createDebugSession({ decodeValues, revealSensitive });
 
+  /** Adapt one trace to a view with the shared method map + denylist. */
+  const toView = (
+    trace: ReturnType<typeof session.traceEngine.traces>[number],
+    storms: ReturnType<typeof detectRetryStorms>,
+  ): TraceView =>
+    wireTraceToView(
+      trace,
+      session.methodNames,
+      storms.get(trace) ?? [],
+      session.sensitiveIds,
+    );
+
+  /**
+   * Compute the cross-op retry-storm signal once over a trace set, then adapt
+   * every trace. The `traces() → detectRetryStorms → wireTraceToView` pipeline is
+   * shared by every list-level endpoint so the same aggregation runs once, not
+   * per endpoint.
+   */
+  const viewsFor = (
+    traces: ReturnType<typeof session.traceEngine.traces>,
+  ): { trace: (typeof traces)[number]; view: TraceView }[] => {
+    const storms = detectRetryStorms(traces);
+    return traces.map((trace) => ({ trace, view: toView(trace, storms) }));
+  };
+
   function tracesJson(): string {
     // Payload-blind view: raw `bytes` and decoded values are deliberately never
     // serialized here - decode lives only on the `/frame` drill-down. `method`
@@ -127,18 +240,11 @@ export function startDebugServer(
     // op-level badges (incl. the cross-op retry-storm signal), so the web and
     // terminal frontends read one computed signal rather than each recomputing
     // (or, for the CLI, silently omitting) it.
-    const traces = session.traceEngine.traces();
-    const storms = detectRetryStorms(traces);
-    const out = traces.map((t) => {
-      const view = wireTraceToView(
-        t,
-        session.methodNames,
-        storms.get(t) ?? [],
-        session.sensitiveIds,
-      );
+    const out = viewsFor(session.traceEngine.traces()).map(({ trace: t, view }) => {
       return {
         channelId: t.channelId,
         requestId: t.requestId,
+        generation: t.generation,
         startedAt: t.startedAt,
         lastAt: t.lastAt,
         badges: view.badges,
@@ -161,14 +267,25 @@ export function startDebugServer(
     const rawIndex = url.searchParams.get("i");
     const channel = url.searchParams.get("channel") ?? undefined;
     const reveal = url.searchParams.get("reveal") === "1";
+    // `Number("")`/`Number(" ")` are both 0 and pass Number.isInteger, so an
+    // empty or whitespace `?i=` or `?gen=` would otherwise resolve frame 0 /
+    // generation 0 (the oldest recycled op) with a 200; optionalInt rejects them.
+    const generation = optionalInt(url.searchParams.get("gen"));
     const index = Number(rawIndex);
-    if (id === null || rawIndex === null || !Number.isInteger(index)) {
+    if (
+      id === null ||
+      rawIndex === null ||
+      rawIndex.trim() === "" ||
+      !Number.isInteger(index) ||
+      generation === null
+    ) {
       return new Response('{"error":"id and integer i required"}', {
         status: 400,
         headers: { "content-type": "application/json" },
       });
     }
-    const detail = session.frameDetail(id, index, channel, reveal);
+    if (!decodeTrusted(channel)) return codecRefusal("application/json");
+    const detail = session.frameDetail(id, index, channel, reveal, generation);
     if (!detail) {
       return new Response('{"error":"no such frame"}', {
         status: 404,
@@ -186,31 +303,20 @@ export function startDebugServer(
    * No payloads here; decode controls appear per frame only when level-2 is on.
    */
   function viewHtml(): string {
-    const traces = session.traceEngine.traces();
-    if (traces.length === 0) {
+    const entries = viewsFor(session.traceEngine.traces());
+    if (entries.length === 0) {
       return `<div class="td-empty">no frames yet</div>`;
     }
-    // Retry-storm is a cross-op signal computed here in the list layer and fed
-    // to the view as extra op badges; the renderer stays display-only.
-    const storms = detectRetryStorms(traces);
     // Wrap each rendered op in `.td-drilldown` - dotli's verbatim card wrapper -
     // so the standalone list gets the same per-op framing without a bespoke rule.
-    return traces
+    return entries
       .map(
-        (t) =>
+        ({ view }) =>
           `<div class="td-drilldown">` +
-          renderTraceDetail(
-            wireTraceToView(
-              t,
-              session.methodNames,
-              storms.get(t) ?? [],
-              session.sensitiveIds,
-            ),
-            {
-              offerDecode: session.decodeValues,
-              offerReveal: session.revealSensitive,
-            },
-          ) +
+          renderTraceDetail(view, {
+            offerDecode: session.decodeValues,
+            offerReveal: session.revealSensitive,
+          }) +
           `</div>`,
       )
       .join("");
@@ -227,14 +333,27 @@ export function startDebugServer(
     const rawIndex = url.searchParams.get("i");
     const channel = url.searchParams.get("channel") ?? undefined;
     const reveal = url.searchParams.get("reveal") === "1";
+    const generation = optionalInt(url.searchParams.get("gen"));
     const index = Number(rawIndex);
-    if (id === null || rawIndex === null || !Number.isInteger(index)) {
+    if (
+      id === null ||
+      rawIndex === null ||
+      rawIndex.trim() === "" ||
+      !Number.isInteger(index) ||
+      generation === null
+    ) {
       return new Response(`<div class="td-bytes-only">bad request</div>`, {
         status: 400,
         headers: htmlHeaders,
       });
     }
-    const detail = session.frameDetail(id, index, channel, reveal);
+    if (!decodeTrusted(channel)) {
+      return new Response(
+        `<div class="td-bytes-only">decode refused — host wire codec mismatch</div>`,
+        { status: 409, headers: htmlHeaders },
+      );
+    }
+    const detail = session.frameDetail(id, index, channel, reveal, generation);
     if (!detail) {
       return new Response(`<div class="td-bytes-only">no such frame</div>`, {
         status: 404,
@@ -262,46 +381,120 @@ export function startDebugServer(
   // frames under many distinct channelIds can't grow it without bound; when
   // full, evict the least-recently-seen channel.
   const MAX_CHANNELS = 256;
+  // Clamp channelId to the same bound ingest uses so this registry's key matches
+  // the trace-engine key the UI filters by, and an over-long attacker-chosen id
+  // can't bloat the map (256 entries * an unbounded key would otherwise grow it).
+  const clampChannelId = (id: string): string =>
+    id.length > DEFAULT_MAX_ID_CHARS ? id.slice(0, DEFAULT_MAX_ID_CHARS) : id;
   const channels = new Map<
     string,
-    { channelId: string; firstSeen: number; lastSeen: number; frameCount: number }
+    {
+      channelId: string;
+      firstSeen: number;
+      lastSeen: number;
+      frameCount: number;
+      // `false` once this host has sent a frame whose declared wire identity
+      // (`v`/`codec`/`schema`) does not match this debugger's. Sticky: a single
+      // mismatch marks the host untrusted for the rest of the session.
+      codecOk: boolean;
+      // `true` once this host affirmatively stamped a matching `schema`. Decode
+      // requires it, so a host that never declares identity is refused, not
+      // trusted by omission.
+      schemaOk: boolean;
+      // Frames the host reported dropping before delivery (its link backlog
+      // filled): a gap attributable to the link, surfaced so it is not read as
+      // the host "not answering".
+      dropped: number;
+    }
   >();
   let openSockets = 0;
+  // Sticky: any host has sent an unconfirmed (mismatched or unstamped) frame this
+  // session. The no-channel decode path keys on this rather than scanning the live
+  // registry, because an untrusted host's channel record can be LRU-evicted (see
+  // MAX_CHANNELS) while its frames survive in the trace engine.
+  let sawUntrusted = false;
 
-  function recordChannel(channelId: string): void {
+  function recordChannel(channelId: string, parsed: ParsedWireMessage): void {
+    if (!parsed.identityConfirmed) sawUntrusted = true;
     const now = Date.now();
-    const existing = channels.get(channelId);
+    const key = clampChannelId(channelId);
+    const existing = channels.get(key);
     if (existing) {
       existing.lastSeen = now;
       existing.frameCount += 1;
+      existing.dropped += parsed.dropped;
+      if (parsed.identityMismatch) existing.codecOk = false;
+      if (parsed.identityConfirmed) existing.schemaOk = true;
       return;
     }
     if (channels.size >= MAX_CHANNELS) {
       let oldestKey: string | undefined;
       let oldestSeen = Infinity;
-      for (const [key, c] of channels) {
+      for (const [k, c] of channels) {
         if (c.lastSeen < oldestSeen) {
           oldestSeen = c.lastSeen;
-          oldestKey = key;
+          oldestKey = k;
         }
       }
       if (oldestKey !== undefined) channels.delete(oldestKey);
     }
-    channels.set(channelId, {
-      channelId,
+    channels.set(key, {
+      channelId: key,
       firstSeen: now,
       lastSeen: now,
       frameCount: 1,
+      codecOk: !parsed.identityMismatch,
+      schemaOk: parsed.identityConfirmed,
+      dropped: parsed.dropped,
+    });
+  }
+
+  /**
+   * Whether a decoded value may be surfaced for a channel's frames. Only bites
+   * when decode is on (payload-blind mode never decodes anyway). Decode is
+   * allowed only for a channel that affirmatively stamped a matching wire
+   * `schema` and never mismatched.
+   *
+   * This is a COMPATIBILITY guard against honest version drift - a host built
+   * against a different frame table, where a host-sensitive id could resolve off
+   * this debugger's `SENSITIVE_FRAME_IDS` - not authentication:
+   * `TRUAPI_WIRE_SCHEMA_HASH` is a public build constant, so a deliberate local
+   * injector could stamp it. The WS Origin gate ({@link originAllowed}) is the
+   * boundary against injection; this is defence in depth on top of it.
+   */
+  function decodeTrusted(channel: string | undefined): boolean {
+    if (!decodeValues) return true;
+    if (channel !== undefined) {
+      const c = channels.get(clampChannelId(channel));
+      return c !== undefined && c.codecOk && c.schemaOk;
+    }
+    // No channel disambiguator: refuse once any host has been untrusted this
+    // session (sticky, so an evicted untrusted record can't launder its surviving
+    // frames). An all-trusted or empty session stays true, so a missing frame
+    // 404s rather than being masked by a refusal.
+    return !sawUntrusted;
+  }
+
+  /** The 409 a decode path returns when the source host's wire codec mismatches. */
+  function codecRefusal(contentType: string): Response {
+    return new Response('{"error":"decode refused: host wire codec mismatch"}', {
+      status: 409,
+      headers: { "content-type": contentType },
     });
   }
 
   function channelsJson(): string {
     const now = Date.now();
+    const list = [...channels.values()].sort((a, b) => b.lastSeen - a.lastSeen);
     return JSON.stringify({
       sockets: openSockets,
-      channels: [...channels.values()]
-        .sort((a, b) => b.lastSeen - a.lastSeen)
-        .map((c) => ({ ...c, connected: now - c.lastSeen < CONNECTED_WINDOW_MS })),
+      // A banner signal: at least one connected host is streaming a wire codec
+      // this debugger can't decode against.
+      codecMismatch: list.some((c) => !c.codecOk),
+      channels: list.map((c) => ({
+        ...c,
+        connected: now - c.lastSeen < CONNECTED_WINDOW_MS,
+      })),
     });
   }
 
@@ -316,8 +509,7 @@ export function startDebugServer(
     const traces =
       channel === null
         ? session.traceEngine.traces()
-        : session.traceEngine.tracesForChannel(channel);
-    const storms = detectRetryStorms(traces);
+        : session.traceEngine.tracesForChannel(clampChannelId(channel));
     let frames = 0;
     let bytes = 0;
     let subscriptions = 0;
@@ -325,20 +517,21 @@ export function startDebugServer(
     let malformed = 0;
     let orphaned = 0;
     let retryStorms = 0;
+    let truncated = 0;
     let sensitive = 0;
     let out = 0;
     let inbound = 0;
     let durationTotal = 0;
     let durationMax = 0;
     const methodCounts = new Map<string, number>();
-    for (const t of traces) {
-      const view = wireTraceToView(t, session.methodNames, storms.get(t) ?? [], session.sensitiveIds);
+    for (const { view } of viewsFor(traces)) {
       frames += view.frames.length;
       durationTotal += view.durationMs;
       if (view.durationMs > durationMax) durationMax = view.durationMs;
       if (view.badges.includes("malformed")) malformed += 1;
       if (view.badges.includes("orphaned")) orphaned += 1;
       if (view.badges.includes("retry-storm")) retryStorms += 1;
+      if (view.badges.includes("truncated")) truncated += 1;
       if (view.sensitive) sensitive += 1;
       if (view.frames.some((f) => SUBSCRIPTION_ROLES.has(f.role))) {
         subscriptions += 1;
@@ -362,7 +555,22 @@ export function startDebugServer(
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([method, count]) => ({ method, count }));
-    return JSON.stringify({
+    // Whole-op eviction (session-wide) and host-reported drops are loss the ops
+    // list can't show: `ops` counts only the survivors, so without these a
+    // 10k-op session that kept 256 reads as "256 ops" with no sign the rest were
+    // dropped. `codecMismatch` flags a host whose wire contract differs.
+    const evictedTraces = session.traceEngine.evictedTraces();
+    const chanList =
+      channel === null
+        ? [...channels.values()]
+        : [...channels.values()].filter(
+            (c) => c.channelId === clampChannelId(channel),
+          );
+    const droppedByHost = chanList.reduce((n, c) => n + c.dropped, 0);
+    const codecMismatch = chanList.some((c) => !c.codecOk);
+    // Typed so a dropped/renamed field is a compile error, not a silent gap in
+    // the payload the CLI parses back as CliStats.
+    const payload: CliStats = {
       ops,
       frames,
       bytes,
@@ -371,13 +579,18 @@ export function startDebugServer(
       malformed,
       orphaned,
       retryStorms,
+      truncated,
+      evictedTraces,
+      droppedByHost,
+      codecMismatch,
       sensitive,
       out,
       in: inbound,
       avgDurationMs: ops === 0 ? 0 : Math.round(durationTotal / ops),
       maxDurationMs: Math.round(durationMax),
       topMethods,
-    });
+    };
+    return JSON.stringify(payload);
   }
 
   /** The op's method for sorting: the first frame that resolves to one. */
@@ -428,7 +641,7 @@ export function startDebugServer(
     const base =
       channel === null
         ? session.traceEngine.traces()
-        : session.traceEngine.tracesForChannel(channel);
+        : session.traceEngine.tracesForChannel(clampChannelId(channel));
     // Retry-storm is per-channel (a burst of like ops from one host), so it is
     // detected over exactly the traces being listed - before any reorder, since
     // the storm map is keyed by the trace object, not its position.
@@ -436,13 +649,26 @@ export function startDebugServer(
     if (base.length === 0) {
       return `<div class="td-op-empty">no operations yet</div>`;
     }
-    return sortTraces(base, sort)
-      .map((t) =>
-        renderOperationRow(
-          wireTraceToView(t, session.methodNames, storms.get(t) ?? [], session.sensitiveIds),
-        ),
-      )
-      .join("");
+    const rows = sortTraces(base, sort);
+    // If any listed op is from a host whose wire contract differs from this
+    // debugger's, its method names may be wrong. Warn inline above the rows - not
+    // only in the global banner - so the mislabeled rows carry the caveat.
+    // "Unreliable" = a mismatched OR merely unconfirmed host: either way its
+    // method names come from this debugger's table and may be wrong, so the label
+    // matches the decode gate's bar rather than the narrower banner.
+    const mismatched = new Set(
+      [...channels.values()]
+        .filter((c) => !c.codecOk || !c.schemaOk)
+        .map((c) => c.channelId),
+    );
+    const notice =
+      mismatched.size > 0 &&
+      rows.some((t) => mismatched.has(clampChannelId(t.channelId)))
+        ? `<div style="padding:4px 10px;color:#fca5a5;font-size:11px;border-bottom:1px solid rgba(255,255,255,.08)">⚠ a connected host's wire contract differs from this debugger's — method names below may be wrong</div>`
+        : "";
+    return (
+      notice + rows.map((t) => renderOperationRow(toView(t, storms))).join("")
+    );
   }
 
   /**
@@ -450,21 +676,23 @@ export function startDebugServer(
    * {@link renderTraceDetail}. `channel` disambiguates the `requestId` when more
    * than one host is connected (each mints the same `p:N` ids).
    */
-  function opDetailHtml(requestId: string, channel: string | null): string {
-    const trace = session.traceEngine.trace(requestId, channel ?? undefined);
+  function opDetailHtml(
+    requestId: string,
+    channel: string | null,
+    generation?: number,
+  ): string {
+    const trace = session.traceEngine.trace(
+      requestId,
+      channel ?? undefined,
+      generation,
+    );
     if (!trace) {
       return `<div class="td-detail-empty">operation not found</div>`;
     }
     const storms = detectRetryStorms(
       session.traceEngine.tracesForChannel(trace.channelId),
     );
-    const view = wireTraceToView(
-      trace,
-      session.methodNames,
-      storms.get(trace) ?? [],
-      session.sensitiveIds,
-    );
-    return renderTraceDetail(view, {
+    return renderTraceDetail(toView(trace, storms), {
       offerDecode: session.decodeValues,
       offerReveal: session.revealSensitive,
     });
@@ -472,8 +700,23 @@ export function startDebugServer(
 
   const server = Bun.serve({
     port: options.port ?? DEFAULT_PORT,
+    // Loopback only. The debugger holds every trace (and, with decode on, decoded
+    // values), so it must not listen on all interfaces where a LAN peer could
+    // read them or inject frames. The CLI and same-origin inspector both target
+    // localhost, so nothing else changes.
+    hostname: "127.0.0.1",
     fetch(req, srv) {
-      if (srv.upgrade(req)) return undefined;
+      // Reject cross-origin WebSocket upgrades (CSWSH): binding to 127.0.0.1
+      // keeps off-box peers out, but a page open in the dev's own browser could
+      // still dial ws://127.0.0.1:<port> to inject frames or drive the decoder
+      // over hostile bytes. A same-origin inspector and non-browser clients are
+      // allowed; a foreign browser Origin is not.
+      if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        if (!originAllowed(req.headers.get("origin"))) {
+          return new Response("forbidden origin", { status: 403 });
+        }
+        if (srv.upgrade(req)) return undefined;
+      }
       const url = new URL(req.url);
       const htmlHeaders = { "content-type": "text/html; charset=utf-8" };
       if (url.pathname === "/traces") {
@@ -502,10 +745,17 @@ export function startDebugServer(
       }
       if (url.pathname === "/op") {
         const id = url.searchParams.get("id");
+        const generation = optionalInt(url.searchParams.get("gen"));
+        if (generation === null) {
+          return new Response(`<div class="td-detail-empty">bad request</div>`, {
+            status: 400,
+            headers: htmlHeaders,
+          });
+        }
         return new Response(
           id === null
             ? `<div class="td-detail-empty">select an operation</div>`
-            : opDetailHtml(id, url.searchParams.get("channel")),
+            : opDetailHtml(id, url.searchParams.get("channel"), generation),
           { headers: htmlHeaders },
         );
       }
@@ -536,10 +786,12 @@ export function startDebugServer(
         // the invariant local so a future ingest change can't propagate here.
         try {
           const raw = typeof message === "string" ? message : message.toString();
-          const envelope = parseWireMessage(raw);
-          if (envelope) {
-            recordChannel(envelope.channelId);
-            session.handleEnvelope(envelope);
+          const parsed = parseWireMessage(raw);
+          if (parsed) {
+            recordChannel(parsed.envelope.channelId, parsed);
+            // Still grouped (payload-blind is safe and useful); a mismatch only
+            // blocks the value-decode path, via decodeTrusted.
+            session.handleEnvelope(parsed.envelope);
           }
         } catch {
           // Drop the frame; the observed session is worth more than one trace.
@@ -707,6 +959,7 @@ ${TRACE_DETAIL_CSS}
   .ins-status { display: flex; gap: 16px; padding: 4px 12px; color: #6b7280;
     border-top: 1px solid rgba(255,255,255,.08); }
   .ins-status .live { color: #4ade80; }
+  .ins-status .mismatch { color: #f87171; }
 </style>
 <div class="ins-top">
   <span class="ins-title">TrUAPI <span class="accent">Wire Inspector</span></span>
@@ -752,6 +1005,7 @@ ${TRACE_DETAIL_CSS}
 
   var selectedId = null;      // requestId of the open op
   var selectedChannel = null; // channelId of the open op (disambiguates requestId across hosts)
+  var selectedGen = null;     // generation of the open op (disambiguates a recycled requestId)
   var channel = null;         // channelId filter, null = all
   var lastListHtml = "";   // skip rebuilds when the op list is unchanged
   var lastDetailHtml = ""; // skip detail refresh when the open op is unchanged
@@ -798,13 +1052,13 @@ ${TRACE_DETAIL_CSS}
   function get(url) { return fetch(url).then(function (r) { return r.text(); }); }
 
   function keyOf(el) {
-    return el.getAttribute("data-request-id") + "\\0" + (el.getAttribute("data-channel-id") || "");
+    return el.getAttribute("data-request-id") + "\\0" + (el.getAttribute("data-channel-id") || "") + "\\0" + (el.getAttribute("data-generation") || "0");
   }
   // The selected op's identity is (requestId, channelId), not requestId alone -
   // two hosts on the "all" view mint the same p:N, so selection, the keyed diff,
   // and keyboard nav must all match on the composite key.
   function selKey() {
-    return selectedId === null ? null : selectedId + "\\0" + (selectedChannel || "");
+    return selectedId === null ? null : selectedId + "\\0" + (selectedChannel || "") + "\\0" + (selectedGen || "0");
   }
   function visibleRows() {
     return rows().filter(function (r) { return !r.classList.contains("filtered-out"); });
@@ -860,9 +1114,10 @@ ${TRACE_DETAIL_CSS}
 
   function rows() { return Array.prototype.slice.call(listEl.querySelectorAll(".td-op")); }
 
-  function selectOp(id, chan) {
+  function selectOp(id, chan, gen) {
     selectedId = id;
     selectedChannel = chan || null;
+    selectedGen = gen == null ? "0" : String(gen);
     var want = selKey();
     var row = null;
     rows().forEach(function (r) {
@@ -872,7 +1127,8 @@ ${TRACE_DETAIL_CSS}
     });
     cursor = -1;
     get("/op?id=" + encodeURIComponent(id) +
-      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : ""))
+      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
+      "&gen=" + encodeURIComponent(selectedGen))
       .then(function (frag) {
         lastDetailHtml = frag;
         detailEl.innerHTML = frag;
@@ -890,7 +1146,7 @@ ${TRACE_DETAIL_CSS}
     if (rs.length === 0) return;
     var key = selKey();
     var idx = rs.findIndex(function (r) { return keyOf(r) === key; });
-    function pick(r) { selectOp(r.getAttribute("data-request-id"), r.getAttribute("data-channel-id")); }
+    function pick(r) { selectOp(r.getAttribute("data-request-id"), r.getAttribute("data-channel-id"), r.getAttribute("data-generation")); }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       var n = idx < 0 ? 0 : Math.min(idx + 1, rs.length - 1);
@@ -913,7 +1169,7 @@ ${TRACE_DETAIL_CSS}
   });
   listEl.addEventListener("click", function (e) {
     var row = e.target.closest && e.target.closest(".td-op");
-    if (row) { listEl.focus(); selectOp(row.getAttribute("data-request-id"), row.getAttribute("data-channel-id")); }
+    if (row) { listEl.focus(); selectOp(row.getAttribute("data-request-id"), row.getAttribute("data-channel-id"), row.getAttribute("data-generation")); }
   });
 
   // Detail keyboard: move a frame cursor, decode the cursored frame.
@@ -947,7 +1203,8 @@ ${TRACE_DETAIL_CSS}
     if (!id || seq === null) return;
     btn.disabled = true;
     get("/frame-html?id=" + encodeURIComponent(id) + "&i=" + encodeURIComponent(seq) +
-      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : ""))
+      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
+      "&gen=" + encodeURIComponent(selectedGen || "0"))
       .then(function (frag) { btn.outerHTML = frag; })
       .catch(function () { btn.disabled = false; });
   }
@@ -973,7 +1230,8 @@ ${TRACE_DETAIL_CSS}
     if (!id || seq === null) return;
     btn.disabled = true;
     get("/frame-html?id=" + encodeURIComponent(id) + "&i=" + encodeURIComponent(seq) + "&reveal=1" +
-      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : ""))
+      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
+      "&gen=" + encodeURIComponent(selectedGen || "0"))
       .then(function (frag) { btn.outerHTML = frag; })
       .catch(function () { btn.disabled = false; });
   }
@@ -993,7 +1251,8 @@ ${TRACE_DETAIL_CSS}
     // placeholder (the server offers controls, not values).
     cursor = -1;  // the re-render clears .cursor; keep the index in step
     get("/op?id=" + encodeURIComponent(selectedId) +
-      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : ""))
+      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
+      "&gen=" + encodeURIComponent(selectedGen || "0"))
       .then(function (frag) { detailEl.innerHTML = frag; });
   }
   var decodeAllBtn = document.getElementById("decodeAll");
@@ -1020,8 +1279,13 @@ ${TRACE_DETAIL_CSS}
     });
     chanEl.innerHTML = html;
     var hosts = (data.channels || []).length;
+    // A host streaming a wire codec this debugger can't decode against: value
+    // decode is refused for it (payload-blind grouping still works). Banner it.
+    var codecWarn = data.codecMismatch
+      ? ' · <span class="mismatch" title="A host is streaming a wire codec this debugger cannot decode against; value decode is refused for it.">⚠ codec mismatch</span>'
+      : "";
     statusEl.innerHTML = rows().length + " ops · " + hosts + " host" + (hosts === 1 ? "" : "s") +
-      " · " + (live > 0 ? '<span class="live">' + live + " live</span>" : "idle");
+      " · " + (live > 0 ? '<span class="live">' + live + " live</span>" : "idle") + codecWarn;
   }
   function escHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -1059,12 +1323,15 @@ ${TRACE_DETAIL_CSS}
       statTile(s.frames, "frames", s.out + "▶ " + s["in"] + "◀") +
       statTile(fmtBytes(s.bytes), "data") +
       statTile(s.subscriptions, "subs", s.liveSubscriptions > 0 ? s.liveSubscriptions + " live" : "") +
-      statTile(fmtMs(s.avgDurationMs), "avg op", "max " + fmtMs(s.maxDurationMs)) +
+      statTile(fmtMs(s.avgDurationMs), "avg op", "max " + fmtMs(s.maxDurationMs) + ", observed") +
       '<div class="ins-stat lock"><span class="n">' + (s.sensitive || 0) +
         '</span><span class="k">🔒 sensitive</span></div>' +
       warnTile(s.malformed, "malformed") +
       warnTile(s.orphaned, "orphaned") +
-      warnTile(s.retryStorms, "retry storms");
+      warnTile(s.retryStorms, "retry storms") +
+      warnTile(s.truncated || 0, "truncated") +
+      warnTile(s.evictedTraces || 0, "evicted") +
+      warnTile(s.droppedByHost || 0, "dropped");
     if (s.topMethods && s.topMethods.length) {
       var m = '<div class="ins-methods">';
       s.topMethods.forEach(function (t) {
@@ -1113,7 +1380,8 @@ ${TRACE_DETAIL_CSS}
     // every second; sticky Decode-all re-applies when it does change.
     if (selectedId) {
       get("/op?id=" + encodeURIComponent(selectedId) +
-        (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : ""))
+        (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
+        "&gen=" + encodeURIComponent(selectedGen || "0"))
         .then(function (frag) {
           if (frag === lastDetailHtml) return;
           lastDetailHtml = frag;

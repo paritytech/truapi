@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { encodeWireMessage } from "@parity/truapi";
+import { encodeWireMessage, TRUAPI_WIRE_SCHEMA_HASH } from "@parity/truapi";
 import * as W from "@parity/truapi/wire-table";
 
 import { startDebugServer } from "./server.js";
@@ -35,7 +35,14 @@ async function streamFrame(
     ws.onopen = () => resolve();
     ws.onerror = () => reject(new Error("ws failed to open"));
   });
-  ws.send(JSON.stringify({ channelId: "myapp.dot", dir, frame }));
+  ws.send(
+    JSON.stringify({
+      channelId: "myapp.dot",
+      dir,
+      frame,
+      schema: TRUAPI_WIRE_SCHEMA_HASH,
+    }),
+  );
   let traces: TraceView[] = [];
   for (let i = 0; i < 50 && traces.length === 0; i++) {
     traces = (await (await fetch(`${base}/traces`)).json()) as TraceView[];
@@ -61,7 +68,14 @@ test("decodes and groups a frame a host streams over the WS", async () => {
       ws.onopen = () => resolve();
       ws.onerror = () => reject(new Error("ws failed to open"));
     });
-    ws.send(JSON.stringify({ channelId: "myapp.dot", dir: "out", frame }));
+    ws.send(
+      JSON.stringify({
+        channelId: "myapp.dot",
+        dir: "out",
+        frame,
+        schema: TRUAPI_WIRE_SCHEMA_HASH,
+      }),
+    );
 
     let traces: TraceView[] = [];
     for (let i = 0; i < 50 && traces.length === 0; i++) {
@@ -340,7 +354,104 @@ test("/frame validates its params and 404s an unknown frame", async () => {
   try {
     expect((await fetch(`${base}/frame`)).status).toBe(400);
     expect((await fetch(`${base}/frame?id=x&i=notint`)).status).toBe(400);
+    // Empty `?i=` must 400, not resolve frame 0 (Number("") === 0).
+    expect((await fetch(`${base}/frame?id=x&i=`)).status).toBe(400);
+    expect((await fetch(`${base}/frame?id=x&i=%20`)).status).toBe(400);
+    // Same coercion on `?gen=`: empty/whitespace/non-int must 400, not resolve
+    // generation 0 (the oldest recycled op) with a 200.
+    expect((await fetch(`${base}/frame?id=x&i=0&gen=`)).status).toBe(400);
+    expect((await fetch(`${base}/frame?id=x&i=0&gen=%20`)).status).toBe(400);
+    expect((await fetch(`${base}/frame?id=x&i=0&gen=notint`)).status).toBe(400);
     expect((await fetch(`${base}/frame?id=missing&i=0`)).status).toBe(404);
+  } finally {
+    server.stop();
+  }
+});
+
+test("a codec-mismatched host is banner-flagged and its frames refuse to decode", async () => {
+  const server = startDebugServer({ port: 0, decodeValues: true });
+  const base = `http://localhost:${server.port}`;
+  try {
+    const frame = encodeFrame(
+      "p:1",
+      W.ACCOUNT_GET_ACCOUNT.request,
+      new Uint8Array([0]),
+    );
+    // Stream one frame declaring a codec this debugger can't decode against.
+    const ws = new WebSocket(`ws://localhost:${server.port}`);
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => resolve();
+      ws.onerror = () => reject(new Error("ws failed to open"));
+    });
+    ws.send(
+      JSON.stringify({ v: 1, codec: 999, channelId: "old.dot", dir: "out", frame }),
+    );
+    // Wait until the frame is grouped (payload-blind grouping still happens).
+    for (let i = 0; i < 50; i++) {
+      const traces = (await (await fetch(`${base}/traces`)).json()) as unknown[];
+      if (traces.length > 0) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    ws.close();
+
+    // /channels banners the mismatch.
+    const channels = await (await fetch(`${base}/channels`)).json();
+    expect(channels.codecMismatch).toBe(true);
+    // Decode is refused (409) for that host's frames — never resolved against the
+    // wrong contract.
+    const refused = await fetch(`${base}/frame?id=p:1&i=0&channel=old.dot`);
+    expect(refused.status).toBe(409);
+  } finally {
+    server.stop();
+  }
+});
+
+test("a wrong-schema or unstamped host refuses to decode, but still groups", async () => {
+  const server = startDebugServer({ port: 0, decodeValues: true });
+  const base = `http://localhost:${server.port}`;
+  try {
+    const frame = encodeFrame(
+      "p:1",
+      W.ACCOUNT_GET_ACCOUNT.request,
+      new Uint8Array([0]),
+    );
+    const stream = async (envelope: Record<string, unknown>): Promise<void> => {
+      const ws = new WebSocket(`ws://localhost:${server.port}`);
+      await new Promise<void>((resolve, reject) => {
+        ws.onopen = () => resolve();
+        ws.onerror = () => reject(new Error("ws failed to open"));
+      });
+      const want = ((await (await fetch(`${base}/traces`)).json()) as unknown[])
+        .length;
+      ws.send(JSON.stringify(envelope));
+      for (let i = 0; i < 50; i++) {
+        const traces = (await (await fetch(`${base}/traces`)).json()) as unknown[];
+        if (traces.length > want) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      ws.close();
+    };
+    // A frame stamping a wire schema this debugger can't decode against (the
+    // codec number alone is unchanged) must be refused, never resolved against
+    // the wrong contract - the case a coarse codec check misses.
+    await stream({
+      channelId: "stale.dot",
+      dir: "out",
+      frame,
+      codec: 1,
+      schema: "deadbeefdeadbeef",
+    });
+    expect(
+      (await fetch(`${base}/frame?id=p:1&i=0&channel=stale.dot`)).status,
+    ).toBe(409);
+    // A host that stamps no identity at all is refused too: absent is not trusted.
+    await stream({ channelId: "bare.dot", dir: "out", frame });
+    expect(
+      (await fetch(`${base}/frame?id=p:1&i=0&channel=bare.dot`)).status,
+    ).toBe(409);
+    // Payload-blind grouping is unaffected: both ops are recorded regardless.
+    const traces = (await (await fetch(`${base}/traces`)).json()) as unknown[];
+    expect(traces.length).toBe(2);
   } finally {
     server.stop();
   }
@@ -459,7 +570,14 @@ test("groups by (channel, requestId) — two hosts minting the same id do not me
         ws.onopen = () => resolve();
         ws.onerror = () => reject(new Error("ws failed to open"));
       });
-      ws.send(JSON.stringify({ channelId, dir: "out", frame }));
+      ws.send(
+        JSON.stringify({
+          channelId,
+          dir: "out",
+          frame,
+          schema: TRUAPI_WIRE_SCHEMA_HASH,
+        }),
+      );
       await new Promise((r) => setTimeout(r, 40));
       ws.close();
     };

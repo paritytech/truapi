@@ -86,6 +86,7 @@ export interface DebugSession {
     index: number,
     channelId?: string,
     reveal?: boolean,
+    generation?: number,
   ): FrameValueDetail | undefined;
 }
 
@@ -111,9 +112,12 @@ export function createDebugSession(
   // `console.debug`). Consumers read `traceEngine`, not stdout.
   const wireDebugger = createWireDebugger({ methodNames, sink: () => {} });
   // Raw bytes are retained only when decode is on - they exist solely to feed
-  // the drill-down decoder, and `/traces` never serializes them.
+  // the drill-down decoder, and `/traces` never serializes them. `methodNames`
+  // resolves each frame's role at ingest, so the engine and any forward hook see
+  // the real role rather than "unknown".
   const handleEnvelope = createDebugIngest(wireDebugger.observe, {
     retainBytes: decodeValues,
+    methodNames,
   });
   const decoder = createFrameDecoder({
     enabled: decodeValues,
@@ -125,8 +129,11 @@ export function createDebugSession(
     index: number,
     channelId?: string,
     reveal?: boolean,
+    generation?: number,
   ): FrameValueDetail | undefined => {
-    const frame = wireDebugger.trace(requestId, channelId)?.frames[index];
+    const frame = wireDebugger.trace(requestId, channelId, generation)?.frames[
+      index
+    ];
     return frame ? decoder.detail(frame, { reveal }) : undefined;
   };
 
