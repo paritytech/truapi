@@ -20,8 +20,8 @@ pub struct Proposal {
 pub struct Device {
     /// Pairing host's sr25519 statement-store public key; keys the answer topic.
     pub statement_account_id: [u8; 32],
-    /// Pairing host's SEC1 uncompressed P-256 key the wallet encrypts the answer to.
-    pub encryption_public_key: [u8; 65],
+    /// Pairing host's raw X25519 key the wallet encrypts the answer to.
+    pub encryption_public_key: [u8; 32],
 }
 
 /// Metadata key/value entry attached to a handshake proposal.
@@ -70,12 +70,12 @@ pub struct Success {
     pub identity_account_id: [u8; 32],
     /// User root sr25519 public key; parent for soft-derived product accounts.
     pub root_account_id: [u8; 32],
-    /// User identity chat P-256 private scalar; lets this device decrypt identity chat.
+    /// User identity chat X25519 private key.
     pub identity_chat_private_key: [u8; 32],
-    /// Wallet's persistent P-256 public key; keys the SSO session channels.
-    pub sso_enc_pub_key: [u8; 65],
-    /// P-256 public key of the answering wallet device, for chat envelopes addressed back to it.
-    pub device_enc_pub_key: [u8; 65],
+    /// Wallet's persistent X25519 public key; keys the SSO session channels.
+    pub sso_enc_pub_key: [u8; 32],
+    /// X25519 public key of the answering wallet device.
+    pub device_enc_pub_key: [u8; 32],
     /// Wallet-derived source for deterministic product entropy, never the raw root secret.
     pub root_entropy_source: [u8; 32],
 }

@@ -53,8 +53,11 @@ zeroize = { version = "1", default-features = false, features = ["alloc", "deriv
 getrandom = { version = "0.2", features = ["js"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdh"] }
 hkdf = "0.12"
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+x25519-dalek = { version = "2", default-features = false, features = ["static_secrets"] }
 sha2 = "0.10"
-aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+merlin = "3"
+
 tracing = "0.1"
 # `registry` + `std` only: pulls the Registry + per-layer filter/reload, but
 # not `env-filter` (which drags in `regex`, heavy on wasm).

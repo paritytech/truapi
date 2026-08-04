@@ -15,10 +15,10 @@ use sso_channel::SsoDisconnectMonitor;
 use super::allowances::{self, AllowanceCacheKey, AllowanceResource};
 use super::auth_state::AuthStateMachine;
 use super::authority::{
-    AccountAliasAuthorityRequest, AuthorityError, AuthoritySession, BulletinAllowanceKey,
-    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest, ProductAuthority,
-    SignPayloadAuthorityRequest, SignRawAuthorityRequest, StatementStoreAllowanceKey,
-    authority_session, require_current_session,
+    AccountAliasAuthorityRequest, AuthorityError, AuthoritySession, AutoSigningKey,
+    BulletinAllowanceKey, CreateProofAuthorityRequest, CreateTransactionAuthorityRequest,
+    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
+    StatementStoreAllowanceKey, authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use super::identity::resolve_session_identity_with_chain;
@@ -28,6 +28,9 @@ use super::sso_remote::{SSO_PEER_DISCONNECT_REASON, SessionDisconnects, SsoSessi
 use super::statement_store_rpc::StatementStoreRpc;
 use crate::chain_runtime::ChainRuntime;
 use crate::host_logic::entropy::derive_product_entropy_from_source;
+use crate::host_logic::product_account::{
+    derivation_index_bytes, derive_product_keypair_from_subtree_secret,
+};
 use crate::host_logic::session::{SessionInfo, SessionState, encode_persisted_session};
 use crate::host_logic::session_store::SessionStoreChangeNotifier;
 use crate::host_logic::sso::messages::RingVrfError;
@@ -37,7 +40,10 @@ use futures::StreamExt;
 use tracing::{instrument, warn};
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
 use truapi::{CallContext, CallError, v01};
-use truapi_platform::{CoreStorageKey, PairingHostConfig, Platform, ProductContext};
+use truapi_platform::{
+    CoreStorageKey, PairingHostConfig, Platform, ProductContext, SignVrfReview,
+    UserConfirmationReview,
+};
 
 /// Distinguishes all remote authority request entrypoints by wire label.
 #[derive(Clone, Copy, Debug, derive_more::Display)]
@@ -144,6 +150,8 @@ pub(crate) struct PairingHost {
     login_generation: Mutex<u64>,
     statement_store_allowances: Mutex<HashMap<AllowanceCacheKey, StatementStoreAllowanceKey>>,
     bulletin_allowances: Mutex<HashMap<AllowanceCacheKey, BulletinAllowanceKey>>,
+    product_subtrees: Mutex<HashMap<(SsoSessionKey, String), [u8; 32]>>,
+    auto_signing_keys: Mutex<HashMap<String, AutoSigningKey>>,
     /// Self-reference captured by the spawned disconnect-monitor task.
     weak_self: Weak<PairingHost>,
     /// Task spawner for background monitors.
@@ -169,6 +177,8 @@ impl PairingHost {
             login_generation: Mutex::new(0),
             statement_store_allowances: Mutex::new(HashMap::new()),
             bulletin_allowances: Mutex::new(HashMap::new()),
+            product_subtrees: Mutex::new(HashMap::new()),
+            auto_signing_keys: Mutex::new(HashMap::new()),
             weak_self: weak_self.clone(),
             spawner: services.spawner.clone(),
         })
@@ -765,6 +775,139 @@ impl PairingHost {
         allowances.retain(|key, _| !key.is_for_session(session_key));
     }
 
+    async fn remember_auto_signing_key(
+        &self,
+        product_id: &str,
+        secret: [u8; 64],
+    ) -> Result<(), AuthorityError> {
+        self.platform
+            .write_core_storage(
+                CoreStorageKey::AutoSigningKey {
+                    product_id: product_id.to_string(),
+                },
+                secret.to_vec(),
+            )
+            .await
+            .map_err(|err| AuthorityError::Unknown {
+                reason: format!("failed to persist AutoSigning key: {}", err.reason),
+            })?;
+        self.auto_signing_keys
+            .lock()
+            .expect("AutoSigning key cache mutex poisoned")
+            .insert(
+                product_id.to_string(),
+                AutoSigningKey::from_secret_bytes(secret.to_vec())?,
+            );
+        Ok(())
+    }
+
+    async fn auto_signing_key(
+        &self,
+        product_id: &str,
+    ) -> Result<Option<AutoSigningKey>, AuthorityError> {
+        if let Some(key) = self
+            .auto_signing_keys
+            .lock()
+            .expect("AutoSigning key cache mutex poisoned")
+            .get(product_id)
+            .cloned()
+        {
+            return Ok(Some(key));
+        }
+        let Some(secret) = self
+            .platform
+            .read_core_storage(CoreStorageKey::AutoSigningKey {
+                product_id: product_id.to_string(),
+            })
+            .await
+            .map_err(|err| AuthorityError::Unknown {
+                reason: format!("failed to read AutoSigning key: {}", err.reason),
+            })?
+        else {
+            return Ok(None);
+        };
+        let key = AutoSigningKey::from_secret_bytes(secret)?;
+        self.auto_signing_keys
+            .lock()
+            .expect("AutoSigning key cache mutex poisoned")
+            .insert(product_id.to_string(), key.clone());
+        Ok(Some(key))
+    }
+
+    fn clear_product_subtrees(&self, session: Option<&SessionInfo>) {
+        let mut subtrees = self
+            .product_subtrees
+            .lock()
+            .expect("product subtree cache mutex poisoned");
+        let Some(session) = session else {
+            subtrees.clear();
+            return;
+        };
+        let Some(sso) = session.sso.as_ref() else {
+            return;
+        };
+        let session_key = SsoSessionKey::from_session(sso);
+        subtrees.retain(|(key, _), _| *key != session_key);
+    }
+
+    async fn product_subtree_public_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<[u8; 32], AuthorityError> {
+        let session = self.current_private_session(session)?;
+        self.remote_product_subtree_public_key(cx, &session, product_id)
+            .await
+    }
+
+    async fn sign_vrf(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        calling_product_id: String,
+        request: v01::HostAccountSignVrfRequest,
+    ) -> Result<v01::VrfSignature, AuthorityError> {
+        let session = self.current_private_session(session)?;
+        if calling_product_id == request.account.dot_ns_identifier
+            && let Some(auto_signing_key) = self
+                .auto_signing_key(&request.account.dot_ns_identifier)
+                .await?
+        {
+            let keypair = derive_product_keypair_from_subtree_secret(
+                *auto_signing_key.as_secret_bytes(),
+                derivation_index_bytes(&request.account.derivation_index),
+            )
+            .map_err(|err| AuthorityError::Unknown {
+                reason: err.to_string(),
+            })?;
+            let (pre_output, proof) = crate::dynamic_vrf::sign_dynamic_vrf(
+                &keypair,
+                &request.transcript_label,
+                request
+                    .items
+                    .iter()
+                    .map(|item| (item.label.as_slice(), item.value.as_slice())),
+            );
+            return Ok(v01::VrfSignature { pre_output, proof });
+        }
+        let confirmed = self
+            .platform
+            .confirm_user_action(UserConfirmationReview::SignVrf(SignVrfReview {
+                calling_product_id: calling_product_id.clone(),
+                request: request.clone(),
+            }))
+            .await
+            .map_err(|err| AuthorityError::Unknown {
+                reason: format!("VRF signing confirmation failed: {err:?}"),
+            })?;
+        if !confirmed {
+            return Err(AuthorityError::Rejected);
+        }
+        self.remote_sign_vrf(cx, &session, calling_product_id, request)
+            .await
+    }
+
     async fn sign_payload(
         &self,
         cx: &CallContext,
@@ -921,6 +1064,23 @@ impl ProductAuthority for PairingHost {
         PairingHost::session_state(self)
     }
 
+    #[cfg(test)]
+    fn cache_product_subtree_for_test(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+        public_key: [u8; 32],
+    ) {
+        let sso = session.sso.as_ref().expect("test session must contain SSO");
+        self.product_subtrees
+            .lock()
+            .expect("product subtree cache mutex poisoned")
+            .insert(
+                (SsoSessionKey::from_session(sso), product_id.to_string()),
+                public_key,
+            );
+    }
+
     async fn request_login(
         &self,
         product: &ProductContext,
@@ -934,6 +1094,25 @@ impl ProductAuthority for PairingHost {
 
     async fn refresh_session_identity(&self) -> Option<AuthoritySession> {
         self.refresh_current_session_identity().await
+    }
+
+    async fn product_subtree_public_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        product_id: String,
+    ) -> Result<[u8; 32], AuthorityError> {
+        PairingHost::product_subtree_public_key(self, cx, session, product_id).await
+    }
+
+    async fn sign_vrf(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        calling_product_id: String,
+        request: v01::HostAccountSignVrfRequest,
+    ) -> Result<v01::VrfSignature, AuthorityError> {
+        PairingHost::sign_vrf(self, cx, session, calling_product_id, request).await
     }
 
     async fn sign_payload(

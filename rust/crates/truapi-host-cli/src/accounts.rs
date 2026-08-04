@@ -11,7 +11,7 @@ use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 use truapi_server::host_logic::product_account::{
-    derive_sr25519_hard_path, product_public_key_to_address,
+    derive_identity_keypair, derive_lite_person_ring_vrf_entropy, product_public_key_to_address,
 };
 
 use crate::attestation;
@@ -89,9 +89,9 @@ pub struct AccountRecord {
     pub mnemonic: String,
     /// Lite username registered through the identity backend.
     pub lite_username: String,
-    /// Hex-encoded `//wallet//sso` public key.
+    /// Hex-encoded RFC-0022 `uid.dot` identity public key.
     pub public_key_hex: String,
-    /// SS58 address for the `//wallet//sso` public key.
+    /// SS58 address for the RFC-0022 `uid.dot` identity public key.
     pub address: String,
     /// Creation timestamp.
     pub created_at_unix: u64,
@@ -472,7 +472,7 @@ async fn wait_for_ring_membership(people_ws: &str, entropy: &[u8]) -> Result<()>
     const MAX_ATTEMPTS: usize = 10;
     const SLEEP: Duration = Duration::from_secs(4);
 
-    let bandersnatch = alloc::bandersnatch_entropy(entropy);
+    let bandersnatch = derive_lite_person_ring_vrf_entropy(entropy);
     let mut metadata = None;
     for attempt in 1..=MAX_ATTEMPTS {
         crate::terminal_ui::update_activity(
@@ -578,8 +578,8 @@ struct SignerIdentity {
 
 fn identity_from_mnemonic(mnemonic: &str) -> Result<SignerIdentity> {
     let entropy = mnemonic_entropy(mnemonic)?;
-    let candidate = derive_sr25519_hard_path(&entropy, &["wallet", "sso"])
-        .map_err(|err| anyhow::anyhow!("//wallet//sso derivation failed: {err}"))?;
+    let candidate = derive_identity_keypair(&entropy)
+        .map_err(|err| anyhow::anyhow!("uid.dot identity derivation failed: {err}"))?;
     let public_key = candidate.public.to_bytes();
     Ok(SignerIdentity {
         entropy,

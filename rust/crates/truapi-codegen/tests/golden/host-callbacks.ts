@@ -8,6 +8,7 @@ import * as S from "@parity/truapi/scale";
 
 import {
   AllocatableResource,
+  HostAccountSignVrfRequest,
   HostDevicePermissionRequest,
   HostSignPayloadRequest,
   HostSignPayloadWithLegacyAccountRequest,
@@ -130,7 +131,11 @@ export type CoreStorageKey =
   /**
    * Last processed SSO pairing response statement for the pairing device.
    */
-  | { tag: "LastProcessedPairingStatement"; value?: undefined };
+  | { tag: "LastProcessedPairingStatement"; value?: undefined }
+  /**
+   * Persisted RFC-0010 AutoSigning secret for one product subtree.
+   */
+  | { tag: "AutoSigningKey"; value: { productId: string } };
 
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -293,6 +298,21 @@ export type SignRawReview =
   | { tag: "LegacyAccount"; value: HostSignRawWithLegacyAccountRequest };
 
 /**
+ * Review shown before signing an RFC-0023 VRF transcript.
+ */
+export interface SignVrfReview {
+  /**
+   * Product making the request.
+   */
+  callingProductId: string;
+
+  /**
+   * Product account and exact ordered transcript.
+   */
+  request: HostAccountSignVrfRequest;
+}
+
+/**
  * Review shown before a product account signs a Statement Store proof
  * payload. Distinct from raw-message signing: the payload is the exact
  * unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
@@ -353,7 +373,11 @@ export type UserConfirmationReview =
   /**
    * Allow a product to access another product account.
    */
-  | { tag: "AccountAccess"; value: AccountAccessReview };
+  | { tag: "AccountAccess"; value: AccountAccessReview }
+  /**
+   * Sign an RFC-0023 VRF transcript with a product account.
+   */
+  | { tag: "SignVrf"; value: SignVrfReview };
 
 /**
  * Review shown before a product asks to access another product account.
@@ -417,6 +441,9 @@ export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy(
         sessionId: string;
       }>,
       LastProcessedPairingStatement: S._void,
+      AutoSigningKey: S.Struct({ productId: S.str }) as S.Codec<{
+        productId: string;
+      }>,
     }),
 );
 
@@ -541,6 +568,17 @@ export const SignRawReview: S.Codec<SignRawReview> = S.lazy(
 );
 
 /**
+ * Review shown before signing an RFC-0023 VRF transcript.
+ */
+export const SignVrfReview: S.Codec<SignVrfReview> = S.lazy(
+  (): S.Codec<SignVrfReview> =>
+    S.Struct({
+      callingProductId: S.str,
+      request: HostAccountSignVrfRequest,
+    }) as S.Codec<SignVrfReview>,
+);
+
+/**
  * Review shown before a product account signs a Statement Store proof
  * payload. Distinct from raw-message signing: the payload is the exact
  * unsigned statement, signed as-is (no `<Bytes>` envelope), so the host must
@@ -571,6 +609,7 @@ export const UserConfirmationReview: S.Codec<UserConfirmationReview> = S.lazy(
       ResourceAllocation: ResourceAllocationReview,
       PreimageSubmit: PreimageSubmitReview,
       AccountAccess: AccountAccessReview,
+      SignVrf: SignVrfReview,
     }),
 );
 

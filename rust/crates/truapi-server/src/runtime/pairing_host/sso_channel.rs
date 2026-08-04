@@ -18,16 +18,16 @@ use crate::host_logic::sso::messages::{
     OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, RingVrfError,
     SsoAllocatedResource, SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement,
     alias_request_message, build_outgoing_request_statement, create_transaction_legacy_message,
-    create_transaction_message, decode_sso_session_statement, proof_request_message,
-    resource_allocation_message, sign_payload_message, sign_raw_legacy_message, sign_raw_message,
-    v1,
+    create_transaction_message, decode_sso_session_statement, product_subtree_request_message,
+    proof_request_message, resource_allocation_message, sign_payload_message,
+    sign_raw_legacy_message, sign_raw_message, sign_vrf_message, v1,
 };
 use crate::host_logic::statement_store::parse_new_statements_result;
 
 use futures::FutureExt;
 use futures::future::{AbortHandle, Abortable};
 use tracing::{debug, instrument, warn};
-use truapi::{CallContext, latest};
+use truapi::{CallContext, latest, v01};
 
 const UNEXPECTED_SSO_SIGNING_RESPONSE: &str = "Unexpected SSO response for signing request";
 const UNEXPECTED_SSO_TRANSACTION_RESPONSE: &str = "Unexpected SSO response for transaction request";
@@ -42,8 +42,12 @@ enum RemoteAction {
     RingVrfAlias,
     #[display("ring-vrf-proof")]
     RingVrfProof,
+    #[display("sign-vrf")]
+    SignVrf,
     #[display("resource-allocation")]
     ResourceAllocation,
+    #[display("product-subtree")]
+    ProductSubtree,
 }
 
 /// Active peer-disconnect watcher for one SSO session; aborts on drop.
@@ -151,6 +155,7 @@ impl PairingHost {
         self.clear_statement_store_allowance_keys(session);
         self.clear_bulletin_allowance_keys(session);
         self.stop_disconnect_monitor();
+        self.clear_product_subtrees(session);
     }
 
     /// Best-effort `Disconnected` notification to the SSO peer.
@@ -266,6 +271,72 @@ impl PairingHost {
             self.handle_signing_host_disconnected(key).await;
         }
         result
+    }
+
+    /// Fetch and cache a product's hard-subtree public key from the Account Holder.
+    pub(super) async fn remote_product_subtree_public_key(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        product_id: String,
+    ) -> Result<[u8; 32], AuthorityError> {
+        let sso = session.sso.as_ref().ok_or(AuthorityError::Disconnected)?;
+        let cache_key = (SsoSessionKey::from_session(sso), product_id.clone());
+        if let Some(public_key) = self
+            .product_subtrees
+            .lock()
+            .expect("product subtree cache mutex poisoned")
+            .get(&cache_key)
+            .copied()
+        {
+            return Ok(public_key);
+        }
+
+        let message_id = sso_message_id();
+        let message = product_subtree_request_message(message_id, product_id);
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::ProductSubtree, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::ProductSubtree(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for product subtree request".to_string(),
+            });
+        };
+        let public_key = response
+            .product_public_key
+            .map_err(remote_authority_error)?;
+        self.product_subtrees
+            .lock()
+            .expect("product subtree cache mutex poisoned")
+            .insert(cache_key, public_key);
+        Ok(public_key)
+    }
+
+    /// Forward RFC-0023 VRF signing to the paired Account Holder.
+    pub(super) async fn remote_sign_vrf(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        calling_product_id: String,
+        request: v01::HostAccountSignVrfRequest,
+    ) -> Result<v01::VrfSignature, AuthorityError> {
+        let message_id = sso_message_id();
+        let message = sign_vrf_message(message_id, calling_product_id, request);
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::SignVrf, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let SsoRemoteResponse::SignVrf(response) = response else {
+            return Err(AuthorityError::Unknown {
+                reason: "Unexpected SSO response for VRF signing request".to_string(),
+            });
+        };
+        response.payload.map_err(|err| match err {
+            v01::HostAccountSignVrfError::NotConnected => AuthorityError::Disconnected,
+            v01::HostAccountSignVrfError::Rejected => AuthorityError::Rejected,
+            v01::HostAccountSignVrfError::Unknown { reason } => AuthorityError::Unknown { reason },
+        })
     }
 
     /// Forward a payload-signing request to the paired signing host.
@@ -658,8 +729,13 @@ impl PairingHost {
                         )
                         .await?;
                     }
-                    SsoAllocatedResource::SmartContractAllowance
-                    | SsoAllocatedResource::AutoSigning { .. } => {}
+                    SsoAllocatedResource::SmartContractAllowance => {}
+                    SsoAllocatedResource::AutoSigning {
+                        product_root_private_key,
+                    } => {
+                        self.remember_auto_signing_key(product_id, *product_root_private_key)
+                            .await?;
+                    }
                 }
             }
         }

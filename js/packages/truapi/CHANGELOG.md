@@ -1,5 +1,12 @@
 # @parity/truapi
 
+## 0.7.0
+
+### Minor Changes
+
+- Publish the package version paired with the RFC-0022 mobile host cutover and
+  the completed RFC-0023 account VRF signing flow.
+
 ## 0.6.0
 
 ### Minor Changes

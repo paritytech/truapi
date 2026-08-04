@@ -12,7 +12,6 @@ use super::{
     ProductRuntimeHost, REMOTE_PERMISSION_DENIED_REASON, remote_authority_call,
     remote_authority_context,
 };
-use crate::host_logic::product_account::{derivation_index_bytes, derive_product_public_key};
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
     parse_new_statements_result, sign_statement_fields, signed_statement_to_scale,
@@ -309,12 +308,10 @@ impl ProductRuntimeHost {
             .authority
             .current_session()
             .ok_or(StatementProofFailure::NoSession)?;
-        let signer = derive_product_public_key(
-            session.public_key,
-            &product_account_id.dot_ns_identifier,
-            derivation_index_bytes(&product_account_id.derivation_index),
-        )
-        .map_err(|err| StatementProofFailure::UnableToSign(err.to_string()))?;
+        let signer = self
+            .product_account_public_key(cx, &session, &product_account_id)
+            .await
+            .map_err(|err| StatementProofFailure::UnableToSign(err.to_string()))?;
         let fields = statement_fields_from_v01(statement)
             .map_err(StatementProofFailure::InvalidStatement)?;
         let payload = unsigned_statement_signing_payload(fields)
@@ -476,7 +473,9 @@ mod tests {
     fn statement_store_create_proof_pairing_host_does_not_use_session_key() {
         let host =
             ProductRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        host.test_session_state().set_session(sso_session_info());
+        let session = sso_session_info();
+        host.test_cache_product_subtree(&session, "myapp.dot", session.public_key);
+        host.test_session_state().set_session(session);
         let cx = CallContext::default();
         let request = RemoteStatementStoreCreateProofRequest::V1(
             latest::RemoteStatementStoreCreateProofRequest {

@@ -679,7 +679,7 @@ mod tests {
             ss_secret: keypair.secret.to_bytes(),
             ss_public_key: keypair.public.to_bytes(),
             enc_secret: [1; 32],
-            peer_enc_pubkey: [2; 65],
+            peer_enc_pubkey: [2; 32],
             identity_account_id: [3; 32],
             session_id_own: [4; 32],
             session_id_peer: [5; 32],

@@ -17,13 +17,15 @@ use verifiable::ring::bandersnatch::BandersnatchVrfVerifiable;
 use zeroize::Zeroizing;
 
 use crate::chain_runtime::ChainRuntime;
-use crate::host_logic::product_account::derivation_index_bytes;
+use crate::host_logic::product_account::{
+    derivation_index_bytes, derive_full_person_ring_vrf_entropy,
+    derive_lite_person_ring_vrf_entropy,
+};
 use crate::host_logic::sso::messages::RingVrfError;
 
 const MEMBERS_PALLET: &str = "Members";
 const FULL_PERSON_COLLECTION: [u8; 32] = *b"pop:polkadot.network/people     ";
 const LITE_PERSON_COLLECTION: [u8; 32] = *b"pop:polkadot.network/people-lite";
-const FULL_PERSON_ENTROPY_KEY: &[u8] = b"candidate";
 
 type RingMember = <BandersnatchVrfVerifiable as GenerateVerifiable>::Member;
 
@@ -236,11 +238,10 @@ pub(super) fn context_bytes(context: &ProductProofContext) -> [u8; 32] {
 }
 
 pub(super) fn person_entropy(root_entropy: &[u8], key: PersonKey) -> Zeroizing<[u8; 32]> {
-    let key = match key {
-        PersonKey::Full => Some(FULL_PERSON_ENTROPY_KEY),
-        PersonKey::Lite => None,
-    };
-    Zeroizing::new(blake2b_256(root_entropy, key))
+    Zeroizing::new(match key {
+        PersonKey::Full => derive_full_person_ring_vrf_entropy(root_entropy),
+        PersonKey::Lite => derive_lite_person_ring_vrf_entropy(root_entropy),
+    })
 }
 
 pub(super) fn member_from_entropy(entropy: &[u8; 32]) -> Result<[u8; 32], RingVrfError> {

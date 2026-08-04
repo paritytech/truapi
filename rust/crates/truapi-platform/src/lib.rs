@@ -24,6 +24,7 @@ use truapi::latest::{
     ProductAccountTxPayload, ProductProofContext, RemotePermission, RemotePermissionRequest,
     RemotePermissionResponse, RingLocation, ThemeVariant,
 };
+use truapi::v01::HostAccountSignVrfRequest;
 use url::Url;
 
 /// Role-neutral runtime configuration supplied by the embedding host.
@@ -530,6 +531,11 @@ pub enum CoreStorageKey {
     },
     /// Last processed SSO pairing response statement for the pairing device.
     LastProcessedPairingStatement,
+    /// Persisted RFC-0010 AutoSigning secret for one product subtree.
+    AutoSigningKey {
+        /// Product whose hard subtree the secret controls.
+        product_id: String,
+    },
 }
 
 impl CoreStorageKey {
@@ -839,6 +845,15 @@ pub struct CreateProofReview {
     pub message: Vec<u8>,
 }
 
+/// Review shown before signing an RFC-0023 VRF transcript.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct SignVrfReview {
+    /// Product making the request.
+    pub calling_product_id: String,
+    /// Product account and exact ordered transcript.
+    pub request: HostAccountSignVrfRequest,
+}
+
 /// Review shown before allocating resources for a product. Names the
 /// beneficiary product so the user knows which product receives the
 /// (signing-capable) allowance key they are approving.
@@ -897,6 +912,8 @@ pub enum UserConfirmationReview {
     PreimageSubmit(PreimageSubmitReview),
     /// Allow a product to access another product account.
     AccountAccess(AccountAccessReview),
+    /// Sign an RFC-0023 VRF transcript with a product account.
+    SignVrf(SignVrfReview),
 }
 
 /// Local user confirmation UI for sensitive core-owned operations.

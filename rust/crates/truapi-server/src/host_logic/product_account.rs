@@ -1,20 +1,28 @@
-//! Product account derivation shared by all hosts.
+//! RFC-0022 account and personhood derivation shared by all hosts.
 //!
-//! Mirrors host product-account derivation: derive an sr25519 public
-//! key through soft HDKD junctions `["product", product_id, derivation_index]`,
-//! where the derivation index is the 32-byte format defined by RFC-0022.
+//! Product subtrees use hard HDKD at `//product//{product_id}`. Individual
+//! accounts use one soft junction carrying the RFC-0022 32-byte derivation
+//! index, so a paired host can derive children from the subtree public key.
+//! Reserved built-ins additionally pin the `uid.dot` identity account and the
+//! `peopl.dot` full/lite ring-VRF keyed-hash paths so activation, pairing,
+//! registration, proof, allowance, and CLI code cannot drift.
 //! Host-spec C.5-C.7 define the product-account derivation, SS58 address, and
 //! `ProductAccountId` shape:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L66-L128>
 
 use parity_scale_codec::Encode;
 use schnorrkel::derive::{ChainCode, Derivation};
-use schnorrkel::{ExpansionMode, Keypair, PublicKey};
+use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey};
 use std::str::FromStr;
 use thiserror::Error;
 
 const JUNCTION_ID_LEN: usize = 32;
 const PRODUCT_JUNCTION: &str = "product";
+/// Reserved RFC-0022 product id for the public light-person identity account.
+pub const IDENTITY_PRODUCT_ID: &str = "uid.dot";
+/// Reserved RFC-0022 ring-VRF domain for full and light personhood.
+pub const PERSONHOOD_PRODUCT_ID: &str = "peopl.dot";
+const RING_VRF_ROOT_KEY: &[u8] = b"ring-vrf";
 
 /// Substrate sr25519 signing-context string, shared by every sr25519 signature
 /// the core produces (statement store, product raw signing).
@@ -26,6 +34,9 @@ pub enum ProductAccountError {
     /// Root public key bytes are not a valid sr25519 point.
     #[error("invalid sr25519 root public key")]
     InvalidRootPublicKey,
+    /// Product subtree secret bytes are not a valid expanded sr25519 secret.
+    #[error("invalid sr25519 product subtree secret")]
+    InvalidProductSubtreeSecret,
     /// All-digit junction strings encode as `u64`, and this one overflows it.
     #[error("numeric derivation junction is outside u64 range")]
     NumericJunctionOutOfRange,
@@ -74,54 +85,100 @@ pub fn derivation_index_bytes(index: &truapi::v01::DerivationIndex) -> [u8; 32] 
         truapi::v01::DerivationIndex::Right(bytes) => *bytes,
     }
 }
+/// Derive the RFC-0022 public light-person identity account:
+/// `//product//uid.dot/index_bytes(0)`.
+pub fn derive_identity_keypair(entropy: &[u8]) -> Result<Keypair, ProductAccountError> {
+    let root = derive_root_keypair_from_entropy(entropy)?;
+    let subtree = derive_hard_path_from_keypair(root, &[PRODUCT_JUNCTION, IDENTITY_PRODUCT_ID])?;
+    Ok(subtree.derived_key_simple(ChainCode(index_bytes(0)), []).0)
+}
+
+/// Derive the RFC-0022 full-person ring-VRF entropy at
+/// `hash(root_entropy, "ring-vrf")//peopl.dot//index_bytes(0)`.
+pub fn derive_full_person_ring_vrf_entropy(root_entropy: &[u8]) -> [u8; 32] {
+    derive_person_ring_vrf_entropy(root_entropy, 0)
+}
+
+/// Derive the RFC-0022 light-person ring-VRF entropy at
+/// `hash(root_entropy, "ring-vrf")//peopl.dot//index_bytes(1)`.
+pub fn derive_lite_person_ring_vrf_entropy(root_entropy: &[u8]) -> [u8; 32] {
+    derive_person_ring_vrf_entropy(root_entropy, 1)
+}
+
+fn derive_person_ring_vrf_entropy(root_entropy: &[u8], index: u32) -> [u8; 32] {
+    let root = blake2b256_keyed(root_entropy, RING_VRF_ROOT_KEY);
+    let domain = blake2b256_keyed(
+        &root,
+        &create_chain_code(PERSONHOOD_PRODUCT_ID)
+            .expect("the reserved personhood product id is a valid junction"),
+    );
+    blake2b256_keyed(&domain, &index_bytes(index))
+}
+
+fn blake2b256_keyed(message: &[u8], key: &[u8]) -> [u8; 32] {
+    blake2b_simd::Params::new()
+        .hash_length(32)
+        .key(key)
+        .hash(message)
+        .as_bytes()
+        .try_into()
+        .expect("hash_length(32) configures BLAKE2b output to exactly 32 bytes; qed")
+}
+
+/// Derive the product-subtree keypair at `//product//{product_id}`.
+///
+/// The hard junctions are the security boundary: exposing this keypair grants
+/// access to one product subtree without exposing the root account.
+pub fn derive_product_subtree_keypair(
+    root: &Keypair,
+    product_id: &str,
+) -> Result<Keypair, ProductAccountError> {
+    derive_hard_path_from_keypair(root.clone(), &[PRODUCT_JUNCTION, product_id])
+}
 
 /// Derive a product-account keypair from the root keypair.
 ///
-/// Applies the same soft HDKD junctions `["product", product_id,
-/// derivation_index]` as [`derive_product_public_key`] on the secret side, so
-/// the resulting public key equals the seedless public derivation by
-/// construction.
+/// First derives the hard product subtree, then applies the account's 32-byte
+/// derivation index as one soft junction.
 pub fn derive_product_keypair(
     root: &Keypair,
     product_id: &str,
     derivation_index: [u8; 32],
 ) -> Result<Keypair, ProductAccountError> {
-    let mut keypair = root.clone();
-    for chain_code in product_chain_codes(product_id, derivation_index)? {
-        keypair = keypair.derived_key_simple(ChainCode(chain_code), []).0;
-    }
-    Ok(keypair)
+    let subtree = derive_product_subtree_keypair(root, product_id)?;
+    Ok(subtree
+        .derived_key_simple(ChainCode(derivation_index), [])
+        .0)
 }
 
-/// Derive a product account public key from the paired root public key.
+/// Soft-derive a product account from an allocated 64-byte subtree secret.
+pub fn derive_product_keypair_from_subtree_secret(
+    product_subtree_secret: [u8; 64],
+    derivation_index: [u8; 32],
+) -> Result<Keypair, ProductAccountError> {
+    let secret = SecretKey::from_bytes(&product_subtree_secret)
+        .map_err(|_| ProductAccountError::InvalidProductSubtreeSecret)?;
+    let subtree = Keypair {
+        public: secret.to_public(),
+        secret,
+    };
+    Ok(subtree
+        .derived_key_simple(ChainCode(derivation_index), [])
+        .0)
+}
+
+/// Soft-derive a product account from `//product//{product_id}`'s public key.
+///
+/// A root public key cannot cross the two hard product junctions. Pairing hosts
+/// must obtain this subtree public key from the Account Holder once per product.
 pub fn derive_product_public_key(
-    root_public_key: [u8; 32],
-    product_id: &str,
+    product_subtree_public_key: [u8; 32],
     derivation_index: [u8; 32],
 ) -> Result<[u8; 32], ProductAccountError> {
-    let mut public_key = PublicKey::from_bytes(&root_public_key)
+    let public_key = PublicKey::from_bytes(&product_subtree_public_key)
         .map_err(|_| ProductAccountError::InvalidRootPublicKey)?;
-
-    for chain_code in product_chain_codes(product_id, derivation_index)? {
-        let (derived, _) = public_key.derived_key_simple(ChainCode(chain_code), []);
-        public_key = derived;
-    }
-
-    Ok(public_key.to_bytes())
-}
-
-/// Chain codes for the product-account junction path
-/// `["product", product_id, derivation_index]`. The 32-byte derivation index
-/// is used directly as its junction's chain code.
-fn product_chain_codes(
-    product_id: &str,
-    derivation_index: [u8; 32],
-) -> Result<[[u8; 32]; 3], ProductAccountError> {
-    Ok([
-        create_chain_code(PRODUCT_JUNCTION)?,
-        create_chain_code(product_id)?,
-        derivation_index,
-    ])
+    let (derived, _) = public_key.derived_key_simple(ChainCode(derivation_index), []);
+    Ok(derived.to_bytes())
 }
 
 /// Encode a product account public key as a generic Substrate SS58 address.
@@ -144,7 +201,13 @@ pub fn derive_sr25519_hard_path(
     entropy: &[u8],
     junctions: &[&str],
 ) -> Result<Keypair, ProductAccountError> {
-    let mut keypair = derive_root_keypair_from_entropy(entropy)?;
+    derive_hard_path_from_keypair(derive_root_keypair_from_entropy(entropy)?, junctions)
+}
+
+fn derive_hard_path_from_keypair(
+    mut keypair: Keypair,
+    junctions: &[&str],
+) -> Result<Keypair, ProductAccountError> {
     for junction in junctions {
         let chain_code = ChainCode(create_chain_code(junction)?);
         let (mini_secret, _) = keypair
@@ -182,90 +245,78 @@ fn normalize_chain_code(encoded: Vec<u8>) -> [u8; 32] {
 mod tests {
     use super::*;
 
-    const ROOT_PUBLIC_KEY: [u8; 32] = [
-        0x80, 0x05, 0x28, 0xc9, 0x55, 0x87, 0x3e, 0x4c, 0x78, 0xb7, 0xdf, 0x24, 0xf7, 0x1d, 0xb8,
-        0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab, 0xc1, 0xd7,
-        0x20, 0x23,
-    ];
-
-    #[test]
-    fn derives_product_account_vector() {
-        // Self-computed regression pin for the RFC-0022 32-byte-index path;
-        // replace with a cross-implementation vector once the Account Holder
-        // ships the scheme.
-        let derived =
-            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(0)).unwrap();
-        assert_eq!(
-            hex::encode(derived),
-            "0c7da1b57ade0827b6518174da49945b24d79541ee5e5403f646537e5746c80b"
-        );
+    fn fixture_root() -> Keypair {
+        derive_root_keypair_from_entropy(&[0xAB; 16]).unwrap()
     }
 
     #[test]
-    fn derives_different_index_vector() {
-        let derived =
-            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(1)).unwrap();
-        assert_eq!(
-            hex::encode(derived),
-            "20cce591a5e5306591de475e3c2efec3d94c6a00b8f52d3703a21f132555ee44"
-        );
+    fn product_subtrees_are_hard_firewalls() {
+        let root = fixture_root();
+        let first = derive_product_subtree_keypair(&root, "myapp.dot").unwrap();
+        let second = derive_product_subtree_keypair(&root, "other.dot").unwrap();
+
+        assert_ne!(first.public, root.public);
+        assert_ne!(first.public, second.public);
     }
 
     #[test]
-    fn derives_long_product_id_vector() {
-        let derived = derive_product_public_key(
-            ROOT_PUBLIC_KEY,
-            "w-credentialless-staticblitz-com.local-credentialless.webcontainer-api.io",
-            index_bytes(0),
-        )
-        .unwrap();
-        assert_eq!(
-            hex::encode(derived),
-            "06b64516f806d13dceafca5fda4aeac4c99265bc2e5ab3036decef3e7371e03f"
-        );
-    }
-
-    #[test]
-    fn ss58_address_regression_pin() {
-        let derived =
-            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(0)).unwrap();
-        assert_eq!(
-            product_public_key_to_address(derived),
-            "5CM5kaayBqheti7ugSEty5ptuzFhaP16fVm3ujAMVEtZqnKy"
-        );
-    }
-
-    #[test]
-    fn ss58_address_round_trips_to_public_key() {
-        let derived =
-            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(0)).unwrap();
-        let address = product_public_key_to_address(derived);
-
-        assert_eq!(public_key_from_address(&address), Some(derived));
-        assert_eq!(public_key_from_address("not-an-address"), None);
-    }
-
-    #[test]
-    fn product_secret_derivation_matches_public_derivation() {
-        // The signing-host secret path and the seedless public path must agree
-        // on the product public key for any root, index, and product id.
-        let entropy = [0xABu8; 16];
-        let root = derive_root_keypair_from_entropy(&entropy).unwrap();
-        let root_public = root.public.to_bytes();
+    fn product_secret_derivation_matches_subtree_public_derivation() {
+        let root = fixture_root();
         for (product_id, index) in [
             ("myapp.dot", index_bytes(0)),
             ("myapp.dot", index_bytes(1)),
             ("localhost:3000", index_bytes(7)),
             ("myapp.dot", [0xEE; 32]),
         ] {
+            let subtree = derive_product_subtree_keypair(&root, product_id).unwrap();
             let keypair = derive_product_keypair(&root, product_id, index).unwrap();
-            let public = derive_product_public_key(root_public, product_id, index).unwrap();
+            let public = derive_product_public_key(subtree.public.to_bytes(), index).unwrap();
+            let allocated =
+                derive_product_keypair_from_subtree_secret(subtree.secret.to_bytes(), index)
+                    .unwrap();
             assert_eq!(
                 keypair.public.to_bytes(),
                 public,
                 "{product_id}#{index:02x?} secret vs public derivation",
             );
+            assert_eq!(keypair.public, allocated.public);
         }
+    }
+
+    #[test]
+    fn root_public_key_cannot_substitute_for_product_subtree() {
+        let root = fixture_root();
+        let actual = derive_product_keypair(&root, "myapp.dot", index_bytes(0)).unwrap();
+        let unsafe_soft_only =
+            derive_product_public_key(root.public.to_bytes(), index_bytes(0)).unwrap();
+
+        assert_ne!(actual.public.to_bytes(), unsafe_soft_only);
+    }
+
+    #[test]
+    fn long_product_id_derives_stably() {
+        let root = fixture_root();
+        let product_id =
+            "w-credentialless-staticblitz-com.local-credentialless.webcontainer-api.io";
+        let subtree = derive_product_subtree_keypair(&root, product_id).unwrap();
+        let from_secret = derive_product_keypair(&root, product_id, index_bytes(0)).unwrap();
+        let from_public =
+            derive_product_public_key(subtree.public.to_bytes(), index_bytes(0)).unwrap();
+
+        assert_eq!(from_secret.public.to_bytes(), from_public);
+    }
+
+    #[test]
+    fn ss58_address_round_trips_to_public_key() {
+        let root = fixture_root();
+        let derived = derive_product_keypair(&root, "myapp.dot", index_bytes(0))
+            .unwrap()
+            .public
+            .to_bytes();
+        let address = product_public_key_to_address(derived);
+
+        assert_eq!(public_key_from_address(&address), Some(derived));
+        assert_eq!(public_key_from_address("not-an-address"), None);
     }
 
     #[test]
@@ -275,6 +326,14 @@ mod tests {
         assert_eq!(
             index[4..],
             sp_crypto_hashing::blake2_256(b"product-account-index")[..28]
+        );
+    }
+
+    #[test]
+    fn index_bytes_matches_ios_vector() {
+        assert_eq!(
+            hex::encode(index_bytes(0)),
+            "0000000012e86013736c5498f050b03cdc16957dff0e422fb92ca77ec3ab168f"
         );
     }
 
@@ -293,12 +352,54 @@ mod tests {
     }
 
     #[test]
+    fn person_ring_vrf_entropy_matches_ios_vectors() {
+        let root_entropy: Vec<u8> = (1..=32).collect();
+        assert_eq!(
+            hex::encode(blake2b256_keyed(&root_entropy, RING_VRF_ROOT_KEY)),
+            "372b08255c7798fe3193756296005adc4c44adb9f3986fb718aa98a48b4bf725"
+        );
+        assert_eq!(
+            hex::encode(derive_full_person_ring_vrf_entropy(&root_entropy)),
+            "c47086f94a7f4c05b7afd9f2339d3fea168f3823b5424ba1f7b31043d8ef60af"
+        );
+        assert_eq!(
+            hex::encode(derive_lite_person_ring_vrf_entropy(&root_entropy)),
+            "8d7f5e1510a7e8d813887e100f5a260ec9de60e68695477b93360ee7e3d16a9f"
+        );
+    }
+
+    #[test]
+    fn identity_is_uid_dot_default_product_account_and_signs() {
+        let entropy = [0xAB; 16];
+        let identity = derive_identity_keypair(&entropy).unwrap();
+        let root = derive_root_keypair_from_entropy(&entropy).unwrap();
+        let uid_subtree =
+            derive_hard_path_from_keypair(root, &[PRODUCT_JUNCTION, IDENTITY_PRODUCT_ID]).unwrap();
+        let expected = uid_subtree
+            .derived_key_simple(ChainCode(index_bytes(0)), [])
+            .0;
+        assert_eq!(identity.public, expected.public);
+
+        let message = b"RFC-0022 identity signing vector";
+        let signature =
+            identity
+                .secret
+                .sign_simple(SR25519_SIGNING_CONTEXT, message, &identity.public);
+        assert!(
+            identity
+                .public
+                .verify_simple(SR25519_SIGNING_CONTEXT, message, &signature)
+                .is_ok()
+        );
+    }
+
+    #[test]
     fn raw_index_space_is_disjoint_from_plain_indexes() {
         // A raw all-zero index must not collide with plain index 0: the magic
         // keeps the two spaces separate.
-        let indexed =
-            derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", index_bytes(0)).unwrap();
-        let raw = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", [0u8; 32]).unwrap();
+        let subtree = derive_product_subtree_keypair(&fixture_root(), "myapp.dot").unwrap();
+        let indexed = derive_product_public_key(subtree.public.to_bytes(), index_bytes(0)).unwrap();
+        let raw = derive_product_public_key(subtree.public.to_bytes(), [0u8; 32]).unwrap();
         assert_ne!(indexed, raw);
     }
 

@@ -676,6 +676,15 @@ fn approval_summary(review: &UserConfirmationReview) -> (&'static str, String) {
             "sign raw data",
             "A product requested a raw-data signature. The payload is hidden here.".to_string(),
         ),
+        UserConfirmationReview::SignVrf(review) => (
+            "sign VRF transcript",
+            format!(
+                "Product {} requested a VRF signature for the {} account over {} transcript items.",
+                review.calling_product_id,
+                review.request.account.dot_ns_identifier,
+                review.request.items.len()
+            ),
+        ),
         UserConfirmationReview::StatementStoreProductSign(review) => (
             "sign statement proof",
             format!(
@@ -1505,6 +1514,33 @@ mod tests {
         assert_eq!(
             detail,
             "Product myapp.dot requested a Statement Store proof signature over a 128-byte payload."
+        );
+        assert!(!detail.contains("[66"));
+    }
+
+    #[test]
+    fn vrf_approval_names_both_products_without_dumping_transcript_values() {
+        let review = UserConfirmationReview::SignVrf(truapi_platform::SignVrfReview {
+            calling_product_id: "caller.dot".to_string(),
+            request: truapi::v01::HostAccountSignVrfRequest {
+                account: truapi::v01::ProductAccountId {
+                    dot_ns_identifier: "target.dot".to_string(),
+                    derivation_index: truapi::v01::DerivationIndex::Right([7; 32]),
+                },
+                transcript_label: b"lottery".to_vec(),
+                items: vec![truapi::v01::VrfTranscriptItem {
+                    label: b"round".to_vec(),
+                    value: vec![0x42; 128],
+                }],
+            },
+        });
+
+        let (action, detail) = approval_summary(&review);
+
+        assert_eq!(action, "sign VRF transcript");
+        assert_eq!(
+            detail,
+            "Product caller.dot requested a VRF signature for the target.dot account over 1 transcript items."
         );
         assert!(!detail.contains("[66"));
     }

@@ -710,10 +710,11 @@ Before a signing host answers a link, it:
 
 1. ensures a signer;
 2. decodes the V2 handshake;
-3. derives its `//wallet//sso` account;
+3. derives its RFC-0022 `uid.dot` identity account;
 4. reads the pairing device Statement Store account from the proposal;
-5. finds the signer's LitePeople ring, scanning back from the current ring;
-6. grants or reuses Statement Store allowance for `wallet-sso`;
+5. finds the signer's LitePeople ring through the `peopl.dot` index-1 key,
+   scanning back from the current ring;
+6. grants or reuses Statement Store allowance for the identity account;
 7. grants or reuses allowance for the pairing device; and
 8. starts the real SSO responder.
 
@@ -792,7 +793,7 @@ A new auto account:
 
 1. acquires `accounts.json.lock`;
 2. generates a 12-word mnemonic;
-3. derives the `//wallet//sso` sr25519 account;
+3. derives the RFC-0022 `uid.dot` index-0 sr25519 identity account;
 4. chooses `auto-<n>` as its local name;
 5. tries up to eight available Lite username bases;
 6. saves a pending account record;
@@ -1048,7 +1049,7 @@ state, and other role-owned runtime data.
 - network id;
 - plaintext BIP-39 mnemonic;
 - final Lite username;
-- `//wallet//sso` public key and address;
+- RFC-0022 `uid.dot` index-0 public key and address;
 - creation timestamp;
 - attested state; and
 - exhausted Statement Store periods.
@@ -1410,11 +1411,10 @@ truapi-host identity-check \
   [--network paseo-next-v2]
 ```
 
-The command derives and queries three accounts:
+The command derives and queries two accounts:
 
-- root;
-- `//wallet`; and
-- `//wallet//sso`.
+- root; and
+- RFC-0022 `//product//uid.dot/index_bytes(0)`.
 
 For each it prints one of:
 

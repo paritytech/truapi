@@ -71,10 +71,10 @@ pub struct SsoSessionInfo {
     pub ss_secret: [u8; 64],
     /// Pairing host's own session sr25519 statement-store public key.
     pub ss_public_key: [u8; 32],
-    /// Pairing host's P-256 ECDH private key.
+    /// Pairing host's X25519 private key.
     pub enc_secret: [u8; 32],
-    /// Signing host's persistent P-256 public key.
-    pub peer_enc_pubkey: [u8; 65],
+    /// Signing host's persistent X25519 public key.
+    pub peer_enc_pubkey: [u8; 32],
     /// Signing host's identity sr25519 account id.
     pub identity_account_id: [u8; 32],
     /// Pairing host -> signing host topic id.
@@ -301,7 +301,7 @@ mod tests {
             ss_secret: [1; 64],
             ss_public_key: [2; 32],
             enc_secret: [3; 32],
-            peer_enc_pubkey: [4; 65],
+            peer_enc_pubkey: [4; 32],
             identity_account_id: [5; 32],
             session_id_own: [6; 32],
             session_id_peer: [7; 32],

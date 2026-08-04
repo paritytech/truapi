@@ -2,9 +2,9 @@
 //!
 //! Mirrors how an iOS/web client obtains statement-store allowance from the real
 //! People chain: build the `Resources.set_statement_store_account` call, prove
-//! LitePeople ring membership with a bandersnatch ring-VRF, and submit the
-//! resulting unsigned General (v5) extrinsic. Native only (needs the
-//! `verifiable` prover and live chain reads).
+//! LitePeople membership with the RFC-0022 `peopl.dot` index-1 ring-VRF key,
+//! and submit the resulting unsigned General (v5) extrinsic. Native only
+//! (needs the `verifiable` prover and live chain reads).
 
 pub mod extension;
 pub mod extrinsic;
@@ -91,16 +91,6 @@ pub enum ChainStateError {
     /// `chain_getHeader.number` was not valid hex.
     #[error("chain_getHeader number: {0}")]
     HeaderNumberParse(#[source] std::num::ParseIntError),
-}
-
-/// Bandersnatch entropy for a bip39 entropy: `blake2b256(bip39_entropy)`.
-pub fn bandersnatch_entropy(bip39_entropy: &[u8]) -> [u8; 32] {
-    blake2b_simd::Params::new()
-        .hash_length(32)
-        .hash(bip39_entropy)
-        .as_bytes()
-        .try_into()
-        .expect("hash_length(32) configures BLAKE2b output to exactly 32 bytes; qed")
 }
 
 /// Fetch and decode the runtime metadata (`state_getMetadata`).

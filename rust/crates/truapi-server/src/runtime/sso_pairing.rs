@@ -547,13 +547,13 @@ mod tests {
         runtime_config, session_info, signed_test_statement, stub_platform, subscribe_ack_frame,
         test_spawner, wallet_handshake_statement,
     };
-    use p256::elliptic_curve::sec1::ToEncodedPoint;
     use truapi::CallContext;
     use truapi::api::Account;
     use truapi::versioned::account::{
         HostAccountConnectionStatusSubscribeItem, HostRequestLoginRequest,
     };
     use truapi_platform::{AuthState, ChainProvider, CoreStorageKey};
+    use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519SecretKey};
 
     /// Cancel the login as soon as the host observes the `Pairing` state,
     /// mimicking a user dismissing the pairing UI immediately.
@@ -719,13 +719,11 @@ mod tests {
 
     #[test]
     fn request_login_waits_for_pairing_statement() {
-        let wallet_ephemeral_secret = p256::SecretKey::from_slice(&[2; 32]).unwrap();
-        let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
-        let mut wallet_ephemeral_public_bytes = [0u8; 65];
-        wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
+        let wallet_ephemeral_secret = X25519SecretKey::from([2; 32]);
+        let wallet_ephemeral_public = X25519PublicKey::from(&wallet_ephemeral_secret).to_bytes();
         let handshake = VersionedHandshakeResponse::V2 {
             encrypted_message: vec![0xde, 0xad],
-            public_key: wallet_ephemeral_public_bytes,
+            public_key: wallet_ephemeral_public,
         };
         let statement = signed_test_statement(handshake.encode());
         let notification = format!(

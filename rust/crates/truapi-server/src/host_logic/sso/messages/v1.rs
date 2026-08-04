@@ -9,10 +9,10 @@ use parity_scale_codec::{Decode, Encode};
 
 use super::{
     CreateTransactionLegacyRequest, CreateTransactionRequest, CreateTransactionResponse,
-    ResourceAllocationRequest, ResourceAllocationResponse, RingVrfAliasRequest,
-    RingVrfAliasResponse, RingVrfProofRequest, RingVrfProofResponse, SignRawLegacyRequest,
-    SignRawLegacyResponse, SigningRequest, SigningResponse, StatementStoreProductSignRequest,
-    StatementStoreProductSignResponse,
+    ProductSubtreeRequest, ProductSubtreeResponse, ResourceAllocationRequest,
+    ResourceAllocationResponse, RingVrfAliasRequest, RingVrfAliasResponse, RingVrfProofRequest,
+    RingVrfProofResponse, SignRawLegacyRequest, SignRawLegacyResponse, SignVrfRequest,
+    SignVrfResponse, SigningRequest, SigningResponse,
 };
 
 /// v1 messages exchanged with the paired signing host over the encrypted SSO channel.
@@ -63,11 +63,20 @@ pub enum RemoteMessage {
     /// Account Holder's answer to [`RemoteMessage::RingVrfProofRequest`].
     #[display("create_account_proof_response")]
     RingVrfProofResponse(RingVrfProofResponse),
-    /// Ask the signing host to sign an exact statement-store payload.
-    #[display("statement_store_product_sign")]
-    StatementStoreProductSignRequest(StatementStoreProductSignRequest),
-    /// Signing host's answer to
-    /// [`RemoteMessage::StatementStoreProductSignRequest`].
-    #[display("statement_store_product_sign_response")]
-    StatementStoreProductSignResponse(StatementStoreProductSignResponse),
+    /// Ask the Account Holder to sign an RFC-0023 sr25519 VRF transcript.
+    #[codec(index = 14)]
+    #[display("sign_vrf")]
+    SignVrfRequest(SignVrfRequest),
+    /// Account Holder's answer to [`RemoteMessage::SignVrfRequest`].
+    #[codec(index = 15)]
+    #[display("sign_vrf_response")]
+    SignVrfResponse(SignVrfResponse),
+    /// Consent-free request for a product's hard-subtree public key.
+    #[codec(index = 16)]
+    #[display("product_subtree")]
+    ProductSubtreeRequest(ProductSubtreeRequest),
+    /// Account Holder's answer to [`RemoteMessage::ProductSubtreeRequest`].
+    #[codec(index = 17)]
+    #[display("product_subtree_response")]
+    ProductSubtreeResponse(ProductSubtreeResponse),
 }

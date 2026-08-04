@@ -180,19 +180,22 @@ role-specific lifecycle, so no method exists on a role that can't mean it:
 
 - **`PairingHost`** (seedless): the user's keys live in an external wallet, so
   signing/aliases/entropy relay over an encrypted SSO channel (statement store
-  on the People chain; the channel lives in `pairing_host/sso_channel.rs`). It
-  owns pairing/login state, persisted auth-session reload, and remote
-  signing-host liveness monitoring.
+  on the People chain; the channel lives in `pairing_host/sso_channel.rs`). The
+  v2 wire protocol uses raw X25519 keys, HKDF-SHA256, and
+  ChaCha20-Poly1305. It owns pairing/login state, persisted auth-session reload,
+  and remote signing-host liveness monitoring.
 - **`SigningHost`** (wallet-local): signs on device from local BIP-39 entropy,
   no pairing flow. `signing_host/local_activation.rs` establishes a session
-  from host-held secret material. It derives the same full- and lite-person
-  Bandersnatch keys as Nova, resolves RFC-0004 `RingLocation` values against
-  the chain's `Members` pallet, and pins membership, ring pages, exponent, and
-  revision reads to one finalized block before creating an alias or proof.
-  Full personhood is preferred over lite personhood. Extrinsic-payload signing
-  and v4 transaction construction work from pre-encoded payload fields, so no
-  chain metadata is needed; statement-store and Bulletin allowance allocation
-  are native-only (wasm builds report them as unavailable).
+  from host-held secret material. Its public identity is the RFC-0022
+  `uid.dot` index-0 product account; full and lite person ring-VRF keys are
+  `peopl.dot` indices 0 and 1 under the keyed-hash `ring-vrf` tree. It resolves
+  RFC-0004 `RingLocation` values against the chain's `Members` pallet and pins
+  membership, ring pages, exponent, and revision reads to one finalized block
+  before creating an alias or proof. Full personhood is preferred over lite
+  personhood. Extrinsic-payload signing and v4 transaction construction work
+  from pre-encoded payload fields, so no chain metadata is needed;
+  statement-store and Bulletin allowance allocation are native-only (wasm
+  builds report them as unavailable).
 
 `host_logic` stays pure: the orchestrators above call into it for codecs,
 session/SSO crypto, key derivation, and permission policy, while all I/O

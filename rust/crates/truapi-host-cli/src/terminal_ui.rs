@@ -2435,7 +2435,7 @@ fn truncate_utf8(text: &str, max_bytes: usize) -> String {
 
 fn allowance_name(target: &str) -> &'static str {
     match target {
-        "wallet-sso" => "Wallet",
+        "identity" => "Identity",
         "device" => "Device",
         _ => "Product",
     }

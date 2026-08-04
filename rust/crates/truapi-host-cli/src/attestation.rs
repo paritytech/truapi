@@ -3,8 +3,8 @@
 //! Ports signing-bot `attestation.ts`: fetch the backend verifier, build the
 //! client proofs (`truapi_server::host_logic::attestation`), POST them to
 //! `/usernames`, then poll People-chain `Resources.Consumers` until the record
-//! lands. Registers the signing host's root account so the paired host can
-//! resolve its username via `get_user_id`.
+//! lands. Registers the signing host's RFC-0022 `uid.dot` identity account so
+//! the paired host can resolve its username via `get_user_id`.
 
 use std::time::Duration;
 
@@ -17,7 +17,7 @@ use truapi_server::host_logic::identity::{
     decode_people_identity, resources_consumers_storage_key,
 };
 use truapi_server::host_logic::product_account::{
-    derive_root_keypair_from_entropy, derive_sr25519_hard_path, product_public_key_to_address,
+    derive_identity_keypair, derive_root_keypair_from_entropy, product_public_key_to_address,
 };
 
 /// Inputs for one attestation run.
@@ -102,13 +102,11 @@ pub async fn attest(config: &AttestConfig) -> Result<String> {
 /// the final `name.discriminator` assigned by the People chain. Reading the
 /// consumer record repairs those records without re-attesting the account.
 pub async fn registered_lite_username(people_ws: &str, entropy: &[u8]) -> Result<String> {
-    let wallet_sso = derive_sr25519_hard_path(entropy, &["wallet", "sso"])
-        .map_err(|err| anyhow::anyhow!("//wallet//sso derivation failed: {err}"))?;
+    let identity = derive_identity_keypair(entropy)
+        .map_err(|err| anyhow::anyhow!("uid.dot identity derivation failed: {err}"))?;
     let storage_key = format!(
         "0x{}",
-        hex::encode(resources_consumers_storage_key(
-            &wallet_sso.public.to_bytes()
-        ))
+        hex::encode(resources_consumers_storage_key(&identity.public.to_bytes()))
     );
     let value = query_storage(people_ws, &storage_key)
         .await?
@@ -118,21 +116,21 @@ pub async fn registered_lite_username(people_ws: &str, entropy: &[u8]) -> Result
         .context("registered People-chain identity has no Lite username")
 }
 
-/// Probe the People chain for which derivation of `entropy` (bare root,
-/// `//wallet`, `//wallet//sso`) has a `Resources.Consumers` record, printing
-/// the account and decoded username. Used to confirm a pre-onboarded account.
+/// Probe the People chain for the bare root and canonical RFC-0022 `uid.dot`
+/// identity account, printing any `Resources.Consumers` record. Used to
+/// confirm a pre-onboarded account.
 pub async fn check_identity(people_ws: &str, entropy: &[u8]) -> Result<()> {
     let root = derive_root_keypair_from_entropy(entropy)
         .map_err(|err| anyhow::anyhow!("invalid entropy: {err}"))?;
-    let wallet = derive_sr25519_hard_path(entropy, &["wallet"])
-        .map_err(|err| anyhow::anyhow!("//wallet derivation failed: {err}"))?;
-    let wallet_sso = derive_sr25519_hard_path(entropy, &["wallet", "sso"])
-        .map_err(|err| anyhow::anyhow!("//wallet//sso derivation failed: {err}"))?;
+    let identity = derive_identity_keypair(entropy)
+        .map_err(|err| anyhow::anyhow!("uid.dot identity derivation failed: {err}"))?;
 
     for (label, public) in [
         ("<root>", root.public.to_bytes()),
-        ("//wallet", wallet.public.to_bytes()),
-        ("//wallet//sso", wallet_sso.public.to_bytes()),
+        (
+            "//product//uid.dot/index_bytes(0)",
+            identity.public.to_bytes(),
+        ),
     ] {
         let key = format!(
             "0x{}",

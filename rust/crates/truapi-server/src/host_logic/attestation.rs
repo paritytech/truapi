@@ -17,10 +17,9 @@ use verifiable::GenerateVerifiable;
 use verifiable::ring::bandersnatch::BandersnatchVrfVerifiable;
 
 use crate::host_logic::product_account::{
-    ProductAccountError, SR25519_SIGNING_CONTEXT, derive_sr25519_hard_path,
-    product_public_key_to_address,
+    ProductAccountError, SR25519_SIGNING_CONTEXT, derive_identity_keypair,
+    derive_lite_person_ring_vrf_entropy, product_public_key_to_address,
 };
-use crate::host_logic::sso::pairing::{PairingBootstrapError, derive_p256_keypair_from_entropy};
 
 /// sr25519 proof-of-ownership message prefix (exact bytes; one space).
 ///
@@ -66,15 +65,15 @@ pub struct LiteRegistration {
 /// Error while building lite-person registration parameters.
 #[derive(Debug, Error)]
 pub enum LiteRegistrationError {
-    /// Candidate statement-account derivation failed.
-    #[error("//wallet//sso derivation failed: {0}")]
+    /// RFC-0022 `uid.dot` identity-account derivation failed.
+    #[error("uid.dot identity derivation failed: {0}")]
     CandidateDerivation(#[from] ProductAccountError),
     /// Ring-VRF proof-of-ownership failed.
     #[error("ring-VRF proof-of-ownership failed: {0:?}")]
     ProofOfOwnership(VerifiableError),
     /// P-256 identifier key derivation failed.
-    #[error("identifier key derivation failed: {0}")]
-    IdentifierKey(#[from] PairingBootstrapError),
+    #[error("identifier key derivation failed")]
+    IdentifierKey,
 }
 
 /// Build the lite-person registration parameters for `username_base`
@@ -84,12 +83,12 @@ pub fn build_lite_registration(
     verifier_account_id: [u8; 32],
     username_base: &str,
 ) -> Result<LiteRegistration, LiteRegistrationError> {
-    // The candidate is the `//wallet//sso` statement account, matching the
-    // account the SSO responder presents as `identity_account_id`.
-    let candidate = derive_sr25519_hard_path(entropy, &["wallet", "sso"])?;
+    // Registration, local activation, and the SSO responder all use the
+    // RFC-0022 `uid.dot` default product account.
+    let candidate = derive_identity_keypair(entropy)?;
     let candidate_public_key = candidate.public.to_bytes();
 
-    let vrf_entropy = blake2b256(entropy);
+    let vrf_entropy = derive_lite_person_ring_vrf_entropy(entropy);
     let vrf_secret = BandersnatchVrfVerifiable::new_secret(vrf_entropy);
     let ring_vrf_key = BandersnatchVrfVerifiable::member_from_secret(&vrf_secret);
 
@@ -105,8 +104,7 @@ pub fn build_lite_registration(
     let proof_of_ownership = BandersnatchVrfVerifiable::sign(&vrf_secret, &proof_message)
         .map_err(LiteRegistrationError::ProofOfOwnership)?;
 
-    let (_identifier_secret, identifier_key) =
-        derive_p256_keypair_from_entropy(entropy, IDENTIFIER_KEY_LABEL)?;
+    let identifier_key = derive_identifier_key(entropy)?;
 
     let consumer_message = ConsumerRegistrationSigningPayload {
         account: candidate_public_key,
@@ -136,13 +134,32 @@ pub fn build_lite_registration(
     })
 }
 
-fn blake2b256(message: &[u8]) -> [u8; 32] {
-    blake2b_simd::Params::new()
-        .hash_length(32)
-        .hash(message)
-        .as_bytes()
-        .try_into()
-        .expect("hash_length(32) configures BLAKE2b output to exactly 32 bytes; qed")
+fn derive_identifier_key(entropy: &[u8]) -> Result<[u8; 65], LiteRegistrationError> {
+    use p256::SecretKey;
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+
+    for attempt in 0..64 {
+        let mut message = Vec::with_capacity(IDENTIFIER_KEY_LABEL.len() + 1);
+        message.extend_from_slice(IDENTIFIER_KEY_LABEL);
+        message.push(attempt);
+        let candidate: [u8; 32] = blake2b_simd::Params::new()
+            .hash_length(32)
+            .key(entropy)
+            .hash(&message)
+            .as_bytes()
+            .try_into()
+            .expect("hash_length(32) configures BLAKE2b output to exactly 32 bytes; qed");
+        let Ok(secret) = SecretKey::from_slice(&candidate) else {
+            continue;
+        };
+        return Ok(secret
+            .public_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .try_into()
+            .expect("uncompressed P-256 public keys are exactly 65 bytes"));
+    }
+    Err(LiteRegistrationError::IdentifierKey)
 }
 
 #[cfg(test)]
@@ -156,6 +173,19 @@ mod tests {
     fn registration_params_have_expected_shapes_and_verify() {
         let verifier = [0x11u8; 32];
         let reg = build_lite_registration(&ENTROPY, verifier, "headlesstester").unwrap();
+        assert_eq!(
+            reg.candidate_public_key,
+            derive_identity_keypair(&ENTROPY).unwrap().public.to_bytes(),
+            "registration uses the canonical uid.dot identity account"
+        );
+        let lite_entropy = derive_lite_person_ring_vrf_entropy(&ENTROPY);
+        assert_eq!(
+            reg.ring_vrf_key,
+            BandersnatchVrfVerifiable::member_from_secret(&BandersnatchVrfVerifiable::new_secret(
+                lite_entropy
+            )),
+            "registration uses the canonical peopl.dot index-1 member"
+        );
 
         assert_eq!(reg.identifier_key[0], 0x04, "P-256 uncompressed prefix");
         assert!(

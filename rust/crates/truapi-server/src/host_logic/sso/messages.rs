@@ -27,10 +27,11 @@ use truapi::latest::{
     HostAccountGetAliasResponse, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload,
     ProductProofContext, RawPayload, RingLocation,
 };
+use truapi::v01::{HostAccountSignVrfError, HostAccountSignVrfRequest, VrfSignature};
 
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::pairing::{
-    AES_GCM_NONCE_LEN, SsoStatementData, decrypt_session_statement_data,
+    AEAD_NONCE_LEN, SsoStatementData, decrypt_session_statement_data,
     encrypt_session_statement_data, encrypt_session_statement_data_with_nonce,
     peer_response_channel,
 };
@@ -298,26 +299,22 @@ pub struct SignRawLegacyResponse {
     pub signature: Result<Vec<u8>, String>,
 }
 
-/// Request exact statement-store proof signing with a product-derived account.
-///
-/// Raw signing cannot be reused because it applies the public
-/// `<Bytes>...</Bytes>` payload convention, while statement proofs sign the
-/// unsigned statement payload bytes directly.
+/// RFC-0023 VRF-signing request forwarded to the Account Holder.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct StatementStoreProductSignRequest {
-    /// Product-derived account that must sign the statement payload.
-    pub product_account_id: ProductAccountId,
-    /// Exact SCALE-encoded unsigned statement payload to sign.
-    pub payload: Vec<u8>,
+pub struct SignVrfRequest {
+    /// Product making the request, used for the Account Holder confirmation.
+    pub calling_product_id: String,
+    /// Product account and ordered Merlin transcript.
+    pub payload: HostAccountSignVrfRequest,
 }
 
-/// Response returned for exact statement-store proof signing.
+/// RFC-0023 VRF-signing response returned by the Account Holder.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct StatementStoreProductSignResponse {
-    /// `message_id` of the statement-signing request being answered.
+pub struct SignVrfResponse {
+    /// `message_id` of the VRF-signing request being answered.
     pub responding_to: String,
-    /// Signature bytes, or an error description from the signing host.
-    pub signature: Result<Vec<u8>, String>,
+    /// Fixed-width schnorrkel VRF signature or the public API error.
+    pub payload: Result<VrfSignature, HostAccountSignVrfError>,
 }
 
 /// Failure returned by the Account Holder for a ring-VRF proof or alias request.
@@ -480,8 +477,24 @@ pub enum SsoAllocatedResource {
     /// Auto-signing material for the product subtree.
     AutoSigning {
         /// Private key of the product subtree root.
-        product_root_private_key: Vec<u8>,
+        product_root_private_key: [u8; 64],
     },
+}
+
+/// Consent-free request for `//product//{product_id}`'s sr25519 public key.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct ProductSubtreeRequest {
+    /// DotNS product identifier whose hard subtree is requested.
+    pub product_id: String,
+}
+
+/// Account Holder response carrying a product subtree public key.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct ProductSubtreeResponse {
+    /// `message_id` of the subtree request being answered.
+    pub responding_to: String,
+    /// Raw 32-byte sr25519 subtree public key or a stable failure reason.
+    pub product_public_key: Result<[u8; 32], String>,
 }
 
 /// Request sent when a product asks the signing host to create a signed transaction
@@ -542,8 +555,8 @@ pub enum SsoRemoteResponse {
     Sign(SigningResponse),
     /// Legacy-account raw-signing response.
     SignRawLegacy(SignRawLegacyResponse),
-    /// Statement-store product signing response.
-    StatementStoreProductSign(StatementStoreProductSignResponse),
+    /// Product-account VRF signing response.
+    SignVrf(SignVrfResponse),
     /// Contextual-alias response.
     RingVrfAlias(RingVrfAliasResponse),
     /// Ring-VRF proof response.
@@ -552,6 +565,8 @@ pub enum SsoRemoteResponse {
     ResourceAllocation(ResourceAllocationResponse),
     /// Transaction-creation response.
     CreateTransaction(CreateTransactionResponse),
+    /// Product subtree public-key response.
+    ProductSubtree(ProductSubtreeResponse),
 }
 
 /// Decode and classify an inbound encrypted SSO session statement.
@@ -653,10 +668,10 @@ fn remote_response_for_message(
         {
             Some(SsoRemoteResponse::SignRawLegacy(response))
         }
-        v1::RemoteMessage::StatementStoreProductSignResponse(response)
+        v1::RemoteMessage::SignVrfResponse(response)
             if response.responding_to == expected_remote_message_id =>
         {
-            Some(SsoRemoteResponse::StatementStoreProductSign(response))
+            Some(SsoRemoteResponse::SignVrf(response))
         }
         v1::RemoteMessage::ResourceAllocationResponse(response)
             if response.responding_to == expected_remote_message_id =>
@@ -668,24 +683,27 @@ fn remote_response_for_message(
         {
             Some(SsoRemoteResponse::CreateTransaction(response))
         }
+        v1::RemoteMessage::ProductSubtreeResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::ProductSubtree(response))
+        }
         _ => None,
     }
 }
 
-/// Build an exact statement-store proof signing request.
-pub fn statement_store_product_sign_message(
+/// Build an RFC-0023 VRF-signing request for the Account Holder.
+pub fn sign_vrf_message(
     message_id: String,
-    product_account_id: ProductAccountId,
-    payload: Vec<u8>,
+    calling_product_id: String,
+    payload: HostAccountSignVrfRequest,
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(v1::RemoteMessage::StatementStoreProductSignRequest(
-            StatementStoreProductSignRequest {
-                product_account_id,
-                payload,
-            },
-        )),
+        data: RemoteMessageData::V1(v1::RemoteMessage::SignVrfRequest(SignVrfRequest {
+            calling_product_id,
+            payload,
+        })),
     }
 }
 
@@ -768,6 +786,16 @@ pub fn proof_request_message(
                 ring_location,
                 message,
             },
+        )),
+    }
+}
+
+/// Build a consent-free product subtree public-key request.
+pub fn product_subtree_request_message(message_id: String, product_id: String) -> RemoteMessage {
+    RemoteMessage {
+        message_id,
+        data: RemoteMessageData::V1(v1::RemoteMessage::ProductSubtreeRequest(
+            ProductSubtreeRequest { product_id },
         )),
     }
 }
@@ -940,7 +968,7 @@ pub fn build_outgoing_request_statement_with_nonce(
     statement_request_id: String,
     messages: Vec<RemoteMessage>,
     expiry: u64,
-    nonce: [u8; AES_GCM_NONCE_LEN],
+    nonce: [u8; AEAD_NONCE_LEN],
 ) -> Result<Vec<u8>, String> {
     let encrypted =
         encrypt_outgoing_request_data_with_nonce(session, statement_request_id, messages, nonce)?;
@@ -962,7 +990,7 @@ fn encrypt_outgoing_request_data_with_nonce(
     session: &SsoSessionInfo,
     statement_request_id: String,
     messages: Vec<RemoteMessage>,
-    nonce: [u8; AES_GCM_NONCE_LEN],
+    nonce: [u8; AEAD_NONCE_LEN],
 ) -> Result<Vec<u8>, String> {
     encrypt_session_statement_data_with_nonce(
         session,
@@ -991,11 +1019,10 @@ mod tests {
     use crate::host_logic::statement_store::{
         StatementField, build_signed_statement, decode_statement_data,
     };
-    use p256::SecretKey as P256SecretKey;
-    use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
     use truapi::latest::{HostSignPayloadData, TxPayloadExtension};
     use truapi::v01::RingLocationJunction;
+    use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519SecretKey};
 
     fn account() -> ProductAccountId {
         ProductAccountId {
@@ -1015,18 +1042,13 @@ mod tests {
     fn session() -> SsoSessionInfo {
         let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
         let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
-        let core_secret = P256SecretKey::from_slice(&[1; 32]).unwrap();
-        let peer_secret = P256SecretKey::from_slice(&[2; 32]).unwrap();
+        let core_secret = X25519SecretKey::from([1; 32]);
+        let peer_secret = X25519SecretKey::from([2; 32]);
         SsoSessionInfo {
             ss_secret: keypair.secret.to_bytes(),
             ss_public_key: keypair.public.to_bytes(),
-            enc_secret: core_secret.to_bytes().into(),
-            peer_enc_pubkey: peer_secret
-                .public_key()
-                .to_encoded_point(false)
-                .as_bytes()
-                .try_into()
-                .unwrap(),
+            enc_secret: core_secret.to_bytes(),
+            peer_enc_pubkey: X25519PublicKey::from(&peer_secret).to_bytes(),
             identity_account_id: [3; 32],
             session_id_own: [4; 32],
             session_id_peer: [5; 32],
@@ -1173,6 +1195,110 @@ mod tests {
         assert_eq!(
             hex::encode(message.encode()),
             expected.trim_start_matches("0x")
+        );
+    }
+
+    #[test]
+    fn product_subtree_messages_match_mobile_wire_contract() {
+        let request =
+            product_subtree_request_message("request".to_string(), "browse.dot".to_string());
+        assert_eq!(
+            hex::encode(request.encode()),
+            "1c7265717565737400102862726f7773652e646f74"
+        );
+
+        let response = RemoteMessage {
+            message_id: "response".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::ProductSubtreeResponse(
+                ProductSubtreeResponse {
+                    responding_to: "request".to_string(),
+                    product_public_key: Ok([0xAB; 32]),
+                },
+            )),
+        };
+        assert_eq!(
+            hex::encode(response.encode()),
+            format!(
+                "20726573706f6e736500111c7265717565737400{}",
+                "ab".repeat(32)
+            )
+        );
+        assert_eq!(
+            remote_response_for_message(response, "request"),
+            Some(SsoRemoteResponse::ProductSubtree(ProductSubtreeResponse {
+                responding_to: "request".to_string(),
+                product_public_key: Ok([0xAB; 32]),
+            }))
+        );
+    }
+
+    #[test]
+    fn sign_vrf_messages_match_mobile_wire_contract() {
+        let payload = HostAccountSignVrfRequest {
+            account: ProductAccountId {
+                dot_ns_identifier: "browse.dot".to_string(),
+                derivation_index: DerivationIndex::Left(7),
+            },
+            transcript_label: b"ctx".to_vec(),
+            items: vec![truapi::v01::VrfTranscriptItem {
+                label: b"domain".to_vec(),
+                value: vec![1, 2],
+            }],
+        };
+        let request = sign_vrf_message("req".to_string(), "browse.dot".to_string(), payload);
+        assert_eq!(
+            hex::encode(request.encode()),
+            "0c726571000e2862726f7773652e646f742862726f7773652e646f7400070000000c6374780418646f6d61696e080102"
+        );
+
+        let response = RemoteMessage {
+            message_id: "resp".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::SignVrfResponse(SignVrfResponse {
+                responding_to: "req".to_string(),
+                payload: Ok(VrfSignature {
+                    pre_output: [0x11; 32],
+                    proof: [0x22; 64],
+                }),
+            })),
+        };
+        assert_eq!(
+            hex::encode(response.encode()),
+            format!(
+                "1072657370000f0c72657100{}{}",
+                "11".repeat(32),
+                "22".repeat(64)
+            )
+        );
+        assert!(matches!(
+            remote_response_for_message(response, "req"),
+            Some(SsoRemoteResponse::SignVrf(SignVrfResponse {
+                payload: Ok(VrfSignature { .. }),
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn auto_signing_secret_is_fixed_width_on_the_mobile_wire() {
+        let message = RemoteMessage {
+            message_id: "m".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(
+                ResourceAllocationResponse {
+                    responding_to: "r".to_string(),
+                    payload: Ok(vec![SsoAllocationOutcome::Allocated(
+                        SsoAllocatedResource::AutoSigning {
+                            product_root_private_key: sequential_bytes(0),
+                        },
+                    )]),
+                },
+            )),
+        };
+        assert_eq!(
+            hex::encode(message.encode()),
+            format!(
+                "046d0006047200040003{}",
+                hex::encode(sequential_bytes::<64>(0))
+            )
         );
     }
 
@@ -1377,7 +1503,7 @@ mod tests {
             "statement-1".to_string(),
             vec![remote_message.clone()],
             99,
-            [9; AES_GCM_NONCE_LEN],
+            [9; AEAD_NONCE_LEN],
         )
         .unwrap();
         let encrypted = decode_statement_data(&statement).unwrap();
@@ -1416,7 +1542,7 @@ mod tests {
             "statement-1".to_string(),
             vec![remote_message],
             fresh_expiry(),
-            [9; AES_GCM_NONCE_LEN],
+            [9; AEAD_NONCE_LEN],
         )
         .unwrap();
 
@@ -1428,7 +1554,7 @@ mod tests {
 
     fn host_and_responder_sessions() -> (SsoSessionInfo, SsoSessionInfo) {
         use crate::host_logic::sso::pairing::{
-            ResponderIdentity, create_pairing_bootstrap, derive_p256_keypair_from_entropy,
+            ResponderIdentity, create_pairing_bootstrap, derive_x25519_keypair_from_entropy,
             establish_responder_session_info, establish_sso_session_info,
         };
         use truapi_platform::{HostInfo, PairingHostConfig, PlatformInfo};
@@ -1450,7 +1576,7 @@ mod tests {
             .unwrap()
             .expand_to_keypair(ExpansionMode::Ed25519);
         let (encryption_secret_key, encryption_public_key) =
-            derive_p256_keypair_from_entropy(&[0xAB; 16], b"sso-encryption").unwrap();
+            derive_x25519_keypair_from_entropy(&[0xAB; 16], b"sso");
         let responder = ResponderIdentity {
             statement_secret: statement_keypair.secret.to_bytes(),
             statement_public_key: statement_keypair.public.to_bytes(),
@@ -1634,7 +1760,7 @@ mod tests {
                 request_id: "statement-1".to_string(),
                 response_code: 0,
             },
-            [9; AES_GCM_NONCE_LEN],
+            [9; AEAD_NONCE_LEN],
         )
         .unwrap();
         build_signed_statement(

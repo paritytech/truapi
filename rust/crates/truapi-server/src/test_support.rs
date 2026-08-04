@@ -17,18 +17,10 @@ use crate::subscription::Spawner;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::subscription::thread_per_subscription_spawner;
 
-use aes_gcm::Aes256Gcm;
-use aes_gcm::aead::{Aead, KeyInit};
 use futures::Stream;
 use futures::stream::{self, BoxStream};
-use hkdf::Hkdf;
-use p256::PublicKey as P256PublicKey;
-use p256::SecretKey as P256SecretKey;
-use p256::ecdh::diffie_hellman;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
-use sha2::Sha256;
 use truapi::v01;
 use truapi::versioned::account::{HostAccountCreateProofRequest, HostAccountGetAliasRequest};
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
@@ -38,8 +30,10 @@ use truapi_platform::{
     JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
     PairingHostConfig, Permissions as PlatformPermissions, PlatformInfo, PreimageHost,
     ProductContext, ProductStorage as PlatformProductStorage, ResourceAllocationReview,
-    StatementStoreProductSignReview, ThemeHost, UserConfirmation, UserConfirmationReview,
+    SignVrfReview, StatementStoreProductSignReview, ThemeHost, UserConfirmation,
+    UserConfirmationReview,
 };
+use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519SecretKey};
 
 /// Test spawner that matches the current target.
 pub(crate) fn test_spawner() -> Spawner {
@@ -84,6 +78,9 @@ pub(crate) struct StubPlatform {
     pub(crate) sign_payload_error: Option<&'static str>,
     pub(crate) sign_raw_confirmed: bool,
     pub(crate) sign_raw_error: Option<&'static str>,
+    pub(crate) sign_vrf_confirmed: bool,
+    pub(crate) sign_vrf_error: Option<&'static str>,
+    pub(crate) sign_vrf_reviews: Arc<Mutex<Vec<SignVrfReview>>>,
     /// Every `StatementStoreProductSign` review passed to `confirm_user_action`, in order.
     pub(crate) statement_store_product_sign_reviews:
         Arc<Mutex<Vec<StatementStoreProductSignReview>>>,
@@ -234,18 +231,13 @@ pub(crate) fn sso_session_info() -> crate::host_logic::session::SessionInfo {
     let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
     let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
     let (_, peer_public_key) = peer_statement_keypair();
-    let core_secret = P256SecretKey::from_slice(&[1; 32]).unwrap();
-    let peer_secret = P256SecretKey::from_slice(&[2; 32]).unwrap();
+    let core_secret = X25519SecretKey::from([1; 32]);
+    let peer_secret = X25519SecretKey::from([2; 32]);
     session.sso = Some(crate::host_logic::session::SsoSessionInfo {
         ss_secret: keypair.secret.to_bytes(),
         ss_public_key: keypair.public.to_bytes(),
-        enc_secret: core_secret.to_bytes().into(),
-        peer_enc_pubkey: peer_secret
-            .public_key()
-            .to_encoded_point(false)
-            .as_bytes()
-            .try_into()
-            .unwrap(),
+        enc_secret: core_secret.to_bytes(),
+        peer_enc_pubkey: X25519PublicKey::from(&peer_secret).to_bytes(),
         identity_account_id: peer_public_key,
         session_id_own: [4; 32],
         session_id_peer: [5; 32],
@@ -468,7 +460,7 @@ fn sso_statement(
     data: pairing::SsoStatementData,
     nonce_seed: u8,
 ) -> Vec<u8> {
-    let mut nonce = [0; pairing::AES_GCM_NONCE_LEN];
+    let mut nonce = [0; pairing::AEAD_NONCE_LEN];
     nonce[0] = nonce_seed;
     let encrypted = pairing::encrypt_session_statement_data_with_nonce(
         session.sso.as_ref().unwrap(),
@@ -479,12 +471,12 @@ fn sso_statement(
     signed_test_statement(encrypted)
 }
 
-fn core_encryption_public_key_from_deeplink(deeplink: &str) -> [u8; 65] {
+fn core_encryption_public_key_from_deeplink(deeplink: &str) -> [u8; 32] {
     pairing_device_from_deeplink(deeplink).1
 }
 
 /// Pairing device statement and encryption keys encoded in a deeplink.
-pub(crate) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65]) {
+pub(crate) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 32]) {
     let encoded = deeplink
         .split("handshake=")
         .nth(1)
@@ -526,13 +518,8 @@ pub(crate) fn failed_wallet_handshake_statement(deeplink: &str, reason: &str) ->
 }
 
 fn wallet_handshake_success() -> pairing::v2::Success {
-    let wallet_persistent_public: [u8; 65] = P256SecretKey::from_slice(&[2; 32])
-        .unwrap()
-        .public_key()
-        .to_encoded_point(false)
-        .as_bytes()
-        .try_into()
-        .unwrap();
+    let wallet_persistent_secret = X25519SecretKey::from([2; 32]);
+    let wallet_persistent_public = X25519PublicKey::from(&wallet_persistent_secret).to_bytes();
     pairing::v2::Success {
         identity_account_id: peer_statement_keypair().1,
         root_account_id: session_info().public_key,
@@ -546,34 +533,11 @@ fn wallet_handshake_success() -> pairing::v2::Success {
 fn wallet_handshake_statement_with_response(
     deeplink: &str,
     answer: pairing::v2::EncryptedResponse,
-    nonce_seed: u8,
+    _nonce_seed: u8,
 ) -> Vec<u8> {
-    let core_public_key =
-        P256PublicKey::from_sec1_bytes(&core_encryption_public_key_from_deeplink(deeplink))
-            .expect("core encryption public key should decode");
-    let wallet_ephemeral_secret = P256SecretKey::from_slice(&[3; 32]).unwrap();
-    let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
-    let mut wallet_ephemeral_public_bytes = [0u8; 65];
-    wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
-    let shared_secret = diffie_hellman(
-        wallet_ephemeral_secret.to_nonzero_scalar(),
-        core_public_key.as_affine(),
-    );
-    let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
-    let mut aes_key = [0u8; 32];
-    hkdf.expand(&[], &mut aes_key).unwrap();
-    let nonce = [nonce_seed; pairing::AES_GCM_NONCE_LEN];
-    let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
-    let mut encrypted_message = nonce.to_vec();
-    encrypted_message.extend(
-        cipher
-            .encrypt((&nonce).into(), answer.encode().as_slice())
-            .unwrap(),
-    );
-    let handshake = pairing::VersionedHandshakeResponse::V2 {
-        encrypted_message,
-        public_key: wallet_ephemeral_public_bytes,
-    };
+    let core_public_key = core_encryption_public_key_from_deeplink(deeplink);
+    let handshake = pairing::encrypt_v2_handshake_response(core_public_key, &answer)
+        .expect("wallet handshake response should encrypt");
 
     signed_test_statement(handshake.encode())
 }
@@ -982,6 +946,12 @@ fn retarget_sso_response(mut response: RemoteMessage, message_id: &str) -> Remot
         RemoteMessageData::V1(v1::RemoteMessage::SignRawLegacyResponse(response)) => {
             response.responding_to = message_id.to_string();
         }
+        RemoteMessageData::V1(v1::RemoteMessage::SignVrfResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        RemoteMessageData::V1(v1::RemoteMessage::ProductSubtreeResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
         RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(response)) => {
             response.responding_to = message_id.to_string();
         }
@@ -1349,6 +1319,13 @@ impl UserConfirmation for StubPlatform {
                 (self.sign_payload_error, self.sign_payload_confirmed)
             }
             UserConfirmationReview::SignRaw(_) => (self.sign_raw_error, self.sign_raw_confirmed),
+            UserConfirmationReview::SignVrf(review) => {
+                self.sign_vrf_reviews
+                    .lock()
+                    .expect("VRF signing review list mutex poisoned")
+                    .push(review);
+                (self.sign_vrf_error, self.sign_vrf_confirmed)
+            }
             UserConfirmationReview::StatementStoreProductSign(review) => {
                 self.statement_store_product_sign_reviews
                     .lock()
