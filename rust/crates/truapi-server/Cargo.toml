@@ -28,7 +28,7 @@ dwarf-debug-info = false
 [features]
 default = ["wasm-signing-host"]
 wasm-signing-host = []
-ws-bridge = ["dep:tokio", "dep:tokio-tungstenite", "dep:rand"]
+ws-bridge = ["dep:tokio", "dep:tokio-tungstenite", "dep:rand", "dep:base64"]
 
 [dependencies]
 truapi = { path = "../truapi" }
@@ -68,13 +68,14 @@ verifiable = { git = "https://github.com/paritytech/verifiable.git", rev = "19b0
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 futures = { version = "0.3", features = ["thread-pool"] }
 rand = { version = "0.8", optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time"], optional = true }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["handshake"], optional = true }
 uniffi = "0.29.4"
 subxt = { version = "0.50.2", default-features = false, features = ["native"] }
 subxt-rpcs = { version = "0.50.1", default-features = false, features = ["jsonrpsee", "native"] }
 frame-metadata = { version = "23", default-features = false, features = ["std", "current", "decode"] }
 scale-info = { version = "2.11", default-features = false, features = ["decode"] }
+base64 = { version = "0.22", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 futures-timer = { version = "3", features = ["wasm-bindgen"] }
@@ -96,7 +97,7 @@ wasm-bindgen-test = "0.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time"] }
-tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect"] }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake"] }
 
 [lints]
 workspace = true

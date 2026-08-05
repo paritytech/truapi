@@ -69,7 +69,7 @@ sub.unsubscribe();
 - **Generated domain clients and types** produced from the Rust API contract.
 - **SCALE codec helpers** used by the generated code, also re-exported for direct use.
 - **Sandbox bootstrap** (`@parity/truapi/sandbox`) that detects the host environment, builds the
-  matching provider, and exposes a cached client — see below.
+  matching provider, and exposes a cached client - see below.
 
 ## Sandbox bootstrap
 
@@ -100,6 +100,25 @@ const unsubscribe = subscribeConnectionStatus((status) => {
 | `isCorrectEnvironment(): boolean`           | Synchronous host-environment detection.         |
 | `getClientSync(): TrUApiClient \| null`     | Cached client; `null` outside a host container. |
 | `subscribeConnectionStatus(cb): () => void` | Connected / disconnected status listener.       |
+
+## Observability / debugging
+
+The debugger does not live in this package, and the product transport carries no debug seam -
+`@parity/truapi` is genuinely untouched by observability. The host taps every product↔host frame in
+its Rust core (`truapi-server`'s `DebugSink`) and streams each one - as `{ channelId, dir, frame:
+bytes }`, opaque bytes - to a separate debugger app, which decodes and groups them.
+
+- Architecture (the tap, the envelope, the host-dials-debugger topology, `wss`/cert setup):
+  `docs/design/wire-observability-debug-host.md`.
+- The debugger app itself (trace + envelope-decode engines + the WS server): `@parity/truapi-debugger`.
+
+The generated `WIRE_DECODE_TABLE` on the `./wire-decode` subpath (raw SCALE bytes → typed value)
+stays here, since it is generated from this package's contract. It is the decode source the
+[`@parity/truapi-debugger`](../truapi-debugger/) app uses to render frame values. That app is a
+strictly dev-only tool: it decodes every frame by default (there is no redaction), and its safety
+is that it is compiled out of production, not that it hides fields. `TRUAPI_DEBUGGER_DECODE_VALUES=0`
+turns decode off for a payload-blind demo. `@parity/truapi` itself never decodes payloads — the
+envelope decode it does expose (`decodeWireMessage`: `requestId`, frame id) carries no payload value.
 
 ## Wire format
 

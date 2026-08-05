@@ -112,7 +112,7 @@ pub trait Payment: Send + Sync {
     /// assert(result.isOk(), "topUp failed:", result);
     /// console.log("balance topped up");
     /// ```
-    #[wire(request_id = 122)]
+    #[wire(request_id = 122, sensitive)]
     async fn top_up(
         &self,
         _cx: &CallContext,

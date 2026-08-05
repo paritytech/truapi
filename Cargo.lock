@@ -5054,6 +5054,7 @@ name = "truapi-server"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64",
  "blake2b_simd",
  "chacha20poly1305",
  "console_error_panic_hook",

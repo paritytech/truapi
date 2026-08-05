@@ -55,7 +55,14 @@ export type CallbackArgs = readonly unknown[];
  * host callback/subscription/chain responses requested by the worker.
  */
 export type MainToWorker =
-  | { kind: "init"; logLevel: LogLevel; hostConfig: unknown }
+  | {
+      kind: "init";
+      logLevel: LogLevel;
+      hostConfig: unknown;
+      // Dev-only: when set, the worker dials this debugger and streams tapped
+      // frames to it. Null in production, so the host tap stays inert.
+      debuggerUrl: string | null;
+    }
   | { kind: "createCore"; coreId: number; product: unknown }
   | { kind: "disposeCore"; coreId: number }
   | { kind: "setLogLevel"; level: LogLevel }

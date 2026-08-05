@@ -45,6 +45,12 @@ pub enum WireKind {
     /// Subscription method.
     Subscription(SubscriptionFrameIds),
 }
+/// Fingerprint of this build's wire contract: frame ids, method legs,
+/// sensitivity, and codec version, identical to the TS client's
+/// `TRUAPI_WIRE_SCHEMA_HASH`. A host stamps it on each debug envelope so
+/// the debugger refuses to decode a frame whose contract differs from
+/// its own, even when the coarse handshake codec version is unchanged.
+pub const TRUAPI_WIRE_SCHEMA_HASH: &str = "c18def0e997626eb";
 
 /// Wire discriminants for `system_handshake`.
 pub const SYSTEM_HANDSHAKE: RequestFrameIds = RequestFrameIds {

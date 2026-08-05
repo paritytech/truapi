@@ -19,6 +19,13 @@ js/packages/
                           `.` (shared host types), `/web` (iframe + Web
                           Worker), `/worker-runtime` (Worker entry).
                           WASM bundle (gitignored) under dist/wasm/web/, built via `make wasm`
+  truapi-debugger/        @parity/truapi-debugger (private, in-repo): the debugger.
+                          Decodes + groups the wire frames the Rust host tap
+                          (truapi-server's DebugSink) streams out. Holds the
+                          trace + envelope-decode engines + a runnable WS server the host
+                          dials into (`npm run serve`, :9231) with a minimal trace
+                          view. @parity/truapi has no debug seam. Where the app
+                          ultimately lives is still an open decision.
 playground/                Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/               dotli submodule
 docs/                      design docs, RFCs, feature proposals

@@ -18,7 +18,7 @@ pub trait LocalStorage: Send + Sync {
     /// assert(result.isOk(), "read failed:", result);
     /// console.log("storage value read:", result.value.value);
     /// ```
-    #[wire(request_id = 12)]
+    #[wire(request_id = 12, sensitive)]
     async fn read(
         &self,
         cx: &CallContext,
@@ -35,7 +35,7 @@ pub trait LocalStorage: Send + Sync {
     /// assert(result.isOk(), "write failed:", result);
     /// console.log("storage write succeeded");
     /// ```
-    #[wire(request_id = 14)]
+    #[wire(request_id = 14, sensitive)]
     async fn write(
         &self,
         cx: &CallContext,

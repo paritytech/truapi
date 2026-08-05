@@ -38,8 +38,9 @@ enum MethodEntry {
     Subscription(SubEntry),
 }
 
-/// Emit the contents of `wire_table.rs`.
-pub fn generate_wire_table(api: &ApiDefinition) -> Result<String> {
+/// Emit the contents of `wire_table.rs`. `schema_hash` is the wire-contract
+/// fingerprint emitted as `TRUAPI_WIRE_SCHEMA_HASH`, identical to the TS client's.
+pub fn generate_wire_table(api: &ApiDefinition, schema_hash: &str) -> Result<String> {
     let mut method_entries: Vec<(String, MethodEntry)> = Vec::new();
     let mut seen: BTreeMap<u8, String> = BTreeMap::new();
     let mut seen_methods: BTreeMap<String, String> = BTreeMap::new();
@@ -68,7 +69,7 @@ pub fn generate_wire_table(api: &ApiDefinition) -> Result<String> {
         MethodEntry::Subscription(SubEntry { start_id, .. }) => *start_id,
     });
 
-    render(&method_entries)
+    render(&method_entries, schema_hash)
 }
 
 fn method_entry(trait_def: &TraitDef, method: &MethodDef) -> Result<MethodEntry> {
@@ -169,7 +170,7 @@ fn insert_entry(
     Ok(())
 }
 
-fn render(methods: &[(String, MethodEntry)]) -> Result<String> {
+fn render(methods: &[(String, MethodEntry)], schema_hash: &str) -> Result<String> {
     let mut out = String::new();
     writedoc!(
         out,
@@ -221,6 +222,19 @@ fn render(methods: &[(String, MethodEntry)]) -> Result<String> {
             /// Subscription method.
             Subscription(SubscriptionFrameIds),
         }}
+        "#
+    )
+    .unwrap();
+
+    writedoc!(
+        out,
+        r#"
+        /// Fingerprint of this build's wire contract: frame ids, method legs,
+        /// sensitivity, and codec version, identical to the TS client's
+        /// `TRUAPI_WIRE_SCHEMA_HASH`. A host stamps it on each debug envelope so
+        /// the debugger refuses to decode a frame whose contract differs from
+        /// its own, even when the coarse handshake codec version is unchanged.
+        pub const TRUAPI_WIRE_SCHEMA_HASH: &str = "{schema_hash}";
         "#
     )
     .unwrap();

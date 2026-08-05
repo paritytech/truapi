@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "bundler",
+    "composite": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["bun"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [{ "path": "../truapi" }]
+}

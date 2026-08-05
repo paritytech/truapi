@@ -489,6 +489,12 @@ pub fn generate(
     let wire_table_code = generate_wire_table(api, target_version)?;
     fs::write(Path::new(output_dir).join("wire-table.ts"), wire_table_code)?;
 
+    let decode_table_code = generate_decode_table(api, target_version)?;
+    fs::write(
+        Path::new(output_dir).join("wire-decode.ts"),
+        decode_table_code,
+    )?;
+
     Ok(())
 }
 
@@ -650,6 +656,60 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
     }
 
     Ok(out)
+}
+
+/// Every wire frame id (sorted), its method-leg tag, and whether the method is
+/// `#[wire(..., sensitive)]`. The one iteration the schema-hash fingerprint is
+/// derived from, so the fingerprint tracks exactly what the wire table
+/// publishes.
+fn wire_id_rows(api: &ApiDefinition, target_version: u32) -> Result<Vec<(u8, String, bool)>> {
+    let wrappers = collect_versioned_wrappers(api);
+    let mut seen: BTreeMap<u8, (String, bool)> = BTreeMap::new();
+    for trait_def in &api.traits {
+        for method in &trait_def.methods {
+            if !method_is_included(trait_def, method, &wrappers, target_version)? {
+                continue;
+            }
+            let wire_ids = wire_ids_for_method(trait_def, method)?;
+            for (id, tag) in wire_ids.entries(&method.name) {
+                if let Some((existing, _)) = seen.insert(id, (tag.clone(), method.wire.sensitive)) {
+                    bail!("wire id {id} reused: `{existing}` and `{tag}` collide");
+                }
+            }
+        }
+    }
+    Ok(seen
+        .into_iter()
+        .map(|(id, (tag, sensitive))| (id, tag, sensitive))
+        .collect())
+}
+
+/// A stable fingerprint of the wire contract: every frame id, the method leg it
+/// resolves to, and its sensitivity, folded together with the codec version.
+/// Two builds whose frame tables differ - a reassigned id, a renamed or
+/// added/removed method, or a flipped `#[wire(sensitive)]` - produce different
+/// hashes even when the handshake `codec_version` is unchanged, which is the
+/// case the coarse codec number cannot see. Emitted as `TRUAPI_WIRE_SCHEMA_HASH`
+/// on both the TS and Rust sides so a host stamps it on every debug envelope and
+/// the debugger refuses to decode a frame whose contract differs from its own.
+pub(crate) fn wire_schema_hash(
+    api: &ApiDefinition,
+    target_version: u32,
+    codec_version: u8,
+) -> Result<String> {
+    let mut canonical = format!("codec={codec_version}\n");
+    for (id, tag, sensitive) in wire_id_rows(api, target_version)? {
+        let flag = u8::from(sensitive);
+        canonical.push_str(&format!("{id}:{tag}:{flag}\n"));
+    }
+    // FNV-1a 64-bit: deterministic across platforms and Rust versions (unlike
+    // `DefaultHasher`), dependency-free, and ample for a contract fingerprint.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in canonical.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    Ok(format!("{hash:016x}"))
 }
 
 fn method_is_included(
@@ -926,6 +986,7 @@ fn generate_types(api: &ApiDefinition, target_version: u32) -> Result<String> {
 fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) -> Result<String> {
     validate_versioned_wrapper_shapes(api)?;
 
+    let schema_hash = wire_schema_hash(api, target_version, codec_version)?;
     let mut out = String::new();
     writedoc!(
         out,
@@ -944,6 +1005,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
         export type {{ ObservableLike, Observer, Result, Subscription, TrUApiTransport }};
         export const TRUAPI_VERSION = {target_version} as const;
         export const TRUAPI_CODEC_VERSION = {codec_version} as const;
+        export const TRUAPI_WIRE_SCHEMA_HASH = "{schema_hash}" as const;
 
         function toSubscriptionError<Reason = never>(error: unknown): SubscriptionError<Reason> {{
           if (error instanceof SubscriptionError) return error as SubscriptionError<Reason>;
@@ -1049,6 +1111,172 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     .unwrap();
 
     Ok(out)
+}
+
+/// Generates the dev-only wire decode table (`wire-decode.ts`): a map from wire
+/// `frameId` to a decoder that turns a frame's SCALE payload into a plain JS
+/// value. It re-derives the exact request/response/subscription codec
+/// expressions the client emitter builds (via [`emit_payload`],
+/// [`emit_response`], [`emit_error_response`], and
+/// [`versioned_result_codec_expr`]), so a debugger decodes wire frames against
+/// the same generated codecs. Subscription `start` and `receive` frames are
+/// covered; `stop`/`interrupt` frames are intentionally skipped.
+fn generate_decode_table(api: &ApiDefinition, target_version: u32) -> Result<String> {
+    let ctx = codec_context(&[]);
+    let wrappers = collect_versioned_wrappers(api);
+    let services = public_services(api)?;
+
+    // (wire id, emitted table line) pairs, sorted by wire id for a stable,
+    // wire-ordered file that matches the wire-table layout.
+    let mut entries: Vec<(u8, String)> = Vec::new();
+
+    for service in &services {
+        let trait_def = service.trait_def;
+        for method in included_methods(trait_def, &wrappers, target_version)? {
+            let wire_const = wire_const_name(&trait_def.name, &method.name);
+            let wire_version = method_wire_version(method, &wrappers, target_version)?;
+            let payload = emit_payload(&method.params, &wrappers, &ctx, wire_version)?;
+            let wire_ids = wire_ids_for_method(trait_def, method)?;
+
+            match (&method.kind, &method.return_type) {
+                (MethodKind::Request, ReturnType::Result { ok, err }) => {
+                    let ExpandedWireIds::Request {
+                        request_id,
+                        response_id,
+                    } = wire_ids
+                    else {
+                        unreachable!("request method resolved to subscription wire ids");
+                    };
+                    let response = emit_response(ok, &wrappers, &ctx, wire_version)?;
+                    let error = emit_error_response(err, &wrappers, &ctx, wire_version)?;
+                    let response_codec = match wire_version {
+                        Some(version) => versioned_result_codec_expr(
+                            version,
+                            &response.inner_codec_expr,
+                            &error.inner_codec_expr,
+                        )?,
+                        None => format!(
+                            "S.Result({}, {})",
+                            response.wire_codec_expr, error.wire_codec_expr
+                        ),
+                    };
+                    let value_suffix = if wire_version.is_some() { ".value" } else { "" };
+                    entries.push((
+                        request_id,
+                        format!(
+                            "  [W.{wire_const}.request]: (payload) => {}.dec(payload),",
+                            payload.wire_codec_expr
+                        ),
+                    ));
+                    entries.push((
+                        response_id,
+                        format!(
+                            "  [W.{wire_const}.response]: (payload) => {response_codec}.dec(payload){value_suffix},"
+                        ),
+                    ));
+                }
+                (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
+                    let response = emit_response(ty, &wrappers, &ctx, wire_version)?;
+                    push_subscription_entries(
+                        &mut entries,
+                        &wire_const,
+                        &payload,
+                        &response,
+                        wire_ids,
+                        wire_version,
+                    )?;
+                }
+                (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, .. }) => {
+                    let response = emit_response(item, &wrappers, &ctx, wire_version)?;
+                    push_subscription_entries(
+                        &mut entries,
+                        &wire_const,
+                        &payload,
+                        &response,
+                        wire_ids,
+                        wire_version,
+                    )?;
+                }
+                (kind, return_type) => {
+                    bail!(
+                        "Generator internal mismatch for method `{}`: kind {:?} does not match return type {:?}",
+                        method.name,
+                        kind,
+                        return_type
+                    );
+                }
+            }
+        }
+    }
+
+    entries.sort_by_key(|(id, _)| *id);
+
+    let mut out = String::new();
+    writedoc!(
+        out,
+        r#"
+        // Auto-generated by truapi-codegen. Do not edit.
+
+        import * as S from '../scale.js';
+        import * as T from './types.js';
+        import * as W from './wire-table.js';
+
+        /** Dev-only: decode a wire frame's SCALE payload to a plain JS value, keyed by frameId.
+         *  Request/response/subscription frames only; unknown ids are absent (caller falls back to bytes). */
+        export const WIRE_DECODE_TABLE: Record<number, (payload: Uint8Array) => unknown> = {{
+        "#
+    )
+    .unwrap();
+    for (_, line) in &entries {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str("};\n");
+
+    Ok(out)
+}
+
+/// Emits the `.start` (start payload codec) and `.receive` (item codec) decode
+/// entries for a subscription method, mirroring the client's `payload`
+/// encoding and `decodeItem` expression. `stop`/`interrupt` frames are skipped.
+fn push_subscription_entries(
+    entries: &mut Vec<(u8, String)>,
+    wire_const: &str,
+    payload: &PayloadEmission,
+    response: &ResponseEmission,
+    wire_ids: ExpandedWireIds,
+    wire_version: Option<u32>,
+) -> Result<()> {
+    let ExpandedWireIds::Subscription {
+        start_id,
+        receive_id,
+        ..
+    } = wire_ids
+    else {
+        unreachable!("subscription method resolved to request wire ids");
+    };
+    let item_value = if let Some(version) = wire_version {
+        versioned_value_expr(
+            &format!("{}.dec(payload)", response.wire_codec_expr),
+            &response.wire_type_ts,
+            &response.inner_type_ts,
+            version,
+        )
+    } else {
+        format!("{}.dec(payload)", response.wire_codec_expr)
+    };
+    entries.push((
+        start_id,
+        format!(
+            "  [W.{wire_const}.start]: (payload) => {}.dec(payload),",
+            payload.wire_codec_expr
+        ),
+    ));
+    entries.push((
+        receive_id,
+        format!("  [W.{wire_const}.receive]: (payload) => {item_value},"),
+    ));
+    Ok(())
 }
 
 fn write_observable_helper(out: &mut String) {
@@ -2659,6 +2887,36 @@ mod tests {
                     .find("export const EXAMPLE_LATER")
                     .expect("later entry")
         );
+    }
+
+    #[test]
+    fn generate_decode_table_emits_frame_keyed_decoders() {
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Example".to_string(),
+                module_path: Vec::new(),
+                methods: vec![
+                    request_method("feature_supported", Some(2)),
+                    subscription_method("stream", Some(10)),
+                ],
+                docs: None,
+            }],
+            public_trait_order: vec!["Example".to_string()],
+            types: Vec::new(),
+        };
+
+        let source = generate_decode_table(&api, 2).expect("generate decode table");
+
+        assert!(source.contains("export const WIRE_DECODE_TABLE"));
+        assert!(source.contains("(payload: Uint8Array) => unknown"));
+        assert!(source.contains("[W.EXAMPLE_FEATURE_SUPPORTED.request]"));
+        assert!(source.contains("[W.EXAMPLE_FEATURE_SUPPORTED.response]"));
+        assert!(source.contains("[W.EXAMPLE_STREAM.start]"));
+        assert!(source.contains("[W.EXAMPLE_STREAM.receive]"));
+        assert!(source.contains(".dec(payload)"));
+        // stop/interrupt subscription frames are intentionally skipped.
+        assert!(!source.contains(".stop]"));
+        assert!(!source.contains(".interrupt]"));
     }
 
     #[test]

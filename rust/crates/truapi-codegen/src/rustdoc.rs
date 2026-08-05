@@ -106,6 +106,11 @@ pub struct WireAttrs {
     pub interrupt_id: Option<u8>,
     /// Subscription item frame discriminant.
     pub receive_id: Option<u8>,
+    /// Whether the method's payloads carry key material or bearer secrets.
+    /// Marked by `#[wire(..., sensitive)]`; folded into the wire schema-hash
+    /// fingerprint so a change in a frame's sensitivity classification is caught
+    /// as contract drift.
+    pub sensitive: bool,
 }
 
 /// Wire-shape classification of a trait method.
@@ -785,6 +790,14 @@ fn extract_wire_attrs(docs: &str) -> WireAttrs {
     let mut attrs = WireAttrs::default();
     for line in docs.lines() {
         let line = line.trim_start();
+        if line.starts_with("@wire_sensitive=") {
+            attrs.sensitive = line
+                .trim_end()
+                .strip_prefix("@wire_sensitive=")
+                .and_then(|value| value.parse::<bool>().ok())
+                .unwrap_or(false);
+            continue;
+        }
         for (needle, target) in [
             ("@wire_request_id=", &mut attrs.request_id),
             ("@wire_response_id=", &mut attrs.response_id),
@@ -1450,9 +1463,21 @@ mod tests {
 
     #[test]
     fn clean_docs_strips_wire_markers() {
-        let docs = "Trait summary.\n\n@wire_request_id=7\n";
+        let docs = "Trait summary.\n\n@wire_request_id=7\n@wire_sensitive=true\n";
 
         assert_eq!(clean_docs(Some(docs)).as_deref(), Some("Trait summary."));
+    }
+
+    #[test]
+    fn extract_wire_attrs_reads_sensitive_flag() {
+        let sensitive = extract_wire_attrs("@wire_request_id=114\n@wire_sensitive=true");
+        assert_eq!(sensitive.request_id, Some(114));
+        assert!(sensitive.sensitive);
+
+        // Absent marker ⇒ not sensitive (the default for every unmarked method).
+        let plain = extract_wire_attrs("@wire_request_id=22");
+        assert_eq!(plain.request_id, Some(22));
+        assert!(!plain.sensitive);
     }
 
     #[test]

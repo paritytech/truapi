@@ -23,11 +23,11 @@ pub use wasm_bridge::generate_wasm_bridge;
 pub use wire_table::generate_wire_table;
 
 /// Generates the Rust wire dispatcher and wire-table sources into `output_dir`.
-pub fn generate(api: &ApiDefinition, output_dir: &Path) -> Result<()> {
+pub fn generate(api: &ApiDefinition, output_dir: &Path, schema_hash: &str) -> Result<()> {
     fs::create_dir_all(output_dir)?;
     let dispatcher = generate_dispatcher(api)?;
     fs::write(output_dir.join("dispatcher.rs"), dispatcher)?;
-    let wire_table = generate_wire_table(api)?;
+    let wire_table = generate_wire_table(api, schema_hash)?;
     fs::write(output_dir.join("wire_table.rs"), wire_table)?;
     Ok(())
 }
@@ -157,6 +157,7 @@ mod tests {
                 stop_id: None,
                 interrupt_id: None,
                 receive_id: None,
+                sensitive: false,
             },
             docs: None,
         }
@@ -178,6 +179,7 @@ mod tests {
                 stop_id: None,
                 interrupt_id: None,
                 receive_id: None,
+                sensitive: false,
             },
             docs: None,
         }
@@ -275,7 +277,7 @@ mod tests {
             types: vec![],
         };
 
-        let src = generate_wire_table(&api).expect("generate_wire_table");
+        let src = generate_wire_table(&api, "testhash").expect("generate_wire_table");
         let entries = parse_entries(&src);
         assert_eq!(
             entries,
@@ -323,7 +325,7 @@ mod tests {
             "dispatcher missing prefixed Preimage const:\n{dispatcher}"
         );
 
-        let table = generate_wire_table(&api).expect("wire_table");
+        let table = generate_wire_table(&api, "testhash").expect("wire_table");
         let entries = parse_entries(&table);
         assert!(
             entries
@@ -364,7 +366,8 @@ mod tests {
             public_trait_order: vec!["Foo".to_string(), "FooBar".to_string()],
             types: vec![],
         };
-        let err = generate_wire_table(&api).expect_err("duplicate wire method name must error");
+        let err = generate_wire_table(&api, "testhash")
+            .expect_err("duplicate wire method name must error");
         let msg = format!("{err}");
         assert!(
             msg.contains("wire method name `foo_bar_baz` reused"),
@@ -398,8 +401,8 @@ mod tests {
         let dispatcher_b = generate_dispatcher(&api).expect("dispatcher b");
         assert_eq!(dispatcher_a, dispatcher_b);
 
-        let table_a = generate_wire_table(&api).expect("wire_table a");
-        let table_b = generate_wire_table(&api).expect("wire_table b");
+        let table_a = generate_wire_table(&api, "testhash").expect("wire_table a");
+        let table_b = generate_wire_table(&api, "testhash").expect("wire_table b");
         assert_eq!(table_a, table_b);
     }
 
@@ -422,7 +425,7 @@ mod tests {
             public_trait_order: vec!["Permissions".to_string()],
             types: vec![],
         };
-        let err = generate_wire_table(&api).expect_err("duplicate ids must error");
+        let err = generate_wire_table(&api, "testhash").expect_err("duplicate ids must error");
         let msg = format!("{err}");
         assert!(
             msg.contains("wire id 10 reused"),
@@ -477,7 +480,8 @@ mod tests {
             public_trait_order: vec!["Permissions".to_string()],
             types: vec![],
         };
-        let err = generate_wire_table(&api).expect_err("request kind + start_id must error");
+        let err =
+            generate_wire_table(&api, "testhash").expect_err("request kind + start_id must error");
         let msg = format!("{err}");
         assert!(
             msg.contains("must not use subscription wire ids"),
@@ -500,7 +504,8 @@ mod tests {
             public_trait_order: vec!["Account".to_string()],
             types: vec![],
         };
-        let err = generate_wire_table(&api).expect_err("subscription kind + request_id must error");
+        let err = generate_wire_table(&api, "testhash")
+            .expect_err("subscription kind + request_id must error");
         let msg = format!("{err}");
         assert!(
             msg.contains("must not use request wire ids"),
@@ -524,7 +529,8 @@ mod tests {
             public_trait_order: vec!["Permissions".to_string()],
             types: vec![],
         };
-        let err = generate_wire_table(&api).expect_err("missing request_id annotation must error");
+        let err = generate_wire_table(&api, "testhash")
+            .expect_err("missing request_id annotation must error");
         let msg = format!("{err}");
         assert!(
             msg.contains("missing #[wire(request_id"),
@@ -547,7 +553,8 @@ mod tests {
             public_trait_order: vec!["Account".to_string()],
             types: vec![],
         };
-        let err = generate_wire_table(&api).expect_err("missing start_id annotation must error");
+        let err = generate_wire_table(&api, "testhash")
+            .expect_err("missing start_id annotation must error");
         let msg = format!("{err}");
         assert!(
             msg.contains("missing #[wire(start_id"),

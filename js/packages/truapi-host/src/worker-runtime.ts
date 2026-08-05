@@ -10,6 +10,7 @@ import type {
   WorkerToMain,
 } from "./worker-protocol.js";
 import type { GenericError } from "@parity/truapi";
+import { TRUAPI_CODEC_VERSION, TRUAPI_WIRE_SCHEMA_HASH } from "@parity/truapi";
 import {
   createWorkerRawCallbacks,
   type CallbackName,
@@ -187,13 +188,204 @@ function buildRawCallbacks() {
   });
 }
 
-function buildCoreCallbacks(coreId: number) {
+/** Encode raw frame bytes as base64 (JSON can't carry binary over the WS). */
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+/**
+ * Dev-only link to the debugger the host dials. Fire-and-forget by construction:
+ * it opens lazily, buffers a bounded backlog until the socket is up, retries a
+ * dropped connection, and swallows every error - a slow, absent, or crashed
+ * debugger only loses the trace, it can never throw into the frame path.
+ */
+/**
+ * Envelope version stamped on each frame, mirroring the debugger's
+ * `WIRE_ENVELOPE_VERSION`. Kept in sync by hand (a value constant, not a shared
+ * dep, to avoid truapi-host depending on the debugger package).
+ */
+const WIRE_ENVELOPE_VERSION = 1;
+
+/**
+ * Is `url` a `ws://` URL on a loopback host? The debug tap forwards raw frames
+ * (including sensitive payloads, before the debugger's denylist runs), so it is
+ * loopback-only: refuse to stream them off the local machine. `ws://` only,
+ * matching the native sink (`native_debug.rs`), which is also ws-only.
+ */
+export function isLoopbackWsUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "ws:") return false;
+    const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "::1" ||
+      /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+      // IPv4-mapped loopback: WHATWG serializes ::ffff:127.x.y.z as ::ffff:7fxx:yyyy.
+      /^::ffff:7f[0-9a-f]{2}:/.test(host)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function createDebuggerLink(url: string): {
+  emit(channelId: string, dir: string, frame: Uint8Array): void;
+} {
+  // Loopback-only, dev-only: a non-loopback (or non-ws://) debugger URL yields an
+  // inert link rather than streaming frames across the network. Warn so a
+  // mistyped value reads as "misconfigured", not "the debugger doesn't work".
+  if (!isLoopbackWsUrl(url)) {
+    console.warn(
+      `[truapi] wire debugger URL rejected (must be ws:// on a loopback host): ${url}`,
+    );
+    return { emit() {} };
+  }
+  let socket: WebSocket | null = null;
+  let open = false;
+  const queue: string[] = [];
+  // Count *and* byte caps: each queued item is a base64 ProtocolMessage (storage
+  // writes, RPC responses - up to MBs each), so a count-only cap would let a slow
+  // or absent debugger buffer unbounded RSS on the observed session. Whichever
+  // ceiling hits first drops the frame (counted), never blocking the frame path.
+  const MAX_QUEUE = 1000;
+  const MAX_QUEUE_BYTES = 8 * 1024 * 1024;
+  let queuedBytes = 0;
+  let droppedSinceSend = 0;
+
+  function connect(): void {
+    try {
+      socket = new WebSocket(url);
+    } catch {
+      socket = null;
+      return;
+    }
+    socket.addEventListener("open", () => {
+      open = true;
+      const pending = queue.splice(0);
+      queuedBytes = 0;
+      // Deliver drops accumulated while disconnected by stamping the count on the
+      // first drained frame - a bare marker without channelId/dir/frame wouldn't
+      // parse server-side. Drops only happen once the queue is full, so when the
+      // count is nonzero there is always a pending frame to carry it; if not, it
+      // rides the next live emit.
+      if (pending.length > 0 && droppedSinceSend > 0) {
+        try {
+          const first = JSON.parse(pending[0]) as Record<string, unknown>;
+          first.dropped = droppedSinceSend;
+          pending[0] = JSON.stringify(first);
+          droppedSinceSend = 0;
+        } catch {
+          // Leave the frame as-is; the count rides the next live emit.
+        }
+      }
+      for (const message of pending) send(message);
+    });
+    socket.addEventListener("close", () => {
+      open = false;
+      socket = null;
+    });
+    socket.addEventListener("error", () => {
+      // A socket that fired `error` is dead: close it explicitly (tidiness), then
+      // null it so `emit`'s `if (!socket) connect()` reconnects. Without the null,
+      // a runtime that fires `error` without a following `close` would leave
+      // `socket` non-null and frames would buffer then drop.
+      open = false;
+      const dead = socket;
+      socket = null;
+      try {
+        dead?.close();
+      } catch {
+        // already closed / closing
+      }
+    });
+  }
+
+  function send(message: string): void {
+    try {
+      socket?.send(message);
+    } catch {
+      // A dead socket must never break the frame path.
+    }
+  }
+
+  connect();
+
+  let warnedDrop = false;
   return {
+    emit(channelId, dir, frame) {
+      // A debug tap must never throw into the observed frame path: toBase64 /
+      // JSON.stringify can raise on a pathological frame (btoa or V8 string-length
+      // limits), and only send() swallows its own errors. Losing a trace is fine;
+      // breaking dispatch is not.
+      try {
+        const base = {
+          v: WIRE_ENVELOPE_VERSION,
+          codec: TRUAPI_CODEC_VERSION,
+          schema: TRUAPI_WIRE_SCHEMA_HASH,
+          channelId,
+          dir,
+          frame: toBase64(frame),
+        };
+        if (open && socket) {
+          // Piggyback any frames dropped while the link was down onto the next
+          // live frame, so the debugger attributes the gap to the link, not the
+          // host.
+          send(
+            droppedSinceSend > 0
+              ? JSON.stringify({ ...base, dropped: droppedSinceSend })
+              : JSON.stringify(base),
+          );
+          droppedSinceSend = 0;
+          return;
+        }
+        const message = JSON.stringify(base);
+        if (
+          queue.length < MAX_QUEUE &&
+          queuedBytes + message.length <= MAX_QUEUE_BYTES
+        ) {
+          queue.push(message);
+          queuedBytes += message.length;
+        } else {
+          droppedSinceSend += 1;
+          if (!warnedDrop) {
+            // The link buffers a bounded backlog while the debugger is
+            // absent/slow; once full (by count or bytes), frames are dropped.
+            // Warn once so the gap is attributable to the link, not the host.
+            warnedDrop = true;
+            console.warn(
+              "[truapi] wire debugger link queue full — dropping frames until it drains",
+            );
+          }
+        }
+        if (!socket) connect();
+      } catch {
+        // Swallow: never let the tap disturb the frame path.
+      }
+    },
+  };
+}
+
+let debuggerLink: ReturnType<typeof createDebuggerLink> | null = null;
+
+function buildCoreCallbacks(coreId: number) {
+  const callbacks = {
     emitFrame(frame: Uint8Array): void {
       postToMain({ kind: "frame", coreId, bytes: frame });
     },
     dispose(): void {
       // Main thread owns lifecycle and disposes explicitly.
+    },
+  };
+  if (!debuggerLink) return callbacks;
+  // Adding `debugEmit` is what makes the Rust host install its debug sink; when
+  // no debugger is configured it is absent and the tap stays inert.
+  return {
+    ...callbacks,
+    debugEmit(channelId: string, dir: string, frame: Uint8Array): void {
+      debuggerLink?.emit(channelId, dir, frame);
     },
   };
 }
@@ -231,6 +423,9 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         break;
       }
       wasm.setLogLevel?.(msg.logLevel);
+      if (msg.debuggerUrl && !debuggerLink) {
+        debuggerLink = createDebuggerLink(msg.debuggerUrl);
+      }
       try {
         runtime = new wasm.WasmPairingHostRuntime(
           buildRawCallbacks(),

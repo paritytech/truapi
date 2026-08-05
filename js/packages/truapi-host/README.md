@@ -55,6 +55,22 @@ const secondProvider = await runtime.createProvider({
 protocol-iframe MessageChannel handshake. Host code creates one worker runtime
 and then opens one provider per product id.
 
+## Debugging (dev-only)
+
+The worker can stream every product↔core wire frame to the wire debugger. It is
+off by default and enabled purely from the host page — the product needs no
+changes. Set a debugger URL in the host origin's `localStorage`, then run the
+debugger (`@parity/truapi-debugger`, `npm run serve`, `:9231`):
+
+```js
+localStorage.setItem("truapi:debugger", "ws://localhost:9231");
+```
+
+On the next runtime boot the worker reads that URL, dials the debugger, and (via
+the Rust core's `DebugSink` tap) sends each frame as `{ channelId, dir, frame }`.
+Unset in production, so nothing dials and the core installs no tap. Design:
+`docs/design/wire-observability-debug-host.md`.
+
 ## Publishing
 
 This package is published by the root `Release` workflow through

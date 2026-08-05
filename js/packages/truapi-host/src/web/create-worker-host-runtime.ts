@@ -116,6 +116,23 @@ function readPersistedLogLevel(): LogLevel | null {
   return globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
 }
 
+// Dev-only, host-agnostic enablement for the wire debugger: in a DEV build, set
+// `localStorage["truapi:debugger"] = "ws://<host>:9231"` in the browser and the
+// host worker dials that debugger and streams frames to it. Read here (host page)
+// and forwarded to the worker in `init`; no cooperation from the embedding shell.
+const DEV_DEBUGGER_URL_KEY = "truapi:debugger";
+
+function readPersistedDebuggerUrl(): string | null {
+  // Hard dev-only gate, not a convention: bundlers (Vite) replace
+  // `import.meta.env.DEV` with a boolean literal, so in a PRODUCTION build this
+  // returns null unconditionally and the tap is inert - a stray localStorage key
+  // cannot turn the debugger on in prod. The wire debugger streams raw
+  // (now fully-decoded) frames and is strictly a development tool.
+  const meta = import.meta as unknown as { env?: { DEV?: boolean } };
+  if (meta.env?.DEV !== true) return null;
+  return globalThis.localStorage?.getItem(DEV_DEBUGGER_URL_KEY) ?? null;
+}
+
 function persistLogLevel(level: LogLevel): void {
   globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
 }
@@ -603,6 +620,7 @@ export function createWebWorkerPairingHostRuntime(
           kind: "init",
           logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
           hostConfig: options.hostConfig,
+          debuggerUrl: readPersistedDebuggerUrl(),
         } satisfies MainToWorker);
       } else if (msg.kind === "ready") {
         cleanupInit();
