@@ -4539,6 +4539,59 @@ mod tests {
         ));
     }
 
+    fn auto_signing_test_platform(session: &SessionInfo, request_id: &str) -> Arc<StubPlatform> {
+        let root =
+            crate::host_logic::product_account::derive_root_keypair_from_entropy(&[0xAB; 16])
+                .unwrap();
+        let subtree =
+            crate::host_logic::product_account::derive_product_subtree_keypair(&root, "myapp.dot")
+                .unwrap();
+        Arc::new(StubPlatform {
+            resource_allocation_confirmed: true,
+            sso_response_script: Some(sso_success_response_script(
+                session,
+                RemoteMessage {
+                    message_id: format!("wallet-{request_id}"),
+                    data: RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(
+                        crate::host_logic::sso::messages::ResourceAllocationResponse {
+                            responding_to: request_id.to_string(),
+                            payload: Ok(vec![
+                                crate::host_logic::sso::messages::SsoAllocationOutcome::Allocated(
+                                    crate::host_logic::sso::messages::SsoAllocatedResource::AutoSigning {
+                                        product_root_private_key: subtree.secret.to_bytes(),
+                                    },
+                                ),
+                            ]),
+                        },
+                    )),
+                },
+            )),
+            ..Default::default()
+        })
+    }
+
+    fn request_auto_signing(host: &ProductRuntimeHost, request_id: &str) {
+        futures::executor::block_on(ResourceAllocation::request(
+            host,
+            &CallContext::with_request_id(request_id.to_string()),
+            HostRequestResourceAllocationRequest::V1(v01::HostRequestResourceAllocationRequest {
+                resources: vec![v01::AllocatableResource::AutoSigning],
+            }),
+        ))
+        .expect("AutoSigning allocation succeeds");
+    }
+
+    fn auto_signing_vrf_request() -> HostAccountSignVrfRequest {
+        HostAccountSignVrfRequest::V1(v01::HostAccountSignVrfRequest {
+            account: account_id("myapp.dot", 0),
+            transcript_label: b"ctx".to_vec(),
+            items: vec![v01::VrfTranscriptItem {
+                label: b"round".to_vec(),
+                value: vec![7],
+            }],
+        })
+    }
+
     #[test]
     fn auto_signing_allocation_persists_and_serves_vrf_without_sso() {
         let session = sso_session_info();
@@ -4593,7 +4646,7 @@ mod tests {
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        install_pairing_session(&restored, session);
+        restored.test_session_state().set_session(session);
         let request = v01::HostAccountSignVrfRequest {
             account: account_id("myapp.dot", 0),
             transcript_label: b"ctx".to_vec(),
@@ -4630,6 +4683,751 @@ mod tests {
             .public
             .vrf_verify(transcript, &pre_output, &proof)
             .expect("local AutoSigning VRF verifies");
+    }
+
+    #[test]
+    fn auto_signing_rejects_persisted_key_for_unexpected_product_subtree() {
+        let session = sso_session_info();
+        let platform = auto_signing_test_platform(&session, "auto-tamper");
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        install_pairing_session(&host, session.clone());
+        request_auto_signing(&host, "auto-tamper");
+
+        let expected_subtree = test_product_subtree("myapp.dot");
+        let storage_key = core_storage_test_key(CoreStorageKey::AutoSigningKeys);
+        {
+            let mut storage = platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned");
+            let blob = storage
+                .get_mut(&storage_key)
+                .expect("scoped AutoSigning capability persisted");
+            let expected_offset = blob
+                .windows(expected_subtree.len())
+                .position(|window| window == expected_subtree)
+                .expect("persisted expected subtree is present");
+            blob[expected_offset] ^= 0x01;
+        }
+
+        let restored = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        install_pairing_session(&restored, session);
+        let err = futures::executor::block_on(
+            restored.sign_vrf(&CallContext::default(), auto_signing_vrf_request()),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountSignVrfError::V1(
+                v01::HostAccountSignVrfError::Unknown { reason }
+            )) if reason == "AutoSigning capability is not for the current product subtree"
+        ));
+        assert!(
+            !platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&storage_key)
+        );
+    }
+
+    #[test]
+    fn auto_signing_logout_reset_clears_cached_and_persisted_capability() {
+        let session = sso_session_info();
+        let platform = auto_signing_test_platform(&session, "auto-logout");
+        let (host_config, product) = runtime_config("myapp.dot");
+        let (host, pairing_host) = ProductRuntimeHost::new_pairing_for_tests(
+            platform.clone(),
+            host_config,
+            product,
+            test_spawner(),
+        );
+        install_pairing_session(&host, session.clone());
+        request_auto_signing(&host, "auto-logout");
+        assert!(
+            platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&core_storage_test_key(CoreStorageKey::AutoSigningKeys))
+        );
+
+        futures::executor::block_on(pairing_host.logout_and_reset_pairing()).unwrap();
+
+        assert!(
+            !platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&core_storage_test_key(CoreStorageKey::AutoSigningKeys))
+        );
+        assert!(
+            !futures::executor::block_on(
+                pairing_host.has_auto_signing_key_for_tests(&session, "myapp.dot")
+            )
+            .expect("AutoSigning storage remains readable"),
+            "logout must evict the in-memory AutoSigning capability"
+        );
+    }
+
+    #[test]
+    fn stale_secret_allocations_cannot_persist_after_reset_and_same_owner_reactivation() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform::default());
+        let (host_config, product) = runtime_config("myapp.dot");
+        let (host, pairing_host) = ProductRuntimeHost::new_pairing_for_tests(
+            platform.clone(),
+            host_config,
+            product,
+            test_spawner(),
+        );
+        install_pairing_session(&host, session.clone());
+        let stale_epoch = pairing_host.current_session_lifecycle_epoch();
+        let root =
+            crate::host_logic::product_account::derive_root_keypair_from_entropy(&[0xAB; 16])
+                .unwrap();
+        let subtree =
+            crate::host_logic::product_account::derive_product_subtree_keypair(&root, "myapp.dot")
+                .unwrap();
+
+        futures::executor::block_on(pairing_host.logout_and_reset_pairing()).unwrap();
+        futures::executor::block_on(pairing_host.set_connected_session_for_tests(session.clone()));
+        let auto_signing_error =
+            futures::executor::block_on(pairing_host.remember_auto_signing_key_for_tests(
+                &session,
+                stale_epoch,
+                "myapp.dot",
+                subtree.public.to_bytes(),
+                subtree.secret.to_bytes(),
+            ))
+            .expect_err("the old AutoSigning allocation completion must be rejected");
+        let statement_store_result =
+            futures::executor::block_on(pairing_host.cache_statement_store_allowance_key(
+                &session,
+                stale_epoch,
+                "myapp.dot",
+                subtree.secret.to_bytes().to_vec(),
+            ));
+        let Err(statement_store_error) = statement_store_result else {
+            panic!("the old statement-store allocation completion must be rejected");
+        };
+        let bulletin_result =
+            futures::executor::block_on(pairing_host.cache_bulletin_allowance_key(
+                &session,
+                stale_epoch,
+                "myapp.dot",
+                subtree.secret.to_bytes().to_vec(),
+            ));
+        let Err(bulletin_error) = bulletin_result else {
+            panic!("the old Bulletin allocation completion must be rejected");
+        };
+
+        assert!(matches!(auto_signing_error, AuthorityError::Disconnected));
+        assert!(matches!(
+            statement_store_error,
+            AuthorityError::Disconnected
+        ));
+        assert!(matches!(bulletin_error, AuthorityError::Disconnected));
+        assert!(
+            !platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&core_storage_test_key(CoreStorageKey::AutoSigningKeys)),
+            "the stale allocation must not restore durable AutoSigning authority"
+        );
+        assert!(
+            platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .is_empty(),
+            "stale allowance completions must not restore durable slot secrets"
+        );
+        assert!(
+            !futures::executor::block_on(
+                pairing_host.has_auto_signing_key_for_tests(&session, "myapp.dot")
+            )
+            .expect("AutoSigning storage remains readable"),
+            "the stale allocation must not restore cached AutoSigning authority"
+        );
+    }
+
+    #[test]
+    fn product_clear_preserves_other_capabilities_and_fences_stale_work() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform::default());
+        let (host_config, product) = runtime_config("myapp.dot");
+        let (host, pairing_host) = ProductRuntimeHost::new_pairing_for_tests(
+            platform.clone(),
+            host_config,
+            product,
+            test_spawner(),
+        );
+        install_pairing_session(&host, session.clone());
+        cache_test_product_subtree(&host, &session, "other.dot");
+        let stale_epoch = pairing_host.current_session_lifecycle_epoch();
+        let root =
+            crate::host_logic::product_account::derive_root_keypair_from_entropy(&[0xAB; 16])
+                .unwrap();
+        let first =
+            crate::host_logic::product_account::derive_product_subtree_keypair(&root, "myapp.dot")
+                .unwrap();
+        let other =
+            crate::host_logic::product_account::derive_product_subtree_keypair(&root, "other.dot")
+                .unwrap();
+
+        for (product_id, subtree) in [("myapp.dot", &first), ("other.dot", &other)] {
+            futures::executor::block_on(pairing_host.remember_auto_signing_key_for_tests(
+                &session,
+                stale_epoch,
+                product_id,
+                subtree.public.to_bytes(),
+                subtree.secret.to_bytes(),
+            ))
+            .unwrap();
+            futures::executor::block_on(pairing_host.cache_statement_store_allowance_key(
+                &session,
+                stale_epoch,
+                product_id,
+                subtree.secret.to_bytes().to_vec(),
+            ))
+            .unwrap();
+            futures::executor::block_on(pairing_host.cache_bulletin_allowance_key(
+                &session,
+                stale_epoch,
+                product_id,
+                subtree.secret.to_bytes().to_vec(),
+            ))
+            .unwrap();
+        }
+
+        futures::executor::block_on(pairing_host.clear_product_state("myapp.dot")).unwrap();
+        let current_epoch = pairing_host.current_session_lifecycle_epoch();
+        assert_ne!(current_epoch, stale_epoch);
+        assert_eq!(
+            pairing_host.capability_cache_sizes_for_tests(),
+            (1, 1, 1, 1)
+        );
+        assert!(
+            !futures::executor::block_on(
+                pairing_host.has_auto_signing_key_for_tests(&session, "myapp.dot")
+            )
+            .unwrap()
+        );
+        assert!(
+            futures::executor::block_on(
+                pairing_host.has_auto_signing_key_for_tests(&session, "other.dot")
+            )
+            .unwrap()
+        );
+        assert!(
+            futures::executor::block_on(pairing_host.cached_statement_store_allowance_key(
+                &session,
+                current_epoch,
+                "myapp.dot",
+            ))
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            futures::executor::block_on(pairing_host.cached_statement_store_allowance_key(
+                &session,
+                current_epoch,
+                "other.dot",
+            ))
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            futures::executor::block_on(pairing_host.cached_bulletin_allowance_key(
+                &session,
+                current_epoch,
+                "myapp.dot",
+            ))
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            futures::executor::block_on(pairing_host.cached_bulletin_allowance_key(
+                &session,
+                current_epoch,
+                "other.dot",
+            ))
+            .unwrap()
+            .is_some()
+        );
+
+        assert!(matches!(
+            futures::executor::block_on(pairing_host.remember_auto_signing_key_for_tests(
+                &session,
+                stale_epoch,
+                "myapp.dot",
+                first.public.to_bytes(),
+                first.secret.to_bytes(),
+            )),
+            Err(AuthorityError::Disconnected)
+        ));
+        assert!(matches!(
+            futures::executor::block_on(pairing_host.cache_statement_store_allowance_key(
+                &session,
+                stale_epoch,
+                "myapp.dot",
+                first.secret.to_bytes().to_vec(),
+            )),
+            Err(AuthorityError::Disconnected)
+        ));
+        assert_eq!(
+            pairing_host.capability_cache_sizes_for_tests(),
+            (1, 1, 1, 1)
+        );
+        assert_eq!(
+            platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .len(),
+            2,
+            "the aggregate AutoSigning and active-session allowance blobs remain for other.dot"
+        );
+    }
+
+    #[test]
+    fn reset_session_state_clears_all_capabilities_without_peer_traffic() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform::default());
+        let (host_config, product) = runtime_config("myapp.dot");
+        let (host, pairing_host) = ProductRuntimeHost::new_pairing_for_tests(
+            platform.clone(),
+            host_config,
+            product,
+            test_spawner(),
+        );
+        install_pairing_session(&host, session.clone());
+        let lifecycle_epoch = pairing_host.current_session_lifecycle_epoch();
+        let root =
+            crate::host_logic::product_account::derive_root_keypair_from_entropy(&[0xAB; 16])
+                .unwrap();
+        let subtree =
+            crate::host_logic::product_account::derive_product_subtree_keypair(&root, "myapp.dot")
+                .unwrap();
+        futures::executor::block_on(pairing_host.remember_auto_signing_key_for_tests(
+            &session,
+            lifecycle_epoch,
+            "myapp.dot",
+            subtree.public.to_bytes(),
+            subtree.secret.to_bytes(),
+        ))
+        .unwrap();
+        futures::executor::block_on(pairing_host.cache_statement_store_allowance_key(
+            &session,
+            lifecycle_epoch,
+            "myapp.dot",
+            subtree.secret.to_bytes().to_vec(),
+        ))
+        .unwrap();
+        futures::executor::block_on(pairing_host.cache_bulletin_allowance_key(
+            &session,
+            lifecycle_epoch,
+            "myapp.dot",
+            subtree.secret.to_bytes().to_vec(),
+        ))
+        .unwrap();
+        assert_eq!(
+            pairing_host.capability_cache_sizes_for_tests(),
+            (1, 1, 1, 1)
+        );
+
+        futures::executor::block_on(pairing_host.reset_session_state());
+
+        assert!(pairing_host.session_state().current().is_none());
+        assert_eq!(
+            pairing_host.capability_cache_sizes_for_tests(),
+            (0, 0, 0, 0)
+        );
+        assert!(
+            platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .is_empty()
+        );
+        assert!(
+            platform
+                .sent_rpc
+                .lock()
+                .expect("sent RPC mutex poisoned")
+                .is_empty(),
+            "canonical reset must not submit a duplicate peer-disconnect statement"
+        );
+    }
+
+    #[test]
+    fn identity_replacement_clears_all_stale_wallet_capabilities() {
+        let session = sso_session_info();
+        let platform = auto_signing_test_platform(&session, "auto-replace");
+        let (host_config, product) = runtime_config("myapp.dot");
+        let (host, pairing_host) = ProductRuntimeHost::new_pairing_for_tests(
+            platform.clone(),
+            host_config,
+            product,
+            test_spawner(),
+        );
+        install_pairing_session(&host, session.clone());
+        request_auto_signing(&host, "auto-replace");
+        let lifecycle_epoch = pairing_host.current_session_lifecycle_epoch();
+        let root =
+            crate::host_logic::product_account::derive_root_keypair_from_entropy(&[0xAB; 16])
+                .unwrap();
+        let subtree =
+            crate::host_logic::product_account::derive_product_subtree_keypair(&root, "myapp.dot")
+                .unwrap();
+        futures::executor::block_on(pairing_host.cache_statement_store_allowance_key(
+            &session,
+            lifecycle_epoch,
+            "myapp.dot",
+            subtree.secret.to_bytes().to_vec(),
+        ))
+        .unwrap();
+        futures::executor::block_on(pairing_host.cache_bulletin_allowance_key(
+            &session,
+            lifecycle_epoch,
+            "myapp.dot",
+            subtree.secret.to_bytes().to_vec(),
+        ))
+        .unwrap();
+
+        let mut replacement = session;
+        replacement.public_key = [0x44; 32];
+        replacement
+            .sso
+            .as_mut()
+            .expect("fixture has SSO identity")
+            .identity_account_id = [0x55; 32];
+        futures::executor::block_on(
+            pairing_host.set_connected_session_for_tests(replacement.clone()),
+        );
+
+        assert_eq!(
+            host.test_session_state().current(),
+            Some(replacement.clone())
+        );
+        assert!(
+            !platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&core_storage_test_key(CoreStorageKey::AutoSigningKeys))
+        );
+        assert!(
+            platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .is_empty(),
+            "a replacement wallet must not leave the prior session's durable allowance secrets"
+        );
+        assert!(
+            !futures::executor::block_on(
+                pairing_host.has_auto_signing_key_for_tests(&replacement, "myapp.dot")
+            )
+            .expect("AutoSigning storage remains readable"),
+            "a newly paired wallet must not reuse the previous wallet's cached capability"
+        );
+    }
+
+    #[test]
+    fn auto_signing_restored_different_wallet_rejects_persisted_capability() {
+        let session = sso_session_info();
+        let platform = auto_signing_test_platform(&session, "auto-other-wallet");
+        let original = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        install_pairing_session(&original, session.clone());
+        request_auto_signing(&original, "auto-other-wallet");
+
+        let mut replacement = session;
+        replacement.public_key = [0x66; 32];
+        replacement
+            .sso
+            .as_mut()
+            .expect("fixture has SSO identity")
+            .identity_account_id = [0x77; 32];
+        let (host_config, product) = runtime_config("myapp.dot");
+        let (restored, pairing_host) = ProductRuntimeHost::new_pairing_for_tests(
+            platform.clone(),
+            host_config,
+            product,
+            test_spawner(),
+        );
+        install_pairing_session(&restored, replacement.clone());
+
+        assert!(
+            !futures::executor::block_on(
+                pairing_host.has_auto_signing_key_for_tests(&replacement, "myapp.dot")
+            )
+            .expect("AutoSigning storage remains readable"),
+            "a different restored wallet must not use a prior wallet's capability"
+        );
+        assert!(
+            !platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&core_storage_test_key(CoreStorageKey::AutoSigningKeys))
+        );
+    }
+
+    #[test]
+    fn auto_signing_rejects_and_erases_legacy_unscoped_secret() {
+        let session = sso_session_info();
+        let root =
+            crate::host_logic::product_account::derive_root_keypair_from_entropy(&[0xAB; 16])
+                .unwrap();
+        let subtree =
+            crate::host_logic::product_account::derive_product_subtree_keypair(&root, "myapp.dot")
+                .unwrap();
+        let platform = Arc::new(StubPlatform::default());
+        let legacy_key = CoreStorageKey::AutoSigningKey {
+            product_id: "myapp.dot".to_string(),
+        };
+        platform
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(
+                core_storage_test_key(legacy_key.clone()),
+                subtree.secret.to_bytes().to_vec(),
+            );
+        let host = ProductRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        install_pairing_session(&host, session);
+
+        let err = futures::executor::block_on(
+            host.sign_vrf(&CallContext::default(), auto_signing_vrf_request()),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountSignVrfError::V1(
+                v01::HostAccountSignVrfError::Unknown { reason }
+            )) if reason == "legacy unscoped AutoSigning capability was rejected"
+        ));
+        assert!(
+            !platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(&core_storage_test_key(legacy_key))
+        );
+    }
+
+    #[test]
+    fn external_session_activation_is_memory_only_and_rejects_trailing_bytes() {
+        let platform = Arc::new(StubPlatform::default());
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+        let session = sso_session_info();
+        let blob = crate::host_logic::session::encode_persisted_session(&session);
+
+        futures::executor::block_on(pairing_host.activate_external_session(&blob))
+            .expect("valid external session activates");
+
+        assert_eq!(host.test_session_state().current(), Some(session.clone()));
+        assert!(
+            platform
+                .session_writes
+                .lock()
+                .expect("session write list mutex poisoned")
+                .is_empty(),
+            "external activation must not copy the blob into core storage"
+        );
+
+        let invalid = futures::executor::block_on(pairing_host.activate_external_session(&[0xff]))
+            .expect_err("invalid bytes are rejected");
+        assert!(invalid.starts_with("invalid session blob:"));
+
+        let mut trailing = blob;
+        trailing.push(0);
+        let error = futures::executor::block_on(pairing_host.activate_external_session(&trailing))
+            .expect_err("trailing bytes are rejected");
+        assert_eq!(error, "invalid session blob: trailing bytes");
+        assert_eq!(
+            host.test_session_state().current(),
+            Some(session),
+            "invalid replacement preserves the active external session"
+        );
+    }
+
+    #[test]
+    fn external_session_activation_replaces_and_fences_the_previous_session() {
+        let (host, pairing_host) = ProductRuntimeHost::new_compat_with_pairing(
+            Arc::new(StubPlatform::default()),
+            test_spawner(),
+        );
+        let first = sso_session_info();
+        let mut replacement = first.clone();
+        replacement.public_key = [0x44; 32];
+        replacement.identity_account_id = Some([0x55; 32]);
+        replacement
+            .sso
+            .as_mut()
+            .expect("fixture has SSO")
+            .identity_account_id = [0x55; 32];
+
+        futures::executor::block_on(pairing_host.activate_external_session(
+            &crate::host_logic::session::encode_persisted_session(&first),
+        ))
+        .expect("first external session activates");
+        futures::executor::block_on(pairing_host.activate_external_session(
+            &crate::host_logic::session::encode_persisted_session(&replacement),
+        ))
+        .expect("replacement external session activates");
+
+        assert_eq!(host.test_session_state().current(), Some(replacement));
+    }
+
+    #[test]
+    fn store_notification_during_external_activation_restores_persisted_session() {
+        let persisted = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            session_blob: Some(crate::host_logic::session::encode_persisted_session(
+                &persisted,
+            )),
+            ..Default::default()
+        });
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform, test_spawner());
+        pairing_host
+            .clone()
+            .start_session_store_sync_for_tests(test_spawner());
+        wait_until(
+            || host.test_session_state().current() == Some(persisted.clone()),
+            "initial persisted session was not restored",
+        );
+
+        let mut stale_external = persisted.clone();
+        stale_external.public_key = [0x44; 32];
+        let stale_blob = crate::host_logic::session::encode_persisted_session(&stale_external);
+        let (activation_entered, resume_activation) =
+            pairing_host.pause_external_session_activation_for_tests();
+        let activation = std::thread::spawn({
+            let pairing_host = pairing_host.clone();
+            move || futures::executor::block_on(pairing_host.activate_external_session(&stale_blob))
+        });
+        futures::executor::block_on(activation_entered)
+            .expect("external activation reached the installation fence");
+
+        pairing_host.notify_session_store_changed();
+        resume_activation
+            .send(())
+            .expect("external activation remains in flight");
+        activation
+            .join()
+            .expect("external activation thread panicked")
+            .expect("superseded external activation completes");
+
+        wait_until(
+            || host.test_session_state().current() == Some(persisted.clone()),
+            "store reconciliation did not preserve the persisted replacement",
+        );
+        assert_eq!(host.test_session_state().current(), Some(persisted));
+    }
+
+    #[test]
+    fn disconnect_during_external_activation_prevents_stale_reinstallation() {
+        let (host, pairing_host) = ProductRuntimeHost::new_compat_with_pairing(
+            Arc::new(StubPlatform::default()),
+            test_spawner(),
+        );
+        let stale_blob = crate::host_logic::session::encode_persisted_session(&sso_session_info());
+        let (activation_entered, resume_activation) =
+            pairing_host.pause_external_session_activation_for_tests();
+        let activation = std::thread::spawn({
+            let pairing_host = pairing_host.clone();
+            move || futures::executor::block_on(pairing_host.activate_external_session(&stale_blob))
+        });
+        futures::executor::block_on(activation_entered)
+            .expect("external activation reached the installation fence");
+
+        futures::executor::block_on(host.disconnect());
+        resume_activation
+            .send(())
+            .expect("external activation remains in flight");
+        activation
+            .join()
+            .expect("external activation thread panicked")
+            .expect("superseded external activation completes");
+
+        assert!(
+            host.test_session_state().current().is_none(),
+            "disconnect must win over the earlier external activation"
+        );
+    }
+
+    #[test]
+    fn stored_session_activation_resolves_after_connected_installation() {
+        let stored = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            session_blob: Some(crate::host_logic::session::encode_persisted_session(
+                &stored,
+            )),
+            ..Default::default()
+        });
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform.clone(), test_spawner());
+
+        futures::executor::block_on(pairing_host.activate_stored_session())
+            .expect("valid stored session activates");
+
+        assert_eq!(host.test_session_state().current(), Some(stored.clone()));
+        assert_eq!(
+            *platform
+                .auth_states
+                .lock()
+                .expect("auth state list mutex poisoned"),
+            vec![AuthState::Connected(connected_session_ui_info(&stored))]
+        );
+    }
+
+    #[test]
+    fn stored_session_activation_rejects_invalid_blob_and_disconnects() {
+        let session_clears = Arc::new(Mutex::new(0));
+        let platform = Arc::new(StubPlatform {
+            session_blob: Some(vec![0xff]),
+            session_clears: session_clears.clone(),
+            ..Default::default()
+        });
+        let (host, pairing_host) =
+            ProductRuntimeHost::new_compat_with_pairing(platform, test_spawner());
+        install_pairing_session(&host, sso_session_info());
+
+        let error = futures::executor::block_on(pairing_host.activate_stored_session())
+            .expect_err("invalid stored session is rejected");
+
+        assert!(error.starts_with("invalid stored auth session:"));
+        assert!(host.test_session_state().current().is_none());
+        assert_eq!(
+            *session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            1
+        );
     }
 
     #[test]

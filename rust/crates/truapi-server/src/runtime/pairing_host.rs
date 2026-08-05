@@ -10,7 +10,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
 use futures::channel::oneshot;
+use parity_scale_codec::{Decode, Encode};
+use schnorrkel::SecretKey;
 use sso_channel::SsoDisconnectMonitor;
+use zeroize::Zeroize;
 
 use super::allowances::{self, AllowanceCacheKey, AllowanceResource};
 use super::auth_state::AuthStateMachine;
@@ -42,7 +45,7 @@ use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse
 use truapi::{CallContext, CallError, v01};
 use truapi_platform::{
     CoreStorageKey, PairingHostConfig, Platform, ProductContext, SignVrfReview,
-    UserConfirmationReview,
+    UserConfirmationReview, normalize_product_identifier,
 };
 
 /// Distinguishes all remote authority request entrypoints by wire label.
@@ -129,6 +132,104 @@ impl Drop for LoginInFlightOwner<'_> {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash, Encode, Decode)]
+struct AutoSigningOwner {
+    root_public_key: [u8; 32],
+    authenticated_sso_identity: Option<[u8; 32]>,
+}
+
+impl AutoSigningOwner {
+    fn from_session(session: &SessionInfo) -> Self {
+        Self {
+            root_public_key: session.public_key,
+            authenticated_sso_identity: session.sso.as_ref().map(|sso| sso.identity_account_id),
+        }
+    }
+}
+
+#[derive(Encode, Decode)]
+struct PersistedAutoSigningKey {
+    owner: AutoSigningOwner,
+    product_id: String,
+    expected_product_subtree_public_key: [u8; 32],
+    secret: [u8; 64],
+}
+
+impl Drop for PersistedAutoSigningKey {
+    fn drop(&mut self) {
+        self.secret.zeroize();
+    }
+}
+
+type AutoSigningCacheKey = (AutoSigningOwner, String);
+
+fn decode_auto_signing_keys(blob: &[u8]) -> Result<Vec<PersistedAutoSigningKey>, AuthorityError> {
+    let mut input = blob;
+    let keys = Vec::<PersistedAutoSigningKey>::decode(&mut input).map_err(|_| {
+        AuthorityError::Unavailable {
+            reason: "persisted AutoSigning capabilities are invalid".to_string(),
+        }
+    })?;
+    if !input.is_empty() {
+        return Err(AuthorityError::Unavailable {
+            reason: "persisted AutoSigning capabilities contain trailing bytes".to_string(),
+        });
+    }
+    Ok(keys)
+}
+
+fn validate_auto_signing_key(
+    secret: [u8; 64],
+    expected_product_subtree_public_key: [u8; 32],
+) -> Result<AutoSigningKey, AuthorityError> {
+    let secret_key = SecretKey::from_bytes(&secret).map_err(|_| AuthorityError::Unavailable {
+        reason: "AutoSigning capability contains an invalid subtree secret".to_string(),
+    })?;
+    if secret_key.to_public().to_bytes() != expected_product_subtree_public_key {
+        return Err(AuthorityError::Unavailable {
+            reason: "AutoSigning capability does not match the authenticated product subtree"
+                .to_string(),
+        });
+    }
+    AutoSigningKey::from_secret_bytes(secret.to_vec())
+}
+
+#[derive(Default)]
+struct SessionLifecycle {
+    epoch: u64,
+    external_session_active: bool,
+}
+
+impl SessionLifecycle {
+    fn advance(&mut self) -> u64 {
+        self.epoch = self
+            .epoch
+            .checked_add(1)
+            .expect("session lifecycle epoch exhausted");
+        self.external_session_active = false;
+        self.epoch
+    }
+
+    fn advance_preserving_source(&mut self) -> u64 {
+        let external_session_active = self.external_session_active;
+        let epoch = self.advance();
+        self.external_session_active = external_session_active;
+        epoch
+    }
+}
+
+#[derive(Debug, derive_more::Display)]
+enum StoredSessionActivationError {
+    #[display("stored auth session is absent")]
+    Missing,
+    #[display("invalid stored auth session: {_0}")]
+    Invalid(String),
+    #[display("failed to read stored auth session: {_0}")]
+    Read(String),
+    #[display("stored auth session changed during activation")]
+    Changed,
+}
+
 /// Remote account authority for a pairing host.
 pub(crate) struct PairingHost {
     /// Host platform backing all syscalls.
@@ -151,7 +252,13 @@ pub(crate) struct PairingHost {
     statement_store_allowances: Mutex<HashMap<AllowanceCacheKey, StatementStoreAllowanceKey>>,
     bulletin_allowances: Mutex<HashMap<AllowanceCacheKey, BulletinAllowanceKey>>,
     product_subtrees: Mutex<HashMap<(SsoSessionKey, String), [u8; 32]>>,
-    auto_signing_keys: Mutex<HashMap<String, AutoSigningKey>>,
+    auto_signing_keys: Mutex<HashMap<AutoSigningCacheKey, AutoSigningKey>>,
+    /// Orders session-secret cache/storage writes against teardown and activation.
+    session_secret_storage: futures::lock::Mutex<()>,
+    session_store_activation: futures::lock::Mutex<()>,
+    session_lifecycle: Mutex<SessionLifecycle>,
+    #[cfg(test)]
+    external_session_activation_pause: Mutex<Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>>,
     /// Self-reference captured by the spawned disconnect-monitor task.
     weak_self: Weak<PairingHost>,
     /// Task spawner for background monitors.
@@ -179,6 +286,11 @@ impl PairingHost {
             bulletin_allowances: Mutex::new(HashMap::new()),
             product_subtrees: Mutex::new(HashMap::new()),
             auto_signing_keys: Mutex::new(HashMap::new()),
+            session_secret_storage: futures::lock::Mutex::new(()),
+            session_store_activation: futures::lock::Mutex::new(()),
+            session_lifecycle: Mutex::new(SessionLifecycle::default()),
+            #[cfg(test)]
+            external_session_activation_pause: Mutex::new(None),
             weak_self: weak_self.clone(),
             spawner: services.spawner.clone(),
         })
@@ -192,7 +304,27 @@ impl PairingHost {
     /// Signal that the persisted auth session may have changed; the sync task
     /// re-reads it.
     pub(crate) fn notify_session_store_changed(&self) {
+        self.advance_session_lifecycle();
         self.session_store_changes.notify();
+    }
+
+    fn advance_session_lifecycle(&self) -> u64 {
+        let mut lifecycle = self
+            .session_lifecycle
+            .lock()
+            .expect("session lifecycle mutex poisoned");
+        lifecycle.advance()
+    }
+
+    pub(super) fn current_session_lifecycle_epoch(&self) -> u64 {
+        self.session_lifecycle
+            .lock()
+            .expect("session lifecycle mutex poisoned")
+            .epoch
+    }
+
+    pub(super) fn is_session_lifecycle_current(&self, epoch: u64) -> bool {
+        self.current_session_lifecycle_epoch() == epoch
     }
 
     /// Test hook for [`Self::start_session_store_sync`].
@@ -207,6 +339,32 @@ impl PairingHost {
         self.start_remote_monitor_for_current_session();
     }
 
+    #[cfg(test)]
+    pub(crate) fn pause_external_session_activation_for_tests(
+        &self,
+    ) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+        let (entered_tx, entered_rx) = oneshot::channel();
+        let (resume_tx, resume_rx) = oneshot::channel();
+        *self
+            .external_session_activation_pause
+            .lock()
+            .expect("external activation pause mutex poisoned") = Some((entered_tx, resume_rx));
+        (entered_rx, resume_tx)
+    }
+
+    #[cfg(test)]
+    async fn wait_at_external_session_activation_pause(&self) {
+        let pause = self
+            .external_session_activation_pause
+            .lock()
+            .expect("external activation pause mutex poisoned")
+            .take();
+        if let Some((entered, resume)) = pause {
+            let _ = entered.send(());
+            let _ = resume.await;
+        }
+    }
+
     fn current_session(&self) -> Option<AuthoritySession> {
         self.session_state.current().as_ref().map(authority_session)
     }
@@ -217,6 +375,120 @@ impl PairingHost {
         if let Some(session) = self.session_state.current() {
             self.start_disconnect_monitor(&session);
         }
+    }
+
+    /// Validate, resolve, and install an externally persisted canonical
+    /// session blob without copying it into core storage.
+    pub(crate) async fn activate_external_session(&self, blob: &[u8]) -> Result<(), String> {
+        let _activation = self.session_store_activation.lock().await;
+        let session = crate::host_logic::session::decode_persisted_session(blob)?;
+        let activation_epoch = self.advance_session_lifecycle();
+        let resolved = resolve_session_identity_with_chain(
+            &self.chain,
+            self.host_config.people_chain_genesis_hash,
+            session,
+        )
+        .await;
+        #[cfg(test)]
+        self.wait_at_external_session_activation_pause().await;
+        self.set_connected_session_if_current(resolved, activation_epoch, true)
+            .await;
+        Ok(())
+    }
+
+    /// Read, validate, resolve, and install the persisted auth session before
+    /// returning. Product frames may use the connected session once this
+    /// future resolves.
+    pub(crate) async fn activate_stored_session(&self) -> Result<(), String> {
+        self.reconcile_stored_session(true, false)
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    async fn reconcile_stored_session(
+        &self,
+        clear_after_read_error: bool,
+        preserve_external_session: bool,
+    ) -> Result<(), StoredSessionActivationError> {
+        let _activation = self.session_store_activation.lock().await;
+        if preserve_external_session
+            && self
+                .session_lifecycle
+                .lock()
+                .expect("session lifecycle mutex poisoned")
+                .external_session_active
+        {
+            return Ok(());
+        }
+        let blob = match self
+            .platform
+            .read_core_storage(CoreStorageKey::AuthSession)
+            .await
+        {
+            Ok(Some(blob)) => blob,
+            Ok(None) => {
+                self.clear_disconnected_session(false).await;
+                return Err(StoredSessionActivationError::Missing);
+            }
+            Err(error) => {
+                self.clear_disconnected_session(false).await;
+                if clear_after_read_error {
+                    let _ = self
+                        .platform
+                        .clear_core_storage(CoreStorageKey::AuthSession)
+                        .await;
+                }
+                return Err(StoredSessionActivationError::Read(error.reason));
+            }
+        };
+        let session = match crate::host_logic::session::decode_persisted_session(&blob) {
+            Ok(session) => session,
+            Err(error) => {
+                self.clear_disconnected_session(true).await;
+                return Err(StoredSessionActivationError::Invalid(error));
+            }
+        };
+        let resolved = resolve_session_identity_with_chain(
+            &self.chain,
+            self.host_config.people_chain_genesis_hash,
+            session,
+        )
+        .await;
+
+        // Identity resolution can await chain I/O. Re-read the slot before
+        // installation so an older activation cannot overwrite or expose a
+        // session replaced while that lookup was in flight.
+        let latest = match self
+            .platform
+            .read_core_storage(CoreStorageKey::AuthSession)
+            .await
+        {
+            Ok(latest) => latest,
+            Err(error) => {
+                self.clear_disconnected_session(false).await;
+                if clear_after_read_error {
+                    let _ = self
+                        .platform
+                        .clear_core_storage(CoreStorageKey::AuthSession)
+                        .await;
+                }
+                return Err(StoredSessionActivationError::Read(error.reason));
+            }
+        };
+        if latest.as_deref() != Some(blob.as_slice()) {
+            self.clear_disconnected_session(false).await;
+            return Err(StoredSessionActivationError::Changed);
+        }
+
+        let resolved_blob = encode_persisted_session(&resolved);
+        if resolved_blob != blob {
+            let _ = self
+                .platform
+                .write_core_storage(CoreStorageKey::AuthSession, resolved_blob)
+                .await;
+        }
+        self.set_connected_session(resolved).await;
+        Ok(())
     }
 
     /// Spawn the background task that re-reads the persisted auth session on
@@ -239,49 +511,17 @@ impl PairingHost {
                     break;
                 };
                 match pairing_host
-                    .platform
-                    .read_core_storage(CoreStorageKey::AuthSession)
+                    .reconcile_stored_session(!cleared_after_read_error, true)
                     .await
                 {
-                    Ok(Some(blob)) => {
+                    Ok(())
+                    | Err(StoredSessionActivationError::Missing)
+                    | Err(StoredSessionActivationError::Invalid(_))
+                    | Err(StoredSessionActivationError::Changed) => {
                         cleared_after_read_error = false;
-                        match crate::host_logic::session::decode_persisted_session(&blob) {
-                            Ok(session) => {
-                                let resolved = resolve_session_identity_with_chain(
-                                    &pairing_host.chain,
-                                    pairing_host.host_config.people_chain_genesis_hash,
-                                    session,
-                                )
-                                .await;
-                                if encode_persisted_session(&resolved) != blob {
-                                    let _ = pairing_host
-                                        .platform
-                                        .write_core_storage(
-                                            CoreStorageKey::AuthSession,
-                                            encode_persisted_session(&resolved),
-                                        )
-                                        .await;
-                                }
-                                pairing_host.set_connected_session(resolved);
-                            }
-                            Err(_) => {
-                                pairing_host.clear_disconnected_session(true).await;
-                            }
-                        }
                     }
-                    Ok(None) => {
-                        cleared_after_read_error = false;
-                        pairing_host.clear_disconnected_session(false).await;
-                    }
-                    Err(_) => {
-                        pairing_host.clear_disconnected_session(false).await;
-                        if !cleared_after_read_error {
-                            cleared_after_read_error = true;
-                            let _ = pairing_host
-                                .platform
-                                .clear_core_storage(CoreStorageKey::AuthSession)
-                                .await;
-                        }
+                    Err(StoredSessionActivationError::Read(_)) => {
+                        cleared_after_read_error = true;
                     }
                 }
             }
@@ -361,7 +601,7 @@ impl PairingHost {
                         v01::HostRequestLoginResponse::Rejected,
                     ));
                 }
-                self.set_connected_session(*session);
+                self.set_connected_session(*session).await;
                 login_owner.finish(Ok(()));
                 Ok(HostRequestLoginResponse::V1(
                     v01::HostRequestLoginResponse::Success,
@@ -375,8 +615,13 @@ impl PairingHost {
         self.cancel_login();
         let session = self.session_state.current();
         self.clear_disconnected_session(true).await;
-        if let Some(session) = session.as_ref() {
-            let _ = self.submit_disconnected_message(session).await;
+        if let Some(session) = session {
+            let weak_self = self.weak_self.clone();
+            (self.spawner)(Box::pin(async move {
+                if let Some(host) = weak_self.upgrade() {
+                    let _ = host.submit_disconnected_message(&session).await;
+                }
+            }));
         }
     }
 
@@ -384,6 +629,9 @@ impl PairingHost {
     /// generates a new device keypair and topic.
     pub(crate) async fn logout_and_reset_pairing(&self) -> Result<(), String> {
         self.disconnect().await;
+        self.clear_auto_signing_keys().await.map_err(|reason| {
+            format!("session disconnected, but AutoSigning reset failed: {reason}")
+        })?;
         self.platform
             .clear_core_storage(CoreStorageKey::PairingDeviceIdentity)
             .await
@@ -402,6 +650,67 @@ impl PairingHost {
                     error.reason
                 )
             })
+    }
+
+    /// Clear all capability material owned by one product while preserving the
+    /// active session and unrelated products.
+    pub(crate) async fn clear_product_state(&self, product_id: &str) -> Result<(), String> {
+        let product_id =
+            normalize_product_identifier(product_id).map_err(|error| error.to_string())?;
+        let session = {
+            let mut lifecycle = self
+                .session_lifecycle
+                .lock()
+                .expect("session lifecycle mutex poisoned");
+            lifecycle.advance_preserving_source();
+            self.session_state.current()
+        };
+        let _storage_guard = self.session_secret_storage.lock().await;
+
+        self.statement_store_allowances
+            .lock()
+            .expect("statement-store allowance cache mutex poisoned")
+            .retain(|key, _| !key.is_for_product(&product_id));
+        self.bulletin_allowances
+            .lock()
+            .expect("bulletin allowance cache mutex poisoned")
+            .retain(|key, _| !key.is_for_product(&product_id));
+        self.product_subtrees
+            .lock()
+            .expect("product subtree cache mutex poisoned")
+            .retain(|(_, cached_product_id), _| cached_product_id != &product_id);
+        self.auto_signing_keys
+            .lock()
+            .expect("AutoSigning key cache mutex poisoned")
+            .retain(|(_, cached_product_id), _| cached_product_id != &product_id);
+
+        let mut first_error = self
+            .clear_auto_signing_product_under_storage_guard(&product_id)
+            .await
+            .err();
+        if let Some(session) = session.as_ref()
+            && let Err(error) =
+                allowances::clear_product_allowance_keys(&*self.platform, session, &product_id)
+                    .await
+            && first_error.is_none()
+        {
+            first_error = Some(error.to_string());
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
+    /// Clear the canonical local session and all session capabilities without
+    /// sending a peer-disconnect statement.
+    pub(crate) async fn reset_session_state(&self) {
+        self.cancel_login();
+        self.clear_disconnected_session(true).await;
+        let _storage_guard = self.session_secret_storage.lock().await;
+        self.clear_statement_store_allowance_keys(None);
+        self.clear_bulletin_allowance_keys(None);
+        self.clear_product_subtrees(None);
     }
 
     /// Invalidate in-flight login attempts and emit the cancelled auth state.
@@ -468,8 +777,16 @@ impl PairingHost {
 
     #[instrument(skip_all, fields(runtime.method = "session_store.clear_disconnected"))]
     async fn clear_disconnected_session(&self, clear_auth_session: bool) {
-        let previous = self.session_state.current();
-        self.session_state.clear_session();
+        let previous = {
+            let mut lifecycle = self
+                .session_lifecycle
+                .lock()
+                .expect("session lifecycle mutex poisoned");
+            lifecycle.advance();
+            let previous = self.session_state.current();
+            self.session_state.clear_session();
+            previous
+        };
         self.stop_session_channel(previous.as_ref());
         if clear_auth_session {
             let _ = self
@@ -477,21 +794,140 @@ impl PairingHost {
                 .clear_core_storage(CoreStorageKey::AuthSession)
                 .await;
         }
+        let _storage_guard = self.session_secret_storage.lock().await;
         if let Some(session) = previous.as_ref() {
-            let _ = allowances::clear_session_allowance_keys(&*self.platform, session).await;
+            self.clear_statement_store_allowance_keys(Some(session));
+            self.clear_bulletin_allowance_keys(Some(session));
+            if let Err(reason) =
+                allowances::clear_session_allowance_keys(&*self.platform, session).await
+            {
+                warn!(%reason, "allowance capability clear failed during disconnect");
+            }
+        }
+        self.clear_product_subtrees(previous.as_ref());
+        if let Err(reason) = self.clear_auto_signing_keys_under_storage_guard().await {
+            warn!(%reason, "AutoSigning capability clear failed during disconnect");
         }
         self.auth_state.store_disconnected();
     }
 
-    fn set_connected_session(&self, session: SessionInfo) {
+    async fn set_connected_session(&self, session: SessionInfo) {
+        let activation_epoch = self.advance_session_lifecycle();
+        self.set_connected_session_if_current(session, activation_epoch, false)
+            .await;
+    }
+
+    async fn set_connected_session_if_current(
+        &self,
+        session: SessionInfo,
+        activation_epoch: u64,
+        external_session: bool,
+    ) -> bool {
+        if !self.is_session_lifecycle_current(activation_epoch) {
+            return false;
+        }
         let previous = self.session_state.current();
-        self.session_state.set_session(session.clone());
+        let identity_replaced = previous.as_ref().is_some_and(|previous| {
+            AutoSigningOwner::from_session(previous) != AutoSigningOwner::from_session(&session)
+        });
+        if identity_replaced {
+            if let Err(reason) = self.clear_auto_signing_keys().await {
+                warn!(%reason, "AutoSigning capability clear failed during identity replacement");
+            }
+        } else if previous.is_none() {
+            if let Err(reason) = self.clear_auto_signing_keys_for_other_owner(&session).await {
+                warn!(%reason, "AutoSigning capability owner reconciliation failed");
+            }
+        } else {
+            let _storage_guard = self.session_secret_storage.lock().await;
+        }
+        if let Some(previous) = previous.as_ref().filter(|previous| *previous != &session) {
+            let _storage_guard = self.session_secret_storage.lock().await;
+            self.clear_statement_store_allowance_keys(Some(previous));
+            self.clear_bulletin_allowance_keys(Some(previous));
+            if let Err(reason) =
+                allowances::clear_session_allowance_keys(&*self.platform, previous).await
+            {
+                warn!(%reason, "allowance capability clear failed during session replacement");
+            }
+        }
+        let previous = {
+            let mut lifecycle = self
+                .session_lifecycle
+                .lock()
+                .expect("session lifecycle mutex poisoned");
+            if lifecycle.epoch != activation_epoch {
+                return false;
+            }
+            let previous = self.session_state.current();
+            self.session_state.set_session(session.clone());
+            lifecycle.external_session_active = external_session;
+            previous
+        };
         if previous.as_ref() != Some(&session) {
             self.stop_session_channel(previous.as_ref());
         }
         self.start_disconnect_monitor(&session);
         self.auth_state
             .connected(&connected_session_ui_info(&session));
+        true
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn set_connected_session_for_tests(&self, session: SessionInfo) {
+        self.set_connected_session(session).await;
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn has_auto_signing_key_for_tests(
+        &self,
+        session: &SessionInfo,
+        product_id: &str,
+    ) -> Result<bool, AuthorityError> {
+        self.auto_signing_key(session, product_id)
+            .await
+            .map(|key| key.is_some())
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn remember_auto_signing_key_for_tests(
+        &self,
+        session: &SessionInfo,
+        lifecycle_epoch: u64,
+        product_id: &str,
+        expected_product_subtree_public_key: [u8; 32],
+        secret: [u8; 64],
+    ) -> Result<(), AuthorityError> {
+        self.remember_auto_signing_key(
+            session,
+            lifecycle_epoch,
+            product_id,
+            expected_product_subtree_public_key,
+            secret,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn capability_cache_sizes_for_tests(&self) -> (usize, usize, usize, usize) {
+        (
+            self.statement_store_allowances
+                .lock()
+                .expect("statement-store allowance cache mutex poisoned")
+                .len(),
+            self.bulletin_allowances
+                .lock()
+                .expect("bulletin allowance cache mutex poisoned")
+                .len(),
+            self.product_subtrees
+                .lock()
+                .expect("product subtree cache mutex poisoned")
+                .len(),
+            self.auto_signing_keys
+                .lock()
+                .expect("AutoSigning key cache mutex poisoned")
+                .len(),
+        )
     }
 
     /// Single funnel for peer-initiated disconnects. Every detection source
@@ -511,6 +947,71 @@ impl PairingHost {
 
     fn current_sso_session_matches(&self, key: SsoSessionKey) -> bool {
         sso_channel::session_matches_key(&self.session_state, key)
+    }
+
+    fn session_secret_allocation_is_current(
+        &self,
+        session: &SessionInfo,
+        lifecycle_epoch: u64,
+    ) -> bool {
+        session.sso.as_ref().is_some_and(|sso| {
+            self.current_sso_session_matches(SsoSessionKey::from_session(sso))
+                && self.is_session_lifecycle_current(lifecycle_epoch)
+        })
+    }
+
+    fn cache_auto_signing_key_if_current(
+        &self,
+        session: &SessionInfo,
+        lifecycle_epoch: u64,
+        cache_key: AutoSigningCacheKey,
+        key: AutoSigningKey,
+    ) -> bool {
+        let lifecycle = self
+            .session_lifecycle
+            .lock()
+            .expect("session lifecycle mutex poisoned");
+        if lifecycle.epoch != lifecycle_epoch {
+            return false;
+        }
+        let Some(sso) = session.sso.as_ref() else {
+            return false;
+        };
+        if !self.current_sso_session_matches(SsoSessionKey::from_session(sso)) {
+            return false;
+        }
+        self.auto_signing_keys
+            .lock()
+            .expect("AutoSigning key cache mutex poisoned")
+            .insert(cache_key, key);
+        true
+    }
+
+    pub(super) fn cache_product_subtree_if_current(
+        &self,
+        session: &SessionInfo,
+        lifecycle_epoch: u64,
+        cache_key: (SsoSessionKey, String),
+        public_key: [u8; 32],
+    ) -> bool {
+        let lifecycle = self
+            .session_lifecycle
+            .lock()
+            .expect("session lifecycle mutex poisoned");
+        if lifecycle.epoch != lifecycle_epoch {
+            return false;
+        }
+        let Some(sso) = session.sso.as_ref() else {
+            return false;
+        };
+        if !self.current_sso_session_matches(SsoSessionKey::from_session(sso)) {
+            return false;
+        }
+        self.product_subtrees
+            .lock()
+            .expect("product subtree cache mutex poisoned")
+            .insert(cache_key, public_key);
+        true
     }
 
     fn current_private_session(
@@ -589,10 +1090,15 @@ impl PairingHost {
     pub(super) async fn cache_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
+        lifecycle_epoch: u64,
         product_id: &str,
         slot_account_key: Vec<u8>,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
         let allowance = StatementStoreAllowanceKey::from_secret_bytes(slot_account_key)?;
+        let _storage_guard = self.session_secret_storage.lock().await;
+        if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
+            return Err(AuthorityError::Disconnected);
+        }
         allowances::write_allowance_key(
             &*self.platform,
             session,
@@ -601,18 +1107,44 @@ impl PairingHost {
             allowance.secret.to_vec(),
         )
         .await?;
-        self.remember_statement_store_allowance_key(session, product_id, allowance.clone())?;
+        if let Err(error) = self.remember_statement_store_allowance_key(
+            session,
+            lifecycle_epoch,
+            product_id,
+            allowance.clone(),
+        ) {
+            let _ = allowances::remove_allowance_key(
+                &*self.platform,
+                session,
+                product_id,
+                AllowanceResource::StatementStore,
+            )
+            .await;
+            return Err(error);
+        }
         Ok(allowance)
     }
 
     fn remember_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
+        lifecycle_epoch: u64,
         product_id: &str,
         allowance: StatementStoreAllowanceKey,
     ) -> Result<(), AuthorityError> {
         let cache_key =
             AllowanceCacheKey::new(session, product_id, AllowanceResource::StatementStore)?;
+        let lifecycle = self
+            .session_lifecycle
+            .lock()
+            .expect("session lifecycle mutex poisoned");
+        if lifecycle.epoch != lifecycle_epoch
+            || !session.sso.as_ref().is_some_and(|sso| {
+                self.current_sso_session_matches(SsoSessionKey::from_session(sso))
+            })
+        {
+            return Err(AuthorityError::Disconnected);
+        }
         self.statement_store_allowances
             .lock()
             .expect("statement-store allowance cache mutex poisoned")
@@ -625,10 +1157,15 @@ impl PairingHost {
     pub(super) async fn cached_statement_store_allowance_key(
         &self,
         session: &SessionInfo,
+        lifecycle_epoch: u64,
         product_id: &str,
     ) -> Result<Option<StatementStoreAllowanceKey>, AuthorityError> {
         let cache_key =
             AllowanceCacheKey::new(session, product_id, AllowanceResource::StatementStore)?;
+        let _storage_guard = self.session_secret_storage.lock().await;
+        if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
+            return Err(AuthorityError::Disconnected);
+        }
         if let Some(allowance) = self
             .statement_store_allowances
             .lock()
@@ -649,7 +1186,12 @@ impl PairingHost {
             return Ok(None);
         };
         let allowance = StatementStoreAllowanceKey::from_secret_bytes(secret)?;
-        self.remember_statement_store_allowance_key(session, product_id, allowance.clone())?;
+        self.remember_statement_store_allowance_key(
+            session,
+            lifecycle_epoch,
+            product_id,
+            allowance.clone(),
+        )?;
         Ok(Some(allowance))
     }
 
@@ -657,10 +1199,15 @@ impl PairingHost {
     pub(super) async fn cache_bulletin_allowance_key(
         &self,
         session: &SessionInfo,
+        lifecycle_epoch: u64,
         product_id: &str,
         slot_account_key: Vec<u8>,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
         let allowance = BulletinAllowanceKey::from_secret_bytes(slot_account_key)?;
+        let _storage_guard = self.session_secret_storage.lock().await;
+        if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
+            return Err(AuthorityError::Disconnected);
+        }
         allowances::write_allowance_key(
             &*self.platform,
             session,
@@ -669,17 +1216,43 @@ impl PairingHost {
             allowance.as_secret_bytes().to_vec(),
         )
         .await?;
-        self.remember_bulletin_allowance_key(session, product_id, allowance.clone())?;
+        if let Err(error) = self.remember_bulletin_allowance_key(
+            session,
+            lifecycle_epoch,
+            product_id,
+            allowance.clone(),
+        ) {
+            let _ = allowances::remove_allowance_key(
+                &*self.platform,
+                session,
+                product_id,
+                AllowanceResource::Bulletin,
+            )
+            .await;
+            return Err(error);
+        }
         Ok(allowance)
     }
 
     fn remember_bulletin_allowance_key(
         &self,
         session: &SessionInfo,
+        lifecycle_epoch: u64,
         product_id: &str,
         allowance: BulletinAllowanceKey,
     ) -> Result<(), AuthorityError> {
         let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        let lifecycle = self
+            .session_lifecycle
+            .lock()
+            .expect("session lifecycle mutex poisoned");
+        if lifecycle.epoch != lifecycle_epoch
+            || !session.sso.as_ref().is_some_and(|sso| {
+                self.current_sso_session_matches(SsoSessionKey::from_session(sso))
+            })
+        {
+            return Err(AuthorityError::Disconnected);
+        }
         self.bulletin_allowances
             .lock()
             .expect("bulletin allowance cache mutex poisoned")
@@ -692,9 +1265,14 @@ impl PairingHost {
     pub(super) async fn cached_bulletin_allowance_key(
         &self,
         session: &SessionInfo,
+        lifecycle_epoch: u64,
         product_id: &str,
     ) -> Result<Option<BulletinAllowanceKey>, AuthorityError> {
         let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        let _storage_guard = self.session_secret_storage.lock().await;
+        if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
+            return Err(AuthorityError::Disconnected);
+        }
         if let Some(allowance) = self
             .bulletin_allowances
             .lock()
@@ -715,7 +1293,12 @@ impl PairingHost {
             return Ok(None);
         };
         let allowance = BulletinAllowanceKey::from_secret_bytes(secret)?;
-        self.remember_bulletin_allowance_key(session, product_id, allowance.clone())?;
+        self.remember_bulletin_allowance_key(
+            session,
+            lifecycle_epoch,
+            product_id,
+            allowance.clone(),
+        )?;
         Ok(Some(allowance))
     }
 
@@ -723,9 +1306,14 @@ impl PairingHost {
     pub(super) async fn evict_bulletin_allowance_key(
         &self,
         session: &SessionInfo,
+        lifecycle_epoch: u64,
         product_id: &str,
     ) -> Result<(), AuthorityError> {
         let cache_key = AllowanceCacheKey::new(session, product_id, AllowanceResource::Bulletin)?;
+        let _storage_guard = self.session_secret_storage.lock().await;
+        if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
+            return Err(AuthorityError::Disconnected);
+        }
         self.bulletin_allowances
             .lock()
             .expect("bulletin allowance cache mutex poisoned")
@@ -736,7 +1324,11 @@ impl PairingHost {
             product_id,
             AllowanceResource::Bulletin,
         )
-        .await
+        .await?;
+        if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
+            return Err(AuthorityError::Disconnected);
+        }
+        Ok(())
     }
 
     /// Drop memory-cached statement-store allowance keys, scoped to `session`
@@ -775,62 +1367,314 @@ impl PairingHost {
         allowances.retain(|key, _| !key.is_for_session(session_key));
     }
 
-    async fn remember_auto_signing_key(
-        &self,
-        product_id: &str,
-        secret: [u8; 64],
-    ) -> Result<(), AuthorityError> {
-        self.platform
-            .write_core_storage(
-                CoreStorageKey::AutoSigningKey {
-                    product_id: product_id.to_string(),
-                },
-                secret.to_vec(),
-            )
-            .await
-            .map_err(|err| AuthorityError::Unknown {
-                reason: format!("failed to persist AutoSigning key: {}", err.reason),
-            })?;
+    async fn clear_auto_signing_keys(&self) -> Result<(), String> {
+        let _storage_guard = self.session_secret_storage.lock().await;
+        self.clear_auto_signing_keys_under_storage_guard().await
+    }
+
+    async fn clear_auto_signing_keys_under_storage_guard(&self) -> Result<(), String> {
         self.auto_signing_keys
             .lock()
             .expect("AutoSigning key cache mutex poisoned")
-            .insert(
-                product_id.to_string(),
-                AutoSigningKey::from_secret_bytes(secret.to_vec())?,
-            );
+            .clear();
+        self.platform
+            .clear_core_storage(CoreStorageKey::AutoSigningKeys)
+            .await
+            .map_err(|err| err.reason)
+    }
+
+    async fn clear_auto_signing_product_under_storage_guard(
+        &self,
+        product_id: &str,
+    ) -> Result<(), String> {
+        let aggregate_result = match self
+            .platform
+            .read_core_storage(CoreStorageKey::AutoSigningKeys)
+            .await
+        {
+            Err(error) => Err(error.reason),
+            Ok(None) => Ok(()),
+            Ok(Some(mut blob)) => {
+                let decoded = decode_auto_signing_keys(&blob);
+                blob.zeroize();
+                match decoded {
+                    Err(_) => self
+                        .platform
+                        .clear_core_storage(CoreStorageKey::AutoSigningKeys)
+                        .await
+                        .map_err(|error| error.reason),
+                    Ok(mut keys) => {
+                        let before = keys.len();
+                        keys.retain(|key| key.product_id != product_id);
+                        if keys.len() == before {
+                            Ok(())
+                        } else if keys.is_empty() {
+                            self.platform
+                                .clear_core_storage(CoreStorageKey::AutoSigningKeys)
+                                .await
+                                .map_err(|error| error.reason)
+                        } else {
+                            self.platform
+                                .write_core_storage(CoreStorageKey::AutoSigningKeys, keys.encode())
+                                .await
+                                .map_err(|error| error.reason)
+                        }
+                    }
+                }
+            }
+        };
+        let legacy_result = self
+            .clear_legacy_auto_signing_key(product_id)
+            .await
+            .map_err(|error| error.to_string());
+        aggregate_result.and(legacy_result.map(|_| ()))
+    }
+
+    async fn clear_auto_signing_keys_for_other_owner(
+        &self,
+        session: &SessionInfo,
+    ) -> Result<(), String> {
+        let owner = AutoSigningOwner::from_session(session);
+        let _storage_guard = self.session_secret_storage.lock().await;
+        let Some(mut blob) = self
+            .platform
+            .read_core_storage(CoreStorageKey::AutoSigningKeys)
+            .await
+            .map_err(|err| err.reason)?
+        else {
+            return Ok(());
+        };
+        let decoded = decode_auto_signing_keys(&blob);
+        blob.zeroize();
+        let should_clear = decoded
+            .as_ref()
+            .map(|keys| keys.iter().any(|key| key.owner != owner))
+            .unwrap_or(true);
+        if !should_clear {
+            return Ok(());
+        }
+        self.auto_signing_keys
+            .lock()
+            .expect("AutoSigning key cache mutex poisoned")
+            .clear();
+        self.platform
+            .clear_core_storage(CoreStorageKey::AutoSigningKeys)
+            .await
+            .map_err(|err| err.reason)
+    }
+
+    async fn clear_legacy_auto_signing_key(
+        &self,
+        product_id: &str,
+    ) -> Result<bool, AuthorityError> {
+        let storage_key = CoreStorageKey::AutoSigningKey {
+            product_id: product_id.to_string(),
+        };
+        let legacy = self
+            .platform
+            .read_core_storage(storage_key.clone())
+            .await
+            .map_err(|err| AuthorityError::Unknown {
+                reason: format!("failed to inspect legacy AutoSigning key: {}", err.reason),
+            })?;
+        let present = if let Some(mut secret) = legacy {
+            secret.zeroize();
+            true
+        } else {
+            false
+        };
+        if present {
+            self.platform
+                .clear_core_storage(storage_key)
+                .await
+                .map_err(|err| AuthorityError::Unknown {
+                    reason: format!("failed to clear legacy AutoSigning key: {}", err.reason),
+                })?;
+        }
+        Ok(present)
+    }
+
+    async fn remember_auto_signing_key(
+        &self,
+        session: &SessionInfo,
+        lifecycle_epoch: u64,
+        product_id: &str,
+        expected_product_subtree_public_key: [u8; 32],
+        secret: [u8; 64],
+    ) -> Result<(), AuthorityError> {
+        let key = validate_auto_signing_key(secret, expected_product_subtree_public_key)?;
+        let owner = AutoSigningOwner::from_session(session);
+        let cache_key = (owner.clone(), product_id.to_string());
+        let _storage_guard = self.session_secret_storage.lock().await;
+        if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
+            return Err(AuthorityError::Disconnected);
+        }
+        self.clear_legacy_auto_signing_key(product_id).await?;
+        let mut keys = match self
+            .platform
+            .read_core_storage(CoreStorageKey::AutoSigningKeys)
+            .await
+            .map_err(|err| AuthorityError::Unknown {
+                reason: format!("failed to read AutoSigning capabilities: {}", err.reason),
+            })? {
+            Some(mut blob) => {
+                let decoded = decode_auto_signing_keys(&blob).unwrap_or_default();
+                blob.zeroize();
+                decoded
+            }
+            None => Vec::new(),
+        };
+        keys.retain(|persisted| persisted.owner == owner && persisted.product_id != product_id);
+        keys.push(PersistedAutoSigningKey {
+            owner,
+            product_id: product_id.to_string(),
+            expected_product_subtree_public_key,
+            secret,
+        });
+        if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
+            return Err(AuthorityError::Disconnected);
+        }
+        self.platform
+            .write_core_storage(CoreStorageKey::AutoSigningKeys, keys.encode())
+            .await
+            .map_err(|err| AuthorityError::Unknown {
+                reason: format!("failed to persist AutoSigning capability: {}", err.reason),
+            })?;
+        if !self.cache_auto_signing_key_if_current(session, lifecycle_epoch, cache_key, key) {
+            let _ = self
+                .clear_auto_signing_product_under_storage_guard(product_id)
+                .await;
+            return Err(AuthorityError::Disconnected);
+        }
         Ok(())
     }
 
     async fn auto_signing_key(
         &self,
+        session: &SessionInfo,
         product_id: &str,
     ) -> Result<Option<AutoSigningKey>, AuthorityError> {
+        let owner = AutoSigningOwner::from_session(session);
+        let cache_key = (owner.clone(), product_id.to_string());
         if let Some(key) = self
             .auto_signing_keys
             .lock()
             .expect("AutoSigning key cache mutex poisoned")
-            .get(product_id)
+            .get(&cache_key)
             .cloned()
         {
             return Ok(Some(key));
         }
-        let Some(secret) = self
+
+        let _storage_guard = self.session_secret_storage.lock().await;
+        if let Some(key) = self
+            .auto_signing_keys
+            .lock()
+            .expect("AutoSigning key cache mutex poisoned")
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(Some(key));
+        }
+        let legacy_present = self.clear_legacy_auto_signing_key(product_id).await?;
+        let Some(mut blob) = self
             .platform
-            .read_core_storage(CoreStorageKey::AutoSigningKey {
-                product_id: product_id.to_string(),
-            })
+            .read_core_storage(CoreStorageKey::AutoSigningKeys)
             .await
             .map_err(|err| AuthorityError::Unknown {
-                reason: format!("failed to read AutoSigning key: {}", err.reason),
+                reason: format!("failed to read AutoSigning capabilities: {}", err.reason),
             })?
         else {
-            return Ok(None);
+            return if legacy_present {
+                Err(AuthorityError::Unavailable {
+                    reason: "legacy unscoped AutoSigning capability was rejected".to_string(),
+                })
+            } else {
+                Ok(None)
+            };
         };
-        let key = AutoSigningKey::from_secret_bytes(secret)?;
+        let decoded = decode_auto_signing_keys(&blob);
+        blob.zeroize();
+        let keys = match decoded {
+            Ok(keys) => keys,
+            Err(err) => {
+                self.auto_signing_keys
+                    .lock()
+                    .expect("AutoSigning key cache mutex poisoned")
+                    .clear();
+                let _ = self
+                    .platform
+                    .clear_core_storage(CoreStorageKey::AutoSigningKeys)
+                    .await;
+                return Err(err);
+            }
+        };
+        if keys.iter().any(|persisted| persisted.owner != owner) {
+            self.auto_signing_keys
+                .lock()
+                .expect("AutoSigning key cache mutex poisoned")
+                .clear();
+            let _ = self
+                .platform
+                .clear_core_storage(CoreStorageKey::AutoSigningKeys)
+                .await;
+            return Ok(None);
+        }
+        let Some(persisted) = keys
+            .iter()
+            .find(|persisted| persisted.product_id == product_id)
+        else {
+            return if legacy_present {
+                Err(AuthorityError::Unavailable {
+                    reason: "legacy unscoped AutoSigning capability was rejected".to_string(),
+                })
+            } else {
+                Ok(None)
+            };
+        };
+        let current_expected_subtree = session.sso.as_ref().and_then(|sso| {
+            self.product_subtrees
+                .lock()
+                .expect("product subtree cache mutex poisoned")
+                .get(&(SsoSessionKey::from_session(sso), product_id.to_string()))
+                .copied()
+        });
+        if current_expected_subtree
+            .is_some_and(|expected| expected != persisted.expected_product_subtree_public_key)
+        {
+            self.auto_signing_keys
+                .lock()
+                .expect("AutoSigning key cache mutex poisoned")
+                .clear();
+            let _ = self
+                .platform
+                .clear_core_storage(CoreStorageKey::AutoSigningKeys)
+                .await;
+            return Err(AuthorityError::Unavailable {
+                reason: "AutoSigning capability is not for the current product subtree".to_string(),
+            });
+        }
+        let key = match validate_auto_signing_key(
+            persisted.secret,
+            persisted.expected_product_subtree_public_key,
+        ) {
+            Ok(key) => key,
+            Err(err) => {
+                self.auto_signing_keys
+                    .lock()
+                    .expect("AutoSigning key cache mutex poisoned")
+                    .clear();
+                let _ = self
+                    .platform
+                    .clear_core_storage(CoreStorageKey::AutoSigningKeys)
+                    .await;
+                return Err(err);
+            }
+        };
         self.auto_signing_keys
             .lock()
             .expect("AutoSigning key cache mutex poisoned")
-            .insert(product_id.to_string(), key.clone());
+            .insert(cache_key, key.clone());
         Ok(Some(key))
     }
 
@@ -871,7 +1715,7 @@ impl PairingHost {
         let session = self.current_private_session(session)?;
         if calling_product_id == request.account.dot_ns_identifier
             && let Some(auto_signing_key) = self
-                .auto_signing_key(&request.account.dot_ns_identifier)
+                .auto_signing_key(&session, &request.account.dot_ns_identifier)
                 .await?
         {
             let keypair = derive_product_keypair_from_subtree_secret(

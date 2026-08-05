@@ -67,3 +67,4 @@
 | `System/feature_supported` | ✅ |  |
 | `System/navigate_to` | ✅ |  |
 | `Theme/subscribe` | ✅ |  |
+| `Resource Allocation/auto_signing_e2e` | ✅ |  |

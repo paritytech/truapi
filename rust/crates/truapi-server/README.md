@@ -169,8 +169,11 @@ CoreStorageKey::PermissionAuthorization { product_id, request }
 The embedder builds a role handle, `PairingHostRuntime::new(...)` or
 `SigningHostRuntime::new(...)`, then calls `product_runtime(product, sink)` for
 each product connection. Role-specific operations live only on the matching handle:
-`cancel_pairing` and `notify_session_store_changed` on the pairing handle,
-`activate_local_session` on the signing handle. Calling the wrong operation is
+`cancel_pairing`, `notify_session_store_changed`, `activate_stored_session`,
+`activate_external_session`, and `reset_session_state` on the pairing handle,
+`activate_local_session` on the signing handle. Both handles expose
+`clear_product_state` to revoke one product's capability material without
+touching the session or other products. Calling the wrong operation is
 a compile error, not a runtime `Unavailable`.
 
 ### The two roles

@@ -21,6 +21,8 @@
 //! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/resourceAllocation.ts>
 //! <https://github.com/paritytech/triangle-js-sdks/blob/afb26e2c78bf1134886c1248c1bf2b6b4dc1fce9/packages/host-papp/src/sso/sessionManager/scale/createTransaction.ts>
 
+use core::fmt;
+
 use parity_scale_codec::{Decode, Encode, OptionBool};
 use truapi::latest::{
     AccountId, AllocatableResource, DerivationIndex, HostAccountCreateProofResponse,
@@ -460,7 +462,7 @@ pub enum SsoAllocationOutcome {
 }
 
 /// Resource material allocated by the signing host.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatedResource {
     /// Statement Store slot allowance material.
     StatementStoreAllowance {
@@ -479,6 +481,24 @@ pub enum SsoAllocatedResource {
         /// Private key of the product subtree root.
         product_root_private_key: [u8; 64],
     },
+}
+
+impl SsoAllocatedResource {
+    /// Stable, non-secret resource discriminant suitable for errors and logs.
+    pub(crate) const fn kind(&self) -> &'static str {
+        match self {
+            Self::StatementStoreAllowance { .. } => "statement-store-allowance",
+            Self::BulletinAllowance { .. } => "bulletin-allowance",
+            Self::SmartContractAllowance => "smart-contract-allowance",
+            Self::AutoSigning { .. } => "auto-signing",
+        }
+    }
+}
+
+impl fmt::Debug for SsoAllocatedResource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.kind())
+    }
 }
 
 /// Consent-free request for `//product//{product_id}`'s sr25519 public key.
@@ -567,6 +587,22 @@ pub enum SsoRemoteResponse {
     CreateTransaction(CreateTransactionResponse),
     /// Product subtree public-key response.
     ProductSubtree(ProductSubtreeResponse),
+}
+
+impl SsoRemoteResponse {
+    /// Stable response discriminant that never formats response payloads.
+    pub(crate) const fn kind(&self) -> &'static str {
+        match self {
+            Self::Sign(_) => "sign",
+            Self::SignRawLegacy(_) => "sign-raw-legacy",
+            Self::SignVrf(_) => "sign-vrf",
+            Self::RingVrfAlias(_) => "ring-vrf-alias",
+            Self::RingVrfProof(_) => "ring-vrf-proof",
+            Self::ResourceAllocation(_) => "resource-allocation",
+            Self::CreateTransaction(_) => "create-transaction",
+            Self::ProductSubtree(_) => "product-subtree",
+        }
+    }
 }
 
 /// Decode and classify an inbound encrypted SSO session statement.
@@ -1299,6 +1335,68 @@ mod tests {
                 "046d0006047200040003{}",
                 hex::encode(sequential_bytes::<64>(0))
             )
+        );
+    }
+
+    #[test]
+    fn allocated_resource_debug_redacts_private_material_through_all_wrappers() {
+        let allowance = SsoAllocatedResource::StatementStoreAllowance {
+            slot_account_key: vec![222, 173, 190, 239],
+        };
+        let allowance_debug = format!("{allowance:?}");
+        assert_eq!(allowance_debug, "statement-store-allowance");
+        assert!(!allowance_debug.contains("222, 173, 190, 239"));
+        assert_eq!(
+            allowance.encode(),
+            vec![0, 16, 222, 173, 190, 239],
+            "custom Debug must not alter the SCALE resource layout",
+        );
+
+        let bulletin = SsoAllocatedResource::BulletinAllowance {
+            slot_account_key: vec![202, 254, 186, 190],
+        };
+        let bulletin_debug = format!("{bulletin:?}");
+        assert_eq!(bulletin_debug, "bulletin-allowance");
+        assert!(!bulletin_debug.contains("202, 254, 186, 190"));
+        assert_eq!(
+            bulletin.encode(),
+            vec![1, 16, 202, 254, 186, 190],
+            "custom Debug must not alter the SCALE resource layout",
+        );
+
+        let auto_signing_secret = [0xA5; 64];
+        let response = ResourceAllocationResponse {
+            responding_to: "secret-test".to_string(),
+            payload: Ok(vec![SsoAllocationOutcome::Allocated(
+                SsoAllocatedResource::AutoSigning {
+                    product_root_private_key: auto_signing_secret,
+                },
+            )]),
+        };
+        let response_debug = format!("{response:?}");
+        assert!(response_debug.contains("auto-signing"));
+        assert!(!response_debug.contains("165, 165"));
+
+        let remote_response = SsoRemoteResponse::ResourceAllocation(response.clone());
+        let session_statement = SsoSessionStatement::RemoteResponse(remote_response);
+        let statement_debug = format!("{session_statement:?}");
+        assert!(statement_debug.contains("ResourceAllocation"));
+        assert!(statement_debug.contains("auto-signing"));
+        assert!(!statement_debug.contains("165, 165"));
+
+        let remote_message = RemoteMessage {
+            message_id: "secret-test".to_string(),
+            data: RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(response)),
+        };
+        let message_debug = format!("{remote_message:?}");
+        assert!(message_debug.contains("auto-signing"));
+        assert!(!message_debug.contains("165, 165"));
+
+        assert!(
+            remote_message
+                .encode()
+                .windows(auto_signing_secret.len())
+                .any(|bytes| bytes == &auto_signing_secret[..])
         );
     }
 

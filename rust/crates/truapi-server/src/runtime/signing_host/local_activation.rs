@@ -47,10 +47,6 @@ impl LocalActivation for SigningHost {
             .map_err(product_authority_error)?
             .public
             .to_bytes();
-        *self
-            .root_entropy
-            .lock()
-            .expect("signing host entropy mutex poisoned") = Some(secret);
         let session = SessionInfo {
             public_key,
             sso: None,
@@ -59,9 +55,9 @@ impl LocalActivation for SigningHost {
             lite_username,
             full_username: None,
         };
-        self.session_state.set_session(session.clone());
-        self.auth_state
-            .connected(&connected_session_ui_info(&session));
+        let ui_info = connected_session_ui_info(&session);
+        self.install_local_session(secret, session);
+        self.auth_state.connected(&ui_info);
         Ok(())
     }
 }

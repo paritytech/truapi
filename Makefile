@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test uniffi uniffi-kotlin android-jni android-publish-local check-android-parity dotli-link dev dev-bootstrap dev-link-check e2e-dotli headless install matrix explorer
+.PHONY: help setup build codegen test check clean playground wasm wasm-crypto-test uniffi uniffi-kotlin android-jni android-publish-local check-android-parity dotli-link dev dev-bootstrap dev-link-check e2e-dotli e2e-signing-cli e2e-pairing-cli headless install matrix explorer
 
 CARGO ?= cargo
 TRUAPI_PKG := js/packages/truapi
@@ -217,6 +217,12 @@ e2e-dotli: ## Fully automated dotli + playground diagnosis e2e using the local s
 	@$(MAKE) dev-bootstrap
 	cargo build -p truapi-host-cli
 	cd $(PLAYGROUND) && bun tests/e2e/dotli-diagnosis.ts
+
+e2e-signing-cli: ## Run the generated battery against the direct signing-host CLI.
+	scripts/battery.sh --signing-host
+
+e2e-pairing-cli: ## Run the generated battery against the paired pairing-host CLI.
+	scripts/battery.sh --pairing-host
 
 matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
 	cd $(EXPLORER) && npm run generate-matrix

@@ -7,6 +7,8 @@ import {
 } from "./diagnosis-report.ts";
 import {
   createDiagnosisPlan,
+  expectedCliBatteryFailureReason,
+  knownUnsupportedReason,
   type DiagnosisCase,
   type DiagnosisRow,
 } from "./diagnosis.ts";
@@ -43,6 +45,26 @@ describe("generated-example battery", () => {
     expect(plan.every((testCase) => testCase.skipReason === undefined)).toBe(
       true,
     );
+  });
+
+  test("classifies only the committed unsupported CLI battery failures as expected", () => {
+    expect(expectedCliBatteryFailureReason("Chat")).toBe(
+      "Chat service not yet wired up by hosts",
+    );
+    expect(expectedCliBatteryFailureReason("Coin Payment")).toBe(
+      "Coin Payment service not yet wired up by hosts",
+    );
+    expect(expectedCliBatteryFailureReason("Payment")).toBe(
+      "Payment service not yet wired up by hosts",
+    );
+    expect(expectedCliBatteryFailureReason("Signing")).toBe(undefined);
+  });
+
+  test("does not ignore account proof failures", () => {
+    expect(
+      knownUnsupportedReason("Account", "Account/create_account_proof"),
+    ).toBe(undefined);
+    expect(expectedCliBatteryFailureReason("Account")).toBe(undefined);
   });
 
   test("prints failures as concise test-reporter rows", () => {

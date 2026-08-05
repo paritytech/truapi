@@ -514,6 +514,7 @@ pub trait JsonRpcConnection: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CoreStorageKey {
     /// Opaque SSO/auth session blob.
+    #[codec(index = 0)]
     AuthSession,
     /// Pairing device identity used during SSO flows.
     PairingDeviceIdentity,
@@ -531,11 +532,62 @@ pub enum CoreStorageKey {
     },
     /// Last processed SSO pairing response statement for the pairing device.
     LastProcessedPairingStatement,
-    /// Persisted RFC-0010 AutoSigning secret for one product subtree.
+    /// Legacy unscoped RFC-0010 AutoSigning secret. Core only addresses this
+    /// slot to reject and erase pre-scoping entries.
     AutoSigningKey {
-        /// Product whose hard subtree the secret controls.
+        /// Product whose hard subtree the legacy secret controlled.
         product_id: String,
     },
+    /// Wallet-bound RFC-0010 AutoSigning capabilities for the active pairing.
+    AutoSigningKeys,
+}
+/// Stable metadata describing one strictly decoded [`CoreStorageKey`].
+///
+/// `kind` is the Rust variant name and is part of the host embedding contract.
+/// `product_id` is present only for keys whose storage slot is directly
+/// product-indexed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoreStorageKeyDescription {
+    /// Stable storage-key variant name.
+    pub kind: &'static str,
+    /// Product that owns this exact slot, when the key is product-indexed.
+    pub product_id: Option<String>,
+}
+
+/// Failure to decode exactly one [`CoreStorageKey`].
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, derive_more::Error)]
+pub enum CoreStorageKeyDescriptionError {
+    /// The bytes are not a valid SCALE-encoded key.
+    #[display("invalid CoreStorageKey encoding")]
+    InvalidEncoding,
+    /// A valid key was followed by additional bytes.
+    #[display("CoreStorageKey encoding contains trailing bytes")]
+    TrailingBytes,
+}
+
+/// Strictly decode one SCALE-encoded [`CoreStorageKey`] and return stable
+/// metadata suitable for choosing host-private storage policy.
+pub fn describe_core_storage_key(
+    encoded: &[u8],
+) -> Result<CoreStorageKeyDescription, CoreStorageKeyDescriptionError> {
+    let mut input = encoded;
+    let key = CoreStorageKey::decode(&mut input)
+        .map_err(|_| CoreStorageKeyDescriptionError::InvalidEncoding)?;
+    if !input.is_empty() {
+        return Err(CoreStorageKeyDescriptionError::TrailingBytes);
+    }
+    let (kind, product_id) = match key {
+        CoreStorageKey::AuthSession => ("AuthSession", None),
+        CoreStorageKey::PairingDeviceIdentity => ("PairingDeviceIdentity", None),
+        CoreStorageKey::PermissionAuthorization { product_id, .. } => {
+            ("PermissionAuthorization", Some(product_id))
+        }
+        CoreStorageKey::AllowanceKeys { .. } => ("AllowanceKeys", None),
+        CoreStorageKey::LastProcessedPairingStatement => ("LastProcessedPairingStatement", None),
+        CoreStorageKey::AutoSigningKey { product_id } => ("AutoSigningKey", Some(product_id)),
+        CoreStorageKey::AutoSigningKeys => ("AutoSigningKeys", None),
+    };
+    Ok(CoreStorageKeyDescription { kind, product_id })
 }
 
 impl CoreStorageKey {
@@ -603,6 +655,73 @@ fn canonical_remote_request(request: &RemotePermissionRequest) -> RemotePermissi
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn auth_session_storage_key_has_stable_encoding() {
+        assert_eq!(CoreStorageKey::AuthSession.encode(), [0]);
+    }
+
+    #[test]
+    fn core_storage_key_description_is_strict_and_product_scoped() {
+        let permission = CoreStorageKey::device_permission_authorization(
+            "product.dot",
+            &HostDevicePermissionRequest::Camera,
+        )
+        .encode();
+        assert_eq!(
+            describe_core_storage_key(&permission),
+            Ok(CoreStorageKeyDescription {
+                kind: "PermissionAuthorization",
+                product_id: Some("product.dot".to_string()),
+            })
+        );
+        for (key, kind, product_id) in [
+            (CoreStorageKey::AuthSession, "AuthSession", None),
+            (
+                CoreStorageKey::PairingDeviceIdentity,
+                "PairingDeviceIdentity",
+                None,
+            ),
+            (
+                CoreStorageKey::AllowanceKeys {
+                    session_id: "session".to_string(),
+                },
+                "AllowanceKeys",
+                None,
+            ),
+            (
+                CoreStorageKey::LastProcessedPairingStatement,
+                "LastProcessedPairingStatement",
+                None,
+            ),
+            (
+                CoreStorageKey::AutoSigningKey {
+                    product_id: "product.dot".to_string(),
+                },
+                "AutoSigningKey",
+                Some("product.dot"),
+            ),
+            (CoreStorageKey::AutoSigningKeys, "AutoSigningKeys", None),
+        ] {
+            let description = describe_core_storage_key(&key.encode()).expect("valid key");
+            assert_eq!(description.kind, kind);
+            assert_eq!(description.product_id.as_deref(), product_id);
+        }
+
+        assert_eq!(
+            describe_core_storage_key(&[]),
+            Err(CoreStorageKeyDescriptionError::InvalidEncoding)
+        );
+        let mut trailing = CoreStorageKey::AuthSession.encode();
+        trailing.push(0);
+        assert_eq!(
+            describe_core_storage_key(&trailing),
+            Err(CoreStorageKeyDescriptionError::TrailingBytes)
+        );
+        assert_eq!(
+            describe_core_storage_key(&[u8::MAX]),
+            Err(CoreStorageKeyDescriptionError::InvalidEncoding)
+        );
+    }
 
     #[test]
     fn permission_authorization_keys_separate_product_and_request_variants() {

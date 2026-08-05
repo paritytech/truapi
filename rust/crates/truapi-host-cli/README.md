@@ -246,23 +246,34 @@ Five scripts ship under `js/scripts/`:
   intentionally unsupported), prints test-reporter rows with timings and clean
   failure details, writes the browser-shaped result matrix to
   the role-specific report under `explorer/diagnosis-reports/`, and exits
-  nonzero if any example fails. A paired run writes `pairing-host-cli.md`; a
+  nonzero if any example fails outside the committed unsupported baseline. A
+  paired run writes `pairing-host-cli.md`; a
   direct signing-host run writes `signing-host-cli.md`. Override the artifact
   path with `TRUAPI_BATTERY_REPORT_PATH`.
+
+  On top of the generated examples it runs one hand-written
+  `Resource Allocation/auto_signing_e2e` case: allocate `AutoSigning`, then
+  prove through the hosts' consulted-approval transcript
+  (`TRUAPI_APPROVALS_LOG`, exported per phase by `scripts/battery.sh`) that
+  follow-up `sign_vrf` calls for the granting product run without a
+  confirmation prompt.
 
   `scripts/battery.sh` at the repo root is the supported entry point. It
   prepares the codegen output and playground dependencies the battery imports,
   builds the host from source, and produces both reports in one invocation: the
   direct signing-host phase, then the paired phase, where it starts a pairing
   host, reads the `polkadotapp://pair?...` link out of its transcript, and
-  answers it with a second signing host so the battery can complete:
+  answers it with a second signing host using the same product id and forwarded
+  host flags so the battery can complete:
 
   ```bash
   scripts/battery.sh                    # both phases
   scripts/battery.sh --signing-host     # direct phase only
   scripts/battery.sh --pairing-host     # paired phase only
+  make e2e-signing-cli                  # direct phase only
+  make e2e-pairing-cli                  # paired phase only
   scripts/battery.sh --release          # release binary
-  scripts/battery.sh -- --network foo   # arguments after `--` go to both hosts
+  scripts/battery.sh -- --network foo   # arguments after `--` go to every host process
   ```
 
   `BATTERY_PHASE_TIMEOUT` (default 900s) bounds each phase and

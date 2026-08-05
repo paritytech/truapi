@@ -104,6 +104,9 @@ pub struct CliPlatform {
     scheduled_notifications:
         Arc<Mutex<HashMap<api::NotificationId, api::HostPushNotificationRequest>>>,
     approval: ApprovalPolicy,
+    /// Consulted-approval transcript (`TRUAPI_APPROVALS_LOG`): one
+    /// `<approved|denied> <action>` line per decided confirmation.
+    approvals_log: Option<PathBuf>,
     ui: Option<UiHandle>,
     /// Serializes interactive CLI prompts so concurrent confirmations don't
     /// interleave on stdin.
@@ -159,6 +162,7 @@ impl CliPlatform {
             next_notification_id: AtomicU32::new(1),
             scheduled_notifications: Arc::new(Mutex::new(HashMap::new())),
             approval,
+            approvals_log: std::env::var_os("TRUAPI_APPROVALS_LOG").map(PathBuf::from),
             ui,
             prompt_lock: AsyncMutex::new(()),
         })
@@ -311,7 +315,7 @@ impl CliPlatform {
 
     /// Resolve a confirmation: auto-accept, or prompt y/n on the CLI.
     async fn decide(&self, action: &str, detail: String) -> bool {
-        match self.approval {
+        let approved = match self.approval {
             ApprovalPolicy::AutoAccept => {
                 if let Some(ui) = &self.ui {
                     ui.success(format!("Approved {action} automatically"), Some(detail));
@@ -331,7 +335,28 @@ impl CliPlatform {
                     prompt_yes_no(action, &detail).await
                 }
             }
+        };
+        if let Some(path) = &self.approvals_log {
+            record_approval(path, approved, action);
         }
+        approved
+    }
+}
+
+/// Append one `<approved|denied> <action>` line to the approvals transcript.
+///
+/// The line is written before the confirmation result is returned to the
+/// runtime, so by the time a product call resolves, every prompt it consulted
+/// is already on disk.
+fn record_approval(path: &Path, approved: bool, action: &str) {
+    let decision = if approved { "approved" } else { "denied" };
+    let result = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| writeln!(file, "{decision} {action}"));
+    if let Err(err) = result {
+        tracing::warn!(path = %path.display(), %err, "could not record approval");
     }
 }
 
@@ -1140,6 +1165,19 @@ fn save_hex_key_map(path: &Path, values: &HashMap<Vec<u8>, Vec<u8>>) -> Result<(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn record_approval_appends_one_line_per_decision() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("approvals.log");
+        record_approval(&path, true, "allocate resources");
+        record_approval(&path, false, "sign VRF transcript");
+        record_approval(&path, true, "sign VRF transcript");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("approvals transcript"),
+            "approved allocate resources\ndenied sign VRF transcript\napproved sign VRF transcript\n",
+        );
+    }
 
     /// A user id `validate_name` rejects must not leave the previous identity's
     /// storage mounted. `storage_user_id` falls back to `full_username`, a

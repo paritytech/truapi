@@ -11,7 +11,7 @@
 #   scripts/battery.sh --signing-host     # direct phase only
 #   scripts/battery.sh --pairing-host     # paired phase only
 #   scripts/battery.sh --release          # build and run the release binary
-#   scripts/battery.sh -- --network foo   # arguments after `--` go to both hosts
+#   scripts/battery.sh -- --network foo   # arguments after `--` go to every host process
 #
 # Environment:
 #   E2E_LIVE_CHAIN=1              route Chain/* at the network's real nodes
@@ -20,9 +20,13 @@
 #   BATTERY_PAIRING_TIMEOUT       seconds to wait for the pairing link (default 120)
 #   TRUAPI_BATTERY_REPORT_PATH    override the report destination; single phase only
 #
-# Each phase exits nonzero when any generated example fails, which includes the
-# services the host intentionally does not implement, so compare the reports
-# against their committed versions to tell a regression from the baseline.
+# Each phase exports TRUAPI_APPROVALS_LOG (under target/battery/) so the hosts
+# record every consulted confirmation; the battery's AutoSigning e2e case reads
+# it to prove sign_vrf runs prompt-free once AutoSigning is allocated.
+#
+# Each phase exits nonzero when pairing/bootstrap fails or when a generated
+# example fails outside the committed unsupported baseline. Unsupported service
+# families still appear as failures in the Markdown reports.
 #
 # Host transcripts land in target/battery/. The paired phase runs its pairing
 # host on a throwaway identity under target/battery/pairing-host-state so every
@@ -162,6 +166,9 @@ signing_phase() {
   local log="$LOG_DIR/signing-host-cli.log"
   local report="$ROOT/$REPORTS/signing-host-cli.md"
   echo "battery: signing-host phase (report $REPORTS/signing-host-cli.md)"
+  # Consulted-approval transcript backing the AutoSigning prompt-free check.
+  export TRUAPI_APPROVALS_LOG="$LOG_DIR/signing-host-approvals.log"
+  rm -f "$TRUAPI_APPROVALS_LOG"
   TRUAPI_BATTERY_REPORT_PATH="${TRUAPI_BATTERY_REPORT_PATH:-$report}" \
     "$HOST" signing-host \
     --product-id "$PRODUCT_ID" \
@@ -187,6 +194,11 @@ pairing_phase() {
   # from an empty pairing identity so the handshake is always exercised. The
   # signing host keeps the default base path, so it reuses its attested account.
   rm -rf "$PAIRING_STATE"
+  # Consulted-approval transcript backing the AutoSigning prompt-free check.
+  # The answering signing host inherits the same path, so a VRF prompt on
+  # either side of the pair lands in the same file.
+  export TRUAPI_APPROVALS_LOG="$LOG_DIR/pairing-host-approvals.log"
+  rm -f "$TRUAPI_APPROVALS_LOG"
   TRUAPI_BATTERY_REPORT_PATH="${TRUAPI_BATTERY_REPORT_PATH:-$report}" \
     "$HOST" pairing-host \
     --base-path "$PAIRING_STATE" \
@@ -216,6 +228,7 @@ pairing_phase() {
     echo "battery: answering pairing link with a signing host"
     "$HOST" signing-host \
       --auto-accept \
+      --product-id "$PRODUCT_ID" \
       --frame-listen 127.0.0.1:0 \
       ${HOST_ARGS[@]+"${HOST_ARGS[@]}"} \
       exec "/pair $deeplink" > >(tee "$signer_log" | sed 's/^/[signer] /') 2>&1 &

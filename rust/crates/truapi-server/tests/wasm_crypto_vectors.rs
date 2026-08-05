@@ -5,7 +5,9 @@
 
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
-use truapi_platform::{HostInfo, PairingHostConfig, PlatformInfo};
+use truapi_platform::{
+    CoreStorageKey, HostDevicePermissionRequest, HostInfo, PairingHostConfig, PlatformInfo,
+};
 use truapi_server::host_logic::entropy::derive_product_entropy;
 use truapi_server::host_logic::product_account::{
     derive_product_public_key, derive_product_subtree_keypair, derive_root_keypair_from_entropy,
@@ -187,4 +189,34 @@ fn session_crypto_and_statement_proof_vectors_work_on_wasm() {
 
     assert_eq!(verified.signer, statement_session.ss_public_key);
     assert_eq!(verified.data, vec![0xde, 0xad]);
+}
+
+#[wasm_bindgen_test]
+fn wasm_core_storage_descriptors_are_strict_and_stable() {
+    let encoded = CoreStorageKey::device_permission_authorization(
+        "product.dot",
+        &HostDevicePermissionRequest::Camera,
+    )
+    .encode();
+    let described =
+        truapi_server::wasm::describe_core_storage_key_for_wasm(encoded).expect("valid key");
+    assert_eq!(
+        js_sys::Reflect::get(&described, &wasm_bindgen::JsValue::from_str("kind"))
+            .expect("kind property")
+            .as_string()
+            .as_deref(),
+        Some("PermissionAuthorization")
+    );
+    assert_eq!(
+        js_sys::Reflect::get(&described, &wasm_bindgen::JsValue::from_str("productId"),)
+            .expect("productId property")
+            .as_string()
+            .as_deref(),
+        Some("product.dot")
+    );
+
+    assert!(truapi_server::wasm::describe_core_storage_key_for_wasm(Vec::new()).is_err());
+    let mut trailing = CoreStorageKey::AuthSession.encode();
+    trailing.push(0);
+    assert!(truapi_server::wasm::describe_core_storage_key_for_wasm(trailing).is_err());
 }

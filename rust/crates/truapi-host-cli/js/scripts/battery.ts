@@ -10,12 +10,17 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runAutoSigningE2e } from "../auto-signing-e2e.ts";
 import { BatteryReporter } from "../battery-reporter.ts";
 import {
   cliDiagnosisReportMetadata,
   renderDiagnosisReport,
 } from "../diagnosis-report.ts";
-import { createDiagnosisPlan, runDiagnosis } from "../diagnosis.ts";
+import {
+  createDiagnosisPlan,
+  expectedCliBatteryFailureReason,
+  runDiagnosis,
+} from "../diagnosis.ts";
 
 const report = cliDiagnosisReportMetadata(process.env.TRUAPI_CLI_HOST_ROLE);
 const DEFAULT_REPORT_PATH = fileURLToPath(
@@ -54,14 +59,31 @@ const rows = await runDiagnosis(truapi, {
   ...options,
   onResult: (row) => reporter.result(row),
 });
+// Beyond the generated per-method examples: AutoSigning must make follow-up
+// sign_vrf calls prompt-free, observed through the host's approvals transcript.
+const autoSigning = await runAutoSigningE2e(
+  truapi,
+  host.productId,
+  process.env.TRUAPI_APPROVALS_LOG,
+);
+reporter.result(autoSigning);
+rows.push(autoSigning);
 reporter.finish(rows, Math.round(performance.now() - startedAt));
 mkdirSync(dirname(REPORT_PATH), { recursive: true });
 writeFileSync(REPORT_PATH, renderDiagnosisReport(report.title, rows));
 reporter.reportSaved(REPORT_PATH);
 
 const failures = rows.filter((row) => row.status === "fail");
-if (failures.length > 0) {
+const unexpectedFailures = failures.filter(
+  (row) => !expectedCliBatteryFailureReason(row.serviceName),
+);
+if (unexpectedFailures.length > 0) {
   throw new Error(
-    `TrUAPI battery failed: ${failures.length} of ${rows.length} generated examples failed`,
+    `TrUAPI battery failed: ${unexpectedFailures.length} of ${rows.length} generated examples failed outside the known unsupported baseline`,
+  );
+}
+if (failures.length > 0) {
+  console.log(
+    `Known unsupported baseline: ${failures.length} generated examples failed as expected`,
   );
 }

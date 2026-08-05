@@ -26,7 +26,8 @@ demangle-name-section = false
 dwarf-debug-info = false
 
 [features]
-default = []
+default = ["wasm-signing-host"]
+wasm-signing-host = []
 ws-bridge = ["dep:tokio", "dep:tokio-tungstenite", "dep:rand", "dep:base64"]
 
 [dependencies]

@@ -671,9 +671,21 @@ The top-level `--script` option does not update remembered `/script` state.
 `TRUAPI_BATTERY_REPORT_PATH` overrides the destination. `scripts/battery.sh` in
 the repository root produces both reports in one invocation: it runs the direct
 signing-host phase, then starts a pairing host and answers its emitted link
-with a second signing host so the paired phase can complete. Its custom reporter
-uses terminal color when stdout is a TTY or `FORCE_COLOR` is nonzero, unless
-`NO_COLOR` exists.
+with a second signing host using the same product id and forwarded host flags
+so the paired phase can complete. Known unsupported service families remain
+reported as failures but do not fail the process; any other generated-example
+failure is a nonzero exit. Its custom reporter uses terminal color when stdout
+is a TTY or `FORCE_COLOR` is nonzero, unless `NO_COLOR` exists.
+
+Beyond the generated examples, `battery.ts` runs one hand-written
+`Resource Allocation/auto_signing_e2e` case: it allocates `AutoSigning`, then
+requires two `sign_vrf` calls for the granting product to succeed without any
+confirmation being consulted. When `TRUAPI_APPROVALS_LOG` names a file, every
+host process appends one `<approved|denied> <action>` line per decided
+confirmation there before the confirmation resolves; the case reads the file
+to prove the prompt-free window (and is reported as skipped when the variable
+is unset). `scripts/battery.sh` exports the variable for each phase, sharing
+one file across both paired-phase host processes.
 
 ## 11. Pairing lifecycle
 
@@ -1501,6 +1513,7 @@ ended. This preserves the child status but bypasses later Rust destructors.
 | `COLORTERM` | Select true-color TUI rendering. |
 | `FORCE_COLOR` | Force battery reporter color in non-TTY output. |
 | `TRUAPI_BATTERY_REPORT_PATH` | Override battery report destination. |
+| `TRUAPI_APPROVALS_LOG` | Append one line per decided confirmation to this file. |
 
 ## 22. Current v0.1 operational constraints
 

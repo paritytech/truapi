@@ -88,6 +88,37 @@ pub struct SsoSessionInfo {
     /// Statement channel for signing-host initiated requests.
     pub peer_request_channel: [u8; 32],
 }
+/// Session fields supplied by an already-paired external host runtime.
+///
+/// This is an input shape, not a second persistence format. Encoding always
+/// goes through [`encode_persisted_session`] so callers cannot duplicate or
+/// depend on the private SCALE layout of [`SessionInfo`].
+pub struct ExternalPairedSession {
+    /// Signing host's sr25519 root public key.
+    pub root_public_key: [u8; 32],
+    /// Pairing host's established SSO channel and key material.
+    pub sso: SsoSessionInfo,
+    /// Wallet-provided source for deterministic product entropy.
+    pub root_entropy_source: [u8; 32],
+    /// Wallet identity account id used for People-chain username lookup.
+    pub identity_account_id: [u8; 32],
+}
+
+/// Encode an already-paired external host session as the canonical opaque
+/// pairing-runtime session blob.
+///
+/// Usernames are intentionally absent: the pairing runtime resolves and
+/// persists them through its normal identity lookup path.
+pub fn encode_external_paired_session(info: ExternalPairedSession) -> Vec<u8> {
+    encode_persisted_session(&SessionInfo {
+        public_key: info.root_public_key,
+        sso: Some(info.sso),
+        root_entropy_source: Some(info.root_entropy_source),
+        identity_account_id: Some(info.identity_account_id),
+        lite_username: None,
+        full_username: None,
+    })
+}
 
 /// Encode the active-session fields the core currently understands into an
 /// opaque host-global session blob.
@@ -314,6 +345,57 @@ mod tests {
         let decoded = decode_persisted_session(&blob).expect("session should decode");
 
         assert_eq!(decoded, session);
+    }
+
+    #[test]
+    fn external_paired_session_uses_canonical_shape_and_exact_fields() {
+        let external = ExternalPairedSession {
+            root_public_key: [11; 32],
+            sso: SsoSessionInfo {
+                ss_secret: [1; 64],
+                ss_public_key: [2; 32],
+                enc_secret: [3; 32],
+                peer_enc_pubkey: [4; 32],
+                identity_account_id: [5; 32],
+                session_id_own: [6; 32],
+                session_id_peer: [7; 32],
+                request_channel: [8; 32],
+                response_channel: [9; 32],
+                peer_request_channel: [10; 32],
+            },
+            root_entropy_source: [12; 32],
+            identity_account_id: [5; 32],
+        };
+
+        let blob = encode_external_paired_session(external);
+        let decoded = decode_persisted_session(&blob).expect("canonical decoder accepts blob");
+
+        assert_eq!(
+            decoded,
+            SessionInfo {
+                public_key: [11; 32],
+                sso: Some(SsoSessionInfo {
+                    ss_secret: [1; 64],
+                    ss_public_key: [2; 32],
+                    enc_secret: [3; 32],
+                    peer_enc_pubkey: [4; 32],
+                    identity_account_id: [5; 32],
+                    session_id_own: [6; 32],
+                    session_id_peer: [7; 32],
+                    request_channel: [8; 32],
+                    response_channel: [9; 32],
+                    peer_request_channel: [10; 32],
+                }),
+                root_entropy_source: Some([12; 32]),
+                identity_account_id: Some([5; 32]),
+                lite_username: None,
+                full_username: None,
+            }
+        );
+
+        let mut wrong_shape = blob;
+        wrong_shape.push(0);
+        assert!(decode_persisted_session(&wrong_shape).is_err());
     }
 
     #[test]

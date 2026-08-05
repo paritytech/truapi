@@ -22,6 +22,8 @@ use js_sys::{Array, Function, Reflect, Uint8Array};
 use parity_scale_codec::Decode;
 use send_wrapper::SendWrapper;
 use truapi::v01;
+#[cfg(feature = "wasm-signing-host")]
+use truapi_platform::SigningHostConfig;
 use truapi_platform::{
     ChainProvider, HostInfo, JsonRpcConnection, PairingHostConfig, PlatformInfo, ProductContext,
     RuntimeConfigValidationError,
@@ -29,6 +31,8 @@ use truapi_platform::{
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
+#[cfg(feature = "wasm-signing-host")]
+use crate::SigningHostRuntime;
 use crate::subscription::Spawner;
 use crate::{
     ChannelId, DebugEvent, DebugSink, FrameSink, PairingHostRuntime,
@@ -503,6 +507,45 @@ fn pairing_host_config_from_js(value: &JsValue) -> Result<PairingHostConfig, JsV
     .map_err(runtime_config_validation_to_js)
 }
 
+#[cfg(feature = "wasm-signing-host")]
+fn signing_host_config_from_js(value: &JsValue) -> Result<SigningHostConfig, JsValue> {
+    if value.is_null() || value.is_undefined() {
+        return Err(JsValue::from_str("hostConfig is required"));
+    }
+
+    let host = get_required_object(value, "host", "runtimeConfig.host")?;
+    let platform = get_optional_object(value, "platform", "runtimeConfig.platform")?;
+    let people = get_required_object(value, "people", "runtimeConfig.people")?;
+    let bulletin = get_required_object(value, "bulletin", "runtimeConfig.bulletin")?;
+
+    SigningHostConfig::new(
+        HostInfo {
+            name: get_required_string_at(&host, "name", "runtimeConfig.host.name")?,
+            icon: get_optional_string_at(&host, "icon", "runtimeConfig.host.icon")?,
+            version: get_optional_string_at(&host, "version", "runtimeConfig.host.version")?,
+        },
+        PlatformInfo {
+            kind: platform
+                .as_ref()
+                .map(|p| get_optional_string_at(p, "type", "runtimeConfig.platform.type"))
+                .transpose()?
+                .flatten(),
+            version: platform
+                .as_ref()
+                .map(|p| get_optional_string_at(p, "version", "runtimeConfig.platform.version"))
+                .transpose()?
+                .flatten(),
+        },
+        get_required_bytes32_at(&people, "genesisHash", "runtimeConfig.people.genesisHash")?,
+        get_required_bytes32_at(
+            &bulletin,
+            "genesisHash",
+            "runtimeConfig.bulletin.genesisHash",
+        )?,
+    )
+    .map_err(runtime_config_validation_to_js)
+}
+
 fn product_context_from_js(value: &JsValue) -> Result<ProductContext, JsValue> {
     if value.is_null() || value.is_undefined() {
         return Err(JsValue::from_str("product is required"));
@@ -761,6 +804,25 @@ impl WasmPairingHostRuntime {
         self.runtime.cancel_pairing();
     }
 
+    /// Activate an externally persisted canonical session without writing it
+    /// to core storage; resolves only after product frames may use it.
+    #[wasm_bindgen(js_name = activateExternalSession)]
+    pub async fn activate_external_session(&self, blob: Vec<u8>) -> Result<(), JsValue> {
+        self.runtime
+            .activate_external_session(&blob)
+            .await
+            .map_err(generic_error_to_js)
+    }
+
+    /// Restore the persisted auth session and resolve only after it is active.
+    #[wasm_bindgen(js_name = activateStoredSession)]
+    pub async fn activate_stored_session(&self) -> Result<(), JsValue> {
+        self.runtime
+            .activate_stored_session()
+            .await
+            .map_err(generic_error_to_js)
+    }
+
     /// Notify the runtime that the auth session slot may have changed.
     #[wasm_bindgen(js_name = notifySessionStoreChanged)]
     pub fn notify_session_store_changed(&self) {
@@ -815,6 +877,125 @@ impl WasmPairingHostRuntime {
         let status = permission_authorization_status_from_js(&status)?;
         self.runtime
             .set_permission_authorization_status(&product_id, request, status)
+            .await
+            .map_err(generic_error_to_js)
+    }
+
+    /// Clear one product's durable and in-memory capability state.
+    #[wasm_bindgen(js_name = clearProductState)]
+    pub async fn clear_product_state(&self, product_id: String) -> Result<(), JsValue> {
+        self.runtime
+            .clear_product_state(&product_id)
+            .await
+            .map_err(generic_error_to_js)
+    }
+
+    /// Clear canonical paired-session state without notifying the peer.
+    #[wasm_bindgen(js_name = resetSessionState)]
+    pub async fn reset_session_state(&self) {
+        self.runtime.reset_session_state().await;
+    }
+}
+
+/// Strictly decode a SCALE-encoded core-storage key for host storage policy.
+#[wasm_bindgen(js_name = describeCoreStorageKey)]
+pub fn describe_core_storage_key_for_wasm(encoded: Vec<u8>) -> Result<JsValue, JsValue> {
+    let description = truapi_platform::describe_core_storage_key(&encoded)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let value = js_sys::Object::new();
+    Reflect::set(
+        &value,
+        &JsValue::from_str("kind"),
+        &JsValue::from_str(description.kind),
+    )?;
+    if let Some(product_id) = description.product_id {
+        Reflect::set(
+            &value,
+            &JsValue::from_str("productId"),
+            &JsValue::from_str(&product_id),
+        )?;
+    }
+    Ok(value.into())
+}
+
+#[cfg(feature = "wasm-signing-host")]
+/// JS-callable handle to a wallet-local signing-host runtime.
+#[wasm_bindgen]
+pub struct WasmSigningHostRuntime {
+    runtime: Rc<SigningHostRuntime>,
+}
+
+#[cfg(feature = "wasm-signing-host")]
+#[wasm_bindgen]
+impl WasmSigningHostRuntime {
+    /// Build a shared signing runtime from host callbacks and host config.
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        callbacks: JsValue,
+        host_config: JsValue,
+    ) -> Result<WasmSigningHostRuntime, JsValue> {
+        console_error_panic_hook::set_once();
+        crate::logging::init();
+        let bridge = Arc::new(JsBridge::from_js(&callbacks)?);
+        let platform = Arc::new(WasmPlatform::new(bridge));
+        let spawner: Spawner = Arc::new(|fut| {
+            wasm_bindgen_futures::spawn_local(fut);
+        });
+        let host_config = signing_host_config_from_js(&host_config)?;
+        Ok(Self {
+            runtime: Rc::new(SigningHostRuntime::new(platform, host_config, spawner)),
+        })
+    }
+
+    /// Build one product-scoped runtime from this signing host.
+    #[wasm_bindgen(js_name = productRuntime)]
+    pub fn product_runtime(
+        &self,
+        product: JsValue,
+        core_callbacks: JsValue,
+    ) -> Result<WasmProductRuntime, JsValue> {
+        let product = product_context_from_js(&product)?;
+        let channel = CoreChannel::from_js(&core_callbacks)?;
+        let sink = Arc::new(WasmFrameSink {
+            emit_frame: SendWrapper::new(channel.emit_frame),
+        });
+        let runtime = self.runtime.product_runtime(product, sink);
+        Ok(WasmProductRuntime::from_parts(runtime, channel.dispose))
+    }
+
+    /// Disconnect the active wallet-local session.
+    #[wasm_bindgen(js_name = disconnectSession)]
+    pub async fn disconnect_session(&self) {
+        self.runtime.disconnect_session().await;
+    }
+
+    /// Activate a wallet-local session from raw BIP-39 entropy.
+    #[wasm_bindgen(js_name = activateLocalSession)]
+    pub async fn activate_local_session(&self, secret: Vec<u8>) -> Result<(), JsValue> {
+        self.runtime
+            .activate_local_session(secret)
+            .await
+            .map_err(generic_error_to_js)
+    }
+
+    /// Activate a wallet-local session and attach known identity metadata.
+    #[wasm_bindgen(js_name = activateLocalSessionWithIdentity)]
+    pub async fn activate_local_session_with_identity(
+        &self,
+        secret: Vec<u8>,
+        lite_username: Option<String>,
+    ) -> Result<(), JsValue> {
+        self.runtime
+            .activate_local_session_with_identity(secret, lite_username)
+            .await
+            .map_err(generic_error_to_js)
+    }
+
+    /// Revoke one product's grants from the current local activation.
+    #[wasm_bindgen(js_name = clearProductState)]
+    pub async fn clear_product_state(&self, product_id: String) -> Result<(), JsValue> {
+        self.runtime
+            .clear_product_state(&product_id)
             .await
             .map_err(generic_error_to_js)
     }

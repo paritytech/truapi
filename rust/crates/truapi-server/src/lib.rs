@@ -47,14 +47,18 @@ pub use host_core::{
     ChannelId, DebugEvent, DebugSink, FrameDirection, FrameSink, HostAdmin, PairingHostRuntime,
     ProductRuntime, ProductRuntimeError, SigningHostRuntime,
 };
+pub use host_logic::session::{
+    ExternalPairedSession, SsoSessionInfo, decode_persisted_session, encode_external_paired_session,
+};
 #[cfg(all(not(target_arch = "wasm32"), feature = "ws-bridge"))]
 pub use native_debug::{DebugSinkError, WsDebugSink};
 pub use runtime::ResponderExit;
 #[cfg(not(target_arch = "wasm32"))]
 pub use runtime::statement_allowance;
 pub use truapi_platform::{
-    HostRuntimeConfig, PairingHostConfig, PermissionAuthorizationRequest,
-    PermissionAuthorizationStatus, Platform, ProductContext, SigningHostConfig,
+    CoreStorageKeyDescription, CoreStorageKeyDescriptionError, HostRuntimeConfig,
+    PairingHostConfig, PermissionAuthorizationRequest, PermissionAuthorizationStatus, Platform,
+    ProductContext, SigningHostConfig, describe_core_storage_key,
 };
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "ws-bridge"))]

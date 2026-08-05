@@ -133,9 +133,14 @@ export type CoreStorageKey =
    */
   | { tag: "LastProcessedPairingStatement"; value?: undefined }
   /**
-   * Persisted RFC-0010 AutoSigning secret for one product subtree.
+   * Legacy unscoped RFC-0010 AutoSigning secret. Core only addresses this
+   * slot to reject and erase pre-scoping entries.
    */
-  | { tag: "AutoSigningKey"; value: { productId: string } };
+  | { tag: "AutoSigningKey"; value: { productId: string } }
+  /**
+   * Wallet-bound RFC-0010 AutoSigning capabilities for the active pairing.
+   */
+  | { tag: "AutoSigningKeys"; value?: undefined };
 
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -444,6 +449,7 @@ export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy(
       AutoSigningKey: S.Struct({ productId: S.str }) as S.Codec<{
         productId: string;
       }>,
+      AutoSigningKeys: S._void,
     }),
 );
 

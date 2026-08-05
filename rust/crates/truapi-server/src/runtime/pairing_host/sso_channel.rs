@@ -34,6 +34,10 @@ const UNEXPECTED_SSO_TRANSACTION_RESPONSE: &str = "Unexpected SSO response for t
 const UNEXPECTED_SSO_ALIAS_RESPONSE: &str = "Unexpected SSO response for account alias request";
 const UNEXPECTED_SSO_PROOF_RESPONSE: &str = "Unexpected SSO response for ring-VRF proof request";
 
+fn unexpected_response_reason(context: &str, response_kind: &str) -> String {
+    format!("{context}: {response_kind}")
+}
+
 #[derive(Clone, Copy, Debug, derive_more::Display)]
 enum RemoteAction {
     #[display("{_0}")]
@@ -73,10 +77,12 @@ impl PairingHost {
         let response = self
             .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::Sign(response) = response else {
-            return Err(SsoRemoteResponseError::Failure(
-                UNEXPECTED_SSO_SIGNING_RESPONSE.to_string(),
-            ));
+            return Err(SsoRemoteResponseError::Failure(unexpected_response_reason(
+                UNEXPECTED_SSO_SIGNING_RESPONSE,
+                response_kind,
+            )));
         };
         response
             .payload
@@ -281,6 +287,7 @@ impl PairingHost {
         product_id: String,
     ) -> Result<[u8; 32], AuthorityError> {
         let sso = session.sso.as_ref().ok_or(AuthorityError::Disconnected)?;
+        let lifecycle_epoch = self.current_session_lifecycle_epoch();
         let cache_key = (SsoSessionKey::from_session(sso), product_id.clone());
         if let Some(public_key) = self
             .product_subtrees
@@ -298,18 +305,21 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::ProductSubtree, message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::ProductSubtree(response) = response else {
             return Err(AuthorityError::Unknown {
-                reason: "Unexpected SSO response for product subtree request".to_string(),
+                reason: unexpected_response_reason(
+                    "Unexpected SSO response for product subtree request",
+                    response_kind,
+                ),
             });
         };
         let public_key = response
             .product_public_key
             .map_err(remote_authority_error)?;
-        self.product_subtrees
-            .lock()
-            .expect("product subtree cache mutex poisoned")
-            .insert(cache_key, public_key);
+        if !self.cache_product_subtree_if_current(session, lifecycle_epoch, cache_key, public_key) {
+            return Err(AuthorityError::Disconnected);
+        }
         Ok(public_key)
     }
 
@@ -327,9 +337,13 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::SignVrf, message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::SignVrf(response) = response else {
             return Err(AuthorityError::Unknown {
-                reason: "Unexpected SSO response for VRF signing request".to_string(),
+                reason: unexpected_response_reason(
+                    "Unexpected SSO response for VRF signing request",
+                    response_kind,
+                ),
             });
         };
         response.payload.map_err(|err| match err {
@@ -386,6 +400,7 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         match (expects_legacy_response, response) {
             (false, SsoRemoteResponse::Sign(response)) => response
                 .payload
@@ -402,7 +417,7 @@ impl PairingHost {
                 })
                 .map_err(remote_authority_error),
             _ => Err(AuthorityError::Unknown {
-                reason: UNEXPECTED_SSO_SIGNING_RESPONSE.to_string(),
+                reason: unexpected_response_reason(UNEXPECTED_SSO_SIGNING_RESPONSE, response_kind),
             }),
         }
     }
@@ -441,9 +456,13 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::Signing(action), message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::CreateTransaction(response) = response else {
             return Err(AuthorityError::Unknown {
-                reason: UNEXPECTED_SSO_TRANSACTION_RESPONSE.to_string(),
+                reason: unexpected_response_reason(
+                    UNEXPECTED_SSO_TRANSACTION_RESPONSE,
+                    response_kind,
+                ),
             });
         };
         response
@@ -470,9 +489,10 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::RingVrfAlias, message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::RingVrfAlias(response) = response else {
             return Err(RingVrfError::Unknown {
-                reason: UNEXPECTED_SSO_ALIAS_RESPONSE.to_string(),
+                reason: unexpected_response_reason(UNEXPECTED_SSO_ALIAS_RESPONSE, response_kind),
             });
         };
         response.payload
@@ -497,9 +517,10 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::RingVrfProof, message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::RingVrfProof(response) = response else {
             return Err(RingVrfError::Unknown {
-                reason: UNEXPECTED_SSO_PROOF_RESPONSE.to_string(),
+                reason: unexpected_response_reason(UNEXPECTED_SSO_PROOF_RESPONSE, response_kind),
             });
         };
         response.payload
@@ -514,6 +535,7 @@ impl PairingHost {
         product_id: String,
         request: latest::HostRequestResourceAllocationRequest,
     ) -> Result<latest::HostRequestResourceAllocationResponse, AuthorityError> {
+        let lifecycle_epoch = self.current_session_lifecycle_epoch();
         let message_id = sso_message_id();
         let message = resource_allocation_message(
             message_id,
@@ -525,13 +547,17 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::ResourceAllocation(response) = response else {
             return Err(AuthorityError::Unknown {
-                reason: "Unexpected SSO response for resource allocation request".to_string(),
+                reason: unexpected_response_reason(
+                    "Unexpected SSO response for resource allocation request",
+                    response_kind,
+                ),
             });
         };
         let outcomes = response.payload.map_err(remote_authority_error)?;
-        self.cache_allowance_outcomes(session, &product_id, &outcomes)
+        self.cache_allowance_outcomes(cx, session, lifecycle_epoch, &product_id, &outcomes)
             .await?;
         Ok(latest::HostRequestResourceAllocationResponse {
             outcomes: outcomes.into_iter().map(Into::into).collect(),
@@ -546,8 +572,9 @@ impl PairingHost {
         session: &SessionInfo,
         product_id: String,
     ) -> Result<StatementStoreAllowanceKey, AuthorityError> {
+        let lifecycle_epoch = self.current_session_lifecycle_epoch();
         if let Some(cached) = self
-            .cached_statement_store_allowance_key(session, &product_id)
+            .cached_statement_store_allowance_key(session, lifecycle_epoch, &product_id)
             .await?
         {
             return Ok(cached);
@@ -564,9 +591,13 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::ResourceAllocation(response) = response else {
             return Err(AuthorityError::Unknown {
-                reason: "Unexpected SSO response for statement-store allowance request".to_string(),
+                reason: unexpected_response_reason(
+                    "Unexpected SSO response for statement-store allowance request",
+                    response_kind,
+                ),
             });
         };
         let mut outcomes = response
@@ -580,12 +611,18 @@ impl PairingHost {
             SsoAllocationOutcome::Allocated(SsoAllocatedResource::StatementStoreAllowance {
                 slot_account_key,
             }) => {
-                self.cache_statement_store_allowance_key(session, &product_id, slot_account_key)
-                    .await
+                self.cache_statement_store_allowance_key(
+                    session,
+                    lifecycle_epoch,
+                    &product_id,
+                    slot_account_key,
+                )
+                .await
             }
             SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
-                reason: format!(
-                    "Unexpected statement-store allowance response resource: {other:?}"
+                reason: unexpected_response_reason(
+                    "Unexpected statement-store allowance response resource",
+                    other.kind(),
                 ),
             }),
             SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
@@ -603,8 +640,9 @@ impl PairingHost {
         session: &SessionInfo,
         product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let lifecycle_epoch = self.current_session_lifecycle_epoch();
         if let Some(cached) = self
-            .cached_bulletin_allowance_key(session, &product_id)
+            .cached_bulletin_allowance_key(session, lifecycle_epoch, &product_id)
             .await?
         {
             return Ok(cached);
@@ -621,9 +659,13 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::ResourceAllocation(response) = response else {
             return Err(AuthorityError::Unknown {
-                reason: "Unexpected SSO response for bulletin allowance request".to_string(),
+                reason: unexpected_response_reason(
+                    "Unexpected SSO response for bulletin allowance request",
+                    response_kind,
+                ),
             });
         };
         let mut outcomes = response
@@ -637,11 +679,19 @@ impl PairingHost {
             SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
                 slot_account_key,
             }) => {
-                self.cache_bulletin_allowance_key(session, &product_id, slot_account_key)
-                    .await
+                self.cache_bulletin_allowance_key(
+                    session,
+                    lifecycle_epoch,
+                    &product_id,
+                    slot_account_key,
+                )
+                .await
             }
             SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
-                reason: format!("Unexpected bulletin allowance response resource: {other:?}"),
+                reason: unexpected_response_reason(
+                    "Unexpected bulletin allowance response resource",
+                    other.kind(),
+                ),
             }),
             SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
             SsoAllocationOutcome::NotAvailable => Err(AuthorityError::Unavailable {
@@ -658,10 +708,11 @@ impl PairingHost {
         session: &SessionInfo,
         product_id: String,
     ) -> Result<BulletinAllowanceKey, AuthorityError> {
+        let lifecycle_epoch = self.current_session_lifecycle_epoch();
         // Drop the cached (and persisted) key so a stale/exhausted slot is not
         // reused, then request a fresh allocation with `Increase` so the
         // wallet grants a new allowance rather than echoing the old slot.
-        self.evict_bulletin_allowance_key(session, &product_id)
+        self.evict_bulletin_allowance_key(session, lifecycle_epoch, &product_id)
             .await?;
 
         let message_id = sso_message_id();
@@ -675,9 +726,13 @@ impl PairingHost {
             .submit_remote_message(cx, session, RemoteAction::ResourceAllocation, message)
             .await
             .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
         let SsoRemoteResponse::ResourceAllocation(response) = response else {
             return Err(AuthorityError::Unknown {
-                reason: "Unexpected SSO response for bulletin allowance refresh".to_string(),
+                reason: unexpected_response_reason(
+                    "Unexpected SSO response for bulletin allowance refresh",
+                    response_kind,
+                ),
             });
         };
         let mut outcomes = response
@@ -691,11 +746,19 @@ impl PairingHost {
             SsoAllocationOutcome::Allocated(SsoAllocatedResource::BulletinAllowance {
                 slot_account_key,
             }) => {
-                self.cache_bulletin_allowance_key(session, &product_id, slot_account_key)
-                    .await
+                self.cache_bulletin_allowance_key(
+                    session,
+                    lifecycle_epoch,
+                    &product_id,
+                    slot_account_key,
+                )
+                .await
             }
             SsoAllocationOutcome::Allocated(other) => Err(AuthorityError::Unknown {
-                reason: format!("Unexpected bulletin allowance refresh resource: {other:?}"),
+                reason: unexpected_response_reason(
+                    "Unexpected bulletin allowance refresh resource",
+                    other.kind(),
+                ),
             }),
             SsoAllocationOutcome::Rejected => Err(AuthorityError::Rejected),
             SsoAllocationOutcome::NotAvailable => Err(AuthorityError::Unavailable {
@@ -706,7 +769,9 @@ impl PairingHost {
 
     async fn cache_allowance_outcomes(
         &self,
+        cx: &CallContext,
         session: &SessionInfo,
+        lifecycle_epoch: u64,
         product_id: &str,
         outcomes: &[SsoAllocationOutcome],
     ) -> Result<(), AuthorityError> {
@@ -716,6 +781,7 @@ impl PairingHost {
                     SsoAllocatedResource::StatementStoreAllowance { slot_account_key } => {
                         self.cache_statement_store_allowance_key(
                             session,
+                            lifecycle_epoch,
                             product_id,
                             slot_account_key.clone(),
                         )
@@ -724,6 +790,7 @@ impl PairingHost {
                     SsoAllocatedResource::BulletinAllowance { slot_account_key } => {
                         self.cache_bulletin_allowance_key(
                             session,
+                            lifecycle_epoch,
                             product_id,
                             slot_account_key.clone(),
                         )
@@ -733,8 +800,17 @@ impl PairingHost {
                     SsoAllocatedResource::AutoSigning {
                         product_root_private_key,
                     } => {
-                        self.remember_auto_signing_key(product_id, *product_root_private_key)
+                        let expected_product_subtree_public_key = self
+                            .remote_product_subtree_public_key(cx, session, product_id.to_string())
                             .await?;
+                        self.remember_auto_signing_key(
+                            session,
+                            lifecycle_epoch,
+                            product_id,
+                            expected_product_subtree_public_key,
+                            *product_root_private_key,
+                        )
+                        .await?;
                     }
                 }
             }
@@ -812,5 +888,40 @@ impl From<SsoAllocationOutcome> for latest::AllocationOutcome {
             SsoAllocationOutcome::Rejected => Self::Rejected,
             SsoAllocationOutcome::NotAvailable => Self::NotAvailable,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host_logic::sso::messages::ResourceAllocationResponse;
+
+    #[test]
+    fn unexpected_response_reasons_include_only_safe_discriminants() {
+        let private_key = [0xA5; 64];
+        let resource = SsoAllocatedResource::AutoSigning {
+            product_root_private_key: private_key,
+        };
+        let resource_reason = unexpected_response_reason(
+            "Unexpected statement-store allowance response resource",
+            resource.kind(),
+        );
+        assert_eq!(
+            resource_reason,
+            "Unexpected statement-store allowance response resource: auto-signing"
+        );
+        assert!(!resource_reason.contains("165, 165"));
+
+        let response = SsoRemoteResponse::ResourceAllocation(ResourceAllocationResponse {
+            responding_to: "secret-test".to_string(),
+            payload: Ok(vec![SsoAllocationOutcome::Allocated(resource)]),
+        });
+        let response_reason =
+            unexpected_response_reason(UNEXPECTED_SSO_SIGNING_RESPONSE, response.kind());
+        assert_eq!(
+            response_reason,
+            "Unexpected SSO response for signing request: resource-allocation"
+        );
+        assert!(!response_reason.contains("165, 165"));
     }
 }
