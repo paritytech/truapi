@@ -4,107 +4,53 @@
 | ------------------ | ------------------------------------------------------------------------------- |
 | **Start Date**     | 2026-07-25 |
 | **Authors**        | Nidish Ramakrishnan |
-| **Implementation** | truapi#295 (Rust tap in `truapi-server`) |
-| **Description**    | A payload-blind tap in the Rust host that streams every product↔host frame, under one correlation id, to a debugger app the host dials out to. |
+| **Implementation** | truapi#295 (Rust tap in `truapi-server`; `@parity/truapi-debugger` engine + surfaces) |
+| **Description**    | A payload-blind tap in the Rust host core streams every product↔host TrUAPI frame, under one correlation id, to a debugger that groups and decodes it. Two surfaces consume the same engine: a standalone loopback inspector and an in-host embed. |
 
-This is a **specification of the contract**, not a walkthrough of the implementation:
-it fixes where the tap lives, the topology, the event shape, and the invariants each
-layer upholds. Where this doc and the code disagree, this doc is the intent.
+The short version: product↔host TrUAPI traffic is opaque SCALE frames with no
+Network tab. A tap in the Rust host core emits every frame as opaque
+`{channelId, dir, bytes}`; the debugger — never the core — correlates them into
+per-operation traces and decodes them. This is a **strictly dev-only tool**: the
+tap and the decoder are compiled out of production builds, so there is nothing to
+turn on in a shipped host.
+
+## The problem
+
+A product and its host exchange everything — account derivation, signing, chain
+reads, scoped storage, subscriptions — as serialized SCALE `ProtocolMessage`
+frames across a process boundary (`MessagePort`, iframe `postMessage`, or a native
+webview channel). On the wire those frames are just bytes. There is no per-call
+view, no way to see which operation a frame belongs to, no request/response
+pairing, and no decoded payload. When a call misbehaves, the developer is staring
+at a byte channel.
+
+This design gives that byte channel a Network tab: capture every frame, group the
+frames of one call together, and — because it is a dev tool looking at the
+developer's own session — decode them.
 
 ## Where the tap lives
 
-The tap is in the **Rust host (`truapi-server`)**, behind a sink trait — **not** in the
-TypeScript transport and **not** turned on from the product side. `truapi-server` has
-exactly two frame choke points, and every host funnels through them — the web
-build via `wasm.rs`, native builds via `native_debug.rs`:
+The tap is in the **Rust host core (`truapi-server`)**, behind a sink trait — not
+in the TypeScript transport, and not turned on from the product side.
+`truapi-server` has exactly two frame choke points, and every host funnels through
+them:
 
-| Direction | Choke point |
-|---|---|
-| inbound (product → core) | `ProductRuntime::receive_frame()` — taps before dispatch — `host_core.rs` |
-| outbound (core → product) | `SinkTransport::send()` — delivers via `FrameSink::emit_frame`, then taps — `host_core.rs` |
+| Direction | Choke point | Location |
+|---|---|---|
+| inbound (product → core) | `ProductRuntime::receive_frame()` — taps **before** dispatch | `host_core.rs` |
+| outbound (core → product) | `SinkTransport::send()` — delivers via `FrameSink::emit_frame`, then taps | `host_core.rs` |
 
-One tap implementation covers both platforms, and **nothing in `@parity/truapi` changes**
-— the product is genuinely untouched. That the product package does not change at all is the
-test for the tap being in the right place: a seam in the product transport would fail it.
+One tap covers every platform, and **nothing in `@parity/truapi` (the product
+package) changes** — it has no debug seam at all. That the product package is
+genuinely untouched is the test for the tap being in the right place: a seam in
+the product transport would fail it. Decoding and correlation live in the
+debugger, never in the core; the core only ever hands out opaque bytes.
 
-## Topology: the host dials the debugger
-
-The **debugger app is a WS server** on the dev machine; **every host dials outward** to it.
-This is forced, not a preference — only the inside can initiate a connection:
-
-- native: nothing on a dev machine can dial into a host running inside a device;
-- web: nothing outside the browser can dial into a Worker.
-
-```
- WEB                                      NATIVE / DESKTOP
- ┌─ browser ──────────────────┐           ┌─ device ───────────────────┐
- │  product (iframe)          │           │  product (webview)         │
- │      │ MessagePort         │           │      │ ws loopback         │
- │      ▼                     │           │      ▼                     │
- │  host worker ── tap        │           │  ws_bridge ── tap          │
- │      │        rust wasm    │           │      │       rust core     │
- └──────┼─────────────────────┘           └──────┼─────────────────────┘
-        │ ws, dialed outward                     │ ws, dialed outward
-        └──────────────┬─────────────────────────┘
-                       ▼
-           ┌──────────────────────┐
-           │    debugger app      │   ws server on the dev machine
-           └──────────────────────┘
-```
-
-Because the host dials the debugger directly, the envelope needs no routing metadata — it is just:
-
-```
- host → debugger    { channelId, dir: "out" | "in", frame: bytes }
-```
-
-`frame` is the base64 of the untouched SCALE `ProtocolMessage` bytes (JSON can't carry binary), so
-the envelope is a single text WS message.
-
-The debugger groups frames into per-operation traces keyed on **`(channelId, requestId)`** —
-not `requestId` alone, since each host mints its own `requestId` sequence and two hosts can
-reuse the same id. `channelId` keeps their operations apart and drives the app's per-host view.
-
-### One call, end to end
-
-```
- product                host edge               rust core           debugger app
-(iframe / webview)        (tap)                                       (remote)
-    │  getAccount()         │                       │                     │
-    ├─ frame{ p:1, id=22 } ─▶                       │                     │
-    │                       ├┈┈ { dir:out, frame } ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈▶│  log ▲ out p:1
-    │                       ├ delivered immediately ▶  ctx.requestId="p:1" │
-    │                       ◀─ frame{ p:1, id=23 } ─┤                     │
-    ◀ delivered immediately ┤                       │                     │
-    │  Ok(response)         ├┈┈ { dir:in, frame } ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈▶│  log ▼ in  p:1
-```
-
-`emit` is fire-and-forget in both legs. **Outbound** the tap delivers to the product
-first, then emits; **inbound** it emits before dispatch, so an undecodable frame is still
-observed. The order differs; the off-the-critical-path guarantee does not (see Invariants).
-
-## Invariants
-
-1. **In the path, not in the critical path.** The tap carries every frame, so it sees them
-   all, yet a slow, absent, or crashed debugger can never stall a session — only the trace is
-   lost. The ordering is **asymmetric by design**: outbound (core → product) the tap forwards
-   to the product first, then emits; inbound (product → core) it emits first, before
-   decode/dispatch, so an undecodable frame is still observed. The guarantee holds either way
-   because of invariant 2, not because of a single fixed ordering.
-2. **Emit, never wait.** `emit` is fire-and-forget: no reply is read from the debugger socket,
-   and it must never block or fail the frame path. That is what keeps the tap off the critical
-   path wherever in each leg it fires.
-
-**The second invariant is also the extension point.** Mocking/mutation later needs no
-topology or envelope change — the tap starts *reading a reply* on the frames it cares about:
-deliver unchanged is today's behaviour, deliver modified is mutation, respond is a mock.
-This is why the one-way version ships first.
-
-## Interface (`truapi-server`)
-
-The tap is a **sink trait**, not a hardcoded socket — both to keep the WS transport out of
-the core, and because wire frames aren't the only thing worth observing (host-internal
-events like SSO have no frame to hang off). The enum leaves room for them.
+The tap is **fire-and-forget**. `DebugSink::emit` must not block the frame path
+and must not fail the operation that produced the event, so a slow, absent, or
+crashed debugger only loses a trace, never a session. The two in-path call sites
+wrap `emit` in `catch_unwind` (`emit_debug`), so even a panicking out-of-repo sink
+is caught, logged, and swallowed rather than unwinding into a live dispatch.
 
 ```rust
 /// Dev-only sink for host debug events. Unset ⇒ the tap is inert.
@@ -114,147 +60,273 @@ pub trait DebugSink: Send + Sync {
 }
 
 pub struct ChannelId(pub String);
-
 pub enum FrameDirection { In, Out }
 
 #[non_exhaustive] // room for non-frame events (e.g. SSO); adding one is not breaking
 pub enum DebugEvent {
-    /// A SCALE wire frame crossing a product channel.
+    /// A SCALE wire frame crossing a product channel. `bytes` are the untouched
+    /// `ProtocolMessage`; the debugger decodes them, the core never does.
     Frame { channel_id: ChannelId, dir: FrameDirection, bytes: Vec<u8> },
 }
 ```
 
-- Installed per product channel via `ProductRuntime::set_debug_sink(channel_id, sink)`;
-  `None` by default, so production pays nothing.
-- The concrete sink (the outward WS dial) is provided by the **host adapter**, not the core:
-  the web build's `WasmDebugSink` bridges `emit` to a JS `debugEmit` callback (the host worker
-  owns the actual `WebSocket` and its dev-only URL gating); the native build's `WsDebugSink`
-  implements the trait directly over a loopback `WebSocket`.
-- `bytes` are the untouched `ProtocolMessage`; **the debugger app decodes, the core never does.**
+A sink is installed per product channel via
+`ProductRuntime::set_debug_sink(channel_id, sink)`; unset by default, so a host
+that never installs one pays nothing. The concrete sink is provided by the host
+adapter, not the core:
 
-## Privacy and security
+- the **web** host bridges `emit` to a JS `debugEmit(channelId, dir, frame)`
+  callback — the host worker owns the actual socket and its dev-only URL gate;
+- the **native** host's `WsDebugSink` (`native_debug.rs`) implements the trait
+  directly over a loopback WebSocket. It only serializes and pushes onto a
+  bounded queue (count- and byte-capped); a background task owns the socket,
+  reconnects with capped backoff, and counts dropped frames when the queue is
+  full. It compiles only under the `ws-bridge` feature, out of the wasm graph. It
+  is a ready seam for later native hosts, not one of the two surfaces below.
 
-- Frames stream as **opaque bytes**; the core never decodes them, so nothing at the tap
-  reads application content or key material. Decoding happens only in the debugger app.
-- **Dev-only**, off in production (the sink is unset). The debugger app runs on a trusted
-  dev machine.
-- **Residual exposure — metadata, not payload.** Even fully payload-blind, the stream still
-  carries, per frame, the direction, the method id and message shape, the byte size, and the
-  timing. That is traffic-analysis metadata: whoever holds the debugger socket can see *which*
-  operations ran, *when*, and *how big*, with no payload at all. The loopback-only sink and the
-  unset-in-production default are what bound who can hold that socket — this is a confinement
-  property, not an anonymity guarantee.
+## The envelope and wire identity
 
-## Level 2: value decode (in the debugger, gated, off by default)
+Each tapped frame becomes one envelope:
 
-Level 1 above is payload-blind end to end: the tap streams bytes, the debugger groups by
-`requestId` and shows byte lengths. **Level 2** is a strictly-scoped extension *inside the
-debugger only* — decode one frame's payload to a plain JS value in the drill-down detail
-path. It changes nothing about the tap, the envelope, or the host: the host still emits
-**bytes only**, unchanged. The contract:
+```
+ { channelId, dir, frame }
+```
 
-- **Off by default, behind a real gate.** Value decode is an explicit dev-only opt-in, read
-  once at the debugger's server entry point from `TRUAPI_DEBUGGER_DECODE_VALUES`. With it off,
-  the debugger retains no payload bytes and every frame reports its byte length and nothing
-  else. The gate is structural, not cosmetic: `@parity/truapi-debugger` is a private, dev-only
-  package that is not part of any product or host production bundle, so the decode path cannot
-  be reached in a shipped build — it is a build/env boundary, not a code comment and not a
-  client-side URL flag.
-- **Reuse, don't reinvent.** Decoding is `WIRE_DECODE_TABLE[frameId]?.(bytes)` from
-  `@parity/truapi/wire-decode` — the same generated, dev-only codecs the client uses. The
-  debugger writes no codecs of its own.
-- **Sensitive denylist — the security core.** The generated table can decode *every* frame,
-  including signing and login; it deliberately does **not** exclude them. The safety of the
-  feature is a denylist the debugger consults *before* the table. Sensitivity is a property of
-  the payload **type**, declared at the source: a method carrying key material is marked
-  `#[wire(sensitive)]` on the Rust trait, and codegen emits its frame ids into a generated
-  `SENSITIVE_FRAME_IDS` set (in `@parity/truapi/wire-table`) that the debugger consumes
-  directly. A newly annotated method is denylisted the moment the client is regenerated — no
-  name-matching, and a codegen rename cannot silently drop a family. The methods it covers:
+`frame` is the untouched SCALE `ProtocolMessage` bytes; `dir` is **product-vantage**
+(`out` = the frame left the product, `in` = it arrived at it). The Rust tap names
+directions host-vantage internally and flips them to this convention on the way
+out (`FrameDirection::wire_str`), so both ends always agree on which way a frame
+went. Where the envelope crosses a text transport (the WS surface below),
+`frame` is base64 so the whole thing fits one JSON line.
 
-  | Family (marked `#[wire(sensitive)]`) | Why redacted |
-  |---|---|
-  | `signing/*` (create-transaction, sign-raw, sign-payload, each +legacy) | payloads to be signed and the resulting signatures |
-  | `account` / `statement-store` create-proof (incl. authorized) | cryptographic proofs bound to a key/identity |
-  | `account/sign-vrf` | a VRF signature — key material (RFC 0023) |
-  | `entropy/derive` | key-derivation material |
-  | `account` request-login + `get-user-id` | login flow and the user id it resolves |
-  | `local-storage/read` + `write` | product-controlled storage — can hold tokens, session state, PII (`clear` carries only a key name, so it is not sensitive) |
-  | `payment/top-up` | can carry a raw sr25519 secret key (`PaymentTopUpSource`) |
-  | coin-payment `create-cheque` / `deposit` / `listen-for-payment` | carry a `CoinPaymentCheque` with redeemable `encryptedSecrets` |
-  | statement-store `subscribe` / `submit` | carry a `SignedStatement` with a `decryptionKey` |
+A producer also stamps a **wire-contract fingerprint** alongside the envelope: an
+envelope version (`v`), the coarse codec version (`codec` = `TRUAPI_CODEC_VERSION`),
+and — the load-bearing one — `TRUAPI_WIRE_SCHEMA_HASH` (`schema`), a hash of every
+frame id and its method leg (e.g. `"c18def0e997626eb"`). Frame ids are `u8`
+discriminants that get reassigned as the API evolves, so a frame from a host built
+against a different contract would silently decode to the *wrong* method and the
+wrong value. The hash catches that: the debugger allows the decode path only for a
+channel whose `schema` affirmatively matches its own. An absent or mismatched
+schema still groups (grouping is payload-blind) but is never trusted to decode —
+which also closes the omit-the-identity-to-bypass hole.
 
-  A sensitive frame is **never decoded**, even with the toggle on — it reports its byte
-  length under a `redacted · sensitive method` label (the full form carries the withheld
-  byte count; see *Redaction is visible* below). The default action for anything under
-  security review is **exclude** (bytes only), not decode. Chain reads/broadcasts, chat,
-  notifications, permissions, theme, resource-allocation, and preimage carry no key material
-  and stay decodable.
+## The debugger engine
 
-  A **fail-closed content check** backs the generated denylist: any decoded value carrying a
-  secret-named field (`sr25519SecretKey`, `encryptedSecrets`, `decryptionKey`, a mnemonic, a
-  derivation secret, …) is redacted even if its method was somehow not marked — so a
-  secret-bearing method added without the annotation is still caught. The `#[wire(sensitive)]`
-  set is the authoritative guarantee; the content check is defence in depth for the payload
-  fields whose names the type never advertises.
+The engine is one shared core (`@parity/truapi-debugger`) that both surfaces
+drive, so the surface a developer picks never changes what is shown.
 
-- **Never over the wire, never in `/traces`.** Decode is confined to the per-frame drill-down
-  (`GET /frame` and its server-rendered `GET /frame-html`). `/traces` stays byte- and value-free
-  in every configuration; a decoded
-  value exists only transiently in the drill-down response and is never persisted or relayed.
-  Even a sensitive frame's payload transits only as opaque bytes, lives transiently in
-  debugger memory, and is never decoded, displayed, or serialized.
+**Ingest.** Each envelope is decoded once (`decodeWireMessage`) to recover the
+correlation `requestId` and the wire discriminant (`frameId`) — everything
+grouping needs. An undecodable frame is surfaced as a `malformed` sentinel, not
+dropped, so a trace records the failure instead of going dark. Each frame's
+lifecycle `role` (request / response / start / receive / …) is resolved **at
+ingest** from the frame id's wire-table kind, so every downstream consumer sees
+the real role rather than `unknown`. Retained id strings are length-clamped
+(default 256 chars): anything that can reach the tap could otherwise send
+200k-char ids, one copy per frame, while real ids are short (`myapp.dot`, `p:1`).
 
-- **Dev-only sensitive-reveal escape hatch.** A sensitive frame stays redacted even with decode
-  on. A second, independent gate — `TRUAPI_DEBUGGER_REVEAL_SENSITIVE` — can *arm* a reveal, but
-  it is meaningful only when decode is also on (the server folds it into the decode gate, so a
-  stray reveal env var alone can never arm it), and arming changes no default: the session still
-  redacts every sensitive frame until the operator explicitly reveals one. A reveal is a
-  per-frame action gated by an explicit confirmation, offered through a distinct danger-styled
-  control (never the ordinary decode button), and the value it returns is flagged `sensitive` so
-  the UI renders it as the danger it is. Like decode, this gate is read only at the dev server's
-  entry point, so a reveal is structurally impossible in any shipped build.
-- **Redaction is visible, never silent.** An operation carrying a redacted-by-default method is
-  marked with a 🔒 on its op-row (and carries a `data-sensitive` attribute the "🔒 only" top-bar
-  filter keys on); each sensitive frame shows a 🔒 lock in the frame list; and a redacted detail
-  renders a clear `redacted · sensitive method · <N>B withheld` label with the byte length, never the value. These
-  markers are payload-blind — they reveal nothing the method name doesn't.
+**Grouping by `(channelId, requestId)`.** Frames are grouped into per-operation
+traces keyed on the channel *and* the request id — not `requestId` alone, since
+each host mints its own `p:1`, `p:2`, … and two hosts reuse the same values. The
+channel keeps their operations apart. This `requestId` is also the id product-sdk
+telemetry spans correlate on, so a frame trace and a product span line up under
+one id with no extra plumbing.
 
-## Frontends
+**Generation segmentation.** A product may recycle a `requestId` for a later,
+unrelated call. When a fresh opener (`request` / `start`) arrives for an id whose
+current operation already opened, the engine rotates to a new *generation* rather
+than merging two unrelated calls under one id.
 
-One trace/decode/denylist engine drives two frontends, so a reviewer's choice of tool never
-changes what is shown or what is decodable:
+**Retry-storm detection.** A burst of like operations — one host hammering
+`signing.createTransaction` five times in 400ms — is a cross-operation signal no
+single-trace view can see. The engine groups traces by `(channelId, opener
+frameId)` and slides a window (default: 3 ops within 1000ms) over their start
+times, tagging every trace in a burst with a `retry-storm` badge.
 
-- A **web inspector** — a full-screen, Network-tab-style app the host dials into: an aggregate
-  summary strip, a filterable/sortable operation list, and a drill-down with the blur-to-reveal
-  payload column, Decode-all/Encode-all, and the gated reveal.
-- A **terminal frontend** — for headless / SSH / CI work where a browser isn't reachable:
-  one-shot `ls` / `stats` / `show` / `tail` for scripting, plus an interactive query REPL you
-  keep querying (filter, sort, `use <channel>`, `show`, `reveal`).
+**Bounded retention, with visible eviction.** Memory is bounded three ways, and
+each bound surfaces rather than lying about the data:
 
-The terminal frontend is a thin client over the running debugger's HTTP endpoints
-(`/traces`, `/stats`, and the gated `/frame`) that rebuilds the **same** shared view model — it
-forks neither the engine nor the sensitive denylist. Both frontends therefore agree on
-operations, badges, sensitivity, redaction, and what may be revealed; the reveal gate is enforced
-server-side, so neither frontend can surface a value the server would withhold.
+- an LRU cap on retained traces (default 256); whole-op evictions are counted
+  (`evictedTraces()`) so a session that overflowed does not silently under-report
+  its op count;
+- a per-trace frame cap (default 1024), ring-buffered from index 1 so a
+  long-lived subscription never drops its opener (pairing and retry-storm signals
+  key on `frames[0]`);
+- a per-trace byte cap (default 1 MiB, a true bound including the opener), which
+  only bites when bytes are retained for decode.
 
-## Hosts and scope
+A trace that lost frames or bytes to either cap carries a `truncated` badge, and a
+producer that dropped frames (link backlog full) reports the count, surfaced in
+stats — so "kept N of M" is never mistaken for "only N happened".
 
-The tap and envelope apply uniformly to any `truapi-server` host — web, desktop, or mobile —
-each of which dials the debugger with its own platform sink. Two outward-dial sinks exist today:
-the web `WasmDebugSink` (bridging `emit` to a JS `debugEmit` the host worker owns) and the
-native `WsDebugSink` — a loopback-only, fire-and-forget, WASM-safe WebSocket client, compiled
-only under the `ws-bridge` feature (the same feature a native host's transport uses), so it is
-out of the wasm graph and out of default builds. The native sink ships here as a tested,
-ready-to-install seam: the CLI host (truapi#264) is on `main` and is its intended first
-consumer, but does not yet install it — wiring `WsDebugSink` into a host's runtime and
-surfacing its traces is that host's own integration surface, done next.
+## The two surfaces
+
+One engine, two ways to look at it. Both decode every frame; neither can surface a
+value the engine would not, because both run the same code.
+
+### (A) Standalone inspector — loopback `:9231`
+
+A runnable Bun server (WS + HTTP) that a host dials **outward** to. Only the inside
+can initiate the connection (nothing on a dev machine dials into a device or a
+Worker), so the host is always the client. Over the socket the host sends one
+`{channelId, dir, frame}` text message per frame; the server groups them and
+serves a full-screen, Network-tab-style **web inspector** (aggregate summary
+strip, filterable/sortable operation list, per-frame drill-down with a decoded
+payload column) plus a **CLI / REPL** for headless or SSH work — one-shot
+`ls` / `stats` / `show` / `tail` for scripting, and an interactive query prompt
+(`filter`, `sort`, `use <channel>`, `show`). The CLI is a thin client over the same
+HTTP endpoints (`/traces`, `/stats`, `/frame`) rebuilding the same view model, so
+both frontends agree on operations, badges, and payloads.
+
+What the web inspector looks like — an aggregate strip, a filterable operation
+list on the left, and a detail pane on the right where every frame of the opened
+op is decoded inline (no decode toggle, no reveal step):
+
+```
+ ┌─────────────────────────────────────────────────────────────────────────────┐
+ │ TrUAPI Wire Inspector   [ filter… ]  [ arrival ▾ ]    ( all ) ( dotli.app )   │
+ ├─────────────────────────────────────────────────────────────────────────────┤
+ │ 11 OPS  18 FRAMES  72 B  1 LIVE SUB  54ms AVG    5 ORPHANED  6 RETRY STORMS    │
+ │                             account.getAccount 6   signing.signRaw 2   …       │
+ ├───────────────────────────────────┬───────────────────────────────────────────┤
+ │ ▶ system.handshake      2f · 30ms  │ p:2  signing.signRaw   2 frames · 164ms    │
+ │ ▶ account.getAccount    2f · 71ms  │                                            │
+ │     [RETRY STORM]                  │ ▶ REQUEST  signing.signRaw   22B  +0        │
+ │ ▶ signing.signRaw   2f · 164ms  ◀──┤    { "tag": "V1", "value": { "account": {  │
+ │ ↻ account.connectionStatus   live  │        "dotNsIdentifier": "alice.dot",     │
+ │ ▶ payment.topUp         2f · 92ms  │        "derivationIndex": { … } }, … } }    │
+ │ ▶ signing.signRaw   [ORPHANED]     │ ◀ RESPONSE signing.signRaw   4B  ⟳ 164ms   │
+ └───────────────────────────────────┴───────────────────────────────────────────┘
+   operation list: filter / sort,        detail pane: each frame decoded to its
+   health badges, live subscription       SCALE value inline, refused only on
+                                          a wire-schema (codec) mismatch
+```
+
+And the topology it runs in — the host always dials outward to the loopback server:
+
+```
+ dev machine (loopback only)
+ ┌──────────────────────────────────────────────┐
+ │  web host (browser)          debugger :9231    │
+ │  ┌────────────────────┐      ┌──────────────┐  │
+ │  │ product (iframe)   │      │ Bun WS + HTTP │  │
+ │  │      │ frames       │      │   ├ engine    │  │
+ │  │      ▼              │      │   ├ web UI    │  │
+ │  │ host worker ─ tap ──┼──ws──▶   └ CLI/REPL  │  │
+ │  │        rust wasm    │  ▲   └──────────────┘  │
+ │  └────────────────────┘  │                      │
+ │        WasmDebugSink → debugEmit → host worker   │
+ │        owns the socket + dev-only URL gate       │
+ └──────────────────────────────────────────────┘
+      host dials outward; loopback bind, Origin +
+      Host-header gated (see Confinement)
+```
+
+### (B) In-host embed — dotli ribbon
+
+The same inspector, mounted inside the host, with no server and no dial-out. dotli
+runs the host in one realm (the host iframe/worker) and the inspector in the top
+frame. The tap in the host realm **tees** each `{channelId, dir, frame}` to the top
+frame via `window.top` `postMessage`; the top frame feeds them into
+`createInAppDebugger().handleFrame(...)`. A right-edge **ribbon** mounts the full
+inspector on demand. The realm-tee is payload-blind **transport** — the raw
+`ProtocolMessage` bytes cross the postMessage boundary untouched — and the panel
+decodes at the point of display (decode-in-panel). Because the frames never leave
+the app, each browser tab is its own tenant; there is nothing to host or scope.
+
+```
+ dotli (one browser app)
+ ┌──────────────────────────────────────────────┐
+ │  TOP FRAME (dotli-owned)                        │
+ │   createInAppDebugger  ── engine + inspector    │
+ │        ▲  handleFrame(channelId, dir, frame)    │
+ │        │  window.top.postMessage (raw bytes)    │
+ │   ─────┼──────────────  realm boundary  ────    │
+ │  HOST REALM (iframe / worker)                    │
+ │   host core ── tap ──▶ tee to verified top       │
+ │        rust wasm                                 │
+ └──────────────────────────────────────────────┘
+   right-edge ribbon mounts the inspector on demand
+   tee target pinned to a verified dotli-owned top
+```
+
+## Decode posture
+
+Stated plainly: this tool **decodes every frame by default**. There is no sensitive
+redaction, no denylist, and no reveal toggle. A developer inspecting their own
+session's traffic sees the real values, in both surfaces. Decoding reuses
+`WIRE_DECODE_TABLE[frameId]` from `@parity/truapi/wire-decode` — the same generated,
+dev-only codecs the client uses; the debugger writes none of its own — and is
+confined to the per-frame drill-down. The list view (`/traces`) is byte- and
+value-free in every configuration: it never serializes raw bytes or decoded
+values.
+
+The safety here is not "decode carefully". It is that **the tap and the decoder do
+not exist in a production build**:
+
+- The web host reads its debugger URL behind `import.meta.env.DEV`. Vite replaces
+  that with a boolean literal, so a production bundle returns `null`
+  unconditionally and the tap stays inert — a stray `localStorage` key cannot turn
+  it on in prod. Absent a URL, the host never installs `debugEmit`, so the Rust
+  core never installs its sink.
+- The dotli ribbon is gated on a **build-time** `DEBUG` flag, not the runtime
+  `?debug` toggle — a production dotli build has no ribbon to mount.
+- `@parity/truapi-debugger` is a private, dev-only package that is not part of any
+  product or host production bundle.
+
+**Why "redact the sensitive ones" was dropped.** An earlier draft kept a denylist:
+decode everything *except* a hand-marked set of key-bearing methods, backed by a
+content check and a gated reveal. That was a false guarantee. A denylist is only as
+good as its marking — a secret-bearing method added without the annotation leaks,
+and a content check is a heuristic. Worse, the whole edifice implies the tool is
+safe-ish to point at real traffic, which invites exactly the use it must never
+have. Replacing it with "not in prod, ever" is both simpler and more honest: there
+is no production surface to redact, so the guarantee is structural rather than a
+list someone has to keep correct.
+
+## Confinement and hardening
+
+Even as a dev tool, each surface is confined to the machine it runs on:
+
+- **Loopback bind.** The standalone server binds `127.0.0.1`, so off-box peers
+  cannot reach it.
+- **CSWSH Origin gate.** The WebSocket upgrade is refused unless the request's
+  `Origin` is a loopback host. A non-browser client (CLI, curl) sends no Origin and
+  is allowed; a cross-origin browser page trying to dial the debugger to inject
+  frames or drive the decoder is rejected — something binding to loopback alone
+  does not prevent.
+- **Host-header allowlist (DNS-rebinding guard).** A page served from `evil.com`
+  whose DNS has been rebound to `127.0.0.1` can issue same-origin `fetch`es to the
+  debugger; those still carry `Host: evil.com`. Requests are 403'd unless the
+  `Host` header is an exact loopback name (never a fuzzy match that would read
+  `127.0.0.1.evil.com` as loopback).
+- **Bounded payloads and retention.** The WS transport caps `maxPayloadLength`
+  (1 MiB), and the engine's byte-bounded retention keeps a hostile or runaway
+  stream from growing memory without bound.
+- **Panic-safe tap.** The `catch_unwind` at the two tap sites keeps a misbehaving
+  sink from unwinding into a live dispatch.
+- **Loopback-only producer.** The native `WsDebugSink` accepts only a `ws://`
+  loopback URL, resolves it, and dials the resolved loopback address directly —
+  closing the "validate one string, dial another" gap. No `wss`, no LAN.
+- **Pinned realm-tee.** The dotli embed's `postMessage` tee is pinned to a verified
+  dotli-owned top frame, so the host realm neither forwards frames to nor accepts a
+  mount from an untrusted window.
 
 ## Non-goals
 
-- No tap in `@parity/truapi` / the TS transport (the whole point of putting it in the core).
-- No mocking/mutation in v1 — but the envelope and topology already accommodate it.
+- No tap in `@parity/truapi` or the TS transport — the whole point of putting it in
+  the core.
+- No sensitive-frame redaction, denylist, or reveal path — a dev-only tool decodes
+  everything, and production has no tap to redact.
+- No mocking or mutation — the tap is one-way today. The `DebugSink` contract
+  (`emit`, never wait) is also the extension point: a future sink that reads a
+  reply could deliver-modified (mutation) or respond (mock) with no envelope or
+  topology change.
 
 ## References
-- Implementation: truapi#295 (`rust/crates/truapi-server/src/host_core.rs` — `DebugSink`/`DebugEvent`/tap).
-- Tracking: sdk-team#26 — validation status, per-host sequencing, and remaining work live there, not in this doc.
+
+- Implementation: truapi#295 — `rust/crates/truapi-server/src/{host_core.rs,
+  native_debug.rs}` (tap + sinks), `rust/crates/truapi-codegen` (schema hash),
+  `js/packages/truapi-debugger/src` (engine + surfaces).
+- Tracking: sdk-team#26 — validation status, per-host sequencing, and remaining
+  work live there, not in this doc.
