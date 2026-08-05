@@ -55,10 +55,12 @@ describe("renderTraceDetail", () => {
     expect(html).not.toContain("decode payload");
   });
 
-  test("offers a decode control per decodable frame when opted in", () => {
+  test("shows byte length for a decodable frame with no resolved value", () => {
+    // Decode on but no value supplied for the frame: it falls back to its size,
+    // never a click-to-decode control (a dev-only tool decodes up front).
     const html = renderTraceDetail(view, { offerDecode: true });
-    expect(html).toContain("td-frame-decode-btn");
-    expect(html).toContain("decode payload");
+    expect(html).not.toContain("td-frame-decode-btn");
+    expect(html).toContain("payload not shown");
   });
 
   test("renders a resolved decoded value in place of the control", () => {
@@ -69,13 +71,13 @@ describe("renderTraceDetail", () => {
     expect(html).toContain("&quot;free&quot;: 42");
   });
 
-  test("a sensitive frame renders a redacted state, never the value", () => {
+  test("a bytes-only detail shows byte length, never a value", () => {
     const decoded = new Map<number, FrameValueDetail>([
-      [0, { kind: "redacted", reason: "sensitive method", byteLength: 96 }],
+      [0, { kind: "bytes", byteLength: 96 }],
     ]);
     const html = renderTraceDetail(view, { offerDecode: true, decoded });
-    expect(html).toContain("redacted");
-    expect(html).toContain("96B withheld");
+    expect(html).toContain("96B");
+    expect(html).toContain("payload not shown");
     expect(html).not.toContain("free");
   });
 

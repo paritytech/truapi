@@ -177,6 +177,33 @@ describe("createWireDebugger grouping", () => {
     expect(trace.truncated).toBe(true);
   });
 
+  test("a single frame whose payload alone exceeds the byte cap sheds its bytes", () => {
+    const withBytes = (
+      requestId: string,
+      frameId: number,
+      timestamp: number,
+      bytes: number,
+      role: FrameRole = "unknown",
+    ): ObservedFrame => ({
+      ...frame("app.dot", requestId, frameId, timestamp, role),
+      byteLength: bytes,
+      bytes: new Uint8Array(bytes),
+    });
+    const wd = createWireDebugger({ sink: () => {}, maxBytesPerTrace: 100 });
+    // The opener alone is 500B — larger than the whole 100B budget. It must stay
+    // resident as a frame (pairing/retry-storm key on frames[0]) but shed its
+    // bytes so it can't pin more than the cap.
+    wd.observe(withBytes("s:1", 18, 1, 500, "start"));
+    const [trace] = wd.traces();
+    expect(trace.frames).toHaveLength(1);
+    expect(trace.frames[0].frameId).toBe(18); // frame kept
+    expect(trace.frames[0].byteLength).toBe(500); // metadata kept
+    expect(trace.frames[0].bytes).toBeUndefined(); // oversized bytes shed
+    const retained = trace.frames.reduce((n, f) => n + (f.bytes?.length ?? 0), 0);
+    expect(retained).toBeLessThanOrEqual(100);
+    expect(trace.truncated).toBe(true);
+  });
+
   test("receives never rotate; a re-subscribe (second start) opens a new op", () => {
     const wd = createWireDebugger({ sink: () => {} });
     wd.observe(frame("app.dot", "s:1", 18, 1, "start"));

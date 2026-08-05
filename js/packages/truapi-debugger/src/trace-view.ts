@@ -86,13 +86,6 @@ export interface TraceFrameView {
    * only gates whether the affordance is *offered*.
    */
   decodable: boolean;
-  /**
-   * Whether this frame's method is on the sensitive denylist - its payload is
-   * never decoded (only ever revealed via the explicit dev escape hatch). Drives
-   * the privacy marker shown *before* any decode. Payload-blind: it reflects the
-   * method id, nothing about the bytes.
-   */
-  sensitive?: boolean;
 }
 
 /** A whole op, normalized for the drill-down view. */
@@ -121,8 +114,6 @@ export interface TraceView {
   frames: TraceFrameView[];
   /** Op-level badges. */
   badges: TraceBadge[];
-  /** Whether any frame in the op is sensitive (drives the op-row privacy marker). */
-  sensitive?: boolean;
 }
 
 /** Roles that open an op (expect a matching close later in the trace). */
@@ -155,8 +146,6 @@ export interface TraceFrameInput {
   timestamp: number;
   /** Whether a level-2 decode can be attempted (raw bytes were retained). */
   decodable: boolean;
-  /** Whether this frame's method is on the sensitive denylist. */
-  sensitive?: boolean;
 }
 
 /** The raw shape a mount adapter hands to {@link buildTraceView}. */
@@ -195,7 +184,6 @@ export function buildTraceView(input: TraceViewInput): TraceView {
     latencyFromStartMs: frame.timestamp - input.startedAt,
     badges: frame.role === "malformed" ? ["malformed"] : [],
     decodable: frame.decodable,
-    sensitive: frame.sensitive ?? false,
   }));
 
   annotatePairing(frames);
@@ -209,7 +197,6 @@ export function buildTraceView(input: TraceViewInput): TraceView {
     durationMs: input.lastAt - input.startedAt,
     frames,
     badges: deriveOpBadges(frames, input.extraBadges ?? []),
-    sensitive: frames.some((f) => f.sensitive),
   };
 }
 
@@ -234,7 +221,6 @@ export function wireTraceToView(
   trace: WireTrace,
   methodNames?: ReadonlyMap<number, WireMethodInfo>,
   extraBadges: readonly TraceBadge[] = [],
-  sensitiveIds?: ReadonlySet<number>,
 ): TraceView {
   return buildTraceView({
     requestId: trace.requestId,
@@ -259,7 +245,6 @@ export function wireTraceToView(
         byteLength: frame.byteLength,
         timestamp: frame.timestamp,
         decodable: frame.bytes !== undefined && frame.bytes.length > 0,
-        sensitive: sensitiveIds?.has(frame.frameId) ?? false,
       };
     }),
   });

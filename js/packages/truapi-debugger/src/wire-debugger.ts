@@ -152,12 +152,15 @@ export interface WireDebuggerOptions {
    */
   maxFramesPerTrace?: number;
   /**
-   * Cap on total retained payload bytes within a single trace. Only bites when
-   * the ingest retains bytes (level-2 decode); with decode off, frames carry no
-   * bytes and this never triggers. Without it, a burst of large payloads sharing
-   * one long-lived `requestId` grows memory unbounded even under
-   * {@link maxFramesPerTrace} (count-capped, not byte-capped). Oldest non-opener
-   * frames are evicted until the trace is under budget. Default 1 MiB.
+   * Cap on total retained payload bytes within a single trace, opener included -
+   * a TRUE bound, so no single frame pins more than the cap. Only bites when the
+   * ingest retains bytes (level-2 decode); with decode off, frames carry no bytes
+   * and this never triggers. Without it, a burst of large payloads sharing one
+   * long-lived `requestId` grows memory unbounded even under
+   * {@link maxFramesPerTrace} (count-capped, not byte-capped). A single frame
+   * whose own payload exceeds the cap has its bytes shed (metadata + byteLength
+   * kept); otherwise oldest non-opener frames are evicted until under budget.
+   * Default 1 MiB.
    */
   maxBytesPerTrace?: number;
   /**
@@ -284,10 +287,23 @@ export function createWireDebugger(options: WireDebuggerOptions = {}): WireDebug
       trace.frames.splice(1, trace.frames.length - maxFramesPerTrace);
       trace.truncated = true;
     }
-    // Byte cap: only bites when bytes are retained (level-2 decode). Evict oldest
-    // non-opener frames until the retained payload is under budget, so one id's
-    // large payloads can't grow memory without bound even under the count cap.
+    // Byte cap: only bites when bytes are retained (level-2 decode). A TRUE bound
+    // on retained payload, opener included, so no single frame pins more than the
+    // cap.
     if (frame.bytes !== undefined && maxBytesPerTrace !== Infinity) {
+      // A single frame whose own payload exceeds the whole budget can never fit;
+      // shed its bytes (keeping its metadata + byteLength) rather than evict every
+      // other frame around it. The opener is not exempt: pairing/retry-storm key
+      // on frames[0].frameId, so the frame stays — only its bytes are dropped.
+      for (const f of trace.frames) {
+        if ((f.bytes?.length ?? 0) > maxBytesPerTrace) {
+          f.bytes = undefined;
+          trace.truncated = true;
+        }
+      }
+      // Opener bytes count toward the budget too. Evict oldest non-opener frames
+      // (from index 1) until under budget, so one id's large payloads can't grow
+      // memory without bound even under the count cap.
       let retained = 0;
       for (const f of trace.frames) retained += f.bytes?.length ?? 0;
       while (retained > maxBytesPerTrace && trace.frames.length > 1) {

@@ -4,8 +4,8 @@
  * In-app mount: render the inspector from a {@link DebugSession} that lives in
  * the SAME app as the host — no server, no dial-out, no relay. A host running in
  * the page (dotli) feeds each tapped frame via {@link InAppDebugger.handleFrame};
- * {@link InAppDebugger.mount} renders them with the same engine, renderer, and
- * type-driven denylist the standalone app uses, payload-blind by default.
+ * {@link InAppDebugger.mount} renders them with the same engine and renderer the
+ * standalone app uses, decoding every frame by default (dev-only tool).
  *
  * This is the "host and debugger in the same bits" transport: the frames never
  * leave the app, so each browser tab is its own tenant — nothing to host or
@@ -14,7 +14,7 @@
  * @module
  */
 
-import { createDebugSession } from "./session.js";
+import { createDebugSession, decodeTraceFrames } from "./session.js";
 import type { DebugSession, DebugSessionOptions } from "./session.js";
 import { wireTraceToView } from "./trace-view.js";
 import { renderTraceDetail } from "./trace-render.js";
@@ -23,7 +23,7 @@ import { TRACE_DETAIL_CSS } from "./trace-styles.js";
 
 /** A same-app debugger: feed it frames, mount its panel. */
 export interface InAppDebugger {
-  /** The underlying session — grouped traces, per-frame decode gate. */
+  /** The underlying session — grouped traces, inline value decode. */
   readonly session: DebugSession;
   /**
    * Feed one tapped frame: the raw SCALE `ProtocolMessage` bytes, opaque. `dir`
@@ -32,16 +32,15 @@ export interface InAppDebugger {
   handleFrame(channelId: string, dir: "in" | "out", frame: Uint8Array): void;
   /**
    * Render a live, self-contained panel into `el` and keep it refreshed; returns
-   * a disposer that tears the panel down. Payload-blind unless the session was
-   * created with `decodeValues`.
+   * a disposer that tears the panel down. Decodes every frame unless the session
+   * was created with `decodeValues: false`.
    */
   mount(el: HTMLElement, options?: { refreshMs?: number }): () => void;
 }
 
 /**
- * Create an in-app debugger. Decode stays OFF unless `decodeValues` is set (the
- * reveal gate folds under it exactly as {@link createDebugSession} does), so a
- * bundled mount is payload-blind by default.
+ * Create an in-app debugger. Decode is ON by default (dev-only tool); pass
+ * `decodeValues: false` to keep a bundled mount payload-blind.
  */
 export function createInAppDebugger(
   options: DebugSessionOptions = {},
@@ -68,21 +67,17 @@ export function createInAppDebugger(
           traces.length === 0
             ? `<div class="td-empty">no frames yet</div>`
             : traces
-                .map(
-                  (trace) =>
-                    `<div class="td-drilldown">${renderTraceDetail(
-                      wireTraceToView(
-                        trace,
-                        session.methodNames,
-                        storms.get(trace) ?? [],
-                        session.sensitiveIds,
-                      ),
-                      {
-                        offerDecode: session.decodeValues,
-                        offerReveal: session.revealSensitive,
-                      },
-                    )}</div>`,
-                )
+                .map((trace) => {
+                  const view = wireTraceToView(
+                    trace,
+                    session.methodNames,
+                    storms.get(trace) ?? [],
+                  );
+                  return `<div class="td-drilldown">${renderTraceDetail(view, {
+                    offerDecode: session.decodeValues,
+                    decoded: decodeTraceFrames(session, view),
+                  })}</div>`;
+                })
                 .join("");
       };
       render();

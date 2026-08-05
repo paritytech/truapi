@@ -13,7 +13,6 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "serve": "bun run src/server.ts",
-    "view": "bun run src/cli.ts",
     "test": "bun test"
   },
   "devDependencies": {

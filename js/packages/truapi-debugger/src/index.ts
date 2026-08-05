@@ -8,7 +8,7 @@ export { createDebugIngest } from "./ingest.js";
 export type { DebugFrameEnvelope, DebugIngestOptions } from "./ingest.js";
 export { createDebugSession } from "./session.js";
 export type { DebugSession, DebugSessionOptions } from "./session.js";
-export { createFrameDecoder, SENSITIVE_FRAME_IDS } from "./decode.js";
+export { createFrameDecoder } from "./decode.js";
 export type {
   FrameDecoder,
   FrameDecoderOptions,

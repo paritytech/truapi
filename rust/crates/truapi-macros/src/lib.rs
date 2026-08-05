@@ -115,9 +115,9 @@ fn set_id(args: &mut WireArgs, key: &Ident, value: u8) -> syn::Result<()> {
 /// #[wire(start_id = 42)]
 /// async fn host_account_connection_status_subscribe(...) -> ...;
 ///
-/// // Mark a method whose payloads carry key material or bearer secrets. Its
-/// // frame ids land in the generated `SENSITIVE_FRAME_IDS` set and are never
-/// // decoded by the wire debugger.
+/// // Mark a method whose payloads carry key material or bearer secrets. The
+/// // flag is folded into the wire schema-hash fingerprint, so a change in a
+/// // frame's sensitivity classification is caught as contract drift.
 /// #[wire(request_id = 114, sensitive)]
 /// async fn sign_raw(...) -> ...;
 /// ```

@@ -5,8 +5,7 @@
 //! payload-blind byte-forwarder. Each [`DebugEvent::Frame`] is serialized to the
 //! debugger's wire envelope - `{channelId, dir, frame}`, where `frame` is the
 //! base64 of the untouched SCALE `ProtocolMessage` bytes - and sent as one WS
-//! text message. Decoding and the sensitive-frame denylist live in the debugger
-//! app, never here.
+//! text message. Decoding lives in the debugger app, never here.
 //!
 //! Fire-and-forget by construction, per the [`DebugSink`] contract:
 //! [`WsDebugSink::emit`] never blocks and never fails a dispatch. It only

@@ -107,8 +107,9 @@ pub struct WireAttrs {
     /// Subscription item frame discriminant.
     pub receive_id: Option<u8>,
     /// Whether the method's payloads carry key material or bearer secrets.
-    /// Marked by `#[wire(..., sensitive)]`; propagated into the generated
-    /// `SENSITIVE_FRAME_IDS` set so the wire debugger never decodes these frames.
+    /// Marked by `#[wire(..., sensitive)]`; folded into the wire schema-hash
+    /// fingerprint so a change in a frame's sensitivity classification is caught
+    /// as contract drift.
     pub sensitive: bool,
 }
 

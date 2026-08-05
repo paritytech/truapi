@@ -1,9 +1,13 @@
 import { expect, test } from "bun:test";
 
-import { encodeWireMessage, TRUAPI_WIRE_SCHEMA_HASH } from "@parity/truapi";
+import {
+  encodeWireMessage,
+  TRUAPI_WIRE_SCHEMA_HASH,
+  VersionedHostSignRawRequest,
+} from "@parity/truapi";
 import * as W from "@parity/truapi/wire-table";
 
-import { startDebugServer } from "./server.js";
+import { isLoopbackDebugHost, startDebugServer } from "./server.js";
 
 interface TraceFrameView {
   direction: string;
@@ -19,6 +23,30 @@ interface TraceView {
 /** base64 of a wire message for `frameId` carrying `value` as its payload. */
 function encodeFrame(requestId: string, frameId: number, value: Uint8Array): string {
   const encoded = encodeWireMessage({ requestId, payload: { id: frameId, value } });
+  if (encoded.isErr()) throw encoded.error;
+  return Buffer.from(encoded.value).toString("base64");
+}
+
+/**
+ * base64 of a real, decodable sign-raw request wire message. Carries a
+ * recognizable `dotNsIdentifier` ("alice.dot") in its decoded value so a test
+ * can prove the value surfaced — this debugger decodes it like any other frame.
+ */
+function signFrame(requestId: string): string {
+  const value = VersionedHostSignRawRequest.enc({
+    tag: "V1",
+    value: {
+      account: {
+        dotNsIdentifier: "alice.dot",
+        derivationIndex: { tag: "Left", value: 0 },
+      },
+      payload: { tag: "Bytes", value: { bytes: "0xdeadbeef" } },
+    },
+  });
+  const encoded = encodeWireMessage({
+    requestId,
+    payload: { id: W.SIGNING_SIGN_RAW.request, value },
+  });
   if (encoded.isErr()) throw encoded.error;
   return Buffer.from(encoded.value).toString("base64");
 }
@@ -105,7 +133,7 @@ test("the inspector page is served at /", async () => {
     expect(html).toContain("TrUAPI Wire Inspector");
     // The shell fetches the shared fragments, not a bespoke renderer.
     expect(html).toContain("/op-list");
-    expect(html).toContain("/frame-html");
+    expect(html).toContain("/op?id=");
   } finally {
     server.stop();
   }
@@ -232,16 +260,17 @@ test("/stats is byte- and value-free even with value decode on", async () => {
   }
 });
 
-test("/frame decodes a non-sensitive frame only when decode is on", async () => {
+test("/frame decodes a non-sensitive frame by default; decodeValues:false reports bytes", async () => {
   const frame = encodeFrame(
     "p:1",
     W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.start,
     new Uint8Array([0]),
   );
 
-  // Decode ON: the drill-down surfaces the decoded value.
-  const on = startDebugServer({ port: 0, decodeValues: true });
+  // Default (dev-only tool): decode is on, so the drill-down surfaces the value.
+  const on = startDebugServer({ port: 0 });
   try {
+    expect(on.decodeValues).toBe(true);
     const baseOn = `http://localhost:${on.port}`;
     await streamFrame(baseOn, on.port, frame);
     const detail = await (await fetch(`${baseOn}/frame?id=p:1&i=0`)).json();
@@ -251,8 +280,8 @@ test("/frame decodes a non-sensitive frame only when decode is on", async () => 
     on.stop();
   }
 
-  // Decode OFF (the default): the same drill-down reports byte length only.
-  const off = startDebugServer({ port: 0 });
+  // `decodeValues: false` (still supported, for demos/tests): byte length only.
+  const off = startDebugServer({ port: 0, decodeValues: false });
   try {
     expect(off.decodeValues).toBe(false);
     const baseOff = `http://localhost:${off.port}`;
@@ -265,32 +294,57 @@ test("/frame decodes a non-sensitive frame only when decode is on", async () => 
   }
 });
 
-test("/frame redacts a signing frame even with decode on, and /traces never carries its bytes", async () => {
+test("a signing frame decodes like any other; /traces never carries its bytes", async () => {
   const server = startDebugServer({ port: 0, decodeValues: true });
   const base = `http://localhost:${server.port}`;
   try {
-    const secret = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0x01]);
-    const frame = encodeFrame("p:sign", W.SIGNING_SIGN_RAW.request, secret);
-    await streamFrame(base, server.port, frame);
+    await streamFrame(base, server.port, signFrame("p:sign"));
 
+    // Dev-only tool: no denylist, so the frame decodes and its value surfaces.
     const detail = await (await fetch(`${base}/frame?id=p:sign&i=0`)).json();
-    expect(detail.kind).toBe("redacted");
-    expect(detail.reason).toBe("sensitive method");
-    expect(detail.byteLength).toBe(secret.length);
+    expect(detail.kind).toBe("decoded");
+    expect(JSON.stringify(detail.value)).toContain("alice.dot");
+    // The decoded result never carries a "sensitive"/"redacted" marker any more.
+    expect(detail.sensitive).toBeUndefined();
 
-    // The signing payload bytes must not appear anywhere in the trace list.
+    // The payload-blind grouping invariant still holds: /traces never serializes
+    // the raw or decoded bytes, only the /frame drill-down does.
     const raw = await (await fetch(`${base}/traces`)).text();
     expect(raw).not.toContain("deadbeef");
-    expect(raw).not.toContain("222,173"); // 0xde,0xad as a decimal byte array
+    expect(raw).not.toContain("alice.dot");
   } finally {
     server.stop();
   }
 });
 
-test("/view renders the shared drill-down and stays payload-blind by default", async () => {
-  // Decode OFF (default): the level-1 view shows the frame sequence but offers
-  // no decode control and no value.
-  const off = startDebugServer({ port: 0 });
+test("/view renders the shared drill-down with decoded values by default", async () => {
+  // Default (dev-only tool): decode is on, so the drill-down renders each
+  // frame's value inline — no click-to-decode control.
+  const server = startDebugServer({ port: 0 });
+  try {
+    const base = `http://localhost:${server.port}`;
+    const frame = encodeFrame(
+      "p:1",
+      W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.start,
+      new Uint8Array([0]),
+    );
+    await streamFrame(base, server.port, frame);
+    const html = await (await fetch(`${base}/view`)).text();
+    // Shared-renderer markup, not the old table.
+    expect(html).toContain("td-trace");
+    expect(html).toContain("td-frame");
+    expect(html).toContain('data-request-id="p:1"');
+    // Values render inline; the click-to-decode control is gone.
+    expect(html).toContain("td-frame-payload");
+    expect(html).not.toContain("td-frame-decode-btn");
+    expect(html).not.toContain("decode payload");
+  } finally {
+    server.stop();
+  }
+});
+
+test("/view is payload-blind when decode is off", async () => {
+  const off = startDebugServer({ port: 0, decodeValues: false });
   try {
     const base = `http://localhost:${off.port}`;
     const frame = encodeFrame(
@@ -300,49 +354,69 @@ test("/view renders the shared drill-down and stays payload-blind by default", a
     );
     await streamFrame(base, off.port, frame);
     const html = await (await fetch(`${base}/view`)).text();
-    // Shared-renderer markup, not the old table.
-    expect(html).toContain("td-trace");
-    expect(html).toContain("td-frame");
     expect(html).toContain('data-request-id="p:1"');
-    // Payload-blind: no decode affordance and no decoded value.
-    expect(html).not.toContain("decode payload");
-    expect(html).not.toContain("V1");
+    // No payload column at all, and no decode control.
+    expect(html).not.toContain("td-frame-payload");
+    expect(html).not.toContain("td-frame-decode-btn");
   } finally {
     off.stop();
   }
 });
 
-test("/view offers a decode control per frame when level-2 is on", async () => {
-  const on = startDebugServer({ port: 0, decodeValues: true });
+test("/op decodes every frame inline via the real decodeTraceFrames path", async () => {
+  const server = startDebugServer({ port: 0 });
+  const base = `http://localhost:${server.port}`;
   try {
-    const base = `http://localhost:${on.port}`;
-    const frame = encodeFrame(
-      "p:1",
-      W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.start,
-      new Uint8Array([0]),
-    );
-    await streamFrame(base, on.port, frame);
-    const html = await (await fetch(`${base}/view`)).text();
-    expect(html).toContain("td-frame-decode-btn");
-    // The control is still an opt-in click; the value is not inlined into /view.
-    expect(html).not.toContain("V1");
+    // A real sign-raw request whose decoded value carries "alice.dot".
+    await streamFrame(base, server.port, signFrame("p:sign"));
+
+    // The op drill-down renders the decoded value inline — proving the
+    // session → decodeTraceFrames → renderer wiring, not just structural markup.
+    const html = await (
+      await fetch(`${base}/op?id=p:sign&channel=myapp.dot&gen=0`)
+    ).text();
+    expect(html).toContain("td-frame-decoded");
+    expect(html).toContain("alice.dot");
+    // Inline, not behind a control, and nothing withheld.
+    expect(html).not.toContain("td-frame-decode-btn");
+    expect(html).not.toContain("redacted");
   } finally {
-    on.stop();
+    server.stop();
   }
 });
 
-test("/frame-html renders a redacted fragment for a signing frame", async () => {
-  const server = startDebugServer({ port: 0, decodeValues: true });
+test("/op refuses to decode a codec-mismatched (untrusted) channel", async () => {
+  const server = startDebugServer({ port: 0 });
   const base = `http://localhost:${server.port}`;
   try {
-    const secret = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0x01]);
-    const frame = encodeFrame("p:sign", W.SIGNING_SIGN_RAW.request, secret);
-    await streamFrame(base, server.port, frame);
-    const res = await fetch(`${base}/frame-html?id=p:sign&i=0`);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("redacted");
-    expect(html).not.toContain("deadbeef");
+    // Stream a frame with a wrong wire schema hash: the channel is untrusted.
+    const ws = new WebSocket(`ws://localhost:${server.port}`);
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => resolve();
+      ws.onerror = () => reject(new Error("ws failed"));
+    });
+    ws.send(
+      JSON.stringify({
+        channelId: "drift.dot",
+        dir: "out",
+        frame: signFrame("p:sign"),
+        schema: "0000000000000000",
+      }),
+    );
+    for (let i = 0; i < 50; i++) {
+      const t = (await (await fetch(`${base}/traces`)).json()) as TraceView[];
+      if (t.length > 0) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    ws.close();
+
+    const html = await (
+      await fetch(`${base}/op?id=p:sign&channel=drift.dot&gen=0`)
+    ).text();
+    // Grouped and shown, but no decoded value for the untrusted channel.
+    expect(html).toContain('data-request-id="p:sign"');
+    expect(html).not.toContain("alice.dot");
+    expect(html).toContain("payload not shown");
   } finally {
     server.stop();
   }
@@ -457,6 +531,24 @@ test("a wrong-schema or unstamped host refuses to decode, but still groups", asy
   }
 });
 
+test("isLoopbackDebugHost is an exact allowlist (drives the Host-header guard)", () => {
+  expect(isLoopbackDebugHost("127.0.0.1")).toBe(true);
+  expect(isLoopbackDebugHost("localhost")).toBe(true);
+  expect(isLoopbackDebugHost("::1")).toBe(true);
+  // Everything else is non-loopback. A fuzzy match that read any of these as
+  // loopback would let a rebound page past the DNS-rebinding Host guard.
+  for (const host of [
+    "0.0.0.0",
+    "127.0.0.1.evil.com",
+    "127.0.0.2",
+    "[::1]",
+    "LOCALHOST",
+    "example.com",
+  ]) {
+    expect(isLoopbackDebugHost(host)).toBe(false);
+  }
+});
+
 test("/frame rejects out-of-range indices (negative and huge) with 404", async () => {
   const server = startDebugServer({ port: 0, decodeValues: true });
   const base = `http://localhost:${server.port}`;
@@ -476,76 +568,42 @@ test("/frame rejects out-of-range indices (negative and huge) with 404", async (
   }
 });
 
-test("the reveal gate folds in decode: armed without decode ⇒ not armed", async () => {
-  // A stray TRUAPI_DEBUGGER_REVEAL_SENSITIVE with decode OFF must not arm reveal.
-  const server = startDebugServer({
-    port: 0,
-    decodeValues: false,
-    revealSensitive: true,
-  });
+test("a default server decodes every frame, including formerly-sensitive ones", async () => {
+  // Dev-only tool: decode is on by default, so a signing frame decodes.
+  const server = startDebugServer({ port: 0 });
   const base = `http://localhost:${server.port}`;
   try {
-    expect(server.revealSensitive).toBe(false);
-    const frame = encodeFrame(
-      "p:sign",
-      W.SIGNING_SIGN_RAW.request,
-      new Uint8Array([0xde, 0xad]),
-    );
-    await streamFrame(base, server.port, frame);
-    // Decode off ⇒ bytes-only regardless of a reveal request.
-    const detail = await (
-      await fetch(`${base}/frame?id=p:sign&i=0&reveal=1`)
+    expect(server.decodeValues).toBe(true);
+    await streamFrame(base, server.port, signFrame("p:sign"));
+    const detail = await (await fetch(`${base}/frame?id=p:sign&i=0`)).json();
+    expect(detail.kind).toBe("decoded");
+    expect(JSON.stringify(detail.value)).toContain("alice.dot");
+    // No sensitive/redacted machinery: `?reveal=0` is just an unknown param,
+    // ignored, and the frame still decodes.
+    const still = await (
+      await fetch(`${base}/frame?id=p:sign&i=0&reveal=0`)
     ).json();
-    expect(detail.kind).toBe("bytes");
+    expect(still.kind).toBe("decoded");
   } finally {
     server.stop();
   }
 });
 
-test("an unarmed server ignores reveal=1 and still redacts a sensitive frame", async () => {
-  // Decode ON but reveal NOT armed: reveal=1 must be ignored server-side.
-  const server = startDebugServer({ port: 0, decodeValues: true });
+test("a page with a non-loopback Host header is refused (DNS-rebinding guard)", async () => {
+  const server = startDebugServer({ port: 0 });
   const base = `http://localhost:${server.port}`;
   try {
-    expect(server.revealSensitive).toBe(false);
-    const frame = encodeFrame(
-      "p:sign",
-      W.SIGNING_SIGN_RAW.request,
-      new Uint8Array([0xde, 0xad]),
-    );
-    await streamFrame(base, server.port, frame);
-    const detail = await (
-      await fetch(`${base}/frame?id=p:sign&i=0&reveal=1`)
-    ).json();
-    expect(detail.kind).toBe("redacted");
-  } finally {
-    server.stop();
-  }
-});
-
-test("an armed server honors reveal only on the explicit per-call flag", async () => {
-  const server = startDebugServer({
-    port: 0,
-    decodeValues: true,
-    revealSensitive: true,
-  });
-  const base = `http://localhost:${server.port}`;
-  try {
-    expect(server.revealSensitive).toBe(true);
-    const frame = encodeFrame(
-      "p:sign",
-      W.SIGNING_SIGN_RAW.request,
-      new Uint8Array([0]),
-    );
-    await streamFrame(base, server.port, frame);
-    // No reveal flag ⇒ still redacts, even on an armed server.
-    const guarded = await (await fetch(`${base}/frame?id=p:sign&i=0`)).json();
-    expect(guarded.kind).toBe("redacted");
-    // With the explicit flag ⇒ the denylist is bypassed (decoded or bytes, never redacted).
-    const revealed = await (
-      await fetch(`${base}/frame?id=p:sign&i=0&reveal=1`)
-    ).json();
-    expect(revealed.kind).not.toBe("redacted");
+    // A rebound evil.com -> 127.0.0.1 page's same-origin fetch still carries its
+    // own Host; a non-loopback (non-bind) Host must be refused with a 403.
+    const res = await fetch(`${base}/traces`, {
+      headers: { host: "evil.com" },
+    });
+    expect(res.status).toBe(403);
+    // A loopback Host is fine.
+    const ok = await fetch(`${base}/traces`, {
+      headers: { host: `127.0.0.1:${server.port}` },
+    });
+    expect(ok.status).toBe(200);
   } finally {
     server.stop();
   }

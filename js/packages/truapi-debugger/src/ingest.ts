@@ -21,8 +21,8 @@ import type { WireMethodInfo } from "./wire-debugger.js";
  * web host's debugger link) stamp it alongside a codec identity so the debugger
  * can refuse to decode a frame against a wire contract that isn't its own -
  * frame ids are `u8` discriminants that get reassigned as the API evolves, so an
- * unversioned envelope from an older host would resolve to the wrong method, the
- * wrong value, and worst case decode a frame the host's build marks sensitive.
+ * unversioned envelope from an older host would resolve to the wrong method and
+ * the wrong value.
  */
 export const WIRE_ENVELOPE_VERSION = 1;
 

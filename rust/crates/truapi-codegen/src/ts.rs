@@ -591,8 +591,6 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
     let wrappers = collect_versioned_wrappers(api);
     let mut seen: BTreeMap<u8, String> = BTreeMap::new();
     let mut constants: Vec<(String, ExpandedWireIds)> = Vec::new();
-    // Every frame id (both legs) of a method marked `#[wire(..., sensitive)]`.
-    let mut sensitive_ids: BTreeSet<u8> = BTreeSet::new();
 
     for trait_def in &api.traits {
         for method in &trait_def.methods {
@@ -603,9 +601,6 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
             for (id, tag) in wire_ids.entries(&method.name) {
                 if let Some(existing) = seen.insert(id, tag.clone()) {
                     bail!("wire id {id} reused: `{existing}` and `{tag}` collide");
-                }
-                if method.wire.sensitive {
-                    sensitive_ids.insert(id);
                 }
             }
             constants.push((wire_const_name(&trait_def.name, &method.name), wire_ids));
@@ -659,20 +654,6 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
             }
         }
     }
-
-    let sensitive_list = sensitive_ids
-        .iter()
-        .map(|id| id.to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
-    out.push('\n');
-    out.push_str(&formatdoc! {"
-        // Wire frame ids whose payloads carry key material or bearer secrets,
-        // marked `#[wire(..., sensitive)]` on the Rust trait. The wire debugger
-        // treats this as the authoritative denylist and never decodes these
-        // frames (both request/response and start/receive legs are listed).
-        export const SENSITIVE_FRAME_IDS: ReadonlySet<number> = new Set([{sensitive_list}]);
-    "});
 
     Ok(out)
 }
@@ -2905,41 +2886,6 @@ mod tests {
                 < source
                     .find("export const EXAMPLE_LATER")
                     .expect("later entry")
-        );
-    }
-
-    #[test]
-    fn generate_wire_table_emits_sensitive_frame_ids() {
-        let mut sign = request_method("sign", Some(10));
-        sign.wire.sensitive = true;
-        let mut stream = subscription_method("stream", Some(20));
-        stream.wire.sensitive = true;
-        let safe = request_method("safe", Some(30));
-
-        let source =
-            generate_wire_table(&api(vec![sign, stream, safe]), 2).expect("generate wire table");
-
-        // Every leg of a sensitive method lands in the set: both legs of a
-        // request, all four frames of a subscription.
-        assert!(source.contains(
-            "export const SENSITIVE_FRAME_IDS: ReadonlySet<number> = new Set([10, 11, 20, 21, 22, 23]);"
-        ));
-
-        // A non-sensitive method contributes none of its ids to the set.
-        let set_line = source
-            .lines()
-            .find(|line| line.contains("SENSITIVE_FRAME_IDS"))
-            .expect("sensitive set line");
-        assert!(!set_line.contains("30"));
-        assert!(!set_line.contains("31"));
-    }
-
-    #[test]
-    fn generate_wire_table_emits_empty_sensitive_set_when_none_marked() {
-        let source = generate_wire_table(&api(vec![request_method("safe", Some(10))]), 2)
-            .expect("generate wire table");
-        assert!(
-            source.contains("export const SENSITIVE_FRAME_IDS: ReadonlySet<number> = new Set([]);")
         );
     }
 

@@ -14,8 +14,8 @@
  * Payload-blind by default. Level-2 value decode is offered only when a mount
  * opts in (`offerDecode`) and passes decode results back in (`decoded`); the
  * renderer never touches bytes itself. Decode results come from the Core +
- * Decode thread's {@link FrameValueDetail}, so a sensitive frame renders a
- * redacted state and never its value.
+ * Decode thread's {@link FrameValueDetail}: a frame renders either its decoded
+ * value or its byte length.
  *
  * The renderer emits HTML strings (both mounts assign `innerHTML`) using `td-*`
  * classes so one stylesheet covers both. Every interpolated string that came
@@ -40,19 +40,11 @@ export interface RenderTraceDetailOptions {
    */
   offerDecode?: boolean;
   /**
-   * Decode results already resolved for this op, keyed by frame `seq`. The mount
-   * fills this after a user acts on a frame (calling the Core session's
-   * `frameDetail(requestId, seq)`) and re-renders. Frames absent from the map
-   * show only their decode control, never a value.
+   * Decoded values for this op, keyed by frame `seq`. A dev-only mount decodes
+   * every frame up front (calling the Core session's `frameDetail`) and passes
+   * the results here. A frame absent from the map falls back to its byte length.
    */
   decoded?: ReadonlyMap<number, FrameValueDetail>;
-  /**
-   * Offer the dev-only "reveal" affordance on *sensitive* frames (the escape
-   * hatch). Off by default: a sensitive frame then shows its redacted state
-   * upfront with no control. Only a mount whose session armed the reveal gate
-   * sets this; the reveal itself is still an explicit, confirmed per-frame action.
-   */
-  offerReveal?: boolean;
 }
 
 /** HTML-escape a wire-sourced string before it touches `innerHTML`. */
@@ -93,13 +85,12 @@ export function renderTraceDetail(
   options: RenderTraceDetailOptions = {},
 ): string {
   const offerDecode = options.offerDecode ?? false;
-  const offerReveal = options.offerReveal ?? false;
   const decoded = options.decoded;
 
   const header = renderHeader(view);
   const rows = view.frames
     .map((frame) =>
-      renderFrameRow(frame, offerDecode, offerReveal, decoded?.get(frame.seq)),
+      renderFrameRow(frame, offerDecode, decoded?.get(frame.seq)),
     )
     .join("");
 
@@ -155,7 +146,6 @@ const FRAME_BADGE_LABEL: Record<TraceFrameBadge, string> = {
 function renderFrameRow(
   frame: TraceFrameView,
   offerDecode: boolean,
-  offerReveal: boolean,
   detail: FrameValueDetail | undefined,
 ): string {
   const glyph = DIRECTION_GLYPH[frame.direction];
@@ -164,11 +154,6 @@ function renderFrameRow(
       ? `<span class="td-frame-method anon">id ${String(frame.frameId ?? "?")}</span>`
       : `<span class="td-frame-method">${esc(frame.method)}</span>`;
   const role = `<span class="td-frame-role td-role-${frame.role}">${esc(frame.role)}</span>`;
-  // Privacy marker, shown before any decode: this frame carries material the
-  // denylist keeps redacted. Reveals nothing the method name doesn't.
-  const lock = frame.sensitive
-    ? `<span class="td-frame-lock" title="sensitive method — payload redacted by default">🔒</span>`
-    : "";
   const size =
     frame.byteLength === undefined
       ? ""
@@ -190,7 +175,6 @@ function renderFrameRow(
     `<span class="td-frame-dir td-dir-${frame.direction}">${glyph}</span>` +
     role +
     method +
-    lock +
     size +
     latency +
     (badges === "" ? "" : `<span class="td-frame-badges">${badges}</span>`) +
@@ -198,7 +182,7 @@ function renderFrameRow(
 
   const payload =
     offerDecode && frame.decodable
-      ? `<div class="td-frame-payload">${renderDecodeBlock(frame, offerReveal, detail)}</div>`
+      ? `<div class="td-frame-payload">${renderDecodeBlock(frame, detail)}</div>`
       : "";
 
   return (
@@ -222,87 +206,33 @@ function renderLatency(frame: TraceFrameView): string {
 }
 
 /**
- * The level-2 slot for one frame: a decode control plus, once resolved, the
- * decoded / redacted / bytes-only outcome. Rendered only when the mount offers
- * decode and the frame retained bytes.
+ * The level-2 payload slot for one frame. A dev-only tool decodes every frame,
+ * so this shows the decoded value; a frame whose value could not be resolved
+ * (bytes not retained, or a decode miss) shows its byte length instead.
  */
 function renderDecodeBlock(
   frame: TraceFrameView,
-  offerReveal: boolean,
   detail: FrameValueDetail | undefined,
 ): string {
   if (detail !== undefined) {
     return `<div class="td-frame-decoded">${renderFrameValueDetail(detail)}</div>`;
   }
   const size =
-    frame.byteLength === undefined ? "" : ` · ${String(frame.byteLength)}B`;
-  if (frame.sensitive) {
-    // A sensitive frame stays redacted by default - so show that upfront rather
-    // than a decode control that would only ever redact. When the dev reveal
-    // gate is armed, offer a distinct, explicit reveal control instead (guarded
-    // by a per-frame confirm on the client); it is NOT a `td-frame-decode-btn`,
-    // so "Decode all" never sweeps it in.
-    if (offerReveal) {
-      return (
-        `<button class="td-frame-reveal-btn" type="button" data-seq="${String(frame.seq)}" ` +
-        `title="Reveal this sensitive payload (dev only) — asks for confirmation">` +
-        `🔒 reveal sensitive${size}</button>`
-      );
-    }
-    return `<div class="td-frame-decoded">${renderFrameValueDetail({
-      kind: "redacted",
-      reason: "sensitive method",
-      byteLength: frame.byteLength ?? 0,
-    })}</div>`;
-  }
-  // Non-sensitive pre-decode state: a blurred placeholder standing in for the
-  // encoded payload. It carries NO real bytes - the renderer is payload-blind
-  // and never sees them, so the blocks are decorative, sized only by byte
-  // length. The button is the decode trigger; the value is fetched on demand.
-  return (
-    `<button class="td-frame-decode-btn" type="button" data-seq="${String(frame.seq)}" ` +
-    `title="Decode this frame's payload (dev only)" aria-label="decode payload">` +
-    `<span class="td-enc-blur" aria-hidden="true">${encodedGlyphs(frame.byteLength)}</span>` +
-    `<span class="td-enc-hint">decode payload${size}</span>` +
-    `</button>`
-  );
-}
-
-/**
- * A capped run of block glyphs for the pre-decode blur: it conveys "an encoded
- * payload lives here" and roughly how large, without ever carrying the real
- * bytes. Purely decorative (aria-hidden); the byte length is the only input.
- */
-function encodedGlyphs(byteLength: number | undefined): string {
-  const n =
-    byteLength === undefined
-      ? 10
-      : Math.max(8, Math.min(40, Math.ceil(byteLength / 2)));
-  return "▓".repeat(n);
+    frame.byteLength === undefined ? "" : `${String(frame.byteLength)}B · `;
+  return `<div class="td-bytes-only">${size}payload not shown</div>`;
 }
 
 /**
  * Render a Core-thread {@link FrameValueDetail}. Shared by both mounts so the
- * redacted state is identical everywhere: a sensitive frame shows a clear
- * "redacted" label and its byte length, never its value.
+ * outcome is identical everywhere: a frame shows its decoded value, or its byte
+ * length when no value is available.
  */
 export function renderFrameValueDetail(detail: FrameValueDetail): string {
   switch (detail.kind) {
-    case "redacted":
-      return (
-        `<div class="td-redacted" role="note">` +
-        `<span class="td-redacted-tag">redacted</span> ` +
-        `${esc(detail.reason)} · ${String(detail.byteLength)}B withheld` +
-        `</div>`
-      );
     case "bytes":
       return `<div class="td-bytes-only">${String(detail.byteLength)}B · payload not shown</div>`;
     case "decoded":
-      // A revealed sensitive value is flagged so the mount can style it as the
-      // danger it is (dev-only escape hatch); an ordinary decode is plain.
-      return detail.sensitive === true
-        ? `<pre class="td-detail-pre td-detail-danger" title="revealed sensitive material — dev only">${esc(stringifyValue(detail.value))}</pre>`
-        : `<pre class="td-detail-pre">${esc(stringifyValue(detail.value))}</pre>`;
+      return `<pre class="td-detail-pre">${esc(stringifyValue(detail.value))}</pre>`;
   }
 }
 
@@ -373,22 +303,15 @@ export function renderOperationRow(view: TraceView): string {
     view.channelId === undefined
       ? ""
       : ` data-channel-id="${esc(view.channelId)}"`;
-  // Op-row privacy marker + a filterable attribute: this op touches a method
-  // whose payload stays redacted by default.
-  const sensitiveAttr = view.sensitive ? ` data-sensitive="1"` : "";
   // Generation disambiguates ops that recycle a `(channelId, requestId)`; the
   // client keys rows and the drill-down on it so reused ids stay distinct.
   const genAttr = ` data-generation="${String(view.generation ?? 0)}"`;
-  const lock = view.sensitive
-    ? `<span class="td-op-lock" title="carries a sensitive method — payload redacted by default" aria-hidden="true">🔒</span>`
-    : "";
 
   return (
     `<div class="td-op ${kindClass}${live ? " td-op-live" : ""}" ` +
-    `data-request-id="${esc(view.requestId)}"${channelAttr}${genAttr}${sensitiveAttr} role="listitem" tabindex="-1">` +
+    `data-request-id="${esc(view.requestId)}"${channelAttr}${genAttr} role="listitem" tabindex="-1">` +
     `<span class="td-op-kind" aria-hidden="true">${kindGlyph}</span>` +
     methodHtml +
-    lock +
     (badges === "" ? "" : `<span class="td-op-badges">${badges}</span>`) +
     `<span class="td-op-meta">${meta}</span>` +
     `</div>`

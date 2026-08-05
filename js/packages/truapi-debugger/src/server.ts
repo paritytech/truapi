@@ -7,10 +7,10 @@
  * `ProtocolMessage` bytes (JSON can't carry binary; base64 keeps the envelope on
  * one line). Each message is decoded and grouped by {@link createDebugSession}.
  * `GET /traces` returns the grouped traces (payload-blind - raw bytes and
- * decoded values are never serialized); `GET /frame?id=&i=` is the drill-down
- * detail path, the only place a decoded value can surface, and only when level-2
- * decode is opted in (`TRUAPI_DEBUGGER_DECODE_VALUES`, off by default) and the
- * frame is not sensitive; `GET /` serves a page that polls `/traces`.
+ * decoded values are never serialized); `GET /op` renders one op's drill-down
+ * with each frame's decoded value inline; `GET /frame?id=&i=` is the same
+ * decode as a programmatic JSON endpoint. Value decode is on by default (a
+ * dev-only tool decodes everything); `GET /` serves a page that polls `/op-list`.
  *
  * The exact host↔debugger framing is not yet standardized (envelope spec, track
  * T3); base64-in-JSON is what this server accepts today. Runs under Bun
@@ -20,19 +20,14 @@
  */
 
 import { TRUAPI_CODEC_VERSION, TRUAPI_WIRE_SCHEMA_HASH } from "@parity/truapi";
-import { createDebugSession } from "./session.js";
+import { createDebugSession, decodeTraceFrames } from "./session.js";
 import {
   DEFAULT_MAX_ID_CHARS,
   WIRE_ENVELOPE_VERSION,
   type DebugFrameEnvelope,
 } from "./ingest.js";
 import { wireTraceToView, type TraceView } from "./trace-view.js";
-import type { CliStats } from "./trace-text.js";
-import {
-  renderFrameValueDetail,
-  renderOperationRow,
-  renderTraceDetail,
-} from "./trace-render.js";
+import { renderOperationRow, renderTraceDetail } from "./trace-render.js";
 import { detectRetryStorms } from "./retry-storm.js";
 import { TRACE_DETAIL_CSS } from "./trace-styles.js";
 
@@ -61,10 +56,10 @@ interface WireMessage {
   codec?: number;
   /**
    * The host's wire-contract fingerprint (`TRUAPI_WIRE_SCHEMA_HASH`): a hash of
-   * every frame id, its method leg, and its sensitivity. Unlike `codec` (the
-   * coarse handshake number, bumped ~never), this changes whenever a frame id is
-   * reassigned or a `#[wire(sensitive)]` flag flips - the case where a
-   * host-sensitive frame could otherwise decode off this debugger's denylist.
+   * every frame id and its method leg. Unlike `codec` (the coarse handshake
+   * number, bumped ~never), this changes whenever a frame id is reassigned - the
+   * case where a frame could otherwise decode to the wrong method and value off
+   * this debugger's table.
    */
   schema?: string;
   /** Frames this host dropped (link backlog full) before this one; surfaced in stats. */
@@ -126,6 +121,40 @@ function optionalInt(raw: string | null): number | null | undefined {
   return Number.isInteger(n) ? n : null;
 }
 
+/**
+ * Whether `host` is a loopback name. The `Host`-header DNS-rebinding guard keys
+ * on this, so an exact allowlist - never a fuzzy match that could read
+ * `127.0.0.1.evil.com` as loopback - is the security-relevant classification,
+ * unit-tested separately.
+ */
+export function isLoopbackDebugHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1";
+}
+
+/**
+ * Whether a request's `Host` header targets an address this server is willing to
+ * answer for: a loopback name.
+ *
+ * This is the DNS-rebinding guard. Binding to loopback keeps off-box peers out,
+ * but a page served from `evil.com` whose DNS has been rebound to `127.0.0.1`
+ * can issue same-origin `fetch`es to the debugger and read decoded frames; those
+ * requests still carry `Host: evil.com`. Requiring a loopback Host rejects them
+ * with a 403. A `Host`-less request (a non-browser client that omits it) is
+ * allowed, matching the WS Origin gate's posture.
+ */
+export function hostHeaderAllowed(hostHeader: string | null): boolean {
+  if (hostHeader === null || hostHeader === "") return true;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${hostHeader}`).hostname;
+  } catch {
+    return false;
+  }
+  // `new URL("http://[::1]").hostname` keeps the brackets; normalize to bare.
+  const normalized = hostname === "[::1]" ? "::1" : hostname;
+  return isLoopbackDebugHost(normalized);
+}
+
 /** Parse and validate one inbound WS text message, or `null`. */
 function parseWireMessage(raw: string): ParsedWireMessage | null {
   let parsed: unknown;
@@ -162,8 +191,6 @@ export interface DebugServer {
   readonly port: number;
   /** Whether level-2 value decode is enabled on the drill-down path. */
   readonly decodeValues: boolean;
-  /** Whether the dev-only sensitive-reveal escape hatch is armed. */
-  readonly revealSensitive: boolean;
   /** Stop listening and drop active connections. */
   stop(): void;
 }
@@ -197,26 +224,19 @@ export function startDebugServer(
   options: {
     port?: number;
     decodeValues?: boolean;
-    revealSensitive?: boolean;
   } = {},
 ): DebugServer {
-  const decodeValues = options.decodeValues ?? false;
-  // The reveal escape hatch is meaningless without decode on; fold the master
-  // gate in here so a stray env var alone can never arm it.
-  const revealSensitive = decodeValues && (options.revealSensitive ?? false);
-  const session = createDebugSession({ decodeValues, revealSensitive });
+  // Dev-only tool: decode everything by default. A caller can pass
+  // `decodeValues: false`.
+  const decodeValues = options.decodeValues ?? true;
+  const session = createDebugSession({ decodeValues });
 
-  /** Adapt one trace to a view with the shared method map + denylist. */
+  /** Adapt one trace to a view with the shared method map. */
   const toView = (
     trace: ReturnType<typeof session.traceEngine.traces>[number],
     storms: ReturnType<typeof detectRetryStorms>,
   ): TraceView =>
-    wireTraceToView(
-      trace,
-      session.methodNames,
-      storms.get(trace) ?? [],
-      session.sensitiveIds,
-    );
+    wireTraceToView(trace, session.methodNames, storms.get(trace) ?? []);
 
   /**
    * Compute the cross-op retry-storm signal once over a trace set, then adapt
@@ -233,7 +253,8 @@ export function startDebugServer(
 
   function tracesJson(): string {
     // Payload-blind view: raw `bytes` and decoded values are deliberately never
-    // serialized here - decode lives only on the `/frame` drill-down. `method`
+    // serialized here - values surface only in the `/op` and `/frame` drill-downs.
+    // `method`
     // and `role` are public shape metadata derived from the frame id (the same
     // id→name map the op list already exposes), not payload, so they are safe.
     // Rendering each trace through the shared `wireTraceToView` also gives
@@ -266,7 +287,6 @@ export function startDebugServer(
     const id = url.searchParams.get("id");
     const rawIndex = url.searchParams.get("i");
     const channel = url.searchParams.get("channel") ?? undefined;
-    const reveal = url.searchParams.get("reveal") === "1";
     // `Number("")`/`Number(" ")` are both 0 and pass Number.isInteger, so an
     // empty or whitespace `?i=` or `?gen=` would otherwise resolve frame 0 /
     // generation 0 (the oldest recycled op) with a 200; optionalInt rejects them.
@@ -285,7 +305,7 @@ export function startDebugServer(
       });
     }
     if (!decodeTrusted(channel)) return codecRefusal("application/json");
-    const detail = session.frameDetail(id, index, channel, reveal, generation);
+    const detail = session.frameDetail(id, index, channel, generation);
     if (!detail) {
       return new Response('{"error":"no such frame"}', {
         status: 404,
@@ -298,9 +318,10 @@ export function startDebugServer(
   }
 
   /**
-   * The `/view` payload-blind level-1 fragment: every trace rendered by the
-   * shared {@link renderTraceDetail}, the same renderer dotli's panel mounts.
-   * No payloads here; decode controls appear per frame only when level-2 is on.
+   * The `/view` fragment: every trace rendered by the shared
+   * {@link renderTraceDetail}, the same renderer dotli's panel mounts. Each
+   * frame's value is decoded inline for a trusted channel; an untrusted (codec-
+   * mismatched) channel groups but shows no value.
    */
   function viewHtml(): string {
     const entries = viewsFor(session.traceEngine.traces());
@@ -315,54 +336,15 @@ export function startDebugServer(
           `<div class="td-drilldown">` +
           renderTraceDetail(view, {
             offerDecode: session.decodeValues,
-            offerReveal: session.revealSensitive,
+            // Same codec/schema-drift guard the `/frame` endpoint enforces: an
+            // untrusted channel's frames group but never surface a decoded value.
+            decoded: decodeTrusted(view.channelId)
+              ? decodeTraceFrames(session, view)
+              : undefined,
           }) +
           `</div>`,
       )
       .join("");
-  }
-
-  /**
-   * The `/frame-html?id=&i=` server-rendered level-2 fragment for one frame.
-   * Reuses the denylist-gated {@link DebugSession.frameDetail} and the shared
-   * value renderer, so a sensitive frame renders redacted here too.
-   */
-  function frameHtmlResponse(url: URL): Response {
-    const htmlHeaders = { "content-type": "text/html; charset=utf-8" };
-    const id = url.searchParams.get("id");
-    const rawIndex = url.searchParams.get("i");
-    const channel = url.searchParams.get("channel") ?? undefined;
-    const reveal = url.searchParams.get("reveal") === "1";
-    const generation = optionalInt(url.searchParams.get("gen"));
-    const index = Number(rawIndex);
-    if (
-      id === null ||
-      rawIndex === null ||
-      rawIndex.trim() === "" ||
-      !Number.isInteger(index) ||
-      generation === null
-    ) {
-      return new Response(`<div class="td-bytes-only">bad request</div>`, {
-        status: 400,
-        headers: htmlHeaders,
-      });
-    }
-    if (!decodeTrusted(channel)) {
-      return new Response(
-        `<div class="td-bytes-only">decode refused — host wire codec mismatch</div>`,
-        { status: 409, headers: htmlHeaders },
-      );
-    }
-    const detail = session.frameDetail(id, index, channel, reveal, generation);
-    if (!detail) {
-      return new Response(`<div class="td-bytes-only">no such frame</div>`, {
-        status: 404,
-        headers: htmlHeaders,
-      });
-    }
-    return new Response(renderFrameValueDetail(detail), {
-      headers: htmlHeaders,
-    });
   }
 
   // Per-channel liveness for the inspector's host dimension. The envelope
@@ -456,8 +438,8 @@ export function startDebugServer(
    * `schema` and never mismatched.
    *
    * This is a COMPATIBILITY guard against honest version drift - a host built
-   * against a different frame table, where a host-sensitive id could resolve off
-   * this debugger's `SENSITIVE_FRAME_IDS` - not authentication:
+   * against a different frame table, where an id could resolve to the wrong
+   * method and value off this debugger's table - not authentication:
    * `TRUAPI_WIRE_SCHEMA_HASH` is a public build constant, so a deliberate local
    * injector could stamp it. The WS Origin gate ({@link originAllowed}) is the
    * boundary against injection; this is defence in depth on top of it.
@@ -506,6 +488,26 @@ export function startDebugServer(
    * strip (the "aggregate-level value").
    */
   function statsJson(channel: string | null): string {
+    /** The payload-blind aggregate shape `/stats` serializes. */
+    interface StatsPayload {
+      ops: number;
+      frames: number;
+      bytes: number;
+      subscriptions: number;
+      liveSubscriptions: number;
+      malformed: number;
+      orphaned: number;
+      retryStorms: number;
+      truncated: number;
+      evictedTraces: number;
+      droppedByHost: number;
+      codecMismatch: boolean;
+      out: number;
+      in: number;
+      avgDurationMs: number;
+      maxDurationMs: number;
+      topMethods: { method: string; count: number }[];
+    }
     const traces =
       channel === null
         ? session.traceEngine.traces()
@@ -518,7 +520,6 @@ export function startDebugServer(
     let orphaned = 0;
     let retryStorms = 0;
     let truncated = 0;
-    let sensitive = 0;
     let out = 0;
     let inbound = 0;
     let durationTotal = 0;
@@ -532,7 +533,6 @@ export function startDebugServer(
       if (view.badges.includes("orphaned")) orphaned += 1;
       if (view.badges.includes("retry-storm")) retryStorms += 1;
       if (view.badges.includes("truncated")) truncated += 1;
-      if (view.sensitive) sensitive += 1;
       if (view.frames.some((f) => SUBSCRIPTION_ROLES.has(f.role))) {
         subscriptions += 1;
         if (!view.frames.some((f) => f.role === "stop")) {
@@ -569,8 +569,8 @@ export function startDebugServer(
     const droppedByHost = chanList.reduce((n, c) => n + c.dropped, 0);
     const codecMismatch = chanList.some((c) => !c.codecOk);
     // Typed so a dropped/renamed field is a compile error, not a silent gap in
-    // the payload the CLI parses back as CliStats.
-    const payload: CliStats = {
+    // the payload a client parses back.
+    const payload: StatsPayload = {
       ops,
       frames,
       bytes,
@@ -583,7 +583,6 @@ export function startDebugServer(
       evictedTraces,
       droppedByHost,
       codecMismatch,
-      sensitive,
       out,
       in: inbound,
       avgDurationMs: ops === 0 ? 0 : Math.round(durationTotal / ops),
@@ -692,24 +691,37 @@ export function startDebugServer(
     const storms = detectRetryStorms(
       session.traceEngine.tracesForChannel(trace.channelId),
     );
-    return renderTraceDetail(toView(trace, storms), {
+    const view = toView(trace, storms);
+    return renderTraceDetail(view, {
       offerDecode: session.decodeValues,
-      offerReveal: session.revealSensitive,
+      // Codec/schema-drift guard, matching `/frame`: refuse to decode a channel
+      // whose wire schema did not affirmatively match this debugger's table.
+      decoded: decodeTrusted(channel ?? undefined)
+        ? decodeTraceFrames(session, view)
+        : undefined,
     });
   }
 
   const server = Bun.serve({
     port: options.port ?? DEFAULT_PORT,
-    // Loopback only. The debugger holds every trace (and, with decode on, decoded
-    // values), so it must not listen on all interfaces where a LAN peer could
-    // read them or inject frames. The CLI and same-origin inspector both target
-    // localhost, so nothing else changes.
+    // Loopback only: the debugger holds every trace (and, with decode on,
+    // decoded values), so it must not listen on all interfaces where a LAN peer
+    // could read or inject.
     hostname: "127.0.0.1",
     fetch(req, srv) {
-      // Reject cross-origin WebSocket upgrades (CSWSH): binding to 127.0.0.1
-      // keeps off-box peers out, but a page open in the dev's own browser could
-      // still dial ws://127.0.0.1:<port> to inject frames or drive the decoder
-      // over hostile bytes. A same-origin inspector and non-browser clients are
+      const url = new URL(req.url);
+      const htmlHeaders = { "content-type": "text/html; charset=utf-8" };
+      // DNS-rebinding guard: the request's Host must be loopback. This blocks a
+      // rebound `evil.com -> 127.0.0.1` page from reading decoded frames over
+      // same-origin fetches, which binding to loopback alone does not prevent.
+      // Applies before any route dispatch.
+      if (!hostHeaderAllowed(req.headers.get("host"))) {
+        return new Response("forbidden host", { status: 403 });
+      }
+      // Reject cross-origin WebSocket upgrades (CSWSH): binding to loopback keeps
+      // off-box peers out, but a page open in the dev's own browser could still
+      // dial ws://127.0.0.1:<port> to inject frames or drive the decoder over
+      // hostile bytes. A same-origin inspector and non-browser clients are
       // allowed; a foreign browser Origin is not.
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
         if (!originAllowed(req.headers.get("origin"))) {
@@ -717,8 +729,6 @@ export function startDebugServer(
         }
         if (srv.upgrade(req)) return undefined;
       }
-      const url = new URL(req.url);
-      const htmlHeaders = { "content-type": "text/html; charset=utf-8" };
       if (url.pathname === "/traces") {
         return new Response(tracesJson(), {
           headers: { "content-type": "application/json" },
@@ -765,15 +775,13 @@ export function startDebugServer(
       if (url.pathname === "/frame") {
         return frameResponse(url);
       }
-      if (url.pathname === "/frame-html") {
-        return frameHtmlResponse(url);
-      }
-      return new Response(
-        VIEW_HTML.replace("__DECODE_STATE__", decodeValues ? "on" : "off"),
-        { headers: htmlHeaders },
-      );
+      return new Response(VIEW_HTML, { headers: htmlHeaders });
     },
     websocket: {
+      // Cap one inbound frame at 1 MiB rather than Bun's 16 MiB default: a host
+      // dial is one small SCALE frame per message, so a larger payload is either
+      // a bug or an attempt to exhaust memory. Bun drops an over-cap message.
+      maxPayloadLength: 1024 * 1024,
       open() {
         openSockets += 1;
       },
@@ -804,7 +812,6 @@ export function startDebugServer(
     // Always a TCP port here; the `?? 0` only satisfies Bun's unix-socket union.
     port: server.port ?? 0,
     decodeValues,
-    revealSensitive,
     stop: () => server.stop(true),
   };
 }
@@ -818,11 +825,10 @@ export function startDebugServer(
  *
  * The client is a thin shell over server-rendered fragments: it polls
  * `/op-list` (the shared {@link renderOperationRow}) and `/channels`, and fetches
- * `/op` and `/frame-html` on interaction. Every injected fragment is produced
- * and escaped server-side, so `innerHTML` is safe. Payload-blind by default:
- * `/op-list` and `/op` carry only shape/timing; a value appears only after an
- * explicit per-frame decode, and a sensitive frame renders redacted, never its
- * value. `td-*` classes are owned by the shared renderer.
+ * `/op` when an operation is selected. Every injected fragment is produced and
+ * escaped server-side, so `innerHTML` is safe. `/op-list` is payload-blind
+ * (shape/timing only); `/op` renders each frame's decoded value inline for a
+ * trusted channel. `td-*` classes are owned by the shared renderer.
  */
 const VIEW_HTML = `<!doctype html>
 <meta charset="utf-8">
@@ -846,8 +852,6 @@ const VIEW_HTML = `<!doctype html>
   .ins-chan .dot { width: 6px; height: 6px; border-radius: 50%; background: #4b5563; }
   .ins-chan .dot.live { background: #4ade80; box-shadow: 0 0 4px #4ade80; }
   .ins-chan.active .dot.live { background: #0a0a0a; box-shadow: none; }
-  .ins-gate { color: #6b7280; white-space: nowrap; }
-  .ins-gate.on { color: #fbbf24; }
   .ins-body { display: grid; grid-template-columns: var(--list-w, 340px) 6px 1fr;
     min-height: 0; }
   .ins-list { overflow: auto; outline: none; }
@@ -888,49 +892,16 @@ ${TRACE_DETAIL_CSS}
   .td-frame-decoded > * { margin: 0; }
   .td-frame-decoded .td-detail-pre { max-height: 240px; overflow: auto; margin: 0;
     white-space: pre; }
-  /* Blur-to-reveal placeholder: decorative blocks (no real bytes), revealed on
-     decode. Full width of the payload column so all placeholders line up. */
-  .td-frame-decode-btn { display: flex; align-items: center; gap: 8px; width: 100%;
-    padding: 3px 8px; border: 1px solid rgba(255,255,255,.10); border-radius: 5px;
-    background: rgba(255,255,255,.03); color: #94a3b8; cursor: pointer;
-    font: inherit; text-align: left; transition: background .12s, border-color .12s; }
-  .td-frame-decode-btn:hover { background: rgba(74,222,128,.10); border-color: rgba(74,222,128,.4); color: #d1fae5; }
-  .td-frame-decode-btn:disabled { opacity: .5; cursor: progress; }
-  .td-enc-blur { flex: 1; min-width: 0; overflow: hidden; color: #64748b;
-    filter: blur(3px); user-select: none; letter-spacing: -1px; }
-  .td-enc-hint { white-space: nowrap; font-size: 10.5px; color: #6b7280; }
-  .td-frame-decode-btn:hover .td-enc-hint { color: #86efac; }
-  /* Bulk decode/encode controls in the top bar (shown only when decode is on). */
-  .ins-bulk { display: none; gap: 6px; }
-  .ins-bulk.on { display: inline-flex; }
-  .ins-btn { padding: 1px 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 5px;
-    background: transparent; color: #cbd5e1; cursor: pointer; font: inherit; white-space: nowrap; }
-  .ins-btn:hover { border-color: rgba(74,222,128,.5); color: #86efac; }
-  .ins-btn.primary { border-color: rgba(251,191,36,.45); color: #fbbf24; }
-  .ins-btn.primary:hover { background: rgba(251,191,36,.12); }
-  /* Top-bar filter / sort / sensitive-only controls. */
+  /* Top-bar filter / sort controls. */
   .ins-filter { width: 148px; padding: 2px 8px; border: 1px solid rgba(255,255,255,.14);
     border-radius: 5px; background: rgba(255,255,255,.03); color: #e0e0e0; font: inherit; }
   .ins-filter:focus { outline: none; border-color: rgba(74,222,128,.5); }
   .ins-sort { padding: 2px 6px; border: 1px solid rgba(255,255,255,.14); border-radius: 5px;
     background: #0a0a0a; color: #cbd5e1; font: inherit; cursor: pointer; }
-  .ins-sens-toggle.active { border-color: #f87171; color: #f87171; background: rgba(248,113,113,.10); }
   .td-op.filtered-out { display: none; }
-  /* Privacy markers on the op row and the frame. */
-  .td-op-lock, .td-frame-lock { font-size: 10px; opacity: .9; }
-  .td-op-lock { margin-left: 3px; }
-  .td-frame-lock { margin-left: -3px; }
-  .ins-stat.lock .n { color: #fca5a5; }
   /* Clickable top-method pills. */
   .ins-method { cursor: pointer; }
   .ins-method:hover { border-color: rgba(74,222,128,.5); color: #d1fae5; }
-  /* Sensitive-reveal escape hatch (dev-only, env-armed): danger styling. */
-  .td-frame-reveal-btn { display: flex; align-items: center; gap: 6px; width: 100%;
-    padding: 3px 8px; border: 1px dashed rgba(248,113,113,.55); border-radius: 5px;
-    background: rgba(248,113,113,.06); color: #f87171; cursor: pointer; font: inherit; text-align: left; }
-  .td-frame-reveal-btn:hover { background: rgba(248,113,113,.15); border-style: solid; }
-  .td-detail-danger { border-color: rgba(248,113,113,.6) !important;
-    box-shadow: inset 3px 0 0 #f87171; }
   /* Aggregate summary strip: the "at a glance" row of metric tiles. */
   .ins-summary { display: flex; gap: 6px; align-items: flex-start; flex-wrap: nowrap;
     padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,.08);
@@ -971,22 +942,13 @@ ${TRACE_DETAIL_CSS}
     <option value="duration">slowest</option>
     <option value="frames">most frames</option>
   </select>
-  <button class="ins-btn ins-sens-toggle" id="sensOnly" type="button"
-    title="Show only ops carrying a sensitive (redacted) method">🔒 only</button>
   <span class="ins-channels" id="channels"></span>
-  <span class="ins-bulk" id="bulk">
-    <button class="ins-btn primary" id="decodeAll" type="button"
-      title="Reveal every non-sensitive payload in the open op (sensitive frames stay redacted)">Decode all</button>
-    <button class="ins-btn" id="encodeAll" type="button"
-      title="Re-blur every payload in the open op">Encode all</button>
-  </span>
-  <span class="ins-gate" id="gate">decode: __DECODE_STATE__</span>
 </div>
 <div class="ins-summary empty" id="summary">waiting for frames…</div>
 <div class="ins-body">
   <div class="ins-list" id="list" tabindex="0"><div class="td-op-empty">waiting for frames…</div></div>
   <div class="ins-split" id="split" title="Drag to resize"></div>
-  <div class="ins-detail" id="detail" tabindex="0"><div class="td-detail-empty">Select an operation to inspect its frames. ↑/↓ to move, Enter to open, d to decode a frame.</div></div>
+  <div class="ins-detail" id="detail" tabindex="0"><div class="td-detail-empty">Select an operation to inspect its frames. ↑/↓ to move, Enter to open.</div></div>
 </div>
 <div class="ins-status" id="status">connecting…</div>
 <script>
@@ -995,13 +957,8 @@ ${TRACE_DETAIL_CSS}
   var chanEl = document.getElementById("channels");
   var statusEl = document.getElementById("status");
   var summaryEl = document.getElementById("summary");
-  var gateEl = document.getElementById("gate");
-  var bulkEl = document.getElementById("bulk");
   var filterEl = document.getElementById("filter");
   var sortEl = document.getElementById("sort");
-  var sensOnlyEl = document.getElementById("sensOnly");
-  var decodeEnabled = gateEl.textContent.indexOf("on") !== -1;
-  if (decodeEnabled) { gateEl.classList.add("on"); bulkEl.classList.add("on"); }
 
   var selectedId = null;      // requestId of the open op
   var selectedChannel = null; // channelId of the open op (disambiguates requestId across hosts)
@@ -1010,10 +967,8 @@ ${TRACE_DETAIL_CSS}
   var lastListHtml = "";   // skip rebuilds when the op list is unchanged
   var lastDetailHtml = ""; // skip detail refresh when the open op is unchanged
   var cursor = -1;         // frame index highlighted in the detail
-  var decodeAll = false;   // sticky "decode every payload" mode (Decode all)
   var filter = "";         // method substring filter (client-side, over the op list)
   var sortMode = "";       // server-side sort key ("" = arrival order)
-  var sensOnly = false;    // show only ops carrying a sensitive method
 
   // The op list is a live, keyed-diff DOM; filtering hides rows with a class and
   // must be re-applied after every rebuild. Sort is a server concern (?sort=).
@@ -1022,8 +977,7 @@ ${TRACE_DETAIL_CSS}
       var m = r.querySelector(".td-op-method");
       var text = m ? m.textContent.toLowerCase() : "";
       var hideText = filter !== "" && text.indexOf(filter) === -1;
-      var hideSens = sensOnly && !r.hasAttribute("data-sensitive");
-      r.classList.toggle("filtered-out", hideText || hideSens);
+      r.classList.toggle("filtered-out", hideText);
     });
   }
   filterEl.addEventListener("input", function () {
@@ -1034,11 +988,6 @@ ${TRACE_DETAIL_CSS}
     sortMode = sortEl.value;
     lastListHtml = "";  // force a rebuild under the new order
     poll();
-  });
-  sensOnlyEl.addEventListener("click", function () {
-    sensOnly = !sensOnly;
-    sensOnlyEl.classList.toggle("active", sensOnly);
-    applyFilter();
   });
   // Click a top-method pill to filter to it.
   summaryEl.addEventListener("click", function (e) {
@@ -1109,7 +1058,7 @@ ${TRACE_DETAIL_CSS}
     Array.prototype.slice.call(listEl.querySelectorAll(".td-op")).forEach(function (r) {
       if (!seen[keyOf(r)]) r.remove();
     });
-    applyFilter();  // rows changed; re-apply the active filter/sensitive view
+    applyFilter();  // rows changed; re-apply the active method filter
   }
 
   function rows() { return Array.prototype.slice.call(listEl.querySelectorAll(".td-op")); }
@@ -1132,9 +1081,6 @@ ${TRACE_DETAIL_CSS}
       .then(function (frag) {
         lastDetailHtml = frag;
         detailEl.innerHTML = frag;
-        // Sticky Decode-all: a freshly opened op reveals every payload too, so
-        // the mode persists as the user moves between ops.
-        if (decodeAll) decodeAllFrames();
       });
     if (row) row.scrollIntoView({ block: "nearest" });
   }
@@ -1172,7 +1118,7 @@ ${TRACE_DETAIL_CSS}
     if (row) { listEl.focus(); selectOp(row.getAttribute("data-request-id"), row.getAttribute("data-channel-id"), row.getAttribute("data-generation")); }
   });
 
-  // Detail keyboard: move a frame cursor, decode the cursored frame.
+  // Detail keyboard: move the frame cursor (values are already rendered inline).
   function frameEls() { return Array.prototype.slice.call(detailEl.querySelectorAll(".td-frame")); }
   function moveCursor(next) {
     var fs = frameEls();
@@ -1185,83 +1131,6 @@ ${TRACE_DETAIL_CSS}
     if (e.key === "ArrowDown") { e.preventDefault(); moveCursor(cursor + 1); }
     else if (e.key === "ArrowUp") { e.preventDefault(); moveCursor(cursor - 1); }
     else if (e.key === "ArrowLeft" || e.key === "Escape") { e.preventDefault(); listEl.focus(); }
-    else if (e.key === "d" || e.key === "Enter") {
-      var fs = frameEls();
-      if (cursor >= 0 && fs[cursor]) {
-        var btn = fs[cursor].querySelector(".td-frame-decode-btn");
-        if (btn) decodeFrame(btn);
-      }
-    }
-  });
-
-  // Level-2: fetch the /frame-html fragment and swap it in for the decode
-  // control. Server-rendered + escaped; a sensitive frame comes back redacted.
-  function decodeFrame(btn) {
-    var trace = btn.closest(".td-trace");
-    var id = trace && trace.getAttribute("data-request-id");
-    var seq = btn.getAttribute("data-seq");
-    if (!id || seq === null) return;
-    btn.disabled = true;
-    get("/frame-html?id=" + encodeURIComponent(id) + "&i=" + encodeURIComponent(seq) +
-      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
-      "&gen=" + encodeURIComponent(selectedGen || "0"))
-      .then(function (frag) { btn.outerHTML = frag; })
-      .catch(function () { btn.disabled = false; });
-  }
-  detailEl.addEventListener("click", function (e) {
-    var btn = e.target.closest && e.target.closest(".td-frame-decode-btn");
-    if (btn) { decodeFrame(btn); return; }
-    // Sensitive-reveal escape hatch: explicit per-frame confirm before we ask
-    // the server (which only honors it when the reveal gate is armed).
-    var rb = e.target.closest && e.target.closest(".td-frame-reveal-btn");
-    if (rb) revealFrame(rb);
-  });
-
-  // Reveal one sensitive frame after an explicit confirmation. Distinct from
-  // decodeFrame: it passes reveal=1 and is never swept up by "Decode all".
-  function revealFrame(btn) {
-    if (!window.confirm(
-      "Reveal this SENSITIVE payload?\\n\\nIt may contain a private key, signature, or credential. " +
-      "Do NOT do this while screen-sharing or recording."
-    )) return;
-    var trace = btn.closest(".td-trace");
-    var id = trace && trace.getAttribute("data-request-id");
-    var seq = btn.getAttribute("data-seq");
-    if (!id || seq === null) return;
-    btn.disabled = true;
-    get("/frame-html?id=" + encodeURIComponent(id) + "&i=" + encodeURIComponent(seq) + "&reveal=1" +
-      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
-      "&gen=" + encodeURIComponent(selectedGen || "0"))
-      .then(function (frag) { btn.outerHTML = frag; })
-      .catch(function () { btn.disabled = false; });
-  }
-
-  // Bulk controls: decode / re-blur every payload in the open op at once, so a
-  // reviewer never chases one button per frame. Decode-all is server-gated and
-  // denylist-safe like the per-frame path - a sensitive frame still comes back
-  // redacted, never its value.
-  function decodeAllFrames() {
-    Array.prototype.slice
-      .call(detailEl.querySelectorAll(".td-frame-decode-btn"))
-      .forEach(function (b) { if (!b.disabled) decodeFrame(b); });
-  }
-  function encodeAllFrames() {
-    if (!selectedId) return;
-    // Re-render the op from /op: every payload returns to its blurred
-    // placeholder (the server offers controls, not values).
-    cursor = -1;  // the re-render clears .cursor; keep the index in step
-    get("/op?id=" + encodeURIComponent(selectedId) +
-      (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
-      "&gen=" + encodeURIComponent(selectedGen || "0"))
-      .then(function (frag) { detailEl.innerHTML = frag; });
-  }
-  var decodeAllBtn = document.getElementById("decodeAll");
-  var encodeAllBtn = document.getElementById("encodeAll");
-  if (decodeAllBtn) decodeAllBtn.addEventListener("click", function () {
-    decodeAll = true; decodeAllFrames();
-  });
-  if (encodeAllBtn) encodeAllBtn.addEventListener("click", function () {
-    decodeAll = false; encodeAllFrames();
   });
 
   // Channel switcher + status, from /channels connection state. Liveness uses
@@ -1324,8 +1193,6 @@ ${TRACE_DETAIL_CSS}
       statTile(fmtBytes(s.bytes), "data") +
       statTile(s.subscriptions, "subs", s.liveSubscriptions > 0 ? s.liveSubscriptions + " live" : "") +
       statTile(fmtMs(s.avgDurationMs), "avg op", "max " + fmtMs(s.maxDurationMs) + ", observed") +
-      '<div class="ins-stat lock"><span class="n">' + (s.sensitive || 0) +
-        '</span><span class="k">🔒 sensitive</span></div>' +
       warnTile(s.malformed, "malformed") +
       warnTile(s.orphaned, "orphaned") +
       warnTile(s.retryStorms, "retry storms") +
@@ -1376,8 +1243,7 @@ ${TRACE_DETAIL_CSS}
     fetch("/stats" + q).then(function (r) { return r.json(); }).then(renderStats).catch(function () {});
     // Keep the open op's detail live (a subscription gains receive frames while
     // it stays selected). Re-render only when the fragment actually changed, so
-    // a quiet op keeps its in-place decode/reveal state instead of being wiped
-    // every second; sticky Decode-all re-applies when it does change.
+    // a quiet op is not wiped every second.
     if (selectedId) {
       get("/op?id=" + encodeURIComponent(selectedId) +
         (selectedChannel ? "&channel=" + encodeURIComponent(selectedChannel) : "") +
@@ -1387,7 +1253,6 @@ ${TRACE_DETAIL_CSS}
           lastDetailHtml = frag;
           detailEl.innerHTML = frag;
           cursor = -1;
-          if (decodeAll) decodeAllFrames();
         }).catch(function () {});
     }
   }
@@ -1397,24 +1262,22 @@ ${TRACE_DETAIL_CSS}
 `;
 
 // Entry point: `bun run src/server.ts` (or `npm run serve`) starts the server.
-// Port comes from TRUAPI_DEBUGGER_PORT, else the default. Level-2 value decode
-// is off unless TRUAPI_DEBUGGER_DECODE_VALUES is truthy (1/true/yes/on).
+// Port comes from TRUAPI_DEBUGGER_PORT, else the default. This is a DEV-ONLY,
+// loopback-only tool: value decode is ON by default (set
+// TRUAPI_DEBUGGER_DECODE_VALUES to 0/false/no/off to turn decode off for a demo).
 if (import.meta.main) {
   const envPort = Number(Bun.env.TRUAPI_DEBUGGER_PORT);
-  const decodeValues = /^(1|true|yes|on)$/i.test(
+  // Dev-only tool: value decode is ON by default. Set TRUAPI_DEBUGGER_DECODE_VALUES
+  // to a falsy value (0/false/no/off) to turn decode off for a demo.
+  const decodeValues = !/^(0|false|no|off)$/i.test(
     Bun.env.TRUAPI_DEBUGGER_DECODE_VALUES ?? "",
-  );
-  const revealSensitive = /^(1|true|yes|on)$/i.test(
-    Bun.env.TRUAPI_DEBUGGER_REVEAL_SENSITIVE ?? "",
   );
   const server = startDebugServer({
     port: Number.isFinite(envPort) && envPort > 0 ? envPort : DEFAULT_PORT,
     decodeValues,
-    revealSensitive,
   });
   console.log(
-    `[truapi-debugger] listening on http://localhost:${server.port}` +
-      ` (value decode: ${server.decodeValues ? "on" : "off"}` +
-      `${server.revealSensitive ? ", sensitive reveal: ARMED" : ""})`,
+    `[truapi-debugger] listening on http://127.0.0.1:${server.port}` +
+      ` (value decode: ${server.decodeValues ? "on" : "off"})`,
   );
 }

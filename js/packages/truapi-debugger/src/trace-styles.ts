@@ -174,29 +174,6 @@ export const TRACE_DETAIL_CSS = String.raw`
   background: rgba(148, 163, 184, 0.12);
   border-color: rgba(148, 163, 184, 0.3);
 }
-/* Level-2 decode affordance (standalone app vantage; dotli keeps bytes off). */
-.td-frame-decode-btn {
-  font: inherit;
-  font-size: 10px;
-  color: #94a3b8;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-  padding: 1px 6px;
-  cursor: pointer;
-}
-.td-frame-decode-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-.td-redacted {
-  color: #f87171;
-  font-size: 11px;
-}
-.td-redacted-tag {
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
 .td-bytes-only {
   color: #6b7280;
   font-size: 11px;

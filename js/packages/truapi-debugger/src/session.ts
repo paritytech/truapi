@@ -22,6 +22,7 @@ import {
 } from "./wire-debugger.js";
 import { createDebugIngest, type DebugFrameEnvelope } from "./ingest.js";
 import { createFrameDecoder, type FrameValueDetail } from "./decode.js";
+import type { TraceView } from "./trace-view.js";
 import * as W from "@parity/truapi/wire-table";
 import { createClient, createTransport } from "@parity/truapi";
 
@@ -37,21 +38,13 @@ const NOOP_PROVIDER = {
 /** Options for {@link createDebugSession}. */
 export interface DebugSessionOptions {
   /**
-   * Turn on level-2 value decode in the drill-down detail path. Off by default.
-   * When on, the session retains raw frame bytes so {@link DebugSession.frameDetail}
-   * can decode non-sensitive frames; `/traces` stays payload-blind regardless
-   * (it never reads bytes or decoded values), and sensitive frames are never
-   * decoded even here. When off, `frameDetail` reports byte length only.
+   * Turn on level-2 value decode in the drill-down detail path. On by default
+   * (this is a dev-only tool that decodes everything). When on, the session
+   * retains raw frame bytes so {@link DebugSession.frameDetail} can decode a
+   * frame; `/traces` stays payload-blind regardless (it never reads bytes or
+   * decoded values). When off, `frameDetail` reports byte length only.
    */
   decodeValues?: boolean;
-  /**
-   * Arm the dev-only sensitive-reveal escape hatch. Off by default and only
-   * meaningful when {@link decodeValues} is also on. Even armed, a sensitive
-   * frame still redacts unless {@link DebugSession.frameDetail} is called with an
-   * explicit `reveal` (the operator confirms per frame). Wired from
-   * `TRUAPI_DEBUGGER_REVEAL_SENSITIVE`, so it cannot be set in a shipped build.
-   */
-  revealSensitive?: boolean;
 }
 
 /** Live debug session: feed it envelopes, read back grouped traces. */
@@ -64,30 +57,31 @@ export interface DebugSession {
   readonly methodNames: ReadonlyMap<number, WireMethodInfo>;
   /** Whether level-2 value decode is enabled for this session. */
   readonly decodeValues: boolean;
-  /** Whether the dev-only sensitive-reveal escape hatch is armed for this session. */
-  readonly revealSensitive: boolean;
-  /**
-   * Frame ids that are never decoded (the sensitive denylist). Exposed so a view
-   * can mark a frame/op as carrying redacted material *before* any decode - the
-   * marker is payload-blind (it reveals nothing the method name doesn't) and
-   * holds regardless of {@link DebugSessionOptions.decodeValues}.
-   */
-  readonly sensitiveIds: ReadonlySet<number>;
   /**
    * Drill-down: resolve one frame (by its trace `requestId` and index within
    * that trace) to a {@link FrameValueDetail}. Pass `channelId` to disambiguate
    * when more than one host is connected (each mints the same `p:N` ids).
    * Returns `undefined` if no such frame exists. This is the *only* path that can
    * surface a decoded value, and only when {@link DebugSessionOptions.decodeValues}
-   * is on and the frame is not sensitive; otherwise it reports byte length only.
+   * is on; otherwise it reports byte length only.
    */
   frameDetail(
     requestId: string,
     index: number,
     channelId?: string,
-    reveal?: boolean,
     generation?: number,
   ): FrameValueDetail | undefined;
+  /**
+   * Decode every frame of one op in a single trace resolution, keyed by frame
+   * index (`seq`). This is the batch path the inline drill-down uses, so a mount
+   * resolves the op once rather than re-resolving it per frame. Empty when decode
+   * is off or the op is not found.
+   */
+  decodedFrames(
+    requestId: string,
+    channelId?: string,
+    generation?: number,
+  ): Map<number, FrameValueDetail>;
 }
 
 /**
@@ -98,10 +92,10 @@ export interface DebugSession {
 export function createDebugSession(
   options: DebugSessionOptions = {},
 ): DebugSession {
-  const decodeValues = options.decodeValues ?? false;
-  // Reveal is meaningless without decode; fold the master gate in so the
-  // reported capability can never claim more than the session can actually do.
-  const revealSensitive = decodeValues && (options.revealSensitive ?? false);
+  // Dev-only tool: decode everything by default. The developer is looking at
+  // their own session's traffic, so value decode is ON unless a caller explicitly
+  // turns it off (tests do).
+  const decodeValues = options.decodeValues ?? true;
   const serviceNames = Object.keys(createClient(createTransport(NOOP_PROVIDER)));
   const methodNames = createMethodNameMap(
     W as unknown as Record<string, unknown>,
@@ -119,22 +113,36 @@ export function createDebugSession(
     retainBytes: decodeValues,
     methodNames,
   });
-  const decoder = createFrameDecoder({
-    enabled: decodeValues,
-    revealSensitive,
-  });
+  const decoder = createFrameDecoder({ enabled: decodeValues });
 
   const frameDetail = (
     requestId: string,
     index: number,
     channelId?: string,
-    reveal?: boolean,
     generation?: number,
   ): FrameValueDetail | undefined => {
     const frame = wireDebugger.trace(requestId, channelId, generation)?.frames[
       index
     ];
-    return frame ? decoder.detail(frame, { reveal }) : undefined;
+    return frame ? decoder.detail(frame) : undefined;
+  };
+
+  const decodedFrames = (
+    requestId: string,
+    channelId?: string,
+    generation?: number,
+  ): Map<number, FrameValueDetail> => {
+    const decoded = new Map<number, FrameValueDetail>();
+    if (!decodeValues) return decoded;
+    // Resolve the op once, then decode each frame off the resolved trace, rather
+    // than re-resolving (a linear scan over every retained trace) per frame.
+    const trace = wireDebugger.trace(requestId, channelId, generation);
+    if (!trace) return decoded;
+    trace.frames.forEach((frame, index) => {
+      const detail = decoder.detail(frame);
+      if (detail !== undefined) decoded.set(index, detail);
+    });
+    return decoded;
   };
 
   return {
@@ -142,8 +150,20 @@ export function createDebugSession(
     traceEngine: wireDebugger,
     methodNames,
     decodeValues,
-    revealSensitive: decoder.revealSensitive,
-    sensitiveIds: decoder.sensitiveIds,
     frameDetail,
+    decodedFrames,
   };
+}
+
+/**
+ * Decode every frame of an op up front, keyed by frame `seq`, ready to hand to
+ * {@link renderTraceDetail}'s `decoded` option. A dev-only tool shows values
+ * inline rather than behind a per-frame control, so a mount decodes the whole
+ * op in one pass. Returns an empty map when the session has decode off.
+ */
+export function decodeTraceFrames(
+  session: DebugSession,
+  view: TraceView,
+): Map<number, FrameValueDetail> {
+  return session.decodedFrames(view.requestId, view.channelId, view.generation);
 }

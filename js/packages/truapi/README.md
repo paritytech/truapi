@@ -114,11 +114,11 @@ bytes }`, opaque bytes - to a separate debugger app, which decodes and groups th
 
 The generated `WIRE_DECODE_TABLE` on the `./wire-decode` subpath (raw SCALE bytes → typed value)
 stays here, since it is generated from this package's contract. It is the decode source the
-[`@parity/truapi-debugger`](../truapi-debugger/) app uses for its opt-in, level-2 typed-value view:
-payload decode is available in the debugger behind `TRUAPI_DEBUGGER_DECODE_VALUES` (off by default),
-with sensitive frames excluded by the generated `SENSITIVE_FRAME_IDS` denylist. `@parity/truapi`
-itself never decodes payloads — the envelope decode it does expose (`decodeWireMessage`: `requestId`,
-frame id) carries no payload value.
+[`@parity/truapi-debugger`](../truapi-debugger/) app uses to render frame values. That app is a
+strictly dev-only tool: it decodes every frame by default (there is no redaction), and its safety
+is that it is compiled out of production, not that it hides fields. `TRUAPI_DEBUGGER_DECODE_VALUES=0`
+turns decode off for a payload-blind demo. `@parity/truapi` itself never decodes payloads — the
+envelope decode it does expose (`decodeWireMessage`: `requestId`, frame id) carries no payload value.
 
 ## Wire format
 
