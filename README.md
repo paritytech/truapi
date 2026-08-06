@@ -58,12 +58,15 @@ rust/crates/
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
   truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
+  truapi-provider/       Network provider backends (WebSocket RPC or smoldot light-client)
   truapi-server/         Host runtime: dispatcher, typed SCALE logic, chain signing, WASM surface
 js/packages/
   truapi/                  @parity/truapi TypeScript client
   truapi-host/            @parity/truapi-host: WASM-backed host runtime; entries `.`
                           (shared host types), `/web` (iframe + Web Worker),
                           `/worker-runtime`
+  truapi-provider/         @parity/truapi-provider: WASM ChainProvider backends
+                          (embedded smoldot light client + remote WebSocket RPC)
 js/container/              TS lockdown container for the iOS host web view; bundles into
                            ios/truapi-host/Sources/TrUAPIHost/Resources/truapi-container.js
 android/truapi-host/       Kotlin host adapter package over the truapi-server UniFFI core
@@ -92,6 +95,12 @@ a single package with tree-shakeable subpath entries:
   MessageChannel handshake (`createIframeHost`) plus `createWebWorkerProvider`.
 - `@parity/truapi-host/worker-runtime` is the Web Worker entrypoint so the WASM core can
   run off the page main thread.
+
+A browser host that wants an in-page light client can supply chain RPC transport with
+[`@parity/truapi-provider`](js/packages/truapi-provider), which compiles the
+`truapi-provider` crate (embedded smoldot plus a bundled chain-spec catalog) to WASM and
+exposes the same `ChainProvider` contract the native hosts use over UniFFI. Both WASM
+bundles are rebuilt by `make wasm`.
 
 ## How it works
 

@@ -1,0 +1,16 @@
+{
+  "listen": "127.0.0.1:9944",
+  "chains": {
+    "relay": {
+      "genesis": "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd"
+    },
+    "asset-hub": {
+      "genesis": "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+      "url": "wss://paseo-asset-hub-next-rpc.polkadot.io"
+    },
+    "people": {
+      "genesis": "0xc5af1826b31493f08b7e2a823842f98575b806a784126f28da9608c68665afa5",
+      "url": "wss://paseo-people-next-system-rpc.polkadot.io"
+    }
+  }
+}
