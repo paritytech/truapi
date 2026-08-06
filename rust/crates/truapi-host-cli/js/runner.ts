@@ -41,10 +41,7 @@ declare global {
   // Playground examples receive this helper from `runExample`; expose the
   // same contract to directly imported CLI scripts.
   // eslint-disable-next-line no-var
-  var assert: (
-    condition: unknown,
-    ...message: unknown[]
-  ) => asserts condition;
+  var assert: (condition: unknown, ...message: unknown[]) => asserts condition;
 }
 
 const OPEN_TIMEOUT_MS = 15_000;
@@ -65,7 +62,10 @@ async function main() {
 
   const context: HostContext = {
     productId,
-    productAccount: (index = 0) => ({ dotNsIdentifier: productId, derivationIndex: index }),
+    productAccount: (index = 0) => ({
+      dotNsIdentifier: productId,
+      derivationIndex: { tag: "Left", value: index },
+    }),
   };
   globalThis.truapi = client;
   globalThis.host = context;
@@ -101,7 +101,9 @@ async function main() {
 main().then(
   () => process.exit(0),
   (error) => {
-    console.error(`[script error] ${error instanceof Error ? error.stack : String(error)}`);
+    console.error(
+      `[script error] ${error instanceof Error ? error.stack : String(error)}`,
+    );
     process.exit(1);
   },
 );

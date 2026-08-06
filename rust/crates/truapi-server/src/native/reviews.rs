@@ -26,6 +26,19 @@ impl From<v01::DerivationIndex> for DerivationIndex {
     }
 }
 
+impl TryFrom<DerivationIndex> for v01::DerivationIndex {
+    type Error = String;
+
+    fn try_from(index: DerivationIndex) -> Result<Self, Self::Error> {
+        match index {
+            DerivationIndex::Index(index) => Ok(Self::Left(index)),
+            DerivationIndex::Raw(raw) => raw.try_into().map(Self::Right).map_err(|raw: Vec<u8>| {
+                format!("raw derivation index must be 32 bytes, got {}", raw.len())
+            }),
+        }
+    }
+}
+
 /// Product account identifier: dotNS domain plus derivation index.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ProductAccountId {
@@ -45,6 +58,17 @@ impl From<v01::ProductAccountId> for ProductAccountId {
             dot_ns_identifier,
             derivation_index: derivation_index.into(),
         }
+    }
+}
+
+impl TryFrom<ProductAccountId> for v01::ProductAccountId {
+    type Error = String;
+
+    fn try_from(account: ProductAccountId) -> Result<Self, Self::Error> {
+        Ok(Self {
+            dot_ns_identifier: account.dot_ns_identifier,
+            derivation_index: account.derivation_index.try_into()?,
+        })
     }
 }
 
@@ -333,6 +357,15 @@ impl From<v01::RingLocationJunction> for RingLocationJunction {
     }
 }
 
+impl From<RingLocationJunction> for v01::RingLocationJunction {
+    fn from(junction: RingLocationJunction) -> Self {
+        match junction {
+            RingLocationJunction::PalletInstance(instance) => Self::PalletInstance(instance),
+            RingLocationJunction::CollectionId(id) => Self::CollectionId(id),
+        }
+    }
+}
+
 /// Locates a ring for ring VRF operations.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct RingLocation {
@@ -348,6 +381,20 @@ impl From<v01::RingLocation> for RingLocation {
             chain_id: location.chain_id.to_vec(),
             junctions: location.junctions.into_iter().map(Into::into).collect(),
         }
+    }
+}
+
+impl TryFrom<RingLocation> for v01::RingLocation {
+    type Error = String;
+
+    fn try_from(location: RingLocation) -> Result<Self, Self::Error> {
+        let chain_id = location.chain_id.try_into().map_err(|chain_id: Vec<u8>| {
+            format!("ring chain id must be 32 bytes, got {}", chain_id.len())
+        })?;
+        Ok(Self {
+            chain_id,
+            junctions: location.junctions.into_iter().map(Into::into).collect(),
+        })
     }
 }
 

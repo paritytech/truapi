@@ -211,6 +211,98 @@ where
     }
     {
         let host = host.clone();
+        dispatcher.on_request(wire_table::ACCOUNT_REGISTER_RING_VRF_KEY, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::account::HostAccountRegisterRingVrfKeyRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::account::HostAccountRegisterRingVrfKeyError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::account::HostAccountRegisterRingVrfKeyError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::account::HostAccountRegisterRingVrfKeyResponse = match host.register_ring_vrf_key(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::ACCOUNT_LIST_RING_VRF_KEYS, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::account::HostAccountListRingVrfKeysRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::account::HostAccountListRingVrfKeysError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::account::HostAccountListRingVrfKeysError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::account::HostAccountListRingVrfKeysResponse = match host.list_ring_vrf_keys(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request(
+            wire_table::ACCOUNT_RING_VRF_SIGN,
+            move |request_id: String, bytes: Vec<u8>| {
+                let host = host.clone();
+                Box::pin(async move {
+                    let request: versioned::account::HostAccountRingVrfSignRequest =
+                        match Decode::decode(&mut &bytes[..]) {
+                            Ok(request) => request,
+                            Err(err) => {
+                                let error: truapi::CallError<
+                                    versioned::account::HostAccountRingVrfSignError,
+                                > = truapi::CallError::MalformedFrame {
+                                    reason: err.to_string(),
+                                };
+                                return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::account::HostAccountRingVrfSignError as Versioned>::LATEST,
+                        ));
+                            }
+                        };
+                    let target_version = request.version();
+                    let cx = CallContext::with_request_id(request_id.clone());
+                    let response: versioned::account::HostAccountRingVrfSignResponse =
+                        match host.ring_vrf_sign(&cx, request).await {
+                            Ok(value) => value,
+                            Err(err) => {
+                                return Ok(encode_versioned_err_payload(err, target_version));
+                            }
+                        };
+                    Ok(encode_versioned_ok_payload(response))
+                })
+            },
+        );
+    }
+    {
+        let host = host.clone();
         dispatcher.on_request(
             wire_table::ACCOUNT_GET_LEGACY_ACCOUNTS,
             move |request_id: String, bytes: Vec<u8>| {

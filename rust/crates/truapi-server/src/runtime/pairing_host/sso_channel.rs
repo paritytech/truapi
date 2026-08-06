@@ -2,8 +2,10 @@
 
 use super::super::authority::{
     AccountAliasAuthorityRequest, AuthorityCancelError, AuthorityError, BulletinAllowanceKey,
-    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest, SignPayloadAuthorityRequest,
-    SignRawAuthorityRequest, StatementStoreAllowanceKey,
+    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest,
+    ListRingVrfKeysAuthorityRequest, RegisterRingVrfKeyAuthorityRequest,
+    RingVrfSignAuthorityRequest, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
+    StatementStoreAllowanceKey,
 };
 use super::super::sso_remote::{
     RemoteResponseWait, SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON,
@@ -18,8 +20,9 @@ use crate::host_logic::sso::messages::{
     OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, RingVrfError,
     SsoAllocatedResource, SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement,
     alias_request_message, build_outgoing_request_statement, create_transaction_legacy_message,
-    create_transaction_message, decode_sso_session_statement, product_subtree_request_message,
-    proof_request_message, resource_allocation_message, sign_payload_message,
+    create_transaction_message, decode_sso_session_statement, list_ring_vrf_keys_message,
+    product_subtree_request_message, proof_request_message, register_ring_vrf_key_message,
+    resource_allocation_message, ring_vrf_sign_message, sign_payload_message,
     sign_raw_legacy_message, sign_raw_message, sign_vrf_message, v1,
 };
 use crate::host_logic::statement_store::parse_new_statements_result;
@@ -33,6 +36,12 @@ const UNEXPECTED_SSO_SIGNING_RESPONSE: &str = "Unexpected SSO response for signi
 const UNEXPECTED_SSO_TRANSACTION_RESPONSE: &str = "Unexpected SSO response for transaction request";
 const UNEXPECTED_SSO_ALIAS_RESPONSE: &str = "Unexpected SSO response for account alias request";
 const UNEXPECTED_SSO_PROOF_RESPONSE: &str = "Unexpected SSO response for ring-VRF proof request";
+const UNEXPECTED_SSO_REGISTER_RING_VRF_KEY_RESPONSE: &str =
+    "Unexpected SSO response for ring-VRF key registration request";
+const UNEXPECTED_SSO_LIST_RING_VRF_KEYS_RESPONSE: &str =
+    "Unexpected SSO response for ring-VRF key listing request";
+const UNEXPECTED_SSO_RING_VRF_SIGN_RESPONSE: &str =
+    "Unexpected SSO response for ring-VRF signing request";
 
 fn unexpected_response_reason(context: &str, response_kind: &str) -> String {
     format!("{context}: {response_kind}")
@@ -46,6 +55,12 @@ enum RemoteAction {
     RingVrfAlias,
     #[display("ring-vrf-proof")]
     RingVrfProof,
+    #[display("register-ring-vrf-key")]
+    RegisterRingVrfKey,
+    #[display("list-ring-vrf-keys")]
+    ListRingVrfKeys,
+    #[display("ring-vrf-sign")]
+    RingVrfSign,
     #[display("sign-vrf")]
     SignVrf,
     #[display("resource-allocation")]
@@ -482,6 +497,7 @@ impl PairingHost {
         let message = alias_request_message(
             message_id,
             request.calling_product_id,
+            request.key_handle,
             request.context,
             request.ring_location,
         );
@@ -509,6 +525,7 @@ impl PairingHost {
         let message = proof_request_message(
             message_id,
             request.calling_product_id,
+            request.key_handle,
             request.context,
             request.ring_location,
             request.message,
@@ -521,6 +538,96 @@ impl PairingHost {
         let SsoRemoteResponse::RingVrfProof(response) = response else {
             return Err(RingVrfError::Unknown {
                 reason: unexpected_response_reason(UNEXPECTED_SSO_PROOF_RESPONSE, response_kind),
+            });
+        };
+        response.payload
+    }
+
+    /// Forward a ring-VRF key registration request to the paired signing host.
+    pub(super) async fn remote_register_ring_vrf_key(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        request: RegisterRingVrfKeyAuthorityRequest,
+    ) -> Result<latest::RingVrfPublicKey, RingVrfError> {
+        let message_id = sso_message_id();
+        let message = register_ring_vrf_key_message(
+            message_id,
+            request.calling_product_id,
+            request.index,
+            request.ring,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::RegisterRingVrfKey, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
+        let SsoRemoteResponse::RegisterRingVrfKey(response) = response else {
+            return Err(RingVrfError::Unknown {
+                reason: unexpected_response_reason(
+                    UNEXPECTED_SSO_REGISTER_RING_VRF_KEY_RESPONSE,
+                    response_kind,
+                ),
+            });
+        };
+        response.payload
+    }
+
+    /// Forward a ring-VRF key listing request to the paired signing host.
+    pub(super) async fn remote_list_ring_vrf_keys(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        request: ListRingVrfKeysAuthorityRequest,
+    ) -> Result<Vec<latest::RegisteredRingVrfKey>, RingVrfError> {
+        let message_id = sso_message_id();
+        let message = list_ring_vrf_keys_message(
+            message_id,
+            request.calling_product_id,
+            request.owner,
+            request.disclosure,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::ListRingVrfKeys, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
+        let SsoRemoteResponse::ListRingVrfKeys(response) = response else {
+            return Err(RingVrfError::Unknown {
+                reason: unexpected_response_reason(
+                    UNEXPECTED_SSO_LIST_RING_VRF_KEYS_RESPONSE,
+                    response_kind,
+                ),
+            });
+        };
+        response.payload
+    }
+
+    /// Forward a direct ring-VRF signing request to the paired signing host.
+    pub(super) async fn remote_ring_vrf_sign(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        request: RingVrfSignAuthorityRequest,
+    ) -> Result<Vec<u8>, RingVrfError> {
+        let message_id = sso_message_id();
+        let message = ring_vrf_sign_message(
+            message_id,
+            request.calling_product_id,
+            request.key_handle,
+            request.message,
+        );
+        let response = self
+            .submit_remote_message(cx, session, RemoteAction::RingVrfSign, message)
+            .await
+            .map_err(remote_authority_error)?;
+        let response_kind = response.kind();
+        let SsoRemoteResponse::RingVrfSign(response) = response else {
+            return Err(RingVrfError::Unknown {
+                reason: unexpected_response_reason(
+                    UNEXPECTED_SSO_RING_VRF_SIGN_RESPONSE,
+                    response_kind,
+                ),
             });
         };
         response.payload
@@ -799,6 +906,7 @@ impl PairingHost {
                     SsoAllocatedResource::SmartContractAllowance => {}
                     SsoAllocatedResource::AutoSigning {
                         product_root_private_key,
+                        ring_vrf_domain_entropy,
                     } => {
                         let expected_product_subtree_public_key = self
                             .remote_product_subtree_public_key(cx, session, product_id.to_string())
@@ -809,6 +917,7 @@ impl PairingHost {
                             product_id,
                             expected_product_subtree_public_key,
                             *product_root_private_key,
+                            *ring_vrf_domain_entropy,
                         )
                         .await?;
                     }
@@ -901,6 +1010,7 @@ mod tests {
         let private_key = [0xA5; 64];
         let resource = SsoAllocatedResource::AutoSigning {
             product_root_private_key: private_key,
+            ring_vrf_domain_entropy: [0x5A; 32],
         };
         let resource_reason = unexpected_response_reason(
             "Unexpected statement-store allowance response resource",

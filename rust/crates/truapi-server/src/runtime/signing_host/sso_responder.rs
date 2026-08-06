@@ -27,21 +27,19 @@ use super::SigningHost;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::chain_runtime::RuntimeFailure;
 use crate::host_logic::entropy::root_entropy_source;
-use crate::host_logic::product_account::{
-    ProductAccountError, derive_identity_keypair, derive_root_keypair_from_entropy,
-    product_public_key_to_address,
-};
 #[cfg(not(target_arch = "wasm32"))]
+use crate::host_logic::product_account::derive_sr25519_hard_path;
 use crate::host_logic::product_account::{
-    derive_lite_person_ring_vrf_entropy, derive_sr25519_hard_path,
+    ProductAccountError, derive_identity_keypair, derive_ring_vrf_domain_entropy,
+    derive_root_keypair_from_entropy, product_public_key_to_address,
 };
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
     self, CreateTransactionPayload, IncomingSsoRequest, OnExistingAllowancePolicy, RemoteMessage,
     RemoteMessageData, ResourceAllocationResponse, RingVrfAliasResponse, RingVrfError,
-    RingVrfProofResponse, SignRawLegacyResponse, SignVrfResponse, SigningPayloadResponseData,
-    SigningRequest, SigningResponse, SsoAllocatableResource, SsoAllocatedResource,
-    SsoAllocationOutcome, SsoResponseCode, build_outgoing_request_statement,
+    RingVrfProofResponse, RingVrfSignResponse, SignRawLegacyResponse, SignVrfResponse,
+    SigningPayloadResponseData, SigningRequest, SigningResponse, SsoAllocatableResource,
+    SsoAllocatedResource, SsoAllocationOutcome, SsoResponseCode, build_outgoing_request_statement,
     build_signed_session_response_statement, decode_incoming_sso_request, v1,
 };
 use crate::host_logic::sso::pairing::{
@@ -52,7 +50,8 @@ use crate::host_logic::sso::pairing::{
 use crate::host_logic::statement_store::{build_signed_statement, parse_new_statements_result};
 use crate::runtime::authority::{
     AccountAliasAuthorityRequest, AuthorityError, CreateProofAuthorityRequest,
-    CreateTransactionAuthorityRequest, ProductAuthority, SignPayloadAuthorityRequest,
+    CreateTransactionAuthorityRequest, ListRingVrfKeysAuthorityRequest, ProductAuthority,
+    RegisterRingVrfKeyAuthorityRequest, RingVrfSignAuthorityRequest, SignPayloadAuthorityRequest,
     SignRawAuthorityRequest,
 };
 use crate::runtime::services::RuntimeServices;
@@ -476,6 +475,15 @@ fn remote_response_result(message: &RemoteMessageData) -> ResponseResult {
         v1::RemoteMessage::RingVrfProofResponse(response) => {
             response.payload.as_ref().err().map(ring_vrf_error_reason)
         }
+        v1::RemoteMessage::RegisterRingVrfKeyResponse(response) => {
+            response.payload.as_ref().err().map(ring_vrf_error_reason)
+        }
+        v1::RemoteMessage::ListRingVrfKeysResponse(response) => {
+            response.payload.as_ref().err().map(ring_vrf_error_reason)
+        }
+        v1::RemoteMessage::RingVrfSignResponse(response) => {
+            response.payload.as_ref().err().map(ring_vrf_error_reason)
+        }
         v1::RemoteMessage::ResourceAllocationResponse(response) => {
             return resource_allocation_payload_result(&response.payload, &[]);
         }
@@ -602,6 +610,9 @@ fn ring_vrf_error_reason(error: &RingVrfError) -> String {
     match error {
         RingVrfError::RingNotFound => "RingNotFound".to_string(),
         RingVrfError::NotMember => "NotMember".to_string(),
+        RingVrfError::KeyNotRegistered => "KeyNotRegistered".to_string(),
+        RingVrfError::KeyNotInRing => "KeyNotInRing".to_string(),
+        RingVrfError::NotAllowlisted => "NotAllowlisted".to_string(),
         RingVrfError::Rejected => "Rejected".to_string(),
         RingVrfError::Unknown { reason } => format!("Unknown: {reason}"),
     }
@@ -651,6 +662,27 @@ async fn answer_remote_message(
         v1::RemoteMessage::RingVrfProofRequest(request) => {
             let payload = create_proof_response(signing_host, request).await;
             v1::RemoteMessage::RingVrfProofResponse(RingVrfProofResponse {
+                responding_to: message_id,
+                payload,
+            })
+        }
+        v1::RemoteMessage::RegisterRingVrfKeyRequest(request) => {
+            let payload = register_ring_vrf_key_response(signing_host, request).await;
+            v1::RemoteMessage::RegisterRingVrfKeyResponse(messages::RegisterRingVrfKeyResponse {
+                responding_to: message_id,
+                payload,
+            })
+        }
+        v1::RemoteMessage::ListRingVrfKeysRequest(request) => {
+            let payload = list_ring_vrf_keys_response(signing_host, request).await;
+            v1::RemoteMessage::ListRingVrfKeysResponse(messages::ListRingVrfKeysResponse {
+                responding_to: message_id,
+                payload,
+            })
+        }
+        v1::RemoteMessage::RingVrfSignRequest(request) => {
+            let payload = ring_vrf_sign_response(signing_host, request).await;
+            v1::RemoteMessage::RingVrfSignResponse(RingVrfSignResponse {
                 responding_to: message_id,
                 payload,
             })
@@ -732,6 +764,9 @@ async fn answer_remote_message(
         | v1::RemoteMessage::SignResponse(_)
         | v1::RemoteMessage::RingVrfAliasResponse(_)
         | v1::RemoteMessage::RingVrfProofResponse(_)
+        | v1::RemoteMessage::RegisterRingVrfKeyResponse(_)
+        | v1::RemoteMessage::ListRingVrfKeysResponse(_)
+        | v1::RemoteMessage::RingVrfSignResponse(_)
         | v1::RemoteMessage::ResourceAllocationResponse(_)
         | v1::RemoteMessage::CreateTransactionResponse(_)
         | v1::RemoteMessage::SignRawLegacyResponse(_)
@@ -810,14 +845,22 @@ async fn resource_allocation_response(
             SsoAllocatableResource::SmartContractAllowance(_) => {
                 Ok(SsoAllocationOutcome::NotAvailable)
             }
-            SsoAllocatableResource::AutoSigning => signing_host
-                .product_subtree_secret(&request.calling_product_id)
-                .map(|product_root_private_key| {
-                    SsoAllocationOutcome::Allocated(SsoAllocatedResource::AutoSigning {
+            SsoAllocatableResource::AutoSigning => (|| -> Result<_, AllowanceAllocationError> {
+                let product_root_private_key = signing_host
+                    .product_subtree_secret(&request.calling_product_id)
+                    .map_err(AllowanceAllocationError::Authority)?;
+                let root_entropy = signing_host.root_entropy()?;
+                let ring_vrf_domain_entropy =
+                    derive_ring_vrf_domain_entropy(&root_entropy, &request.calling_product_id)
+                        .map_err(super::product_authority_error)
+                        .map_err(AllowanceAllocationError::Authority)?;
+                Ok(SsoAllocationOutcome::Allocated(
+                    SsoAllocatedResource::AutoSigning {
                         product_root_private_key,
-                    })
-                })
-                .map_err(AllowanceAllocationError::Authority),
+                        ring_vrf_domain_entropy,
+                    },
+                ))
+            })(),
         };
         match outcome {
             Ok(outcome) => outcomes.push(outcome),
@@ -864,7 +907,10 @@ pub(super) async fn allocate_statement_store_allowance(
     let allowance =
         derive_sr25519_hard_path(&entropy, &["allowance", "statement-store", product_id])?;
     let target = allowance.public.to_bytes();
-    let bandersnatch = derive_lite_person_ring_vrf_entropy(&entropy);
+    let session = signing_host
+        .current_session()
+        .ok_or(AuthorityError::Disconnected)?;
+    let bandersnatch = *signing_host.reserved_lite_person_entropy(&session)?;
     let rpc = statement_allowance::rpc::RpcClient::new(
         services
             .statement_store
@@ -959,7 +1005,10 @@ pub(super) async fn allocate_bulletin_allowance(
     );
     let metadata = fetch_metadata(&people_rpc).await?;
     let chain_state = fetch_chain_state(&people_rpc).await?;
-    let bandersnatch = derive_lite_person_ring_vrf_entropy(&entropy);
+    let session = signing_host
+        .current_session()
+        .ok_or(AuthorityError::Disconnected)?;
+    let bandersnatch = *signing_host.reserved_lite_person_entropy(&session)?;
     let current = statement_allowance::ring::read_current_ring_index(&people_rpc).await?;
     let ring = find_including_ring(&people_rpc, &metadata, bandersnatch, current)
         .await?
@@ -1201,6 +1250,7 @@ async fn account_alias_response(
             &session,
             AccountAliasAuthorityRequest {
                 calling_product_id: request.calling_product_id,
+                key_handle: request.key_handle,
                 context: request.context,
                 ring_location: request.ring_location,
             },
@@ -1222,8 +1272,69 @@ async fn create_proof_response(
             &session,
             CreateProofAuthorityRequest {
                 calling_product_id: request.calling_product_id,
+                key_handle: request.key_handle,
                 context: request.context,
                 ring_location: request.ring_location,
+                message: request.message,
+            },
+        )
+        .await
+}
+
+async fn register_ring_vrf_key_response(
+    signing_host: &Arc<SigningHost>,
+    request: messages::RegisterRingVrfKeyRequest,
+) -> Result<api::RingVrfPublicKey, RingVrfError> {
+    let session = signing_host
+        .current_session()
+        .ok_or_else(disconnected_ring_vrf)?;
+    signing_host
+        .register_ring_vrf_key(
+            &CallContext::default(),
+            &session,
+            RegisterRingVrfKeyAuthorityRequest {
+                calling_product_id: request.calling_product_id,
+                index: request.index,
+                ring: request.ring,
+            },
+        )
+        .await
+}
+
+async fn list_ring_vrf_keys_response(
+    signing_host: &Arc<SigningHost>,
+    request: messages::ListRingVrfKeysRequest,
+) -> Result<Vec<api::RegisteredRingVrfKey>, RingVrfError> {
+    let session = signing_host
+        .current_session()
+        .ok_or_else(disconnected_ring_vrf)?;
+    signing_host
+        .list_ring_vrf_keys(
+            &CallContext::default(),
+            &session,
+            ListRingVrfKeysAuthorityRequest {
+                calling_product_id: request.calling_product_id,
+                owner: request.owner,
+                disclosure: request.disclosure,
+            },
+        )
+        .await
+}
+
+async fn ring_vrf_sign_response(
+    signing_host: &Arc<SigningHost>,
+    request: messages::RingVrfSignRequest,
+) -> Result<Vec<u8>, RingVrfError> {
+    let session = signing_host
+        .current_session()
+        .ok_or_else(disconnected_ring_vrf)?;
+    signing_host
+        .ring_vrf_sign(
+            &CallContext::default(),
+            &session,
+            RingVrfSignAuthorityRequest {
+                calling_product_id: request.calling_product_id,
+                key_handle: request.key_handle,
                 message: request.message,
             },
         )
@@ -1332,6 +1443,10 @@ mod tests {
             "alias-1".to_string(),
             v1::RemoteMessage::RingVrfAliasRequest(messages::RingVrfAliasRequest {
                 calling_product_id: "myapp.dot".to_string(),
+                key_handle: api::ProductAccountId {
+                    dot_ns_identifier: "peopl.dot".to_string(),
+                    derivation_index: api::DerivationIndex::Left(0),
+                },
                 context: api::ProductProofContext {
                     product_id: "other.dot".to_string(),
                     suffix: api::DerivationIndex::Left(0),
@@ -1490,6 +1605,9 @@ mod tests {
         let expected_secret = signing_host
             .product_subtree_secret("myapp.dot")
             .expect("product subtree secret derives");
+        let expected_ring_vrf_domain_entropy =
+            derive_ring_vrf_domain_entropy(&ENTROPY, "myapp.dot")
+                .expect("ring-VRF domain entropy derives");
 
         let response = futures::executor::block_on(answer_remote_message(
             &services,
@@ -1512,6 +1630,7 @@ mod tests {
             vec![SsoAllocationOutcome::Allocated(
                 SsoAllocatedResource::AutoSigning {
                     product_root_private_key: expected_secret,
+                    ring_vrf_domain_entropy: expected_ring_vrf_domain_entropy,
                 }
             )]
         );

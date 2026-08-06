@@ -4,8 +4,8 @@
 //! accounts use one soft junction carrying the RFC-0022 32-byte derivation
 //! index, so a paired host can derive children from the subtree public key.
 //! Reserved built-ins additionally pin the `uid.dot` identity account and the
-//! `peopl.dot` full/lite ring-VRF keyed-hash paths so activation, pairing,
-//! registration, proof, allowance, and CLI code cannot drift.
+//! legacy `peopl.dot` full/lite ring-VRF keyed-hash paths used by pairing
+//! attestation. RFC-0024 operational key selection comes from the registry.
 //! Host-spec C.5-C.7 define the product-account derivation, SS58 address, and
 //! `ProductAccountId` shape:
 //! <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L66-L128>
@@ -106,13 +106,43 @@ pub fn derive_lite_person_ring_vrf_entropy(root_entropy: &[u8]) -> [u8; 32] {
 }
 
 fn derive_person_ring_vrf_entropy(root_entropy: &[u8], index: u32) -> [u8; 32] {
+    derive_ring_vrf_entropy(
+        root_entropy,
+        PERSONHOOD_PRODUCT_ID,
+        &truapi::v01::DerivationIndex::Left(index),
+    )
+    .expect("the reserved personhood product id is a valid junction")
+}
+
+/// Derive arbitrary RFC-0022 ring-VRF entropy:
+/// `hash(root_entropy, "ring-vrf")//{product_id}//{derivation_index}`.
+pub fn derive_ring_vrf_entropy(
+    root_entropy: &[u8],
+    product_id: &str,
+    derivation_index: &truapi::v01::DerivationIndex,
+) -> Result<[u8; 32], ProductAccountError> {
+    let domain = derive_ring_vrf_domain_entropy(root_entropy, product_id)?;
+    Ok(derive_ring_vrf_entropy_from_domain(
+        &domain,
+        derivation_index,
+    ))
+}
+
+/// Derive the RFC-0024 AutoSigning entropy for a product in the ring-VRF tree.
+pub fn derive_ring_vrf_domain_entropy(
+    root_entropy: &[u8],
+    product_id: &str,
+) -> Result<[u8; 32], ProductAccountError> {
     let root = blake2b256_keyed(root_entropy, RING_VRF_ROOT_KEY);
-    let domain = blake2b256_keyed(
-        &root,
-        &create_chain_code(PERSONHOOD_PRODUCT_ID)
-            .expect("the reserved personhood product id is a valid junction"),
-    );
-    blake2b256_keyed(&domain, &index_bytes(index))
+    Ok(blake2b256_keyed(&root, &create_chain_code(product_id)?))
+}
+
+/// Derive one registered member key from an RFC-0024 product-domain entropy.
+pub fn derive_ring_vrf_entropy_from_domain(
+    domain_entropy: &[u8; 32],
+    derivation_index: &truapi::v01::DerivationIndex,
+) -> [u8; 32] {
+    blake2b256_keyed(domain_entropy, &derivation_index_bytes(derivation_index))
 }
 
 fn blake2b256_keyed(message: &[u8], key: &[u8]) -> [u8; 32] {
@@ -366,6 +396,20 @@ mod tests {
             hex::encode(derive_lite_person_ring_vrf_entropy(&root_entropy)),
             "8d7f5e1510a7e8d813887e100f5a260ec9de60e68695477b93360ee7e3d16a9f"
         );
+    }
+
+    #[test]
+    fn ring_vrf_domain_entropy_derives_the_same_registered_key_as_the_root() {
+        use truapi::v01::DerivationIndex;
+
+        let root_entropy: Vec<u8> = (1..=32).collect();
+        let domain = derive_ring_vrf_domain_entropy(&root_entropy, "people-provider.dot").unwrap();
+        for index in [DerivationIndex::Left(7), DerivationIndex::Right([0xEE; 32])] {
+            assert_eq!(
+                derive_ring_vrf_entropy_from_domain(&domain, &index),
+                derive_ring_vrf_entropy(&root_entropy, "people-provider.dot", &index).unwrap()
+            );
+        }
     }
 
     #[test]

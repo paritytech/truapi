@@ -466,6 +466,24 @@ pub const ACCOUNT_SIGN_VRF: RequestFrameIds = RequestFrameIds {
     response_id: 165,
 };
 
+/// Wire discriminants for `account_register_ring_vrf_key`.
+pub const ACCOUNT_REGISTER_RING_VRF_KEY: RequestFrameIds = RequestFrameIds {
+    request_id: 166,
+    response_id: 167,
+};
+
+/// Wire discriminants for `account_list_ring_vrf_keys`.
+pub const ACCOUNT_LIST_RING_VRF_KEYS: RequestFrameIds = RequestFrameIds {
+    request_id: 168,
+    response_id: 169,
+};
+
+/// Wire discriminants for `account_ring_vrf_sign`.
+pub const ACCOUNT_RING_VRF_SIGN: RequestFrameIds = RequestFrameIds {
+    request_id: 170,
+    response_id: 171,
+};
+
 /// The full wire table. Ordering is part of the wire protocol;
 /// only ever append. Removed methods leave their slot empty.
 pub const WIRE_TABLE: &[WireEntry] = &[
@@ -728,5 +746,17 @@ pub const WIRE_TABLE: &[WireEntry] = &[
     WireEntry {
         method: "account_sign_vrf",
         kind: WireKind::Request(ACCOUNT_SIGN_VRF),
+    },
+    WireEntry {
+        method: "account_register_ring_vrf_key",
+        kind: WireKind::Request(ACCOUNT_REGISTER_RING_VRF_KEY),
+    },
+    WireEntry {
+        method: "account_list_ring_vrf_keys",
+        kind: WireKind::Request(ACCOUNT_LIST_RING_VRF_KEYS),
+    },
+    WireEntry {
+        method: "account_ring_vrf_sign",
+        kind: WireKind::Request(ACCOUNT_RING_VRF_SIGN),
     },
 ];

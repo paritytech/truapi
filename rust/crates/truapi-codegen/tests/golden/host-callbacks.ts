@@ -140,7 +140,11 @@ export type CoreStorageKey =
   /**
    * Wallet-bound RFC-0010 AutoSigning capabilities for the active pairing.
    */
-  | { tag: "AutoSigningKeys"; value?: undefined };
+  | { tag: "AutoSigningKeys"; value?: undefined }
+  /**
+   * Wallet-bound RFC-0024 ring-VRF registry snapshot.
+   */
+  | { tag: "RingVrfRegistry"; value: { rootPublicKey: Uint8Array } };
 
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -450,6 +454,9 @@ export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy(
         productId: string;
       }>,
       AutoSigningKeys: S._void,
+      RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }) as S.Codec<{
+        rootPublicKey: Uint8Array;
+      }>,
     }),
 );
 

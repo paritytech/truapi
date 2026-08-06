@@ -2,7 +2,7 @@
 //!
 //! Mirrors how an iOS/web client obtains statement-store allowance from the real
 //! People chain: build the `Resources.set_statement_store_account` call, prove
-//! LitePeople membership with the RFC-0022 `peopl.dot` index-1 ring-VRF key,
+//! LitePeople membership with the caller's registry-selected ring-VRF key,
 //! and submit the resulting unsigned General (v5) extrinsic. Native only
 //! (needs the `verifiable` prover and live chain reads).
 

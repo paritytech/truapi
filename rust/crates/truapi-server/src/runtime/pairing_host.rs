@@ -20,19 +20,23 @@ use super::auth_state::AuthStateMachine;
 use super::authority::{
     AccountAliasAuthorityRequest, AuthorityError, AuthoritySession, AutoSigningKey,
     BulletinAllowanceKey, CreateProofAuthorityRequest, CreateTransactionAuthorityRequest,
-    ProductAuthority, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
+    ListRingVrfKeysAuthorityRequest, ProductAuthority, RegisterRingVrfKeyAuthorityRequest,
+    RingVrfSignAuthorityRequest, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
     StatementStoreAllowanceKey, authority_session, require_current_session,
 };
 use super::connected_session_ui_info;
 use super::identity::resolve_session_identity_with_chain;
 use super::services::RuntimeServices;
 use super::sso_pairing::{SsoPairingFlow, SsoPairingOutcome};
-use super::sso_remote::{SSO_PEER_DISCONNECT_REASON, SessionDisconnects, SsoSessionKey};
+use super::sso_remote::{
+    SSO_PEER_DISCONNECT_REASON, SessionDisconnects, SsoSessionKey, sso_message_id,
+};
 use super::statement_store_rpc::StatementStoreRpc;
 use crate::chain_runtime::ChainRuntime;
 use crate::host_logic::entropy::derive_product_entropy_from_source;
 use crate::host_logic::product_account::{
     derivation_index_bytes, derive_product_keypair_from_subtree_secret,
+    derive_ring_vrf_entropy_from_domain,
 };
 use crate::host_logic::session::{SessionInfo, SessionState, encode_persisted_session};
 use crate::host_logic::session_store::SessionStoreChangeNotifier;
@@ -46,6 +50,13 @@ use truapi::{CallContext, CallError, v01};
 use truapi_platform::{
     CoreStorageKey, PairingHostConfig, Platform, ProductContext, SignVrfReview,
     UserConfirmationReview, normalize_product_identifier,
+};
+use zeroize::Zeroizing;
+
+use super::ring_vrf_registry::{RingVrfRegistryStore, validate_owner_listing};
+use super::signing_host::ring_vrf::{
+    ChainRingResolver, MemberCandidate, RingResolver, alias_from_entropy, context_bytes,
+    create_proof, member_from_entropy, sign_from_entropy,
 };
 
 /// Distinguishes all remote authority request entrypoints by wire label.
@@ -153,11 +164,13 @@ struct PersistedAutoSigningKey {
     product_id: String,
     expected_product_subtree_public_key: [u8; 32],
     secret: [u8; 64],
+    ring_vrf_domain_entropy: [u8; 32],
 }
 
 impl Drop for PersistedAutoSigningKey {
     fn drop(&mut self) {
         self.secret.zeroize();
+        self.ring_vrf_domain_entropy.zeroize();
     }
 }
 
@@ -181,17 +194,24 @@ fn decode_auto_signing_keys(blob: &[u8]) -> Result<Vec<PersistedAutoSigningKey>,
 fn validate_auto_signing_key(
     secret: [u8; 64],
     expected_product_subtree_public_key: [u8; 32],
+    ring_vrf_domain_entropy: [u8; 32],
 ) -> Result<AutoSigningKey, AuthorityError> {
-    let secret_key = SecretKey::from_bytes(&secret).map_err(|_| AuthorityError::Unavailable {
-        reason: "AutoSigning capability contains an invalid subtree secret".to_string(),
-    })?;
+    let secret = Zeroizing::new(secret);
+    let ring_vrf_domain_entropy = Zeroizing::new(ring_vrf_domain_entropy);
+    let secret_key =
+        SecretKey::from_bytes(&secret[..]).map_err(|_| AuthorityError::Unavailable {
+            reason: "AutoSigning capability contains an invalid subtree secret".to_string(),
+        })?;
     if secret_key.to_public().to_bytes() != expected_product_subtree_public_key {
         return Err(AuthorityError::Unavailable {
             reason: "AutoSigning capability does not match the authenticated product subtree"
                 .to_string(),
         });
     }
-    AutoSigningKey::from_secret_bytes(secret.to_vec())
+    Ok(AutoSigningKey::from_parts(
+        *secret,
+        *ring_vrf_domain_entropy,
+    ))
 }
 
 #[derive(Default)]
@@ -253,6 +273,8 @@ pub(crate) struct PairingHost {
     bulletin_allowances: Mutex<HashMap<AllowanceCacheKey, BulletinAllowanceKey>>,
     product_subtrees: Mutex<HashMap<(SsoSessionKey, String), [u8; 32]>>,
     auto_signing_keys: Mutex<HashMap<AutoSigningCacheKey, AutoSigningKey>>,
+    ring_resolver: Arc<dyn RingResolver>,
+    ring_vrf_registry: Arc<RingVrfRegistryStore>,
     /// Orders session-secret cache/storage writes against teardown and activation.
     session_secret_storage: futures::lock::Mutex<()>,
     session_store_activation: futures::lock::Mutex<()>,
@@ -286,6 +308,8 @@ impl PairingHost {
             bulletin_allowances: Mutex::new(HashMap::new()),
             product_subtrees: Mutex::new(HashMap::new()),
             auto_signing_keys: Mutex::new(HashMap::new()),
+            ring_resolver: ChainRingResolver::new(services.chain.clone()),
+            ring_vrf_registry: RingVrfRegistryStore::new(services.platform.clone()),
             session_secret_storage: futures::lock::Mutex::new(()),
             session_store_activation: futures::lock::Mutex::new(()),
             session_lifecycle: Mutex::new(SessionLifecycle::default()),
@@ -367,6 +391,43 @@ impl PairingHost {
 
     fn current_session(&self) -> Option<AuthoritySession> {
         self.session_state.current().as_ref().map(authority_session)
+    }
+
+    pub(crate) async fn ring_vrf_providers(
+        &self,
+        ring: &v01::RingLocation,
+    ) -> Result<Vec<v01::ProductAccountId>, RingVrfError> {
+        let session = self.session_state.current().ok_or(RingVrfError::Unknown {
+            reason: "no active session".to_string(),
+        })?;
+        self.ring_vrf_registry
+            .providers(session.public_key, ring)
+            .await
+    }
+
+    pub(crate) async fn selected_ring_vrf_provider(
+        &self,
+        ring: &v01::RingLocation,
+    ) -> Result<Option<v01::ProductAccountId>, RingVrfError> {
+        let session = self.session_state.current().ok_or(RingVrfError::Unknown {
+            reason: "no active session".to_string(),
+        })?;
+        self.ring_vrf_registry
+            .selected_provider(session.public_key, ring)
+            .await
+    }
+
+    pub(crate) async fn select_ring_vrf_provider(
+        &self,
+        ring: v01::RingLocation,
+        handle: v01::ProductAccountId,
+    ) -> Result<(), RingVrfError> {
+        let session = self.session_state.current().ok_or(RingVrfError::Unknown {
+            reason: "no active session".to_string(),
+        })?;
+        self.ring_vrf_registry
+            .select_provider(session.public_key, ring, handle)
+            .await
     }
 
     /// Start the disconnect monitor when a session is already active.
@@ -897,6 +958,7 @@ impl PairingHost {
         product_id: &str,
         expected_product_subtree_public_key: [u8; 32],
         secret: [u8; 64],
+        ring_vrf_domain_entropy: [u8; 32],
     ) -> Result<(), AuthorityError> {
         self.remember_auto_signing_key(
             session,
@@ -904,8 +966,22 @@ impl PairingHost {
             product_id,
             expected_product_subtree_public_key,
             secret,
+            ring_vrf_domain_entropy,
         )
         .await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn register_ring_vrf_key_for_tests(
+        &self,
+        session: &SessionInfo,
+        handle: v01::ProductAccountId,
+        ring: v01::RingLocation,
+        public_key: [u8; 32],
+    ) -> Result<(), RingVrfError> {
+        self.ring_vrf_registry
+            .register(session.public_key, handle, ring, public_key)
+            .await
     }
 
     #[cfg(test)]
@@ -1501,8 +1577,13 @@ impl PairingHost {
         product_id: &str,
         expected_product_subtree_public_key: [u8; 32],
         secret: [u8; 64],
+        ring_vrf_domain_entropy: [u8; 32],
     ) -> Result<(), AuthorityError> {
-        let key = validate_auto_signing_key(secret, expected_product_subtree_public_key)?;
+        let key = validate_auto_signing_key(
+            secret,
+            expected_product_subtree_public_key,
+            ring_vrf_domain_entropy,
+        )?;
         let owner = AutoSigningOwner::from_session(session);
         let cache_key = (owner.clone(), product_id.to_string());
         let _storage_guard = self.session_secret_storage.lock().await;
@@ -1530,6 +1611,7 @@ impl PairingHost {
             product_id: product_id.to_string(),
             expected_product_subtree_public_key,
             secret,
+            ring_vrf_domain_entropy,
         });
         if !self.session_secret_allocation_is_current(session, lifecycle_epoch) {
             return Err(AuthorityError::Disconnected);
@@ -1657,6 +1739,7 @@ impl PairingHost {
         let key = match validate_auto_signing_key(
             persisted.secret,
             persisted.expected_product_subtree_public_key,
+            persisted.ring_vrf_domain_entropy,
         ) {
             Ok(key) => key,
             Err(err) => {
@@ -1692,6 +1775,94 @@ impl PairingHost {
         };
         let session_key = SsoSessionKey::from_session(sso);
         subtrees.retain(|(key, _), _| *key != session_key);
+    }
+
+    fn require_owned_ring_vrf_key(
+        calling_product_id: &str,
+        handle: &v01::ProductAccountId,
+    ) -> Result<(), RingVrfError> {
+        let caller = normalize_product_identifier(calling_product_id).map_err(|error| {
+            RingVrfError::Unknown {
+                reason: error.to_string(),
+            }
+        })?;
+        if caller != handle.dot_ns_identifier {
+            return Err(RingVrfError::NotAllowlisted);
+        }
+        Ok(())
+    }
+
+    async fn local_ring_vrf_entropy(
+        &self,
+        session: &SessionInfo,
+        handle: &v01::ProductAccountId,
+    ) -> Result<Option<Zeroizing<[u8; 32]>>, RingVrfError> {
+        let Some(auto_signing) = self
+            .auto_signing_key(session, &handle.dot_ns_identifier)
+            .await
+            .map_err(RingVrfError::from)?
+        else {
+            return Ok(None);
+        };
+        let entry = self
+            .ring_vrf_registry
+            .entry(session.public_key, handle)
+            .await?
+            .ok_or(RingVrfError::KeyNotRegistered)?;
+        let entropy = Zeroizing::new(derive_ring_vrf_entropy_from_domain(
+            auto_signing.ring_vrf_domain_entropy(),
+            &handle.derivation_index,
+        ));
+        if entry.public_key != Some(member_from_entropy(&entropy)?) {
+            return Err(RingVrfError::Unknown {
+                reason: "registered ring-VRF public key does not match the AutoSigning capability"
+                    .to_string(),
+            });
+        }
+        Ok(Some(entropy))
+    }
+
+    async fn local_ring_vrf_entropy_for_ring(
+        &self,
+        session: &SessionInfo,
+        handle: &v01::ProductAccountId,
+        ring: &v01::RingLocation,
+    ) -> Result<Option<Zeroizing<[u8; 32]>>, RingVrfError> {
+        let Some(entropy) = self.local_ring_vrf_entropy(session, handle).await? else {
+            return Ok(None);
+        };
+        let entry = self
+            .ring_vrf_registry
+            .entry(session.public_key, handle)
+            .await?
+            .ok_or(RingVrfError::KeyNotRegistered)?;
+        if !entry.rings.contains(ring) {
+            return Err(RingVrfError::KeyNotInRing);
+        }
+        Ok(Some(entropy))
+    }
+
+    fn mirror_ring_vrf_registration(
+        &self,
+        session: SessionInfo,
+        request: RegisterRingVrfKeyAuthorityRequest,
+    ) {
+        let weak_self = self.weak_self.clone();
+        (self.spawner)(Box::pin(async move {
+            let Some(host) = weak_self.upgrade() else {
+                return;
+            };
+            let cx = CallContext::with_request_id(format!(
+                "ring-vrf-registration-mirror:{}",
+                sso_message_id()
+            ));
+            if let Err(error) = host
+                .remote_register_ring_vrf_key(&cx, &session, request)
+                .await
+            {
+                warn!(?error, "ring-VRF registration mirror failed");
+            }
+        }));
     }
 
     async fn product_subtree_public_key(
@@ -1788,8 +1959,27 @@ impl PairingHost {
         session: &AuthoritySession,
         request: AccountAliasAuthorityRequest,
     ) -> Result<v01::ContextualAlias, RingVrfError> {
-        let session = self.current_private_session(session)?;
-        self.remote_account_alias(cx, &session, request).await
+        let private_session = self.current_private_session(session)?;
+        if request.calling_product_id == request.key_handle.dot_ns_identifier
+            && let Some(entropy) = self
+                .local_ring_vrf_entropy_for_ring(
+                    &private_session,
+                    &request.key_handle,
+                    &request.ring_location,
+                )
+                .await?
+        {
+            self.ring_resolver.validate(&request.ring_location).await?;
+            self.current_private_session(session)?;
+            let context = context_bytes(&request.context);
+            let alias = alias_from_entropy(&entropy, &context)?;
+            return Ok(v01::ContextualAlias {
+                context,
+                alias: alias.to_vec(),
+            });
+        }
+        self.remote_account_alias(cx, &private_session, request)
+            .await
     }
 
     async fn create_proof(
@@ -1798,8 +1988,146 @@ impl PairingHost {
         session: &AuthoritySession,
         request: CreateProofAuthorityRequest,
     ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
-        let session = self.current_private_session(session)?;
-        self.remote_create_proof(cx, &session, request).await
+        Self::require_owned_ring_vrf_key(&request.calling_product_id, &request.key_handle)?;
+        let private_session = self.current_private_session(session)?;
+        if let Some(entropy) = self
+            .local_ring_vrf_entropy_for_ring(
+                &private_session,
+                &request.key_handle,
+                &request.ring_location,
+            )
+            .await?
+        {
+            let member = member_from_entropy(&entropy)?;
+            let resolved = self
+                .ring_resolver
+                .resolve(&request.ring_location, &[MemberCandidate { member }])
+                .await?;
+            self.current_private_session(session)?;
+            let context = context_bytes(&request.context);
+            let (proof, alias) = create_proof(&entropy, &resolved, &context, &request.message)?;
+            return Ok(v01::HostAccountCreateProofResponse {
+                proof,
+                contextual_alias: v01::ContextualAlias {
+                    context,
+                    alias: alias.to_vec(),
+                },
+                ring_index: resolved.ring_index,
+                ring_revision: resolved.ring_revision,
+            });
+        }
+        self.remote_create_proof(cx, &private_session, request)
+            .await
+    }
+
+    async fn register_ring_vrf_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: RegisterRingVrfKeyAuthorityRequest,
+    ) -> Result<v01::RingVrfPublicKey, RingVrfError> {
+        let private_session = self.current_private_session(session)?;
+        let handle = v01::ProductAccountId {
+            dot_ns_identifier: normalize_product_identifier(&request.calling_product_id).map_err(
+                |error| RingVrfError::Unknown {
+                    reason: error.to_string(),
+                },
+            )?,
+            derivation_index: request.index.clone(),
+        };
+        if let Some(auto_signing) = self
+            .auto_signing_key(&private_session, &request.calling_product_id)
+            .await
+            .map_err(RingVrfError::from)?
+        {
+            self.ring_resolver.validate(&request.ring).await?;
+            self.current_private_session(session)?;
+            let entropy = Zeroizing::new(derive_ring_vrf_entropy_from_domain(
+                auto_signing.ring_vrf_domain_entropy(),
+                &request.index,
+            ));
+            let public_key = member_from_entropy(&entropy)?;
+            self.ring_vrf_registry
+                .register(
+                    private_session.public_key,
+                    handle,
+                    request.ring.clone(),
+                    public_key,
+                )
+                .await?;
+            self.current_private_session(session)?;
+            self.mirror_ring_vrf_registration(private_session, request);
+            return Ok(public_key);
+        }
+        let public_key = self
+            .remote_register_ring_vrf_key(cx, &private_session, request.clone())
+            .await?;
+        self.ring_vrf_registry
+            .register(private_session.public_key, handle, request.ring, public_key)
+            .await?;
+        self.current_private_session(session)?;
+        Ok(public_key)
+    }
+
+    async fn list_ring_vrf_keys(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: ListRingVrfKeysAuthorityRequest,
+    ) -> Result<Vec<v01::RegisteredRingVrfKey>, RingVrfError> {
+        let private_session = self.current_private_session(session)?;
+        let owner = normalize_product_identifier(&request.owner).map_err(|error| {
+            RingVrfError::Unknown {
+                reason: error.to_string(),
+            }
+        })?;
+        if request.calling_product_id == owner
+            && let Some(mut entries) = self
+                .ring_vrf_registry
+                .complete_owner_entries(private_session.public_key, &owner)
+                .await?
+        {
+            self.current_private_session(session)?;
+            apply_ring_vrf_disclosure(&mut entries, request.disclosure);
+            return Ok(entries);
+        }
+        let requested_disclosure = request.disclosure;
+        let mut remote_request = request;
+        if remote_request.calling_product_id == owner {
+            remote_request.disclosure = v01::RingVrfKeyDisclosure::PublicKey;
+        }
+        let mut entries = self
+            .remote_list_ring_vrf_keys(cx, &private_session, remote_request)
+            .await?;
+        validate_owner_listing(&owner, &entries)?;
+        if entries.iter().all(|entry| entry.public_key.is_some()) {
+            entries = self
+                .ring_vrf_registry
+                .reconcile_owner(private_session.public_key, &owner, entries)
+                .await?;
+        }
+        self.current_private_session(session)?;
+        apply_ring_vrf_disclosure(&mut entries, requested_disclosure);
+        Ok(entries)
+    }
+
+    async fn ring_vrf_sign(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: RingVrfSignAuthorityRequest,
+    ) -> Result<Vec<u8>, RingVrfError> {
+        Self::require_owned_ring_vrf_key(&request.calling_product_id, &request.key_handle)?;
+        let private_session = self.current_private_session(session)?;
+        if let Some(entropy) = self
+            .local_ring_vrf_entropy(&private_session, &request.key_handle)
+            .await?
+        {
+            self.current_private_session(session)?;
+            return sign_from_entropy(&entropy, &request.message);
+        }
+        self.remote_ring_vrf_sign(cx, &private_session, request)
+            .await
     }
 
     async fn allocate_resources(
@@ -1883,6 +2211,17 @@ impl PairingHost {
                 reason: err.to_string(),
             },
         )
+    }
+}
+
+fn apply_ring_vrf_disclosure(
+    entries: &mut [v01::RegisteredRingVrfKey],
+    disclosure: v01::RingVrfKeyDisclosure,
+) {
+    if disclosure == v01::RingVrfKeyDisclosure::Anonymized {
+        for entry in entries {
+            entry.public_key = None;
+        }
     }
 }
 
@@ -2002,6 +2341,33 @@ impl ProductAuthority for PairingHost {
         request: CreateProofAuthorityRequest,
     ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
         PairingHost::create_proof(self, cx, session, request).await
+    }
+
+    async fn register_ring_vrf_key(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: RegisterRingVrfKeyAuthorityRequest,
+    ) -> Result<v01::RingVrfPublicKey, RingVrfError> {
+        PairingHost::register_ring_vrf_key(self, cx, session, request).await
+    }
+
+    async fn list_ring_vrf_keys(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: ListRingVrfKeysAuthorityRequest,
+    ) -> Result<Vec<v01::RegisteredRingVrfKey>, RingVrfError> {
+        PairingHost::list_ring_vrf_keys(self, cx, session, request).await
+    }
+
+    async fn ring_vrf_sign(
+        &self,
+        cx: &CallContext,
+        session: &AuthoritySession,
+        request: RingVrfSignAuthorityRequest,
+    ) -> Result<Vec<u8>, RingVrfError> {
+        PairingHost::ring_vrf_sign(self, cx, session, request).await
     }
 
     async fn allocate_resources(

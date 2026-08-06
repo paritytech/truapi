@@ -24,12 +24,15 @@ use truapi_platform::{
     JsonRpcConnection, Navigation, Notifications, PermissionAuthorizationRequest,
     PermissionAuthorizationStatus, Permissions, PlatformInfo, PreimageHost, ProductContext,
     ProductStorage, RuntimeConfigValidationError, SigningHostConfig, ThemeHost, UserConfirmation,
-    UserConfirmationReview, async_trait,
+    UserConfirmationReview, async_trait, normalize_product_identifier,
 };
 
 pub mod reviews;
 
-pub use reviews::NativeUserConfirmationReview;
+pub use reviews::{
+    NativeUserConfirmationReview, ProductAccountId as NativeProductAccountId,
+    RingLocation as NativeRingLocation,
+};
 
 use crate::SigningHostRuntime;
 use crate::host_logic::dotns;
@@ -871,6 +874,45 @@ impl NativeTrUApiCore {
         .map_err(Into::into)
     }
 
+    /// List registered providers for a ring so host UI can present the RFC-0024
+    /// personhood-provider setting.
+    pub fn ring_vrf_providers(
+        &self,
+        ring: NativeRingLocation,
+    ) -> Result<Vec<NativeProductAccountId>, HostRejection> {
+        let ring = ring.try_into().map_err(native_ring_vrf_input_error)?;
+        futures::executor::block_on(self.runtime.ring_vrf_providers(&ring))
+            .map(|providers| providers.into_iter().map(Into::into).collect())
+            .map_err(Into::into)
+    }
+
+    /// Return the currently selected provider for a ring.
+    pub fn selected_ring_vrf_provider(
+        &self,
+        ring: NativeRingLocation,
+    ) -> Result<Option<NativeProductAccountId>, HostRejection> {
+        let ring = ring.try_into().map_err(native_ring_vrf_input_error)?;
+        futures::executor::block_on(self.runtime.selected_ring_vrf_provider(&ring))
+            .map(|provider| provider.map(Into::into))
+            .map_err(Into::into)
+    }
+
+    /// Persist a user-selected provider after checking that the handle is
+    /// registered for the exact ring.
+    pub fn select_ring_vrf_provider(
+        &self,
+        ring: NativeRingLocation,
+        handle: NativeProductAccountId,
+    ) -> Result<(), HostRejection> {
+        let ring = ring.try_into().map_err(native_ring_vrf_input_error)?;
+        let mut handle: v01::ProductAccountId =
+            handle.try_into().map_err(native_ring_vrf_input_error)?;
+        handle.dot_ns_identifier = normalize_product_identifier(&handle.dot_ns_identifier)
+            .map_err(|error| native_ring_vrf_input_error(error.to_string()))?;
+        futures::executor::block_on(self.runtime.select_ring_vrf_provider(ring, handle))
+            .map_err(Into::into)
+    }
+
     /// Push a host theme update to active TrUAPI theme subscriptions.
     pub fn notify_theme_changed(&self, theme: HostTheme) {
         self.events.notify_theme_changed(theme.into());
@@ -893,6 +935,10 @@ impl NativeTrUApiCore {
     pub fn notify_chain_closed(&self, connection_id: u32) {
         self.events.notify_chain_closed(connection_id);
     }
+}
+
+fn native_ring_vrf_input_error(reason: String) -> HostRejection {
+    HostRejection::Rejected { reason }
 }
 
 /// Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`) for

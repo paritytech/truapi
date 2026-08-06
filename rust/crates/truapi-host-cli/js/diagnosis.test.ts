@@ -47,24 +47,20 @@ describe("generated-example battery", () => {
     );
   });
 
-  test("classifies only the committed unsupported CLI battery failures as expected", () => {
-    expect(expectedCliBatteryFailureReason("Chat")).toBe(
-      "Chat service not yet wired up by hosts",
-    );
-    expect(expectedCliBatteryFailureReason("Coin Payment")).toBe(
-      "Coin Payment service not yet wired up by hosts",
-    );
-    expect(expectedCliBatteryFailureReason("Payment")).toBe(
-      "Payment service not yet wired up by hosts",
-    );
-    expect(expectedCliBatteryFailureReason("Signing")).toBe(undefined);
-  });
+  test("classifies only the committed unsupported CLI services as expected", () => {
+    const unsupported = new Set(["Chat", "Coin Payment", "Payment"]);
 
-  test("does not ignore account proof failures", () => {
-    expect(
-      knownUnsupportedReason("Account", "Account/create_account_proof"),
-    ).toBe(undefined);
-    expect(expectedCliBatteryFailureReason("Account")).toBe(undefined);
+    for (const service of services) {
+      const expected = unsupported.has(service.name)
+        ? `${service.name} service not yet wired up by hosts`
+        : undefined;
+      expect(
+        knownUnsupportedReason(service.name, `${service.name}/example`),
+      ).toBe(expected);
+      expect(
+        expectedCliBatteryFailureReason({ serviceName: service.name }),
+      ).toBe(expected);
+    }
   });
 
   test("prints failures as concise test-reporter rows", () => {

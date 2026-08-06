@@ -540,6 +540,12 @@ pub enum CoreStorageKey {
     },
     /// Wallet-bound RFC-0010 AutoSigning capabilities for the active pairing.
     AutoSigningKeys,
+    /// Wallet-bound RFC-0024 ring-VRF registry snapshot.
+    #[codec(index = 7)]
+    RingVrfRegistry {
+        /// Root account public key identifying the wallet that owns the registry.
+        root_public_key: [u8; 32],
+    },
 }
 /// Stable metadata describing one strictly decoded [`CoreStorageKey`].
 ///
@@ -586,6 +592,7 @@ pub fn describe_core_storage_key(
         CoreStorageKey::LastProcessedPairingStatement => ("LastProcessedPairingStatement", None),
         CoreStorageKey::AutoSigningKey { product_id } => ("AutoSigningKey", Some(product_id)),
         CoreStorageKey::AutoSigningKeys => ("AutoSigningKeys", None),
+        CoreStorageKey::RingVrfRegistry { .. } => ("RingVrfRegistry", None),
     };
     Ok(CoreStorageKeyDescription { kind, product_id })
 }
@@ -701,6 +708,13 @@ mod tests {
                 Some("product.dot"),
             ),
             (CoreStorageKey::AutoSigningKeys, "AutoSigningKeys", None),
+            (
+                CoreStorageKey::RingVrfRegistry {
+                    root_public_key: [0x42; 32],
+                },
+                "RingVrfRegistry",
+                None,
+            ),
         ] {
             let description = describe_core_storage_key(&key.encode()).expect("valid key");
             assert_eq!(description.kind, kind);

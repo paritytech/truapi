@@ -33,12 +33,12 @@ pub mod latest {
     pub use crate::v01::{
         AccountId, AllocatableResource, AllocationOutcome, ContextualAlias, DerivationIndex,
         GenericError, HostSignPayloadData, NotificationId, OperationStartedResult,
-        ProductAccountId, ProductProofContext, RawPayload, RemotePermission,
+        ProductAccountId, ProductProofContext, RawPayload, RegisteredRingVrfKey, RemotePermission,
         RemoteStatementStoreCreateProofError, RemoteStatementStoreCreateProofRequest,
         RemoteStatementStoreCreateProofResponse, RemoteStatementStoreSubscribeItem,
-        RemoteStatementStoreSubscribeRequest, RingLocation, RuntimeApi, RuntimeSpec, RuntimeType,
-        SignedStatement, Statement, StatementProof, StorageQueryItem, StorageQueryType,
-        StorageResultItem, ThemeVariant, TxPayloadExtension,
+        RemoteStatementStoreSubscribeRequest, RingLocation, RingVrfKeyDisclosure, RingVrfPublicKey,
+        RuntimeApi, RuntimeSpec, RuntimeType, SignedStatement, Statement, StatementProof,
+        StorageQueryItem, StorageQueryType, StorageResultItem, ThemeVariant, TxPayloadExtension,
     };
 
     /// Latest payload type of a versioned envelope.
@@ -50,6 +50,15 @@ pub mod latest {
     /// Contextual alias derivation result.
     pub type HostAccountGetAliasResponse =
         LatestOf<versioned::account::HostAccountGetAliasResponse>;
+    /// Ring-VRF key registration result.
+    pub type HostAccountRegisterRingVrfKeyResponse =
+        LatestOf<versioned::account::HostAccountRegisterRingVrfKeyResponse>;
+    /// Ring-VRF registry listing result.
+    pub type HostAccountListRingVrfKeysResponse =
+        LatestOf<versioned::account::HostAccountListRingVrfKeysResponse>;
+    /// Direct ring-VRF key signing result.
+    pub type HostAccountRingVrfSignResponse =
+        LatestOf<versioned::account::HostAccountRingVrfSignResponse>;
     /// Legacy account listing result.
     pub type HostGetLegacyAccountsResponse =
         LatestOf<versioned::account::HostGetLegacyAccountsResponse>;

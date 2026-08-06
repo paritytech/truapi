@@ -664,7 +664,7 @@ The top-level `--script` option does not update remembered `/script` state.
 | `battery.ts` | Run every generated Playground example and write the role-specific compatibility report. |
 | `whoami.ts` | Print the primary username. |
 | `signing-smoke.ts` | Focused product-account signing test. |
-| `ring-vrf-smoke.ts` | Verify alias/proof behavior for the Paseo Next v2 LitePeople ring. |
+| `ring-vrf-smoke.ts` | Verify RFC-0024 registration, listing, alias, non-membership proof, and direct signing behavior. |
 | `preimage-smoke.ts` | Exercise Bulletin preimage submission and lookup. |
 
 `battery.ts` writes to `explorer/diagnosis-reports/<role>-cli.md` unless
@@ -724,8 +724,9 @@ Before a signing host answers a link, it:
 2. decodes the V2 handshake;
 3. derives its RFC-0022 `uid.dot` identity account;
 4. reads the pairing device Statement Store account from the proposal;
-5. finds the signer's LitePeople ring through the `peopl.dot` index-1 key,
-   scanning back from the current ring;
+5. finds the signer's LitePeople ring through the pairing-attestation bootstrap
+   `peopl.dot` index-1 key, scanning back from the current ring (RFC-0024
+   operational key selection uses the registry instead);
 6. grants or reuses Statement Store allowance for the identity account;
 7. grants or reuses allowance for the pairing device; and
 8. starts the real SSO responder.

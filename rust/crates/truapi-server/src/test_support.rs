@@ -138,7 +138,7 @@ pub(crate) enum SsoResponseScript {
     /// Peer acknowledges the request and replies with `response`.
     Success {
         session: SessionInfo,
-        response: RemoteMessage,
+        response: Box<RemoteMessage>,
     },
     /// Peer acknowledges the request and then sends `Disconnected`.
     PeerDisconnect { session: SessionInfo },
@@ -371,7 +371,7 @@ pub(crate) fn sso_success_response_script(
 ) -> SsoResponseScript {
     SsoResponseScript::Success {
         session: session.clone(),
-        response,
+        response: Box::new(response),
     }
 }
 
@@ -619,6 +619,10 @@ pub(crate) fn ring_location_fixture() -> v01::RingLocation {
 /// Contextual-alias request fixture for `product_id`.
 pub(crate) fn account_alias_request(product_id: &str) -> HostAccountGetAliasRequest {
     HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
+        key_handle: v01::ProductAccountId {
+            dot_ns_identifier: product_id.to_string(),
+            derivation_index: v01::DerivationIndex::Left(0),
+        },
         context: product_proof_context(product_id),
         ring_location: ring_location_fixture(),
     })
@@ -627,6 +631,10 @@ pub(crate) fn account_alias_request(product_id: &str) -> HostAccountGetAliasRequ
 /// Ring-VRF proof request fixture for `product_id`.
 pub(crate) fn create_proof_request(product_id: &str) -> HostAccountCreateProofRequest {
     HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
+        key_handle: v01::ProductAccountId {
+            dot_ns_identifier: product_id.to_string(),
+            derivation_index: v01::DerivationIndex::Left(0),
+        },
         context: product_proof_context(product_id),
         ring_location: ring_location_fixture(),
         message: vec![4, 5, 6],
@@ -952,6 +960,15 @@ fn retarget_sso_response(mut response: RemoteMessage, message_id: &str) -> Remot
         RemoteMessageData::V1(v1::RemoteMessage::ProductSubtreeResponse(response)) => {
             response.responding_to = message_id.to_string();
         }
+        RemoteMessageData::V1(v1::RemoteMessage::RegisterRingVrfKeyResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        RemoteMessageData::V1(v1::RemoteMessage::ListRingVrfKeysResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
+        RemoteMessageData::V1(v1::RemoteMessage::RingVrfSignResponse(response)) => {
+            response.responding_to = message_id.to_string();
+        }
         RemoteMessageData::V1(v1::RemoteMessage::ResourceAllocationResponse(response)) => {
             response.responding_to = message_id.to_string();
         }
@@ -1007,7 +1024,7 @@ fn sso_scripted_responses(
                 4 => match script {
                     SsoResponseScript::Success { session, response } => {
                         let (_, request) = submitted_sso_request(&sent, &session);
-                        let response = retarget_sso_response(response, &request.message_id);
+                        let response = retarget_sso_response(*response, &request.message_id);
                         Some((
                             new_statements_frame(
                                 "peer-sub",

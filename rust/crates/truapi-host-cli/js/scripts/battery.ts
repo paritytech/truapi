@@ -21,6 +21,10 @@ import {
   expectedCliBatteryFailureReason,
   runDiagnosis,
 } from "../diagnosis.ts";
+import {
+  runAutoSigningRingVrfE2e,
+  runRingVrfRegistryE2e,
+} from "../ring-vrf-e2e.ts";
 
 const report = cliDiagnosisReportMetadata(process.env.TRUAPI_CLI_HOST_ROLE);
 const DEFAULT_REPORT_PATH = fileURLToPath(
@@ -55,10 +59,19 @@ reporter.waitingForHost(HOST_READINESS_DELAY_MS);
 await new Promise((resolve) => setTimeout(resolve, HOST_READINESS_DELAY_MS));
 
 const startedAt = performance.now();
-const rows = await runDiagnosis(truapi, {
+const rows = [];
+const ringVrfRegistry = await runRingVrfRegistryE2e(
+  truapi,
+  host.productId,
+  process.env.TRUAPI_APPROVALS_LOG,
+);
+reporter.result(ringVrfRegistry);
+rows.push(ringVrfRegistry);
+const diagnosisRows = await runDiagnosis(truapi, {
   ...options,
   onResult: (row) => reporter.result(row),
 });
+rows.push(...diagnosisRows);
 // Beyond the generated per-method examples: AutoSigning must make follow-up
 // sign_vrf calls prompt-free, observed through the host's approvals transcript.
 const autoSigning = await runAutoSigningE2e(
@@ -68,6 +81,12 @@ const autoSigning = await runAutoSigningE2e(
 );
 reporter.result(autoSigning);
 rows.push(autoSigning);
+const autoSigningRingVrf = await runAutoSigningRingVrfE2e(
+  truapi,
+  host.productId,
+);
+reporter.result(autoSigningRingVrf);
+rows.push(autoSigningRingVrf);
 reporter.finish(rows, Math.round(performance.now() - startedAt));
 mkdirSync(dirname(REPORT_PATH), { recursive: true });
 writeFileSync(REPORT_PATH, renderDiagnosisReport(report.title, rows));
@@ -75,9 +94,12 @@ reporter.reportSaved(REPORT_PATH);
 
 const failures = rows.filter((row) => row.status === "fail");
 const unexpectedFailures = failures.filter(
-  (row) => !expectedCliBatteryFailureReason(row.serviceName),
+  (row) => !expectedCliBatteryFailureReason(row),
 );
 if (unexpectedFailures.length > 0) {
+  for (const row of unexpectedFailures) {
+    console.error(`Unexpected failure: ${row.id}\n${row.output}`);
+  }
   throw new Error(
     `TrUAPI battery failed: ${unexpectedFailures.length} of ${rows.length} generated examples failed outside the known unsupported baseline`,
   );

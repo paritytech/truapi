@@ -2,11 +2,14 @@
 //!
 //! The resolver mirrors Nova's RFC-0004 implementation: it validates the
 //! requested Members pallet from runtime metadata, pins every storage read to
-//! one finalized block, selects the full-person key before the lite-person key,
-//! and returns the ring members, exponent, and revision from that snapshot.
+//! one finalized block, and returns the ring members, exponent, and revision
+//! from that snapshot.
 
 use std::sync::Arc;
 
+use crate::chain_runtime::ChainRuntime;
+use crate::host_logic::product_account::derivation_index_bytes;
+use crate::host_logic::sso::messages::RingVrfError;
 use async_trait::async_trait;
 use subxt::dynamic;
 use subxt::ext::scale_decode::DecodeAsType;
@@ -14,46 +17,28 @@ use truapi::v01::{ProductProofContext, RingLocation, RingLocationJunction};
 use verifiable::GenerateVerifiable;
 use verifiable::ring::RingDomainSize;
 use verifiable::ring::bandersnatch::BandersnatchVrfVerifiable;
-use zeroize::Zeroizing;
-
-use crate::chain_runtime::ChainRuntime;
-use crate::host_logic::product_account::{
-    derivation_index_bytes, derive_full_person_ring_vrf_entropy,
-    derive_lite_person_ring_vrf_entropy,
-};
-use crate::host_logic::sso::messages::RingVrfError;
 
 const MEMBERS_PALLET: &str = "Members";
-const FULL_PERSON_COLLECTION: [u8; 32] = *b"pop:polkadot.network/people     ";
-const LITE_PERSON_COLLECTION: [u8; 32] = *b"pop:polkadot.network/people-lite";
 
 type RingMember = <BandersnatchVrfVerifiable as GenerateVerifiable>::Member;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum PersonKey {
-    Full,
-    Lite,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct MemberCandidate {
-    pub(super) key: PersonKey,
-    pub(super) member: [u8; 32],
+pub(in crate::runtime) struct MemberCandidate {
+    pub(in crate::runtime) member: [u8; 32],
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct ResolvedRing {
-    pub(super) selected: MemberCandidate,
-    pub(super) ring_index: u32,
-    pub(super) ring_revision: u32,
-    pub(super) domain_size: RingDomainSize,
-    pub(super) members: Vec<[u8; 32]>,
+pub(in crate::runtime) struct ResolvedRing {
+    pub(in crate::runtime) selected: MemberCandidate,
+    pub(in crate::runtime) ring_index: u32,
+    pub(in crate::runtime) ring_revision: u32,
+    pub(in crate::runtime) domain_size: RingDomainSize,
+    pub(in crate::runtime) members: Vec<[u8; 32]>,
 }
 
 #[async_trait]
-pub(super) trait RingResolver: Send + Sync {
-    /// Validate the chain and Members pallet, returning the requested
-    /// collection (or the RFC-0004 full-person fallback).
+pub(in crate::runtime) trait RingResolver: Send + Sync {
+    /// Validate the chain and Members pallet, returning the requested collection.
     async fn validate(&self, location: &RingLocation) -> Result<[u8; 32], RingVrfError>;
 
     /// Resolve a current, single-block ring snapshot and select the first
@@ -65,12 +50,12 @@ pub(super) trait RingResolver: Send + Sync {
     ) -> Result<ResolvedRing, RingVrfError>;
 }
 
-pub(super) struct ChainRingResolver {
+pub(in crate::runtime) struct ChainRingResolver {
     chain: ChainRuntime,
 }
 
 impl ChainRingResolver {
-    pub(super) fn new(chain: ChainRuntime) -> Arc<Self> {
+    pub(in crate::runtime) fn new(chain: ChainRuntime) -> Arc<Self> {
         Arc::new(Self { chain })
     }
 
@@ -227,7 +212,7 @@ impl RingResolver for ChainRingResolver {
     }
 }
 
-pub(super) fn context_bytes(context: &ProductProofContext) -> [u8; 32] {
+pub(in crate::runtime) fn context_bytes(context: &ProductProofContext) -> [u8; 32] {
     let suffix = derivation_index_bytes(&context.suffix);
     let mut input = Vec::with_capacity(9 + context.product_id.len() + suffix.len());
     input.extend_from_slice(b"product/");
@@ -237,14 +222,9 @@ pub(super) fn context_bytes(context: &ProductProofContext) -> [u8; 32] {
     blake2b_256(&input, None)
 }
 
-pub(super) fn person_entropy(root_entropy: &[u8], key: PersonKey) -> Zeroizing<[u8; 32]> {
-    Zeroizing::new(match key {
-        PersonKey::Full => derive_full_person_ring_vrf_entropy(root_entropy),
-        PersonKey::Lite => derive_lite_person_ring_vrf_entropy(root_entropy),
-    })
-}
-
-pub(super) fn member_from_entropy(entropy: &[u8; 32]) -> Result<[u8; 32], RingVrfError> {
+pub(in crate::runtime) fn member_from_entropy(
+    entropy: &[u8; 32],
+) -> Result<[u8; 32], RingVrfError> {
     use parity_scale_codec::Encode;
 
     let secret = BandersnatchVrfVerifiable::new_secret(*entropy);
@@ -259,7 +239,17 @@ pub(super) fn member_from_entropy(entropy: &[u8; 32]) -> Result<[u8; 32], RingVr
         })
 }
 
-pub(super) fn alias_from_entropy(
+pub(in crate::runtime) fn sign_from_entropy(
+    entropy: &[u8; 32],
+    message: &[u8],
+) -> Result<Vec<u8>, RingVrfError> {
+    let secret = BandersnatchVrfVerifiable::new_secret(*entropy);
+    BandersnatchVrfVerifiable::sign(&secret, message)
+        .map(|signature| signature.to_vec())
+        .map_err(unknown)
+}
+
+pub(in crate::runtime) fn alias_from_entropy(
     entropy: &[u8; 32],
     context: &[u8],
 ) -> Result<[u8; 32], RingVrfError> {
@@ -267,7 +257,7 @@ pub(super) fn alias_from_entropy(
     BandersnatchVrfVerifiable::alias_in_context(&secret, context).map_err(unknown)
 }
 
-pub(super) fn create_proof(
+pub(in crate::runtime) fn create_proof(
     entropy: &[u8; 32],
     resolved: &ResolvedRing,
     context: &[u8],
@@ -295,14 +285,6 @@ pub(super) fn create_proof(
     Ok((proof.to_vec(), alias))
 }
 
-pub(super) fn key_for_collection(collection: &[u8; 32]) -> PersonKey {
-    if collection == &LITE_PERSON_COLLECTION {
-        PersonKey::Lite
-    } else {
-        PersonKey::Full
-    }
-}
-
 fn collection_id(location: &RingLocation) -> Result<[u8; 32], RingVrfError> {
     location
         .junctions
@@ -311,12 +293,10 @@ fn collection_id(location: &RingLocation) -> Result<[u8; 32], RingVrfError> {
             RingLocationJunction::CollectionId(value) => Some(value),
             RingLocationJunction::PalletInstance(_) => None,
         })
-        .map_or(Ok(FULL_PERSON_COLLECTION), |value| {
-            value
-                .as_slice()
-                .try_into()
-                .map_err(|_| RingVrfError::RingNotFound)
-        })
+        .ok_or(RingVrfError::RingNotFound)?
+        .as_slice()
+        .try_into()
+        .map_err(|_| RingVrfError::RingNotFound)
 }
 
 fn pallet_instance(location: &RingLocation) -> Option<u8> {
@@ -442,19 +422,12 @@ mod tests {
     }
 
     #[test]
-    fn collection_selects_corresponding_person_key() {
-        assert_eq!(key_for_collection(&FULL_PERSON_COLLECTION), PersonKey::Full);
-        assert_eq!(key_for_collection(&LITE_PERSON_COLLECTION), PersonKey::Lite);
-        assert_eq!(key_for_collection(&[0xff; 32]), PersonKey::Full);
-    }
-
-    #[test]
-    fn missing_collection_defaults_to_full_personhood() {
+    fn missing_collection_is_not_a_ring_location() {
         let location = RingLocation {
             chain_id: [0; 32],
             junctions: vec![RingLocationJunction::PalletInstance(42)],
         };
-        assert_eq!(collection_id(&location), Ok(FULL_PERSON_COLLECTION));
+        assert_eq!(collection_id(&location), Err(RingVrfError::RingNotFound));
     }
 
     #[test]
