@@ -306,9 +306,9 @@ Five scripts ship under `js/scripts/`:
 - `whoami.ts` — calls `getUserId` and prints `WHOAMI <primary username>`; this
   remains available as an explicit `/script <path>` example.
 - `signing-smoke.ts` — a focused product-account signing check.
-- `ring-vrf-smoke.ts` — calls `getAccountAlias` and `createAccountProof`
-  against the Paseo Next v2 LitePeople ring, then verifies both calls return
-  the same contextual alias.
+- `ring-vrf-smoke.ts` — registers and lists an explicit RFC-0024 key, derives
+  its alias, verifies a fresh non-member key returns `NotMember` for a proof,
+  and exercises direct ring-VRF signing.
 - `preimage-smoke.ts` — a focused Bulletin preimage flow check.
 
 The generated examples are baked to the `truapi-playground.dot` product. With

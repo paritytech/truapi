@@ -15,6 +15,7 @@ mod authority;
 pub(crate) mod bulletin_rpc;
 mod identity;
 mod pairing_host;
+mod ring_vrf_registry;
 /// Role-neutral runtime services shared by product-facing runtimes.
 pub(crate) mod services;
 mod signing_host;
@@ -66,8 +67,9 @@ pub(crate) use signing_host::{
 
 use authority::{
     AccountAliasAuthorityRequest, AuthorityCancelError, AuthorityError, AuthoritySession,
-    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest, SignPayloadAuthorityRequest,
-    SignRawAuthorityRequest,
+    CreateProofAuthorityRequest, CreateTransactionAuthorityRequest,
+    ListRingVrfKeysAuthorityRequest, RegisterRingVrfKeyAuthorityRequest,
+    RingVrfSignAuthorityRequest, SignPayloadAuthorityRequest, SignRawAuthorityRequest,
 };
 
 use futures::{FutureExt, StreamExt, pin_mut};
@@ -82,7 +84,11 @@ use truapi::versioned::account::{
     HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
     HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
     HostAccountGetAliasRequest, HostAccountGetAliasResponse, HostAccountGetError,
-    HostAccountGetRequest, HostAccountGetResponse, HostAccountSignVrfError,
+    HostAccountGetRequest, HostAccountGetResponse, HostAccountListRingVrfKeysError,
+    HostAccountListRingVrfKeysRequest, HostAccountListRingVrfKeysResponse,
+    HostAccountRegisterRingVrfKeyError, HostAccountRegisterRingVrfKeyRequest,
+    HostAccountRegisterRingVrfKeyResponse, HostAccountRingVrfSignError,
+    HostAccountRingVrfSignRequest, HostAccountRingVrfSignResponse, HostAccountSignVrfError,
     HostAccountSignVrfRequest, HostAccountSignVrfResponse, HostGetLegacyAccountsError,
     HostGetLegacyAccountsRequest, HostGetLegacyAccountsResponse, HostGetUserIdError,
     HostGetUserIdRequest, HostGetUserIdResponse, HostRequestLoginError, HostRequestLoginRequest,
@@ -978,10 +984,17 @@ impl Account for ProductRuntimeHost {
         request: HostAccountGetAliasRequest,
     ) -> Result<HostAccountGetAliasResponse, CallError<HostAccountGetAliasError>> {
         let HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
+            key_handle,
             context,
             ring_location,
         }) = request;
-
+        let key_handle = Self::normalize_product_account_id(key_handle).map_err(|()| {
+            CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetAliasError::Unknown {
+                    reason: "Invalid key handle".to_string(),
+                },
+            ))
+        })?;
         let Some(session) = self.authority.current_session() else {
             return Err(CallError::Domain(HostAccountGetAliasError::V1(
                 v01::HostAccountGetAliasError::Rejected,
@@ -997,6 +1010,7 @@ impl Account for ProductRuntimeHost {
                 &session,
                 AccountAliasAuthorityRequest {
                     calling_product_id,
+                    key_handle,
                     context,
                     ring_location,
                 },
@@ -1014,10 +1028,23 @@ impl Account for ProductRuntimeHost {
         request: HostAccountCreateProofRequest,
     ) -> Result<HostAccountCreateProofResponse, CallError<HostAccountCreateProofError>> {
         let HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
+            key_handle,
             context,
             ring_location,
             message,
         }) = request;
+        let key_handle = Self::normalize_product_account_id(key_handle).map_err(|()| {
+            CallError::Domain(HostAccountCreateProofError::V1(
+                v01::HostAccountCreateProofError::Unknown {
+                    reason: "Invalid key handle".to_string(),
+                },
+            ))
+        })?;
+        if key_handle.dot_ns_identifier != self.product_id() {
+            return Err(CallError::Domain(HostAccountCreateProofError::V1(
+                v01::HostAccountCreateProofError::NotAllowlisted,
+            )));
+        }
 
         let Some(session) = self.authority.current_session() else {
             return Err(CallError::Domain(HostAccountCreateProofError::V1(
@@ -1034,6 +1061,7 @@ impl Account for ProductRuntimeHost {
                 &session,
                 CreateProofAuthorityRequest {
                     calling_product_id,
+                    key_handle,
                     context,
                     ring_location,
                     message,
@@ -1045,6 +1073,135 @@ impl Account for ProductRuntimeHost {
         .map_err(|err| {
             CallError::Domain(HostAccountCreateProofError::V1(ring_vrf_proof_error(err)))
         })
+    }
+
+    #[instrument(skip_all, fields(runtime.method = "account.register_ring_vrf_key"))]
+    async fn register_ring_vrf_key(
+        &self,
+        cx: &CallContext,
+        request: HostAccountRegisterRingVrfKeyRequest,
+    ) -> Result<HostAccountRegisterRingVrfKeyResponse, CallError<HostAccountRegisterRingVrfKeyError>>
+    {
+        let HostAccountRegisterRingVrfKeyRequest::V1(v01::HostAccountRegisterRingVrfKeyRequest {
+            index,
+            ring,
+        }) = request;
+        let Some(session) = self.authority.current_session() else {
+            return Err(CallError::Domain(HostAccountRegisterRingVrfKeyError::V1(
+                v01::HostAccountRegisterRingVrfKeyError::NotConnected,
+            )));
+        };
+        let calling_product_id = self.product_id();
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.register_ring_vrf_key(
+                &cx,
+                &session,
+                RegisterRingVrfKeyAuthorityRequest {
+                    calling_product_id,
+                    index,
+                    ring,
+                },
+            ),
+        )
+        .await
+        .map(HostAccountRegisterRingVrfKeyResponse::V1)
+        .map_err(|err| {
+            CallError::Domain(HostAccountRegisterRingVrfKeyError::V1(
+                ring_vrf_register_error(err),
+            ))
+        })
+    }
+
+    #[instrument(skip_all, fields(runtime.method = "account.list_ring_vrf_keys"))]
+    async fn list_ring_vrf_keys(
+        &self,
+        cx: &CallContext,
+        request: HostAccountListRingVrfKeysRequest,
+    ) -> Result<HostAccountListRingVrfKeysResponse, CallError<HostAccountListRingVrfKeysError>>
+    {
+        let HostAccountListRingVrfKeysRequest::V1(v01::HostAccountListRingVrfKeysRequest {
+            owner,
+            disclosure,
+        }) = request;
+        let Some(session) = self.authority.current_session() else {
+            return Err(CallError::Domain(HostAccountListRingVrfKeysError::V1(
+                v01::HostAccountListRingVrfKeysError::NotConnected,
+            )));
+        };
+        let owner = normalize_product_identifier(&owner).map_err(|err| {
+            CallError::Domain(HostAccountListRingVrfKeysError::V1(
+                v01::HostAccountListRingVrfKeysError::Unknown {
+                    reason: err.to_string(),
+                },
+            ))
+        })?;
+        let calling_product_id = self.product_id();
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.list_ring_vrf_keys(
+                &cx,
+                &session,
+                ListRingVrfKeysAuthorityRequest {
+                    calling_product_id,
+                    owner,
+                    disclosure,
+                },
+            ),
+        )
+        .await
+        .map(HostAccountListRingVrfKeysResponse::V1)
+        .map_err(|err| {
+            CallError::Domain(HostAccountListRingVrfKeysError::V1(ring_vrf_list_error(
+                err,
+            )))
+        })
+    }
+
+    #[instrument(skip_all, fields(runtime.method = "account.ring_vrf_sign"))]
+    async fn ring_vrf_sign(
+        &self,
+        cx: &CallContext,
+        request: HostAccountRingVrfSignRequest,
+    ) -> Result<HostAccountRingVrfSignResponse, CallError<HostAccountRingVrfSignError>> {
+        let HostAccountRingVrfSignRequest::V1(mut request) = request;
+        request.key_handle =
+            Self::normalize_product_account_id(request.key_handle).map_err(|()| {
+                CallError::Domain(HostAccountRingVrfSignError::V1(
+                    v01::HostAccountRingVrfSignError::Unknown {
+                        reason: "Invalid key handle".to_string(),
+                    },
+                ))
+            })?;
+        let Some(session) = self.authority.current_session() else {
+            return Err(CallError::Domain(HostAccountRingVrfSignError::V1(
+                v01::HostAccountRingVrfSignError::NotConnected,
+            )));
+        };
+        if request.key_handle.dot_ns_identifier != self.product_id() {
+            return Err(CallError::Domain(HostAccountRingVrfSignError::V1(
+                v01::HostAccountRingVrfSignError::NotAllowlisted,
+            )));
+        }
+        let calling_product_id = self.product_id();
+        let cx = remote_authority_context(cx);
+        remote_authority_call(
+            &cx,
+            self.authority.ring_vrf_sign(
+                &cx,
+                &session,
+                RingVrfSignAuthorityRequest {
+                    calling_product_id,
+                    key_handle: request.key_handle,
+                    message: request.message,
+                },
+            ),
+        )
+        .await
+        .map(HostAccountRingVrfSignResponse::V1)
+        .map_err(|err| CallError::Domain(HostAccountRingVrfSignError::V1(ring_vrf_sign_error(err))))
     }
 
     #[instrument(skip_all, fields(runtime.method = "account.sign_vrf"))]
@@ -1225,6 +1382,9 @@ fn ring_vrf_alias_error(err: RingVrfError) -> v01::HostAccountGetAliasError {
     match err {
         RingVrfError::RingNotFound => v01::HostAccountGetAliasError::RingNotFound,
         RingVrfError::NotMember => v01::HostAccountGetAliasError::NotMember,
+        RingVrfError::KeyNotRegistered => v01::HostAccountGetAliasError::KeyNotRegistered,
+        RingVrfError::KeyNotInRing => v01::HostAccountGetAliasError::KeyNotInRing,
+        RingVrfError::NotAllowlisted => v01::HostAccountGetAliasError::Rejected,
         RingVrfError::Rejected => v01::HostAccountGetAliasError::Rejected,
         RingVrfError::Unknown { reason } => v01::HostAccountGetAliasError::Unknown { reason },
     }
@@ -1234,8 +1394,57 @@ fn ring_vrf_proof_error(err: RingVrfError) -> v01::HostAccountCreateProofError {
     match err {
         RingVrfError::RingNotFound => v01::HostAccountCreateProofError::RingNotFound,
         RingVrfError::NotMember => v01::HostAccountCreateProofError::NotMember,
+        RingVrfError::KeyNotRegistered => v01::HostAccountCreateProofError::KeyNotRegistered,
+        RingVrfError::KeyNotInRing => v01::HostAccountCreateProofError::KeyNotInRing,
+        RingVrfError::NotAllowlisted => v01::HostAccountCreateProofError::NotAllowlisted,
         RingVrfError::Rejected => v01::HostAccountCreateProofError::Rejected,
         RingVrfError::Unknown { reason } => v01::HostAccountCreateProofError::Unknown { reason },
+    }
+}
+
+fn ring_vrf_register_error(err: RingVrfError) -> v01::HostAccountRegisterRingVrfKeyError {
+    match err {
+        RingVrfError::RingNotFound => v01::HostAccountRegisterRingVrfKeyError::RingNotFound,
+        RingVrfError::Rejected => v01::HostAccountRegisterRingVrfKeyError::Rejected,
+        RingVrfError::NotMember
+        | RingVrfError::KeyNotRegistered
+        | RingVrfError::KeyNotInRing
+        | RingVrfError::NotAllowlisted => v01::HostAccountRegisterRingVrfKeyError::Unknown {
+            reason: format!("{err:?}"),
+        },
+        RingVrfError::Unknown { reason } => {
+            v01::HostAccountRegisterRingVrfKeyError::Unknown { reason }
+        }
+    }
+}
+
+fn ring_vrf_list_error(err: RingVrfError) -> v01::HostAccountListRingVrfKeysError {
+    match err {
+        RingVrfError::Rejected => v01::HostAccountListRingVrfKeysError::Rejected,
+        RingVrfError::RingNotFound
+        | RingVrfError::NotMember
+        | RingVrfError::KeyNotRegistered
+        | RingVrfError::KeyNotInRing
+        | RingVrfError::NotAllowlisted => v01::HostAccountListRingVrfKeysError::Unknown {
+            reason: format!("{err:?}"),
+        },
+        RingVrfError::Unknown { reason } => {
+            v01::HostAccountListRingVrfKeysError::Unknown { reason }
+        }
+    }
+}
+
+fn ring_vrf_sign_error(err: RingVrfError) -> v01::HostAccountRingVrfSignError {
+    match err {
+        RingVrfError::KeyNotRegistered => v01::HostAccountRingVrfSignError::KeyNotRegistered,
+        RingVrfError::NotAllowlisted => v01::HostAccountRingVrfSignError::NotAllowlisted,
+        RingVrfError::Rejected => v01::HostAccountRingVrfSignError::Rejected,
+        RingVrfError::RingNotFound | RingVrfError::NotMember | RingVrfError::KeyNotInRing => {
+            v01::HostAccountRingVrfSignError::Unknown {
+                reason: format!("{err:?}"),
+            }
+        }
+        RingVrfError::Unknown { reason } => v01::HostAccountRingVrfSignError::Unknown { reason },
     }
 }
 
@@ -4554,6 +4763,12 @@ mod tests {
                                 crate::host_logic::sso::messages::SsoAllocationOutcome::Allocated(
                                     crate::host_logic::sso::messages::SsoAllocatedResource::AutoSigning {
                                         product_root_private_key: subtree.secret.to_bytes(),
+                                        ring_vrf_domain_entropy:
+                                            crate::host_logic::product_account::derive_ring_vrf_domain_entropy(
+                                                &[0xAB; 16],
+                                                "myapp.dot",
+                                            )
+                                            .unwrap(),
                                     },
                                 ),
                             ]),
@@ -4610,6 +4825,12 @@ mod tests {
                                 crate::host_logic::sso::messages::SsoAllocationOutcome::Allocated(
                                     crate::host_logic::sso::messages::SsoAllocatedResource::AutoSigning {
                                         product_root_private_key,
+                                        ring_vrf_domain_entropy:
+                                            crate::host_logic::product_account::derive_ring_vrf_domain_entropy(
+                                                &[0xAB; 16],
+                                                "myapp.dot",
+                                            )
+                                            .unwrap(),
                                     },
                                 ),
                             ]),
@@ -4678,6 +4899,147 @@ mod tests {
             .public
             .vrf_verify(transcript, &pre_output, &proof)
             .expect("local AutoSigning VRF verifies");
+    }
+
+    #[test]
+    fn ring_vrf_sign_reports_not_connected_before_foreign_key_policy() {
+        let host = ProductRuntimeHost::new(
+            Arc::new(StubPlatform::default()),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let request = HostAccountRingVrfSignRequest::V1(v01::HostAccountRingVrfSignRequest {
+            key_handle: account_id("other.dot", 0),
+            message: b"not connected".to_vec(),
+        });
+
+        let error =
+            futures::executor::block_on(host.ring_vrf_sign(&CallContext::default(), request))
+                .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CallError::Domain(HostAccountRingVrfSignError::V1(
+                v01::HostAccountRingVrfSignError::NotConnected
+            ))
+        ));
+    }
+
+    #[test]
+    fn auto_signing_ring_vrf_requires_registration_and_signs_locally() {
+        use verifiable::GenerateVerifiable;
+        use verifiable::ring::bandersnatch::BandersnatchVrfVerifiable;
+
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform::default());
+        let (host, pairing_host) = ProductRuntimeHost::new_pairing_for_tests(
+            platform.clone(),
+            ProductRuntimeHost::compat_host_config(),
+            ProductContext::new("myapp.dot".to_string()).unwrap(),
+            test_spawner(),
+        );
+        install_pairing_session(&host, session.clone());
+
+        let root =
+            crate::host_logic::product_account::derive_root_keypair_from_entropy(&[0xAB; 16])
+                .unwrap();
+        let subtree =
+            crate::host_logic::product_account::derive_product_subtree_keypair(&root, "myapp.dot")
+                .unwrap();
+        let domain = crate::host_logic::product_account::derive_ring_vrf_domain_entropy(
+            &[0xAB; 16],
+            "myapp.dot",
+        )
+        .unwrap();
+        futures::executor::block_on(pairing_host.remember_auto_signing_key_for_tests(
+            &session,
+            pairing_host.current_session_lifecycle_epoch(),
+            "myapp.dot",
+            subtree.public.to_bytes(),
+            subtree.secret.to_bytes(),
+            domain,
+        ))
+        .unwrap();
+
+        let handle = account_id("myapp.dot", 7);
+        let request = HostAccountRingVrfSignRequest::V1(v01::HostAccountRingVrfSignRequest {
+            key_handle: handle.clone(),
+            message: b"registered keys only".to_vec(),
+        });
+        let error =
+            futures::executor::block_on(host.ring_vrf_sign(&CallContext::default(), request))
+                .unwrap_err();
+        assert!(matches!(
+            error,
+            CallError::Domain(HostAccountRingVrfSignError::V1(
+                v01::HostAccountRingVrfSignError::KeyNotRegistered
+            ))
+        ));
+
+        let ring = ring_location_fixture();
+        let entropy = crate::host_logic::product_account::derive_ring_vrf_entropy_from_domain(
+            &domain,
+            &handle.derivation_index,
+        );
+        let public_key =
+            crate::runtime::signing_host::ring_vrf::member_from_entropy(&entropy).unwrap();
+        futures::executor::block_on(pairing_host.register_ring_vrf_key_for_tests(
+            &session,
+            handle.clone(),
+            ring,
+            public_key,
+        ))
+        .unwrap();
+
+        let message = b"registered keys only".to_vec();
+        let response = futures::executor::block_on(host.ring_vrf_sign(
+            &CallContext::default(),
+            HostAccountRingVrfSignRequest::V1(v01::HostAccountRingVrfSignRequest {
+                key_handle: handle,
+                message: message.clone(),
+            }),
+        ))
+        .unwrap();
+        let HostAccountRingVrfSignResponse::V1(signature) = response;
+        let signature: [u8; 64] = signature
+            .try_into()
+            .expect("fixed-width ring-VRF signature");
+        assert!(BandersnatchVrfVerifiable::verify_signature(
+            &signature,
+            &message,
+            &public_key
+        ));
+        assert!(
+            platform
+                .sent_rpc
+                .lock()
+                .expect("sent RPC mutex poisoned")
+                .is_empty(),
+            "registered AutoSigning ring-VRF use stays local"
+        );
+
+        let mismatched_handle = account_id("myapp.dot", 8);
+        futures::executor::block_on(pairing_host.register_ring_vrf_key_for_tests(
+            &session,
+            mismatched_handle.clone(),
+            ring_location_fixture(),
+            [0xFF; 32],
+        ))
+        .unwrap();
+        let error = futures::executor::block_on(host.ring_vrf_sign(
+            &CallContext::default(),
+            HostAccountRingVrfSignRequest::V1(v01::HostAccountRingVrfSignRequest {
+                key_handle: mismatched_handle,
+                message: b"reject mismatched registry state".to_vec(),
+            }),
+        ))
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            CallError::Domain(HostAccountRingVrfSignError::V1(
+                v01::HostAccountRingVrfSignError::Unknown { reason }
+            )) if reason.contains("does not match the AutoSigning capability")
+        ));
     }
 
     #[test]
@@ -4803,6 +5165,7 @@ mod tests {
                 "myapp.dot",
                 subtree.public.to_bytes(),
                 subtree.secret.to_bytes(),
+                [0x42; 32],
             ))
             .expect_err("the old AutoSigning allocation completion must be rejected");
         let statement_store_result =
@@ -4888,6 +5251,7 @@ mod tests {
                 product_id,
                 subtree.public.to_bytes(),
                 subtree.secret.to_bytes(),
+                [0x42; 32],
             ))
             .unwrap();
             futures::executor::block_on(pairing_host.cache_statement_store_allowance_key(
@@ -4969,6 +5333,7 @@ mod tests {
                 "myapp.dot",
                 first.public.to_bytes(),
                 first.secret.to_bytes(),
+                [0x42; 32],
             )),
             Err(AuthorityError::Disconnected)
         ));
@@ -5021,6 +5386,7 @@ mod tests {
             "myapp.dot",
             subtree.public.to_bytes(),
             subtree.secret.to_bytes(),
+            [0x42; 32],
         ))
         .unwrap();
         futures::executor::block_on(pairing_host.cache_statement_store_allowance_key(

@@ -98,10 +98,10 @@ export function knownUnsupportedReason(
 }
 
 export function expectedCliBatteryFailureReason(
-  serviceName: string,
+  row: Pick<DiagnosisRow, "serviceName">,
 ): string | undefined {
-  if (SKIPPED_SERVICES.has(serviceName)) {
-    return `${serviceName} service not yet wired up by hosts`;
+  if (SKIPPED_SERVICES.has(row.serviceName)) {
+    return `${row.serviceName} service not yet wired up by hosts`;
   }
   return undefined;
 }

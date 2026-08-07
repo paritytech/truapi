@@ -5052,6 +5052,7 @@ dependencies = [
  "nanoid",
  "p256",
  "parity-scale-codec",
+ "parking_lot",
  "rand 0.8.7",
  "scale-decode",
  "scale-info",

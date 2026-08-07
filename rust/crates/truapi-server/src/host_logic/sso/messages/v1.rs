@@ -9,10 +9,11 @@ use parity_scale_codec::{Decode, Encode};
 
 use super::{
     CreateTransactionLegacyRequest, CreateTransactionRequest, CreateTransactionResponse,
-    ProductSubtreeRequest, ProductSubtreeResponse, ResourceAllocationRequest,
+    ListRingVrfKeysRequest, ListRingVrfKeysResponse, ProductSubtreeRequest, ProductSubtreeResponse,
+    RegisterRingVrfKeyRequest, RegisterRingVrfKeyResponse, ResourceAllocationRequest,
     ResourceAllocationResponse, RingVrfAliasRequest, RingVrfAliasResponse, RingVrfProofRequest,
-    RingVrfProofResponse, SignRawLegacyRequest, SignRawLegacyResponse, SignVrfRequest,
-    SignVrfResponse, SigningRequest, SigningResponse,
+    RingVrfProofResponse, RingVrfSignRequest, RingVrfSignResponse, SignRawLegacyRequest,
+    SignRawLegacyResponse, SignVrfRequest, SignVrfResponse, SigningRequest, SigningResponse,
 };
 
 /// v1 messages exchanged with the paired signing host over the encrypted SSO channel.
@@ -79,4 +80,28 @@ pub enum RemoteMessage {
     #[codec(index = 17)]
     #[display("product_subtree_response")]
     ProductSubtreeResponse(ProductSubtreeResponse),
+    /// Register a ring-VRF key with the Account Holder.
+    #[codec(index = 18)]
+    #[display("register_ring_vrf_key")]
+    RegisterRingVrfKeyRequest(RegisterRingVrfKeyRequest),
+    /// Account Holder's answer to [`RemoteMessage::RegisterRingVrfKeyRequest`].
+    #[codec(index = 19)]
+    #[display("register_ring_vrf_key_response")]
+    RegisterRingVrfKeyResponse(RegisterRingVrfKeyResponse),
+    /// List registered ring-VRF keys.
+    #[codec(index = 20)]
+    #[display("list_ring_vrf_keys")]
+    ListRingVrfKeysRequest(ListRingVrfKeysRequest),
+    /// Account Holder's answer to [`RemoteMessage::ListRingVrfKeysRequest`].
+    #[codec(index = 21)]
+    #[display("list_ring_vrf_keys_response")]
+    ListRingVrfKeysResponse(ListRingVrfKeysResponse),
+    /// Sign bytes with a registered ring-VRF key.
+    #[codec(index = 22)]
+    #[display("ring_vrf_sign")]
+    RingVrfSignRequest(RingVrfSignRequest),
+    /// Account Holder's answer to [`RemoteMessage::RingVrfSignRequest`].
+    #[codec(index = 23)]
+    #[display("ring_vrf_sign_response")]
+    RingVrfSignResponse(RingVrfSignResponse),
 }

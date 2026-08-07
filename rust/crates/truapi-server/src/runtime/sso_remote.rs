@@ -26,6 +26,10 @@ use truapi::{CancellationReason, CancellationToken};
 /// Host-spec B.3.3 recommends seven-day statement expiry for session traffic:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L143-L145>
 const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
+/// The statement store keeps only the highest-priority statement on a channel.
+/// Expiry's lower 32 bits are the tie-breaker for statements expiring in the
+/// same second, so every submission from this process must advance them.
+static LAST_SSO_STATEMENT_EXPIRY: Mutex<u64> = Mutex::new(0);
 /// Disconnect reason reported when the local session logs out mid-request.
 pub(super) const SSO_LOCAL_DISCONNECT_REASON: &str = "SSO session disconnected";
 /// Disconnect reason reported when the paired signing host announces a disconnect.
@@ -424,7 +428,17 @@ pub(super) fn sso_message_id() -> String {
 /// high 32 bits, seven days from now.
 pub(super) fn fresh_statement_expiry() -> u64 {
     let timestamp = current_unix_secs().saturating_add(DEFAULT_SSO_STATEMENT_EXPIRY_SECS);
-    timestamp << 32
+    let expiry_floor = timestamp << 32;
+    let mut last = LAST_SSO_STATEMENT_EXPIRY
+        .lock()
+        .expect("SSO statement expiry mutex poisoned");
+    let expiry = next_statement_expiry(*last, expiry_floor);
+    *last = expiry;
+    expiry
+}
+
+fn next_statement_expiry(last: u64, expiry_floor: u64) -> u64 {
+    expiry_floor.max(last.saturating_add(1))
 }
 
 #[cfg(test)]
@@ -446,6 +460,17 @@ mod tests {
         assert_ne!(first, second);
         assert!(first.bytes().all(is_nanoid_safe_byte));
         assert!(second.bytes().all(is_nanoid_safe_byte));
+    }
+
+    #[test]
+    fn fresh_statement_expiry_is_strictly_monotonic() {
+        let first = fresh_statement_expiry();
+        let second = fresh_statement_expiry();
+
+        assert!(second > first);
+        let floor = 42_u64 << 32;
+        assert_eq!(next_statement_expiry(floor, floor), floor + 1);
+        assert_eq!(next_statement_expiry(floor + 7, floor), floor + 8);
     }
 
     fn is_nanoid_safe_byte(value: u8) -> bool {

@@ -58,6 +58,7 @@ chacha20poly1305 = { version = "0.10", default-features = false, features = ["al
 x25519-dalek = { version = "2", default-features = false, features = ["static_secrets"] }
 sha2 = "0.10"
 merlin = "3"
+parking_lot = "0.12"
 
 tracing = "0.1"
 # `registry` + `std` only: pulls the Registry + per-layer filter/reload, but

@@ -4,7 +4,11 @@ use crate::versioned::account::{
     HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
     HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
     HostAccountGetAliasRequest, HostAccountGetAliasResponse, HostAccountGetError,
-    HostAccountGetRequest, HostAccountGetResponse, HostAccountSignVrfError,
+    HostAccountGetRequest, HostAccountGetResponse, HostAccountListRingVrfKeysError,
+    HostAccountListRingVrfKeysRequest, HostAccountListRingVrfKeysResponse,
+    HostAccountRegisterRingVrfKeyError, HostAccountRegisterRingVrfKeyRequest,
+    HostAccountRegisterRingVrfKeyResponse, HostAccountRingVrfSignError,
+    HostAccountRingVrfSignRequest, HostAccountRingVrfSignResponse, HostAccountSignVrfError,
     HostAccountSignVrfRequest, HostAccountSignVrfResponse, HostGetLegacyAccountsError,
     HostGetLegacyAccountsRequest, HostGetLegacyAccountsResponse, HostGetUserIdError,
     HostGetUserIdRequest, HostGetUserIdResponse, HostRequestLoginError, HostRequestLoginRequest,
@@ -70,17 +74,27 @@ pub trait Account: Send + Sync {
     /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
     ///
     /// const PEOPLE_COLLECTION_ID =
-    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
+    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465" as const;
+    /// const keyHandle = {
+    ///   dotNsIdentifier: "truapi-playground.dot",
+    ///   derivationIndex: { tag: "Index" as const, value: 0 },
+    /// };
+    /// const ringLocation = {
+    ///   chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
+    ///   junctions: [
+    ///     { tag: "CollectionId" as const, value: PEOPLE_COLLECTION_ID },
+    ///   ],
+    /// };
+    /// const registration = await truapi.account.registerRingVrfKey({
+    ///   index: keyHandle.derivationIndex,
+    ///   ring: ringLocation,
+    /// });
+    /// assert(registration.isOk(), "registerRingVrfKey failed:", registration);
     ///
     /// const result = await truapi.account.getAccountAlias({
+    ///   keyHandle,
     ///   context: { productId: "truapi-playground.dot", suffix: { tag: "Index", value: 0 } },
-    ///   ringLocation: {
-    ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
-    ///     junctions: [
-    ///       { tag: "PalletInstance", value: 67 },
-    ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
-    ///     ],
-    ///   },
+    ///   ringLocation,
     /// });
     /// assert(result.isOk(), "getAccountAlias failed:", result);
     /// console.log("account alias:", result.value);
@@ -94,7 +108,7 @@ pub trait Account: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Generate a ring VRF proof; the host selects the member key for the ring.
+    /// Generate a ring VRF proof with an explicitly registered member key.
     ///
     /// ```ts
     /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
@@ -103,18 +117,28 @@ pub trait Account: Send + Sync {
     ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
     ///
     /// const result = await truapi.account.createAccountProof({
+    ///   keyHandle: {
+    ///     dotNsIdentifier: "peopl.dot",
+    ///     derivationIndex: { tag: "Index", value: 1 },
+    ///   },
     ///   context: { productId: "truapi-playground.dot", suffix: { tag: "Index", value: 0 } },
     ///   ringLocation: {
     ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
     ///     junctions: [
-    ///       { tag: "PalletInstance", value: 67 },
     ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
     ///     ],
     ///   },
     ///   message: "0x48656c6c6f",
     /// });
-    /// assert(result.isOk(), "createAccountProof failed:", result);
-    /// console.log("account proof created:", result.value);
+    /// assert(result.isErr(), "foreign createAccountProof unexpectedly succeeded:", result);
+    /// assert(
+    ///   result.error.tag === "Domain" &&
+    ///     result.error.value.tag === "V1" &&
+    ///     result.error.value.value.tag === "NotAllowlisted",
+    ///   "foreign createAccountProof did not return NotAllowlisted:",
+    ///   result,
+    /// );
+    /// console.log("foreign account proof refused without prompting");
     /// ```
     #[wire(request_id = 26)]
     async fn create_account_proof(
@@ -153,6 +177,78 @@ pub trait Account: Send + Sync {
         _cx: &CallContext,
         _request: HostAccountSignVrfRequest,
     ) -> Result<HostAccountSignVrfResponse, CallError<HostAccountSignVrfError>> {
+        Err(CallError::unavailable())
+    }
+
+    /// Register a ring-VRF key owned by the calling product.
+    ///
+    /// ```ts
+    /// import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
+    ///
+    /// const PEOPLE_COLLECTION_ID =
+    ///   "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";
+    ///
+    /// const result = await truapi.account.registerRingVrfKey({
+    ///   index: { tag: "Index", value: 0 },
+    ///   ring: {
+    ///     chainId: PASEO_NEXT_V2_INDIVIDUALITY.genesis,
+    ///     junctions: [
+    ///       { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },
+    ///     ],
+    ///   },
+    /// });
+    /// assert(result.isOk(), "registerRingVrfKey failed:", result);
+    /// console.log("ring VRF public key:", result.value);
+    /// ```
+    #[wire(request_id = 166)]
+    async fn register_ring_vrf_key(
+        &self,
+        _cx: &CallContext,
+        _request: HostAccountRegisterRingVrfKeyRequest,
+    ) -> Result<HostAccountRegisterRingVrfKeyResponse, CallError<HostAccountRegisterRingVrfKeyError>>
+    {
+        Err(CallError::unavailable())
+    }
+
+    /// List registered ring-VRF keys owned by a product.
+    ///
+    /// ```ts
+    /// const result = await truapi.account.listRingVrfKeys({
+    ///   owner: "truapi-playground.dot",
+    ///   disclosure: "PublicKey",
+    /// });
+    /// assert(result.isOk(), "listRingVrfKeys failed:", result);
+    /// console.log("registered ring VRF keys:", result.value);
+    /// ```
+    #[wire(request_id = 168)]
+    async fn list_ring_vrf_keys(
+        &self,
+        _cx: &CallContext,
+        _request: HostAccountListRingVrfKeysRequest,
+    ) -> Result<HostAccountListRingVrfKeysResponse, CallError<HostAccountListRingVrfKeysError>>
+    {
+        Err(CallError::unavailable())
+    }
+
+    /// Sign bytes directly with a registered ring-VRF member key.
+    ///
+    /// ```ts
+    /// const result = await truapi.account.ringVrfSign({
+    ///   keyHandle: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: { tag: "Index", value: 0 },
+    ///   },
+    ///   message: "0x48656c6c6f",
+    /// });
+    /// assert(result.isOk(), "ringVrfSign failed:", result);
+    /// console.log("ring VRF signature:", result.value);
+    /// ```
+    #[wire(request_id = 170)]
+    async fn ring_vrf_sign(
+        &self,
+        _cx: &CallContext,
+        _request: HostAccountRingVrfSignRequest,
+    ) -> Result<HostAccountRingVrfSignResponse, CallError<HostAccountRingVrfSignError>> {
         Err(CallError::unavailable())
     }
 

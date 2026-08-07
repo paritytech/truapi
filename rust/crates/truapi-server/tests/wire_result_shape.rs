@@ -180,9 +180,13 @@ fn version_index(version: u8) -> u8 {
 }
 
 #[test]
-fn account_proof_declined_confirmation_returns_rejected() {
+fn foreign_account_proof_returns_not_allowlisted_without_confirmation() {
     let core = make_core();
     let request = account::HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
+        key_handle: v01::ProductAccountId {
+            dot_ns_identifier: "peopl.dot".to_string(),
+            derivation_index: v01::DerivationIndex::Index(0),
+        },
         context: v01::ProductProofContext {
             product_id: "myapp.dot".to_string(),
             suffix: v01::DerivationIndex::Index(0),
@@ -207,10 +211,9 @@ fn account_proof_declined_confirmation_returns_rejected() {
     );
     assert_eq!(response.request_id, "p:account-proof");
     assert_eq!(response.payload.id, ids.response_id);
-    // The wire-shape platform declines the confirmation prompt, so the proof
-    // request maps to a `Rejected` domain error in the standard Result-Err envelope.
+    // RFC-0024 forbids a prompt fallback for bearer proofs made with a foreign key.
     let expected = versioned_result_err_payload(account::HostAccountCreateProofError::V1(
-        v01::HostAccountCreateProofError::Rejected,
+        v01::HostAccountCreateProofError::NotAllowlisted,
     ));
     assert_eq!(response.payload.value, expected);
 }

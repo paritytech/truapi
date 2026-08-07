@@ -96,11 +96,63 @@ pub struct ProductProofContext {
 /// Request to create a ring VRF proof.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountCreateProofRequest {
+    /// Ring-VRF key handle naming the member key to use.
+    pub key_handle: ProductAccountId,
     /// Product-scoped context the derived alias is bound to.
     pub context: ProductProofContext,
-    /// Ring to generate the proof against; the host selects the member key.
+    /// Ring to generate the proof against.
     pub ring_location: RingLocation,
     /// Opaque message bound into the proof.
+    pub message: Vec<u8>,
+}
+
+/// Ring-VRF member public key.
+pub type RingVrfPublicKey = [u8; 32];
+
+/// A registered ring-VRF key entry.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RegisteredRingVrfKey {
+    /// Stable public name of the key.
+    pub handle: ProductAccountId,
+    /// Rings the owning product declared this key for.
+    pub rings: Vec<RingLocation>,
+    /// Present when the caller owns the key or requested/granted disclosure.
+    pub public_key: Option<RingVrfPublicKey>,
+}
+
+/// How much of a registry entry the caller asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum RingVrfKeyDisclosure {
+    /// Handle and declared rings only.
+    Anonymized,
+    /// Include the member public key.
+    PublicKey,
+}
+
+/// Request to register a ring-VRF key owned by the calling product.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostAccountRegisterRingVrfKeyRequest {
+    /// Key derivation index within the caller's ring-VRF domain.
+    pub index: DerivationIndex,
+    /// Ring this key is declared for.
+    pub ring: RingLocation,
+}
+
+/// Request to list registered ring-VRF keys for an owner product.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostAccountListRingVrfKeysRequest {
+    /// Product whose registry entries should be listed.
+    pub owner: String,
+    /// Disclosure level requested by the caller.
+    pub disclosure: RingVrfKeyDisclosure,
+}
+
+/// Request to sign bytes with a registered ring-VRF key.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostAccountRingVrfSignRequest {
+    /// Registered key handle.
+    pub key_handle: ProductAccountId,
+    /// Opaque message to sign.
     pub message: Vec<u8>,
 }
 
@@ -162,8 +214,14 @@ pub enum HostAccountGetError {
 pub enum HostAccountCreateProofError {
     /// Ring not available at the specified location.
     RingNotFound,
-    /// The selected member key is not a member of the requested ring.
+    /// The registered member key is not a member of the requested ring.
     NotMember,
+    /// The key handle is not registered.
+    KeyNotRegistered,
+    /// The key handle is not registered for the requested ring.
+    KeyNotInRing,
+    /// The foreign key owner has not allowlisted the caller.
+    NotAllowlisted,
     /// User or host rejected.
     Rejected,
     /// Catch-all.
@@ -178,8 +236,12 @@ pub enum HostAccountCreateProofError {
 pub enum HostAccountGetAliasError {
     /// Ring not available at the specified location.
     RingNotFound,
-    /// The selected member key is not a member of the requested ring.
+    /// The registered member key is not a member of the requested ring.
     NotMember,
+    /// The key handle is not registered.
+    KeyNotRegistered,
+    /// The key handle is not registered for the requested ring.
+    KeyNotInRing,
     /// User or host rejected.
     Rejected,
     /// Catch-all.
@@ -227,10 +289,60 @@ pub enum HostGetUserIdError {
 /// Request to retrieve the contextual alias for a context and ring.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetAliasRequest {
+    /// Ring-VRF key handle naming the member key to use.
+    pub key_handle: ProductAccountId,
     /// Product-scoped context to derive the alias for.
     pub context: ProductProofContext,
     /// Ring whose member key the host should use; matches `create_proof`.
     pub ring_location: RingLocation,
+}
+
+/// Error returned when ring-VRF key registration fails.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostAccountRegisterRingVrfKeyError {
+    /// User is not logged in.
+    NotConnected,
+    /// Ring not available at the specified location.
+    RingNotFound,
+    /// User or host rejected.
+    Rejected,
+    /// Catch-all.
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+}
+
+/// Error returned when listing ring-VRF keys fails.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostAccountListRingVrfKeysError {
+    /// User is not logged in.
+    NotConnected,
+    /// User or host rejected.
+    Rejected,
+    /// Catch-all.
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+}
+
+/// Error returned when direct ring-VRF key signing fails.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostAccountRingVrfSignError {
+    /// User is not logged in.
+    NotConnected,
+    /// The key handle is not registered.
+    KeyNotRegistered,
+    /// The foreign key owner has not allowlisted the caller.
+    NotAllowlisted,
+    /// User or host rejected.
+    Rejected,
+    /// Catch-all.
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
 }
 
 /// Response containing a ring VRF proof and the values needed to verify it
