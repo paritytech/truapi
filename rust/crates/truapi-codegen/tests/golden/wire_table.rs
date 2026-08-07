@@ -466,6 +466,34 @@ pub const ACCOUNT_SIGN_VRF: RequestFrameIds = RequestFrameIds {
     response_id: 165,
 };
 
+/// Wire discriminants for `funding_request`.
+pub const FUNDING_REQUEST: RequestFrameIds = RequestFrameIds {
+    request_id: 168,
+    response_id: 169,
+};
+
+/// Wire discriminants for `funding_status_subscribe`.
+pub const FUNDING_STATUS_SUBSCRIBE: SubscriptionFrameIds = SubscriptionFrameIds {
+    start_id: 170,
+    stop_id: 171,
+    interrupt_id: 172,
+    receive_id: 173,
+};
+
+/// Wire discriminants for `funding_serve_subscribe`.
+pub const FUNDING_SERVE_SUBSCRIBE: SubscriptionFrameIds = SubscriptionFrameIds {
+    start_id: 174,
+    stop_id: 175,
+    interrupt_id: 176,
+    receive_id: 177,
+};
+
+/// Wire discriminants for `funding_report`.
+pub const FUNDING_REPORT: RequestFrameIds = RequestFrameIds {
+    request_id: 178,
+    response_id: 179,
+};
+
 /// The full wire table. Ordering is part of the wire protocol;
 /// only ever append. Removed methods leave their slot empty.
 pub const WIRE_TABLE: &[WireEntry] = &[
@@ -728,5 +756,21 @@ pub const WIRE_TABLE: &[WireEntry] = &[
     WireEntry {
         method: "account_sign_vrf",
         kind: WireKind::Request(ACCOUNT_SIGN_VRF),
+    },
+    WireEntry {
+        method: "funding_request",
+        kind: WireKind::Request(FUNDING_REQUEST),
+    },
+    WireEntry {
+        method: "funding_status_subscribe",
+        kind: WireKind::Subscription(FUNDING_STATUS_SUBSCRIBE),
+    },
+    WireEntry {
+        method: "funding_serve_subscribe",
+        kind: WireKind::Subscription(FUNDING_SERVE_SUBSCRIBE),
+    },
+    WireEntry {
+        method: "funding_report",
+        kind: WireKind::Request(FUNDING_REPORT),
     },
 ];

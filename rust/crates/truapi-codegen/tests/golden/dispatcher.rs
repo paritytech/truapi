@@ -13,6 +13,7 @@ use truapi::api::{
     Chat,
     CoinPayment,
     Entropy,
+    Funding,
     LocalStorage,
     Notifications,
     Payment,
@@ -44,6 +45,7 @@ where
     register_chat(dispatcher, host.clone());
     register_coin_payment(dispatcher, host.clone());
     register_entropy(dispatcher, host.clone());
+    register_funding(dispatcher, host.clone());
     register_local_storage(dispatcher, host.clone());
     register_notifications(dispatcher, host.clone());
     register_payment(dispatcher, host.clone());
@@ -1047,6 +1049,115 @@ where
                 let target_version = request.version();
                 let cx = CallContext::with_request_id(request_id.clone());
                 let response: versioned::entropy::HostDeriveEntropyResponse = match host.derive(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+}
+
+fn register_funding<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
+where
+    P: Funding + Send + Sync + 'static,
+{
+    {
+        let host = host.clone();
+        dispatcher.on_request(wire_table::FUNDING_REQUEST, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::funding::HostFundingRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::funding::HostFundingError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::funding::HostFundingError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::funding::HostFundingResponse = match host.request(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Ok(encode_versioned_err_payload(err, target_version));
+                    }
+                };
+                Ok(encode_versioned_ok_payload(response))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_subscription(wire_table::FUNDING_STATUS_SUBSCRIBE, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::funding::HostFundingStatusSubscribeRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::funding::HostFundingSessionError> =
+                            truapi::CallError::MalformedFrame {
+                                reason: err.to_string(),
+                            };
+                        return Err(encode_versioned_interrupt_payload(
+                            error,
+                            <versioned::funding::HostFundingSessionError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.status_subscribe(&cx, request).await {
+                    Ok(sub) => sub,
+                    Err(err) => {
+                        return Err(encode_versioned_interrupt_payload(err, target_version));
+                    }
+                };
+                Ok(subscription_stream::<versioned::funding::HostFundingStatusSubscribeItem, _>(stream))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_subscription(wire_table::FUNDING_SERVE_SUBSCRIBE, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let _ = bytes;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.serve_subscribe(&cx).await {
+                    Ok(sub) => sub,
+                    Err(err) => {
+                        return Err(encode_versioned_interrupt_payload(err, <versioned::funding::HostFundingServeError as Versioned>::LATEST));
+                    }
+                };
+                Ok(subscription_stream::<versioned::funding::HostFundingServeSubscribeItem, _>(stream))
+            })
+        });
+    }
+    {
+        let host = host;
+        dispatcher.on_request(wire_table::FUNDING_REPORT, move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::funding::HostFundingReportRequest = match Decode::decode(&mut &bytes[..]) {
+                    Ok(request) => request,
+                    Err(err) => {
+                        let error: truapi::CallError<versioned::funding::HostFundingServingError> =
+                            truapi::CallError::MalformedFrame { reason: err.to_string() };
+                        return Ok(encode_versioned_err_payload(
+                            error,
+                            <versioned::funding::HostFundingServingError as Versioned>::LATEST,
+                        ));
+                    }
+                };
+                let target_version = request.version();
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::funding::HostFundingReportResponse = match host.report(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => {
                         return Ok(encode_versioned_err_payload(err, target_version));

@@ -75,8 +75,8 @@ use futures::{FutureExt, StreamExt, pin_mut};
 use parity_scale_codec::Encode;
 use tracing::{debug, instrument, warn};
 use truapi::api::{
-    Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
-    Preimage, ResourceAllocation, Signing, System, Theme,
+    Account, Chain, Chat, CoinPayment, Entropy, Funding, LocalStorage, Notifications, Payment,
+    Permissions, Preimage, ResourceAllocation, Signing, System, Theme,
 };
 use truapi::versioned::account::{
     HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
@@ -1897,6 +1897,8 @@ const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 impl Chat for ProductRuntimeHost {}
 #[truapi::async_trait]
 impl CoinPayment for ProductRuntimeHost {}
+#[truapi::async_trait]
+impl Funding for ProductRuntimeHost {}
 #[truapi::async_trait]
 impl Payment for ProductRuntimeHost {
     #[instrument(skip_all, fields(runtime.method = "payment.balance_subscribe"))]
