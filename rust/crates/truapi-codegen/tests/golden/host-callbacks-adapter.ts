@@ -20,6 +20,7 @@ import type { GenericError, NotificationId } from "@parity/truapi";
 import {
   AuthState,
   CoreStorageKey,
+  HostChainSet,
   UserConfirmationReview,
 } from "./host-callbacks.js";
 import type { RequiredHostCallbacks } from "./host-callbacks.js";
@@ -34,6 +35,7 @@ export interface RawCallbacks {
   writeCoreStorage(key: Uint8Array, value: Uint8Array): Promise<void>;
   clearCoreStorage(key: Uint8Array): Promise<void>;
   featureSupported(request: Uint8Array): Promise<Uint8Array>;
+  supportedChains(): Promise<Uint8Array>;
   navigateTo(url: string): Promise<void>;
   pushNotification(notification: Uint8Array): Promise<Uint8Array>;
   cancelNotification(id: NotificationId): Promise<void>;
@@ -77,6 +79,8 @@ export function createWasmRawCallbacks(
           HostFeatureSupportedRequest.dec(request),
         ),
       ),
+    supportedChains: async () =>
+      HostChainSet.enc(await callbacks.features.supportedChains()),
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
     pushNotification: async (notification) =>
       HostPushNotificationResponse.enc(

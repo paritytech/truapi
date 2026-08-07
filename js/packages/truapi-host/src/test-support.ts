@@ -21,7 +21,10 @@ export function makeHostCallbacks(
       devicePermission: async () => ({ granted: false }),
       remotePermission: async () => ({ granted: false }),
     },
-    features: { featureSupported: async () => ({ supported: false }) },
+    features: {
+      featureSupported: async () => ({ supported: false }),
+      supportedChains: async () => ({ network: "paseo", chains: [] }),
+    },
     productStorage: {
       read: async () => undefined,
       write: async () => {},

@@ -31,8 +31,8 @@ pub mod latest {
     use crate::versioned::{self, Versioned};
 
     pub use crate::v01::{
-        AccountId, AllocatableResource, AllocationOutcome, ContextualAlias, DerivationIndex,
-        GenericError, HostSignPayloadData, NotificationId, OperationStartedResult,
+        AccountId, AllocatableResource, AllocationOutcome, ChainIdentifier, ContextualAlias,
+        DerivationIndex, GenericError, HostSignPayloadData, NotificationId, OperationStartedResult,
         ProductAccountId, ProductProofContext, RawPayload, RemotePermission,
         RemoteStatementStoreCreateProofError, RemoteStatementStoreCreateProofRequest,
         RemoteStatementStoreCreateProofResponse, RemoteStatementStoreSubscribeItem,
@@ -109,6 +109,12 @@ pub mod latest {
     pub type ProductAccountTxPayload = LatestOf<versioned::signing::HostCreateTransactionRequest>;
     /// Chain-head subscription item.
     pub type RemoteChainHeadFollowItem = LatestOf<versioned::chain::RemoteChainHeadFollowItem>;
+    /// Chain-identifier resolution error.
+    pub type RemoteChainInfoError = LatestOf<versioned::chain::RemoteChainInfoError>;
+    /// Chain-identifier resolution request.
+    pub type RemoteChainInfoRequest = LatestOf<versioned::chain::RemoteChainInfoRequest>;
+    /// Chain-identifier resolution result.
+    pub type RemoteChainInfoResponse = LatestOf<versioned::chain::RemoteChainInfoResponse>;
     /// Chain-head subscription request.
     pub type RemoteChainHeadFollowRequest =
         LatestOf<versioned::chain::RemoteChainHeadFollowRequest>;

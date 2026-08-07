@@ -612,6 +612,12 @@ impl Features for CliPlatform {
     ) -> Result<api::HostFeatureSupportedResponse, api::GenericError> {
         Ok(api::HostFeatureSupportedResponse { supported: false })
     }
+
+    async fn supported_chains(&self) -> Result<truapi_platform::HostChainSet, api::GenericError> {
+        Err(api::GenericError {
+            reason: "the CLI host serves no product chains".to_string(),
+        })
+    }
 }
 
 impl truapi_platform::AuthPresenter for CliPlatform {

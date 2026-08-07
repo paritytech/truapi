@@ -8,6 +8,7 @@ import * as S from "@parity/truapi/scale";
 
 import {
   AllocatableResource,
+  ChainIdentifier,
   HostAccountSignVrfRequest,
   HostDevicePermissionRequest,
   HostSignPayloadRequest,
@@ -179,6 +180,37 @@ export type CreateTransactionReview =
    * Legacy-account transaction request.
    */
   | { tag: "LegacyAccount"; value: LegacyAccountTxPayload };
+
+/**
+ * One chain a host serves: a protocol chain role mapped to the concrete
+ * chain of the host's configured environment.
+ */
+export interface HostChainEntry {
+  /**
+   * Protocol role this entry answers for.
+   */
+  identifier: ChainIdentifier;
+
+  /**
+   * Genesis hash identifying the chain in all chain-scoped calls.
+   */
+  genesisHash: Uint8Array;
+}
+
+/**
+ * The chain set a host serves: its environment plus one entry per chain role.
+ */
+export interface HostChainSet {
+  /**
+   * Ecosystem the host is configured for, e.g. "polkadot", "paseo".
+   */
+  network: string;
+
+  /**
+   * Complete set of chains available through this host.
+   */
+  chains: Array<HostChainEntry>;
+}
 
 /**
  * Review shown before a product learns the user's primary identity.
@@ -478,6 +510,29 @@ export const CreateTransactionReview: S.Codec<CreateTransactionReview> = S.lazy(
 );
 
 /**
+ * One chain a host serves: a protocol chain role mapped to the concrete
+ * chain of the host's configured environment.
+ */
+export const HostChainEntry: S.Codec<HostChainEntry> = S.lazy(
+  (): S.Codec<HostChainEntry> =>
+    S.Struct({
+      identifier: ChainIdentifier,
+      genesisHash: S.Bytes(32),
+    }) as S.Codec<HostChainEntry>,
+);
+
+/**
+ * The chain set a host serves: its environment plus one entry per chain role.
+ */
+export const HostChainSet: S.Codec<HostChainSet> = S.lazy(
+  (): S.Codec<HostChainSet> =>
+    S.Struct({
+      network: S.str,
+      chains: S.Vector(HostChainEntry),
+    }) as S.Codec<HostChainSet>,
+);
+
+/**
  * Review shown before a product learns the user's primary identity.
  */
 export const IdentityDisclosureReview: S.Codec<IdentityDisclosureReview> =
@@ -718,6 +773,13 @@ export interface Features {
   featureSupported(
     request: HostFeatureSupportedRequest,
   ): Promise<HostFeatureSupportedResponse>;
+
+  /**
+   * Enumerate the chains this host serves (RFC 0026). The returned set must
+   * match exactly what `ChainProvider::connect` will accept; the core
+   * resolves `get_chain_info` requests against it.
+   */
+  supportedChains(): Promise<HostChainSet>;
 }
 
 /**

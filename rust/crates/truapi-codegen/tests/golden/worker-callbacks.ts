@@ -16,6 +16,7 @@ export const CALLBACK_NAMES = [
   "writeCoreStorage",
   "clearCoreStorage",
   "featureSupported",
+  "supportedChains",
   "navigateTo",
   "pushNotification",
   "cancelNotification",
@@ -66,6 +67,10 @@ function rawCallbacks(
     featureSupported: (request) =>
       bridge.callbackRequest("featureSupported", [request]) as ReturnType<
         RawCallbacks["featureSupported"]
+      >,
+    supportedChains: () =>
+      bridge.callbackRequest("supportedChains", []) as ReturnType<
+        RawCallbacks["supportedChains"]
       >,
     navigateTo: (url) =>
       bridge.callbackRequest("navigateTo", [url]) as ReturnType<

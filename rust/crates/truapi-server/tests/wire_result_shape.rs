@@ -67,6 +67,63 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
 }
 
 #[test]
+fn get_chain_info_ok_response_round_trips_over_the_wire() {
+    let core = make_core();
+    let request =
+        truapi::versioned::chain::RemoteChainInfoRequest::V1(v01::RemoteChainInfoRequest {
+            chain: v01::ChainIdentifier::AssetHub,
+        });
+    let ids = request_ids("chain_get_chain_info").expect("known request method");
+    let frame = ProtocolMessage {
+        request_id: "p:9".into(),
+        payload: Payload {
+            id: ids.request_id,
+            value: request.encode(),
+        },
+    };
+    let response = dispatch(&core, frame);
+    assert_eq!(response.request_id, "p:9");
+    assert_eq!(response.payload.id, ids.response_id);
+
+    // Wire payload: [V1 disc=0x00][Ok disc=0x00][encoded response body].
+    let mut expected = vec![0x00u8, 0x00u8];
+    v01::RemoteChainInfoResponse {
+        network: "paseo".to_string(),
+        chain: v01::ChainIdentifier::AssetHub,
+        genesis_hash: [0xaa; 32],
+    }
+    .encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
+}
+
+#[test]
+fn get_chain_info_unserved_chain_uses_err_discriminant() {
+    let core = make_core();
+    let request =
+        truapi::versioned::chain::RemoteChainInfoRequest::V1(v01::RemoteChainInfoRequest {
+            chain: v01::ChainIdentifier::Bulletin,
+        });
+    let ids = request_ids("chain_get_chain_info").expect("known request method");
+    let frame = ProtocolMessage {
+        request_id: "p:10".into(),
+        payload: Payload {
+            id: ids.request_id,
+            value: request.encode(),
+        },
+    };
+    let response = dispatch(&core, frame);
+    assert_eq!(response.payload.id, ids.response_id);
+
+    // Wire payload: [V1 disc=0x00][Err disc=0x01][encoded domain error].
+    let mut expected = vec![0x00u8, 0x01u8];
+    CallError::Domain(truapi::versioned::chain::RemoteChainInfoError::V1(
+        v01::RemoteChainInfoError::NotSupported,
+    ))
+    .encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
+}
+
+#[test]
 fn local_storage_read_err_response_uses_err_discriminant() {
     let core = make_core();
     let request = truapi::versioned::local_storage::HostLocalStorageReadRequest::V1(

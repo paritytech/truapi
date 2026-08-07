@@ -27,6 +27,7 @@ pub(super) struct JsBridge {
     pub(super) write_core_storage: Function,
     pub(super) clear_core_storage: Function,
     pub(super) feature_supported: Function,
+    pub(super) supported_chains: Function,
     pub(super) navigate_to: Function,
     pub(super) push_notification: Function,
     pub(super) cancel_notification: Function,
@@ -49,6 +50,7 @@ impl JsBridge {
             write_core_storage: get_function(callbacks, "writeCoreStorage")?,
             clear_core_storage: get_function(callbacks, "clearCoreStorage")?,
             feature_supported: get_function(callbacks, "featureSupported")?,
+            supported_chains: get_function(callbacks, "supportedChains")?,
             navigate_to: get_function(callbacks, "navigateTo")?,
             push_notification: get_function(callbacks, "pushNotification")?,
             cancel_notification: get_function(callbacks, "cancelNotification")?,
@@ -134,6 +136,17 @@ impl truapi_platform::Features for WasmPlatform {
         decode_bytes::<v01::HostFeatureSupportedResponse>(
             bytes,
             "featureSupported response did not decode",
+        )
+        .map_err(generic)
+    }
+
+    async fn supported_chains(&self) -> Result<truapi_platform::HostChainSet, v01::GenericError> {
+        let bytes = invoke_bytes_return(&self.bridge.supported_chains, Vec::new())
+            .await
+            .map_err(generic)?;
+        decode_bytes::<truapi_platform::HostChainSet>(
+            bytes,
+            "supportedChains response did not decode",
         )
         .map_err(generic)
     }

@@ -398,6 +398,79 @@ impl From<v01::HostPushNotificationRequest> for PushNotificationRequest {
     }
 }
 
+/// Native-friendly mirror of [`v01::ChainIdentifier`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ChainIdentifier {
+    /// The relay chain.
+    Relay,
+    /// The asset hub system chain.
+    AssetHub,
+    /// The people chain.
+    People,
+    /// The bulletin chain.
+    Bulletin,
+}
+
+impl From<ChainIdentifier> for v01::ChainIdentifier {
+    fn from(identifier: ChainIdentifier) -> Self {
+        match identifier {
+            ChainIdentifier::Relay => Self::Relay,
+            ChainIdentifier::AssetHub => Self::AssetHub,
+            ChainIdentifier::People => Self::People,
+            ChainIdentifier::Bulletin => Self::Bulletin,
+        }
+    }
+}
+
+/// Native-friendly mirror of one [`truapi_platform::HostChainEntry`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ChainEntry {
+    /// Protocol role this entry answers for.
+    pub identifier: ChainIdentifier,
+    /// 32-byte genesis hash identifying the chain in all chain-scoped calls.
+    pub genesis_hash: Vec<u8>,
+}
+
+/// Native-friendly mirror of [`truapi_platform::HostChainSet`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SupportedChains {
+    /// Ecosystem the host is configured for, e.g. "polkadot", "paseo".
+    pub network: String,
+    /// Complete set of chains available through this host.
+    pub chains: Vec<ChainEntry>,
+}
+
+impl TryFrom<SupportedChains> for truapi_platform::HostChainSet {
+    type Error = v01::GenericError;
+
+    fn try_from(response: SupportedChains) -> Result<Self, Self::Error> {
+        let chains =
+            response
+                .chains
+                .into_iter()
+                .map(|entry| {
+                    let genesis_hash: [u8; 32] = entry.genesis_hash.try_into().map_err(
+                        |bad: Vec<u8>| v01::GenericError {
+                            reason: format!(
+                                "supported_chains genesis hash for {:?} has {} bytes, expected 32",
+                                entry.identifier,
+                                bad.len()
+                            ),
+                        },
+                    )?;
+                    Ok(truapi_platform::HostChainEntry {
+                        identifier: entry.identifier.into(),
+                        genesis_hash,
+                    })
+                })
+                .collect::<Result<Vec<_>, v01::GenericError>>()?;
+        Ok(Self {
+            network: response.network,
+            chains,
+        })
+    }
+}
+
 /// Native-friendly mirror of [`v01::HostFeatureSupportedRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum FeatureSupportedRequest {
@@ -752,6 +825,11 @@ pub trait HostCallbacks: Send + Sync {
         &self,
         request: FeatureSupportedRequest,
     ) -> Result<bool, HostRejection>;
+
+    /// Enumerate the chains this host serves (RFC 0026): its environment plus
+    /// one entry per chain role. The returned set must match exactly what
+    /// `chain_connect` will accept.
+    async fn supported_chains(&self) -> Result<SupportedChains, HostRejection>;
 
     /// Read a value from the host's scoped key-value store.
     fn local_storage_read(&self, key: String) -> Result<Option<Vec<u8>>, HostStorageError>;
@@ -1191,6 +1269,19 @@ impl Features for CallbackPlatform {
             .map_err(v01::GenericError::from)?;
         Ok(v01::HostFeatureSupportedResponse { supported })
     }
+
+    async fn supported_chains(&self) -> Result<truapi_platform::HostChainSet, v01::GenericError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.supported_chains".to_string(),
+            String::new(),
+        );
+
+        self.callbacks
+            .supported_chains()
+            .await
+            .map_err(v01::GenericError::from)?
+            .try_into()
+    }
 }
 
 #[async_trait]
@@ -1496,6 +1587,12 @@ mod tests {
             _request: FeatureSupportedRequest,
         ) -> Result<bool, HostRejection> {
             Ok(false)
+        }
+        async fn supported_chains(&self) -> Result<SupportedChains, HostRejection> {
+            Ok(SupportedChains {
+                network: "paseo".to_string(),
+                chains: Vec::new(),
+            })
         }
         fn local_storage_read(&self, _key: String) -> Result<Option<Vec<u8>>, HostStorageError> {
             Ok(None)
@@ -1835,6 +1932,12 @@ mod tests {
             ) -> Result<bool, HostRejection> {
                 Ok(false)
             }
+            async fn supported_chains(&self) -> Result<SupportedChains, HostRejection> {
+                Ok(SupportedChains {
+                    network: "paseo".to_string(),
+                    chains: Vec::new(),
+                })
+            }
             fn local_storage_read(
                 &self,
                 _key: String,
@@ -1973,6 +2076,12 @@ mod tests {
                 _request: FeatureSupportedRequest,
             ) -> Result<bool, HostRejection> {
                 Ok(true)
+            }
+            async fn supported_chains(&self) -> Result<SupportedChains, HostRejection> {
+                Ok(SupportedChains {
+                    network: "paseo".to_string(),
+                    chains: Vec::new(),
+                })
             }
             fn local_storage_read(
                 &self,

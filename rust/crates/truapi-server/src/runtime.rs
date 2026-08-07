@@ -40,7 +40,7 @@ use web_time::Instant;
 use crate::chain_runtime::RuntimeFailure;
 use crate::host_logic::bulletin::preimage_key;
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
-use crate::host_logic::features::feature_supported;
+use crate::host_logic::features::{chain_info, feature_supported, supported_chains};
 use crate::host_logic::permissions::PermissionsService;
 #[cfg(test)]
 use crate::host_logic::product_account::index_bytes;
@@ -97,6 +97,7 @@ use truapi::versioned::chain::{
     RemoteChainHeadStopOperationRequest, RemoteChainHeadStopOperationResponse,
     RemoteChainHeadStorageError, RemoteChainHeadStorageRequest, RemoteChainHeadStorageResponse,
     RemoteChainHeadUnpinError, RemoteChainHeadUnpinRequest, RemoteChainHeadUnpinResponse,
+    RemoteChainInfoError, RemoteChainInfoRequest, RemoteChainInfoResponse,
     RemoteChainSpecChainNameError, RemoteChainSpecChainNameRequest,
     RemoteChainSpecChainNameResponse, RemoteChainSpecGenesisHashError,
     RemoteChainSpecGenesisHashRequest, RemoteChainSpecGenesisHashResponse,
@@ -1885,6 +1886,25 @@ impl Chain for ProductRuntimeHost {
             .map(|()| RemoteChainTransactionStopResponse::V1)
             .map_err(runtime_failure_to_call_error)
     }
+
+    #[instrument(skip_all, fields(runtime.method = "chain.get_chain_info"))]
+    async fn get_chain_info(
+        &self,
+        _cx: &CallContext,
+        request: RemoteChainInfoRequest,
+    ) -> Result<RemoteChainInfoResponse, CallError<RemoteChainInfoError>> {
+        let RemoteChainInfoRequest::V1(inner) = request;
+        let set = supported_chains(self.services.platform.as_ref())
+            .await
+            .map_err(|err| {
+                CallError::Domain(RemoteChainInfoError::V1(
+                    truapi::latest::RemoteChainInfoError::Unknown(err),
+                ))
+            })?;
+        chain_info(&set, &inner)
+            .map(RemoteChainInfoResponse::V1)
+            .map_err(|err| CallError::Domain(RemoteChainInfoError::V1(err)))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2408,6 +2428,36 @@ mod tests {
         let response = futures::executor::block_on(host.feature_supported(&cx, request)).unwrap();
         let HostFeatureSupportedResponse::V1(inner) = response;
         assert!(inner.supported);
+    }
+
+    #[test]
+    fn get_chain_info_round_trips_through_runtime() {
+        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::default();
+        let request = RemoteChainInfoRequest::V1(v01::RemoteChainInfoRequest {
+            chain: v01::ChainIdentifier::AssetHub,
+        });
+        let response = futures::executor::block_on(host.get_chain_info(&cx, request)).unwrap();
+        let RemoteChainInfoResponse::V1(inner) = response;
+        assert_eq!(inner.network, "paseo");
+        assert_eq!(inner.chain, v01::ChainIdentifier::AssetHub);
+        assert_eq!(inner.genesis_hash, [0xaa; 32]);
+    }
+
+    #[test]
+    fn get_chain_info_unserved_identifier_is_not_supported() {
+        let host = ProductRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::default();
+        let request = RemoteChainInfoRequest::V1(v01::RemoteChainInfoRequest {
+            chain: v01::ChainIdentifier::Bulletin,
+        });
+        let error = futures::executor::block_on(host.get_chain_info(&cx, request)).unwrap_err();
+        assert_eq!(
+            error,
+            CallError::Domain(RemoteChainInfoError::V1(
+                v01::RemoteChainInfoError::NotSupported
+            ))
+        );
     }
 
     #[test]
