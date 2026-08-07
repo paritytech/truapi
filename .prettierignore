@@ -9,3 +9,4 @@ playground/tsconfig.tsbuildinfo
 js/packages/truapi/dist/
 js/packages/truapi/node_modules/
 REVIEW_TODO*.md
+js/packages/truapi-react-renderer/dist/
