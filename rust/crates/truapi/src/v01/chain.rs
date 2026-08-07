@@ -1,5 +1,7 @@
 use parity_scale_codec::{Decode, Encode};
 
+use super::common::GenericError;
+
 /// One entry of a runtime's supported API list.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RuntimeApi {
@@ -352,4 +354,44 @@ pub struct RemoteChainSpecPropertiesResponse {
 pub struct RemoteChainTransactionBroadcastResponse {
     /// Broadcast operation identifier, if available.
     pub operation_id: Option<String>,
+}
+
+/// Role of a chain within the host's configured environment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum ChainIdentifier {
+    /// The relay chain.
+    Relay,
+    /// The asset hub system chain.
+    AssetHub,
+    /// The people chain.
+    People,
+    /// The bulletin chain.
+    Bulletin,
+}
+
+/// Request to resolve one chain identifier against the host's environment.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemoteChainInfoRequest {
+    /// Chain to resolve.
+    pub chain: ChainIdentifier,
+}
+
+/// Response carrying the resolved chain data.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemoteChainInfoResponse {
+    /// Ecosystem the host is configured for, e.g. "polkadot", "kusama", "paseo".
+    pub network: String,
+    /// Chain this response resolves, echoed from the request.
+    pub chain: ChainIdentifier,
+    /// Genesis hash identifying the chain in all chain-scoped calls.
+    pub genesis_hash: [u8; 32],
+}
+
+/// Error from [`crate::api::Chain::get_chain_info`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum RemoteChainInfoError {
+    /// The host does not serve the requested chain.
+    NotSupported,
+    /// Catch-all.
+    Unknown(GenericError),
 }

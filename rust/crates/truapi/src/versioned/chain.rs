@@ -41,4 +41,7 @@ truapi_macros::versioned_type! {
     pub enum RemoteChainTransactionStopRequest { V1 => v01::RemoteChainTransactionStopRequest }
     pub enum RemoteChainTransactionStopResponse { V1 }
     pub enum RemoteChainTransactionStopError { V1 => v01::GenericError }
+    pub enum RemoteChainInfoRequest { V1 => v01::RemoteChainInfoRequest }
+    pub enum RemoteChainInfoResponse { V1 => v01::RemoteChainInfoResponse }
+    pub enum RemoteChainInfoError { V1 => v01::RemoteChainInfoError }
 }

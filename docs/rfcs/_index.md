@@ -25,3 +25,4 @@ created: 2026-03-13
 | 0021   | [Add Coins variant to PaymentTopUpSource](0021-payment-topup-coins.md)                                   | accepted | @filippovecchiato | —                                                               |
 | 0022   | [Account key derivations](0022-account-derivations.md)                                                   | draft    | Valentin Sergeev  | —                                                               |
 | 0023   | [sr25519 VRF signing for product accounts](0023-account-sign-vrf.md)                                     | draft    | Valentin Sergeev  | —                                                               |
+| 0026   | [Host chain discovery and name resolution](0026-supported-chains.md)                                     | draft    | Valentin Fernandez | [#354](https://github.com/paritytech/truapi/pull/354)          |
