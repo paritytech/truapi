@@ -549,7 +549,10 @@ pub enum CoreStorageKey {
     },
     /// Wallet-bound RFC-0010 AutoSigning capabilities for the active pairing.
     AutoSigningKeys,
+    /// Statement-store allowance targets the signing host keeps renewed.
+    StatementRenewalTargets,
 }
+
 /// Stable metadata describing one strictly decoded [`CoreStorageKey`].
 ///
 /// `kind` is the Rust variant name and is part of the host embedding contract.
@@ -595,6 +598,7 @@ pub fn describe_core_storage_key(
         CoreStorageKey::LastProcessedPairingStatement => ("LastProcessedPairingStatement", None),
         CoreStorageKey::AutoSigningKey { product_id } => ("AutoSigningKey", Some(product_id)),
         CoreStorageKey::AutoSigningKeys => ("AutoSigningKeys", None),
+        CoreStorageKey::StatementRenewalTargets => ("StatementRenewalTargets", None),
     };
     Ok(CoreStorageKeyDescription { kind, product_id })
 }
@@ -664,6 +668,7 @@ fn canonical_remote_request(request: &RemotePermissionRequest) -> RemotePermissi
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn auth_session_storage_key_has_stable_encoding() {
         assert_eq!(CoreStorageKey::AuthSession.encode(), [0]);
@@ -710,6 +715,11 @@ mod tests {
                 Some("product.dot"),
             ),
             (CoreStorageKey::AutoSigningKeys, "AutoSigningKeys", None),
+            (
+                CoreStorageKey::StatementRenewalTargets,
+                "StatementRenewalTargets",
+                None,
+            ),
         ] {
             let description = describe_core_storage_key(&key.encode()).expect("valid key");
             assert_eq!(description.kind, kind);
@@ -798,8 +808,6 @@ mod tests {
 
     #[test]
     fn remote_permission_authorization_key_handles_separator_chars_in_domains() {
-        // Domain strings containing separator-looking text must not be able to
-        // forge a key that matches an unrelated permission.
         let injecting = RemotePermissionRequest {
             permission: RemotePermission::Remote {
                 domains: vec!["a|b".into(), "c,d".into(), "remote:web-rtc".into()],
@@ -816,8 +824,6 @@ mod tests {
             CoreStorageKey::remote_permission_authorization("product.dot", &benign_same_set);
         assert_ne!(injecting_key, benign_key);
 
-        // The injecting permission must also be distinct from the `WebRtc`
-        // variant it tries to impersonate via crafted strings.
         let webrtc = RemotePermissionRequest {
             permission: RemotePermission::WebRtc,
         };
@@ -826,8 +832,6 @@ mod tests {
             CoreStorageKey::remote_permission_authorization("product.dot", &webrtc)
         );
 
-        // Re-ordering the same domains still collapses to a single key
-        // (canonicalization is order-independent).
         let injecting_reordered = RemotePermissionRequest {
             permission: RemotePermission::Remote {
                 domains: vec!["remote:web-rtc".into(), "c,d".into(), "a|b".into()],

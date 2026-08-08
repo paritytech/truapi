@@ -12,6 +12,8 @@
 //! bandersnatch ring-VRF aliases and membership proofs, and product-scoped
 //! Statement Store and Bulletin allowance keys (native only).
 
+#[cfg(not(target_arch = "wasm32"))]
+mod allowance_renewal;
 mod local_activation;
 mod ring_vrf;
 mod sso_responder;
@@ -22,6 +24,8 @@ use std::sync::{Arc, Mutex};
 use parity_scale_codec::Encode;
 use subxt::utils::{AccountId32, MultiSignature};
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use allowance_renewal::StatementRenewalTarget;
 pub(crate) use local_activation::LocalActivation;
 pub use sso_responder::ResponderExit;
 pub(crate) use sso_responder::respond_to_pairing;
@@ -100,6 +104,8 @@ pub(crate) struct SigningHost {
     /// lifecycle mutex also makes session replacement and snapshot creation
     /// atomic with respect to generation changes.
     local_grants: Mutex<LocalGrantState>,
+    #[cfg(not(target_arch = "wasm32"))]
+    renewal: allowance_renewal::RenewalState,
 }
 
 impl SigningHost {
@@ -115,6 +121,8 @@ impl SigningHost {
             ring_resolver,
             root_entropy: Mutex::new(None),
             local_grants: Mutex::new(LocalGrantState::default()),
+            #[cfg(not(target_arch = "wasm32"))]
+            renewal: allowance_renewal::RenewalState::default(),
         })
     }
 
@@ -137,6 +145,8 @@ impl SigningHost {
             ring_resolver,
             root_entropy: Mutex::new(None),
             local_grants: Mutex::new(LocalGrantState::default()),
+            #[cfg(not(target_arch = "wasm32"))]
+            renewal: allowance_renewal::RenewalState::default(),
         })
     }
 
@@ -382,6 +392,29 @@ impl SigningHost {
                 reason: format!("confirmation failed: {}", err.reason),
             }),
         }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl SigningHost {
+    /// Record statement-store accounts to keep renewed across periods.
+    pub(crate) async fn track_statement_renewal_targets(
+        &self,
+        targets: Vec<StatementRenewalTarget>,
+    ) -> Result<(), String> {
+        allowance_renewal::track_targets(self.platform.as_ref(), targets).await
+    }
+
+    /// Run one statement-store renewal pass over the tracked targets.
+    pub(crate) async fn renew_statement_allowances(
+        &self,
+    ) -> Result<crate::runtime::statement_allowance::renewal::StatementRenewalReport, String> {
+        allowance_renewal::renew_now(&self.services, self).await
+    }
+
+    /// Start the periodic statement-store renewal loop. Idempotent.
+    pub(crate) fn start_statement_allowance_renewal(self: &Arc<Self>) {
+        allowance_renewal::start_renewal_loop(&self.services, self);
     }
 }
 

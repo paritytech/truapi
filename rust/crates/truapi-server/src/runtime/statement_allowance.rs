@@ -9,6 +9,7 @@
 pub mod extension;
 pub mod extrinsic;
 pub mod proof;
+pub mod renewal;
 pub mod ring;
 pub mod rpc;
 pub mod slot;
