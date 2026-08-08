@@ -39,7 +39,7 @@ use parity_scale_codec::{Decode, Error as ScaleError, Input};
 use serde::de::{Deserializer, Error as DeError};
 use serde_json::Value;
 use subxt::OnlineClient;
-use subxt::backend::ChainHeadBackend;
+use subxt::backend::{ChainHeadBackend, LegacyBackend};
 use subxt::config::substrate::{SubstrateConfig, SubstrateConfigBuilder};
 use subxt::utils::H256;
 use subxt_rpcs::client::RpcClient;
@@ -619,6 +619,35 @@ impl ChainRuntime {
         genesis_hash: &[u8],
     ) -> Result<OnlineClient<SubstrateConfig>, RuntimeFailure> {
         Ok(self.subxt_connection(genesis_hash).await?.client)
+    }
+
+    /// Genesis-pinned Subxt client backed exclusively by legacy RPC methods.
+    ///
+    /// Native mobile chain engines can advertise ChainHead v1 while failing
+    /// to return a header for its finalized block. Internal snapshot readers
+    /// use this client as a narrow fallback so storage remains available via
+    /// `chain_*`/`state_*` without changing the public ChainHead transport.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.legacy_online_client"))]
+    pub(crate) async fn legacy_online_client(
+        &self,
+        genesis_hash: &[u8],
+    ) -> Result<OnlineClient<SubstrateConfig>, RuntimeFailure> {
+        const METHOD: &str = "legacy_subxt_connection";
+        let connection = self.connection_for(METHOD, genesis_hash).await?;
+        let genesis_hash: [u8; 32] = genesis_hash.try_into().map_err(|_| {
+            RuntimeFailure::host_failure(
+                METHOD,
+                format!("expected 32-byte genesis hash, got {}", genesis_hash.len()),
+            )
+        })?;
+        let backend = LegacyBackend::<SubstrateConfig>::builder()
+            .build(RpcClient::new(connection.rpc_client.clone()));
+        let config = SubstrateConfigBuilder::new()
+            .set_genesis_hash(H256(genesis_hash))
+            .build();
+        OnlineClient::from_backend_with_config(config, Arc::new(backend))
+            .await
+            .map_err(|error| RuntimeFailure::host_failure(METHOD, error.to_string()))
     }
 
     /// Raw JSON-RPC client for the chain identified by `genesis_hash`.

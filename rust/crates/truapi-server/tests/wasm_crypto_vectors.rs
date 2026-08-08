@@ -5,9 +5,8 @@
 
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
-use truapi_platform::{
-    CoreStorageKey, HostDevicePermissionRequest, HostInfo, PairingHostConfig, PlatformInfo,
-};
+use truapi::latest::HostDevicePermissionRequest;
+use truapi_platform::{CoreStorageKey, HostInfo, PairingHostConfig, PlatformInfo};
 use truapi_server::host_logic::entropy::derive_product_entropy;
 use truapi_server::host_logic::product_account::{
     derive_product_public_key, derive_product_subtree_keypair, derive_root_keypair_from_entropy,
@@ -16,8 +15,8 @@ use truapi_server::host_logic::product_account::{
 use truapi_server::host_logic::session::SsoSessionInfo;
 use truapi_server::host_logic::sso::pairing::{
     self, AEAD_NONCE_LEN, PairingBootstrap, SsoStatementData, VersionedHandshakeProposal,
-    VersionedHandshakeResponse, bootstrap_topic, build_pairing_deeplink, decode_app_handshake_data,
-    decrypt_session_statement_data, decrypt_v2_handshake_response,
+    VersionedHandshakeResponse, bootstrap_channel, bootstrap_topic, build_pairing_deeplink,
+    decode_app_handshake_data, decrypt_session_statement_data, decrypt_v2_handshake_response,
     encrypt_session_statement_data_with_nonce, encrypt_v2_handshake_response,
     establish_sso_session_info,
 };
@@ -127,6 +126,10 @@ fn pairing_deeplink_topic_and_scale_vectors_match_mobile() {
     assert_eq!(
         hex::encode(bootstrap_topic(SS_PUBLIC, encryption_public)),
         "ec8c8d7993ef1b367a704f34cec0fa1fe01d0a060a918688f26b23e88452a6af"
+    );
+    assert_eq!(
+        hex::encode(bootstrap_channel(SS_PUBLIC, encryption_public)),
+        "f7df2ba8c948e35c35edfaf8bad6cb4a8c4e0373f64bab787f68620a88f7c51f"
     );
 
     let answer = VersionedHandshakeResponse::V2 {

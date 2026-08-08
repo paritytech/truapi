@@ -7,6 +7,7 @@ import {
 } from "./diagnosis-report.ts";
 import {
   createDiagnosisPlan,
+  diagnosisTimeoutMs,
   expectedCliBatteryFailureReason,
   knownUnsupportedReason,
   type DiagnosisCase,
@@ -45,6 +46,11 @@ describe("generated-example battery", () => {
     expect(plan.every((testCase) => testCase.skipReason === undefined)).toBe(
       true,
     );
+  });
+
+  test("allows interactive VRF approval to outlive the unary timeout", () => {
+    expect(diagnosisTimeoutMs("Account/sign_vrf")).toBe(190_000);
+    expect(diagnosisTimeoutMs("System/handshake")).toBe(10_000);
   });
 
   test("classifies only the committed unsupported CLI battery failures as expected", () => {

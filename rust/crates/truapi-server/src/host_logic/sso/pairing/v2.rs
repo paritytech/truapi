@@ -43,6 +43,8 @@ pub enum MetadataKey {
     PlatformType,
     /// Platform version.
     PlatformVersion,
+    /// Host location in `latitude;longitude` format.
+    Location,
 }
 
 /// Plaintext wallet response after decrypting the pairing statement.

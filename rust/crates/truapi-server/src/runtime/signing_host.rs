@@ -24,7 +24,13 @@ use subxt::utils::{AccountId32, MultiSignature};
 
 pub(crate) use local_activation::LocalActivation;
 pub use sso_responder::ResponderExit;
+#[cfg(not(target_arch = "wasm32"))]
+pub use sso_responder::ResponderPeer;
 pub(crate) use sso_responder::respond_to_pairing;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use sso_responder::{
+    answer_pairing, serve_session, session_for_peer, submit_disconnected,
+};
 
 use super::authority::{
     AccountAliasAuthorityRequest, AuthorityError, AuthoritySession, BulletinAllowanceKey,
@@ -366,6 +372,163 @@ impl SigningHost {
         ])
     }
 
+    async fn account_alias_inner(
+        &self,
+        session: &AuthoritySession,
+        request: AccountAliasAuthorityRequest,
+    ) -> Result<v01::ContextualAlias, RingVrfError> {
+        self.require_current_session(session)?;
+        match super::account_access_authorization(
+            &self.services,
+            &request.calling_product_id,
+            &request.context.product_id,
+        )
+        .await
+        {
+            Ok(PermissionAuthorizationStatus::Authorized) => {}
+            Ok(
+                PermissionAuthorizationStatus::Denied
+                | PermissionAuthorizationStatus::NotDetermined,
+            ) => return Err(RingVrfError::Rejected),
+            Err(err) => {
+                return Err(RingVrfError::Unknown {
+                    reason: err.to_string(),
+                });
+            }
+        }
+        let collection = self.ring_resolver.validate(&request.ring_location).await?;
+        let context = context_bytes(&request.context);
+        let entropy = self.person_entropy(session, key_for_collection(&collection))?;
+        let alias = alias_from_entropy(&entropy, &context)?;
+        Ok(v01::ContextualAlias {
+            context,
+            alias: alias.to_vec(),
+        })
+    }
+
+    async fn create_proof_inner(
+        &self,
+        session: &AuthoritySession,
+        request: CreateProofAuthorityRequest,
+    ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
+        self.require_current_session(session)?;
+        self.confirm_ring_vrf_if_cross_product(
+            &request.calling_product_id,
+            &request.context.product_id,
+            UserConfirmationReview::CreateProof(CreateProofReview {
+                calling_product_id: request.calling_product_id.clone(),
+                context: request.context.clone(),
+                ring_location: request.ring_location.clone(),
+                message: request.message.clone(),
+            }),
+        )
+        .await?;
+        let candidates = self.member_candidates(session)?;
+        let resolved = self
+            .ring_resolver
+            .resolve(&request.ring_location, &candidates)
+            .await?;
+        // Reject a stale request if the local session disconnected or changed
+        // while its chain snapshot was being resolved.
+        let entropy = self.person_entropy(session, resolved.selected.key)?;
+        let context = context_bytes(&request.context);
+        let (proof, alias) = create_proof(&entropy, &resolved, &context, &request.message)?;
+        Ok(v01::HostAccountCreateProofResponse {
+            proof,
+            contextual_alias: v01::ContextualAlias {
+                context,
+                alias: alias.to_vec(),
+            },
+            ring_index: resolved.ring_index,
+            ring_revision: resolved.ring_revision,
+        })
+    }
+
+    async fn sso_account_alias(
+        &self,
+        session: &AuthoritySession,
+        request: AccountAliasAuthorityRequest,
+    ) -> Result<v01::ContextualAlias, RingVrfError> {
+        self.account_alias_inner(session, request).await
+    }
+
+    async fn sso_create_proof(
+        &self,
+        session: &AuthoritySession,
+        request: CreateProofAuthorityRequest,
+    ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
+        self.create_proof_inner(session, request).await
+    }
+
+    fn sign_raw_with_identity(
+        &self,
+        session: &AuthoritySession,
+        account: [u8; 32],
+        payload: v01::RawPayload,
+    ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
+        self.require_current_session(session)?;
+        let keypair = self.identity_keypair()?;
+        if keypair.public.to_bytes() != account {
+            return Err(AuthorityError::Unavailable {
+                reason:
+                    "signing host: the requested legacy account is not available in this CLI wallet"
+                        .to_string(),
+            });
+        }
+        let message = raw_payload_bytes(payload)?;
+        let signature = keypair
+            .secret
+            .sign_simple(SR25519_SIGNING_CONTEXT, &message, &keypair.public)
+            .to_bytes();
+        Ok(v01::HostSignPayloadResponse {
+            signature: signature.to_vec(),
+            signed_transaction: None,
+        })
+    }
+
+    fn sign_sso_raw_identity(
+        &self,
+        session: &AuthoritySession,
+        account: [u8; 32],
+        payload: v01::RawPayload,
+    ) -> Result<v01::HostSignPayloadResponse, AuthorityError> {
+        self.sign_raw_with_identity(session, account, payload)
+    }
+
+    async fn create_identity_transaction_inner(
+        &self,
+        session: &AuthoritySession,
+        request: v01::LegacyAccountTxPayload,
+    ) -> Result<v01::HostCreateTransactionResponse, AuthorityError> {
+        self.require_current_session(session)?;
+        let keypair = self.identity_keypair()?;
+        if keypair.public.to_bytes() != request.signer {
+            return Err(AuthorityError::Unavailable {
+                reason: "signing host: the requested identity account is not available in \
+                         this CLI wallet"
+                    .to_string(),
+            });
+        }
+        build_local_transaction(
+            &self.services,
+            &keypair,
+            request.genesis_hash,
+            &request.call_data,
+            &request.extensions,
+            request.tx_ext_version,
+        )
+        .await
+    }
+
+    async fn create_sso_identity_transaction(
+        &self,
+        session: &AuthoritySession,
+        request: v01::LegacyAccountTxPayload,
+    ) -> Result<v01::HostCreateTransactionResponse, AuthorityError> {
+        self.create_identity_transaction_inner(session, request)
+            .await
+    }
+
     async fn confirm_ring_vrf_if_cross_product(
         &self,
         calling_product_id: &str,
@@ -509,15 +672,7 @@ impl ProductAuthority for SigningHost {
                 (self.product_keypair(&request.account)?, request.payload)
             }
             SignRawAuthorityRequest::LegacyAccount { account, request } => {
-                let keypair = self.identity_keypair()?;
-                if keypair.public.to_bytes() != account {
-                    return Err(AuthorityError::Unavailable {
-                        reason: "signing host: the requested legacy account is not available in \
-                                 this CLI wallet"
-                            .to_string(),
-                    });
-                }
-                (keypair, request.payload)
+                return self.sign_raw_with_identity(session, account, request.payload);
             }
         };
         self.require_current_session(session)?;
@@ -580,23 +735,8 @@ impl ProductAuthority for SigningHost {
                 .await
             }
             CreateTransactionAuthorityRequest::IdentityAccount(request) => {
-                let keypair = self.identity_keypair()?;
-                if keypair.public.to_bytes() != request.signer {
-                    return Err(AuthorityError::Unavailable {
-                        reason: "signing host: the requested identity account is not available in \
-                                 this CLI wallet"
-                            .to_string(),
-                    });
-                }
-                build_local_transaction(
-                    &self.services,
-                    &keypair,
-                    request.genesis_hash,
-                    &request.call_data,
-                    &request.extensions,
-                    request.tx_ext_version,
-                )
-                .await
+                self.create_identity_transaction_inner(session, request)
+                    .await
             }
         }
     }
@@ -607,33 +747,7 @@ impl ProductAuthority for SigningHost {
         session: &AuthoritySession,
         request: AccountAliasAuthorityRequest,
     ) -> Result<v01::ContextualAlias, RingVrfError> {
-        self.require_current_session(session)?;
-        match super::account_access_authorization(
-            &self.services,
-            &request.calling_product_id,
-            &request.context.product_id,
-        )
-        .await
-        {
-            Ok(PermissionAuthorizationStatus::Authorized) => {}
-            Ok(
-                PermissionAuthorizationStatus::Denied
-                | PermissionAuthorizationStatus::NotDetermined,
-            ) => return Err(RingVrfError::Rejected),
-            Err(err) => {
-                return Err(RingVrfError::Unknown {
-                    reason: err.to_string(),
-                });
-            }
-        }
-        let collection = self.ring_resolver.validate(&request.ring_location).await?;
-        let context = context_bytes(&request.context);
-        let entropy = self.person_entropy(session, key_for_collection(&collection))?;
-        let alias = alias_from_entropy(&entropy, &context)?;
-        Ok(v01::ContextualAlias {
-            context,
-            alias: alias.to_vec(),
-        })
+        self.account_alias_inner(session, request).await
     }
 
     async fn create_proof(
@@ -642,37 +756,7 @@ impl ProductAuthority for SigningHost {
         session: &AuthoritySession,
         request: CreateProofAuthorityRequest,
     ) -> Result<v01::HostAccountCreateProofResponse, RingVrfError> {
-        self.require_current_session(session)?;
-        self.confirm_ring_vrf_if_cross_product(
-            &request.calling_product_id,
-            &request.context.product_id,
-            UserConfirmationReview::CreateProof(CreateProofReview {
-                calling_product_id: request.calling_product_id.clone(),
-                context: request.context.clone(),
-                ring_location: request.ring_location.clone(),
-                message: request.message.clone(),
-            }),
-        )
-        .await?;
-        let candidates = self.member_candidates(session)?;
-        let resolved = self
-            .ring_resolver
-            .resolve(&request.ring_location, &candidates)
-            .await?;
-        // Reject a stale request if the local session disconnected or changed
-        // while its chain snapshot was being resolved.
-        let entropy = self.person_entropy(session, resolved.selected.key)?;
-        let context = context_bytes(&request.context);
-        let (proof, alias) = create_proof(&entropy, &resolved, &context, &request.message)?;
-        Ok(v01::HostAccountCreateProofResponse {
-            proof,
-            contextual_alias: v01::ContextualAlias {
-                context,
-                alias: alias.to_vec(),
-            },
-            ring_index: resolved.ring_index,
-            ring_revision: resolved.ring_revision,
-        })
+        self.create_proof_inner(session, request).await
     }
 
     async fn allocate_resources(

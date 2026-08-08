@@ -29,7 +29,7 @@ Run `rebuild.sh` after changing anything host-visible — the `NativeTrUApiCore`
 
 For local iteration without publishing, flip `useLocalBinary = true` in the root `Package.swift` to build against `Binaries/` directly; flip it back before committing.
 
-The embedding app implements the UniFFI-generated `HostCallbacks` protocol directly (defined in `truapi_server.swift`): navigation, push, permissions, auth state, scoped + core storage, chain JSON-RPC, confirmations, preimage, theme, and feature support. UI-decision callbacks are `async` and awaited by the Rust core.
+The embedding app implements the UniFFI-generated `HostCallbacks` protocol directly (defined in `truapi_server.swift`): navigation, push, permissions, auth state, paired-peer disconnects, scoped + core storage, chain JSON-RPC, confirmations, preimage, theme, and feature support. UI-decision callbacks are `async` and awaited by the Rust core.
 
 ## Integrating in an iOS app
 
@@ -127,11 +127,16 @@ final class MyCallbacks: HostCallbacks, @unchecked Sendable {
 
     // Core-owned auth state stream: render `.connected`/`.disconnected` as the
     // account badge and `.loginFailed` as a retryable error. This core is a
-    // signing host — it owns the signer and never pairs — so `.pairing` and
+    // signing host, so it does not enter the remote-login flow: `.pairing` and
     // `.authenticating` are not emitted and `core.cancelLogin()` is inert.
-    // Activate the session with `core.activateLocalSession(secret:...)`.
+    // Activate the signer with `core.activateLocalSession(secret:...)`; serving
+    // paired product hosts uses the separate responder-pairing methods.
     func authStateChanged(state: AuthState) {
         DispatchQueue.main.async { /* render the state */ }
+    }
+
+    func pairingPeerDisconnected(peer: NativePairingPeer) {
+        DispatchQueue.main.async { /* remove the persisted peer and update UI */ }
     }
 
     func coreStorageRead(key: Data) throws -> Data? { coreStorage[key] }

@@ -45,6 +45,11 @@ job.
 The order matters: each layer assumes the layer below it builds clean.
 Skip a step only if you are certain the change cannot affect that layer.
 
+For the Rust-core SSO flow in the native iOS app, use the dedicated
+[iOS SSO simulator runbook](ios-sso-simulator.md). It records the build
+configuration and simulator recovery details that are easy to miss when the
+app is rebuilt.
+
 ```
 Rust crates  →  codegen  →  @parity/truapi  →  playground  →  dotli iframe
 ```

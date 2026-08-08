@@ -5,16 +5,17 @@
 //! [`truapi_platform::Platform`] trait to a corresponding callback. The
 //! resulting platform is fed into [`SigningHostRuntime`] so the rest of the
 //! dispatcher pipeline behaves identically to the WS-bridge and wasm flavors.
-//! A native host therefore owns the signer: there is no pairing flow here, and
-//! the pairing-host-only entry points are inert.
+//! A native host owns the signer and can also serve responder sessions for
+//! paired product hosts.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use futures::FutureExt;
 use futures::channel::mpsc;
 use futures::executor::ThreadPool;
-use futures::future::BoxFuture;
+use futures::future::{AbortHandle, Abortable, BoxFuture};
 use futures::stream::{self, BoxStream, StreamExt};
 use futures::task::SpawnExt;
 use parity_scale_codec::Encode;
@@ -27,12 +28,13 @@ use truapi_platform::{
     UserConfirmationReview, async_trait,
 };
 
-use crate::SigningHostRuntime;
-use crate::host_logic::dotns;
 pub use crate::host_logic::dotns::NavigateDecision;
+use crate::host_logic::{dotns, session::SsoSessionInfo};
+use crate::runtime::ResponderPeer;
 use crate::subscription::Spawner;
 #[cfg(feature = "ws-bridge")]
 use crate::ws_bridge::{BridgeLogger, WsBridge, WsBridgeEndpoint, WsBridgeStartError};
+use crate::{ResponderExit, SigningHostRuntime};
 
 /// Host-thrown storage failure wrapping the canonical error payload, so its
 /// variants remain defined once in `truapi`.
@@ -113,6 +115,75 @@ pub enum NativePairingDeeplinkScheme {
     PolkadotApp,
     /// Development Polkadot app.
     PolkadotAppDev,
+}
+
+/// Pairing-host identity persisted by a native signing host so its responder
+/// subscription can be restored after an app restart.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NativePairingPeer {
+    /// Pairing host's 32-byte sr25519 Statement Store account id.
+    pub statement_account_id: Vec<u8>,
+    /// Pairing host's 32-byte raw X25519 public key.
+    pub encryption_public_key: Vec<u8>,
+}
+
+impl From<ResponderPeer> for NativePairingPeer {
+    fn from(peer: ResponderPeer) -> Self {
+        Self {
+            statement_account_id: peer.statement_account_id.to_vec(),
+            encryption_public_key: peer.encryption_public_key.to_vec(),
+        }
+    }
+}
+
+/// Invalid persisted peer data or an SSO responder failure.
+#[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
+pub enum NativePairingError {
+    /// Statement Store account id was not exactly 32 bytes.
+    #[error("statement_account_id must be exactly 32 bytes, got {actual}")]
+    InvalidStatementAccountId {
+        /// Supplied byte length.
+        actual: u64,
+    },
+    /// X25519 public key was not exactly 32 bytes.
+    #[error("encryption_public_key must be exactly 32 bytes, got {actual}")]
+    InvalidEncryptionPublicKey {
+        /// Supplied byte length.
+        actual: u64,
+    },
+    /// Pairing or responder startup failed.
+    #[error("{reason}")]
+    Failed {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+}
+
+impl TryFrom<NativePairingPeer> for ResponderPeer {
+    type Error = NativePairingError;
+
+    fn try_from(peer: NativePairingPeer) -> Result<Self, Self::Error> {
+        let statement_account_id =
+            peer.statement_account_id
+                .try_into()
+                .map_err(
+                    |value: Vec<u8>| NativePairingError::InvalidStatementAccountId {
+                        actual: value.len() as u64,
+                    },
+                )?;
+        let encryption_public_key =
+            peer.encryption_public_key
+                .try_into()
+                .map_err(
+                    |value: Vec<u8>| NativePairingError::InvalidEncryptionPublicKey {
+                        actual: value.len() as u64,
+                    },
+                )?;
+        Ok(Self {
+            statement_account_id,
+            encryption_public_key,
+        })
+    }
 }
 
 /// Native runtime configuration supplied before product calls are handled.
@@ -337,6 +408,11 @@ pub trait HostCallbacks: Send + Sync {
     /// `NativeTrUApiCore.cancel_login()`.
     fn auth_state_changed(&self, state: AuthState);
 
+    /// A paired host explicitly ended its SSO session. Native shells should
+    /// remove the matching persisted host/device and update their UI. Ordinary
+    /// transport interruptions are retried by the core and do not emit this.
+    fn pairing_peer_disconnected(&self, peer: NativePairingPeer);
+
     /// Read a core-owned host-private storage slot. `key` is a SCALE-encoded
     /// [`CoreStorageKey`].
     fn core_storage_read(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection>;
@@ -393,10 +469,18 @@ pub struct NativeTrUApiCore {
     runtime: Arc<SigningHostRuntime>,
     product: ProductContext,
     events: Arc<NativeEventBus>,
-    #[cfg(feature = "ws-bridge")]
     callbacks: Arc<dyn HostCallbacks>,
+    spawner: Spawner,
+    pairing_tasks: Arc<Mutex<HashMap<[u8; 32], NativePairingTask>>>,
+    next_pairing_generation: AtomicU64,
     #[cfg(feature = "ws-bridge")]
     bridge: std::sync::Mutex<Option<WsBridge>>,
+}
+
+struct NativePairingTask {
+    generation: u64,
+    abort: AbortHandle,
+    session: SsoSessionInfo,
 }
 
 #[uniffi::export]
@@ -494,6 +578,76 @@ impl NativeTrUApiCore {
         .map_err(Into::into)
     }
 
+    /// Answer a pairing deeplink and start serving the resulting SSO session
+    /// in the core's background pool. Returns after the handshake statement is
+    /// accepted, not when the long-lived session eventually ends.
+    ///
+    /// Blocks the calling thread on the handshake submission, so call it off
+    /// the host's main/UI thread.
+    pub fn respond_to_pairing(
+        &self,
+        deeplink: String,
+    ) -> Result<NativePairingPeer, NativePairingError> {
+        let (peer, session) = futures::executor::block_on(self.runtime.answer_pairing(&deeplink))
+            .map_err(|err| NativePairingError::Failed { reason: err.reason })?;
+        self.start_pairing_task(peer.clone(), session);
+        Ok(peer.into())
+    }
+
+    /// Restore the background responder for a previously persisted pairing.
+    /// Repeated calls replace the old subscription for the same peer.
+    pub fn resume_pairing(&self, peer: NativePairingPeer) -> Result<(), NativePairingError> {
+        let peer = ResponderPeer::try_from(peer)?;
+        let session = self
+            .runtime
+            .responder_session_for_peer(&peer)
+            .map_err(|err| NativePairingError::Failed { reason: err.reason })?;
+        self.start_pairing_task(peer, session);
+        Ok(())
+    }
+
+    /// Notify one paired host of a local disconnect and stop its responder.
+    ///
+    /// Blocks on the best-effort Statement Store submission, so call it off
+    /// the host's main/UI thread.
+    pub fn disconnect_pairing(&self, peer: NativePairingPeer) -> Result<(), NativePairingError> {
+        let peer = ResponderPeer::try_from(peer)?;
+        let session = self
+            .stop_pairing_task(&peer)
+            .map(|task| task.session)
+            .map(Ok)
+            .unwrap_or_else(|| self.runtime.responder_session_for_peer(&peer))
+            .map_err(|err| NativePairingError::Failed { reason: err.reason })?;
+        match futures::executor::block_on(self.runtime.disconnect_responder_session(&session)) {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                self.start_pairing_task(peer, session);
+                Err(NativePairingError::Failed { reason: err.reason })
+            }
+        }
+    }
+
+    /// Stop one responder subscription without notifying the peer. Used when
+    /// the native app suspends and will restore sessions later.
+    pub fn suspend_pairing(&self, peer: NativePairingPeer) -> Result<(), NativePairingError> {
+        let peer = ResponderPeer::try_from(peer)?;
+        self.stop_pairing_task(&peer);
+        Ok(())
+    }
+
+    /// Stop all responder subscriptions without disconnecting their peers.
+    pub fn suspend_all_pairings(&self) {
+        let tasks = std::mem::take(
+            &mut *self
+                .pairing_tasks
+                .lock()
+                .expect("native pairing tasks mutex poisoned"),
+        );
+        for (_, task) in tasks {
+            task.abort.abort();
+        }
+    }
+
     /// Push a host theme update to active TrUAPI theme subscriptions.
     pub fn notify_theme_changed(&self, theme: v01::ThemeVariant) {
         self.events.notify_theme_changed(theme);
@@ -515,6 +669,101 @@ impl NativeTrUApiCore {
     /// Notify the core that a native chain connection closed externally.
     pub fn notify_chain_closed(&self, connection_id: u32) {
         self.events.notify_chain_closed(connection_id);
+    }
+}
+
+impl NativeTrUApiCore {
+    fn start_pairing_task(&self, peer: ResponderPeer, session: SsoSessionInfo) {
+        let generation = self.next_pairing_generation.fetch_add(1, Ordering::Relaxed);
+        let (abort, registration) = AbortHandle::new_pair();
+        let task = NativePairingTask {
+            generation,
+            abort,
+            session: session.clone(),
+        };
+        if let Some(previous) = self
+            .pairing_tasks
+            .lock()
+            .expect("native pairing tasks mutex poisoned")
+            .insert(peer.statement_account_id, task)
+        {
+            previous.abort.abort();
+        }
+
+        let runtime = self.runtime.clone();
+        let callbacks = self.callbacks.clone();
+        let tasks = self.pairing_tasks.clone();
+        let peer_for_callback: NativePairingPeer = peer.clone().into();
+        let peer_key = peer.statement_account_id;
+        let future = async move {
+            loop {
+                match runtime.serve_responder_session(session.clone()).await {
+                    Ok(ResponderExit::PeerDisconnected) => {
+                        let is_current = tasks
+                            .lock()
+                            .expect("native pairing tasks mutex poisoned")
+                            .get(&peer_key)
+                            .is_some_and(|task| task.generation == generation);
+                        if !is_current {
+                            break;
+                        }
+                        callbacks.pairing_peer_disconnected(peer_for_callback.clone());
+                        break;
+                    }
+                    Ok(ResponderExit::SubscriptionEnded) => callbacks.on_core_log(
+                        "truapi.native.sso.subscription_ended".to_string(),
+                        format!(
+                            "peer={}; retrying",
+                            hex::encode(peer_for_callback.statement_account_id.as_slice())
+                        ),
+                    ),
+                    Err(err) => callbacks.on_core_log(
+                        "truapi.native.sso.subscription_failed".to_string(),
+                        format!(
+                            "peer={}; {}; retrying",
+                            hex::encode(peer_for_callback.statement_account_id.as_slice()),
+                            err.reason
+                        ),
+                    ),
+                }
+                futures_timer::Delay::new(std::time::Duration::from_secs(1)).await;
+            }
+
+            let mut active = tasks.lock().expect("native pairing tasks mutex poisoned");
+            if active
+                .get(&peer_key)
+                .is_some_and(|task| task.generation == generation)
+            {
+                active.remove(&peer_key);
+            }
+        };
+        (self.spawner)(Box::pin(Abortable::new(future, registration).map(|_| ())));
+    }
+
+    fn stop_pairing_task(&self, peer: &ResponderPeer) -> Option<NativePairingTask> {
+        let task = self
+            .pairing_tasks
+            .lock()
+            .expect("native pairing tasks mutex poisoned")
+            .remove(&peer.statement_account_id);
+        if let Some(task) = &task {
+            task.abort.abort();
+        }
+        task
+    }
+}
+
+impl Drop for NativeTrUApiCore {
+    fn drop(&mut self) {
+        let tasks = std::mem::take(
+            &mut *self
+                .pairing_tasks
+                .lock()
+                .expect("native pairing tasks mutex poisoned"),
+        );
+        for (_, task) in tasks {
+            task.abort.abort();
+        }
     }
 }
 
@@ -546,7 +795,7 @@ fn native_core_from_platform_config(
     let runtime = Arc::new(SigningHostRuntime::new(
         platform,
         runtime_config.signing,
-        spawner,
+        spawner.clone(),
     ));
 
     if let Some(secret) = runtime_config.local_session_secret {
@@ -561,8 +810,10 @@ fn native_core_from_platform_config(
         runtime,
         product: runtime_config.product,
         events,
-        #[cfg(feature = "ws-bridge")]
         callbacks,
+        spawner,
+        pairing_tasks: Arc::new(Mutex::new(HashMap::new())),
+        next_pairing_generation: AtomicU64::new(1),
         #[cfg(feature = "ws-bridge")]
         bridge: std::sync::Mutex::new(None),
     }))
@@ -1068,6 +1319,7 @@ mod tests {
                 .expect("auth state mutex poisoned")
                 .push(state);
         }
+        fn pairing_peer_disconnected(&self, _peer: NativePairingPeer) {}
         fn core_storage_read(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
             Ok(None)
         }
@@ -1375,6 +1627,29 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn native_pairing_peer_validates_persisted_key_lengths() {
+        let err = ResponderPeer::try_from(NativePairingPeer {
+            statement_account_id: vec![0; 31],
+            encryption_public_key: vec![0; 32],
+        })
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            NativePairingError::InvalidStatementAccountId { actual: 31 }
+        ));
+
+        let err = ResponderPeer::try_from(NativePairingPeer {
+            statement_account_id: vec![0; 32],
+            encryption_public_key: vec![0; 31],
+        })
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            NativePairingError::InvalidEncryptionPublicKey { actual: 31 }
+        ));
+    }
+
     /// Calling `start_ws_bridge` twice on the same `NativeTrUApiCore`
     /// without an intervening `stop_ws_bridge` is a hard error. The bridge
     /// is single-instance per core, so the second start must surface
@@ -1411,6 +1686,7 @@ mod tests {
                 Ok(false)
             }
             fn auth_state_changed(&self, _state: AuthState) {}
+            fn pairing_peer_disconnected(&self, _peer: NativePairingPeer) {}
             fn core_storage_read(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
                 Ok(None)
             }
@@ -1550,6 +1826,7 @@ mod tests {
                 Ok(false)
             }
             fn auth_state_changed(&self, _state: AuthState) {}
+            fn pairing_peer_disconnected(&self, _peer: NativePairingPeer) {}
             fn core_storage_read(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
                 Ok(None)
             }

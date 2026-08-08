@@ -25,9 +25,16 @@ use truapi_platform::{
 
 use crate::core::TrUApiCore;
 use crate::frame::ProtocolMessage;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::host_logic::session::SsoSessionInfo;
 use crate::runtime::{
     LocalActivation, PairingHostRole, ProductAuthority, ProductRuntimeHost, ResponderExit,
     RuntimeServices, SigningHostRole, respond_to_pairing,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::runtime::{
+    ResponderPeer, answer_pairing, responder_session_for_peer, serve_responder_session,
+    submit_responder_disconnected,
 };
 use crate::subscription::Spawner;
 use crate::transport::Transport;
@@ -375,6 +382,51 @@ impl SigningHostRuntime {
             .await
             .map_err(|reason| v01::GenericError { reason })
     }
+
+    /// Submit a pairing response and return immediately-servable session
+    /// material. Used by native shells that own the background task lifecycle.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) async fn answer_pairing(
+        &self,
+        deeplink: &str,
+    ) -> Result<(ResponderPeer, SsoSessionInfo), v01::GenericError> {
+        answer_pairing(self.services.clone(), self.signing_host.clone(), deeplink)
+            .await
+            .map_err(|reason| v01::GenericError { reason })
+    }
+
+    /// Rebuild session channels for a persisted pairing host.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn responder_session_for_peer(
+        &self,
+        peer: &ResponderPeer,
+    ) -> Result<SsoSessionInfo, v01::GenericError> {
+        responder_session_for_peer(&self.signing_host, peer)
+            .map_err(|reason| v01::GenericError { reason })
+    }
+
+    /// Drive one responder subscription until the peer disconnects or the
+    /// underlying subscription ends.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) async fn serve_responder_session(
+        &self,
+        session: SsoSessionInfo,
+    ) -> Result<ResponderExit, v01::GenericError> {
+        serve_responder_session(self.services.clone(), self.signing_host.clone(), session)
+            .await
+            .map_err(|reason| v01::GenericError { reason })
+    }
+
+    /// Notify one paired host that this signing host ended its session.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) async fn disconnect_responder_session(
+        &self,
+        session: &SsoSessionInfo,
+    ) -> Result<(), v01::GenericError> {
+        submit_responder_disconnected(&self.services, session)
+            .await
+            .map_err(|reason| v01::GenericError { reason })
+    }
 }
 
 /// Product-scoped administration handle for host UI.
@@ -692,6 +744,54 @@ mod tests {
         );
 
         assert_send(runtime.receive_frame(Vec::new()));
+    }
+
+    #[test]
+    fn all_platforms_activate_the_same_rfc0022_identity() {
+        const ENTROPY: [u8; 16] = [0xab; 16];
+        let runtime_for = |kind: &str| {
+            let config = SigningHostConfig::new(
+                truapi_platform::HostInfo {
+                    name: format!("{kind} signing host"),
+                    icon: None,
+                    version: None,
+                },
+                truapi_platform::PlatformInfo {
+                    kind: Some(kind.to_string()),
+                    version: None,
+                },
+                [0; 32],
+                [0xbb; 32],
+            )
+            .expect("signing host config is valid");
+            SigningHostRuntime::new(Arc::new(StubPlatform::default()), config, test_spawner())
+        };
+        let ios = runtime_for("iOS");
+        let cli = runtime_for("CLI");
+
+        futures::executor::block_on(ios.signing_host.activate_local_session(ENTROPY.to_vec()))
+            .expect("iOS activation succeeds");
+        futures::executor::block_on(cli.signing_host.activate_local_session(ENTROPY.to_vec()))
+            .expect("CLI activation succeeds");
+        let expected = crate::host_logic::product_account::derive_identity_keypair(&ENTROPY)
+            .expect("RFC-0022 identity derives")
+            .public
+            .to_bytes();
+
+        assert_eq!(
+            ios.signing_host
+                .current_session()
+                .expect("iOS session")
+                .identity_account_id,
+            Some(expected)
+        );
+        assert_eq!(
+            cli.signing_host
+                .current_session()
+                .expect("CLI session")
+                .identity_account_id,
+            Some(expected)
+        );
     }
 
     #[test]

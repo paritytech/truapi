@@ -39,6 +39,31 @@ public enum PairingDeeplinkScheme: Sendable {
     }
 }
 
+/// Stable identity for a paired product host. Persist these two public keys so
+/// the Rust responder can restore its encrypted Statement Store subscription
+/// after the native app restarts.
+public struct PairingPeer: Sendable, Hashable {
+    public let statementAccountId: Data
+    public let encryptionPublicKey: Data
+
+    public init(statementAccountId: Data, encryptionPublicKey: Data) {
+        self.statementAccountId = statementAccountId
+        self.encryptionPublicKey = encryptionPublicKey
+    }
+
+    fileprivate init(native: NativePairingPeer) {
+        statementAccountId = native.statementAccountId
+        encryptionPublicKey = native.encryptionPublicKey
+    }
+
+    fileprivate var native: NativePairingPeer {
+        NativePairingPeer(
+            statementAccountId: statementAccountId,
+            encryptionPublicKey: encryptionPublicKey
+        )
+    }
+}
+
 /// Static product and pairing config supplied before the Rust core handles
 /// product calls. One core instance represents one product identity.
 ///
@@ -215,6 +240,11 @@ public protocol TrUAPIHostCoreProtocol: AnyObject {
     func disconnect()
     func cancelLogin()
     func activateLocalSession(secret: Data, liteUsername: String?) throws
+    func respondToPairing(deeplink: String) throws -> PairingPeer
+    func resumePairing(peer: PairingPeer) throws
+    func disconnectPairing(peer: PairingPeer) throws
+    func suspendPairing(peer: PairingPeer) throws
+    func suspendAllPairings()
     func permissionAuthorizationStatus(
         request: PermissionAuthorizationRequest
     ) throws -> PermissionAuthorizationStatus
@@ -285,6 +315,34 @@ public final class TrUAPIHostCore: TrUAPIHostCoreProtocol {
     /// BIP-39 entropy.
     public func activateLocalSession(secret: Data, liteUsername: String? = nil) throws {
         try inner.activateLocalSession(secret: secret, liteUsername: liteUsername)
+    }
+
+    /// Answer a pairing deeplink and start serving the session in Rust. This
+    /// returns once the handshake statement has been accepted; session traffic
+    /// continues on the core's background pool.
+    public func respondToPairing(deeplink: String) throws -> PairingPeer {
+        PairingPeer(native: try inner.respondToPairing(deeplink: deeplink))
+    }
+
+    /// Restore the Rust responder for a persisted pairing host.
+    public func resumePairing(peer: PairingPeer) throws {
+        try inner.resumePairing(peer: peer.native)
+    }
+
+    /// Notify one pairing host of a local disconnect and stop serving it.
+    public func disconnectPairing(peer: PairingPeer) throws {
+        try inner.disconnectPairing(peer: peer.native)
+    }
+
+    /// Stop one responder without sending a disconnect. The peer can be
+    /// resumed later from its persisted public keys.
+    public func suspendPairing(peer: PairingPeer) throws {
+        try inner.suspendPairing(peer: peer.native)
+    }
+
+    /// Stop every responder without changing persisted pairings.
+    public func suspendAllPairings() {
+        inner.suspendAllPairings()
     }
 
     /// Read a stored permission authorization status without prompting.

@@ -65,6 +65,7 @@ final class StubHostCallbacks: HostCallbacks, @unchecked Sendable {
     func devicePermission(request _: HostDevicePermissionRequest) async throws -> Bool { false }
     func remotePermission(request _: RemotePermission) async throws -> Bool { false }
     func authStateChanged(state _: AuthState) {}
+    func pairingPeerDisconnected(peer _: NativePairingPeer) {}
     func coreStorageRead(key: Data) throws -> Data? { coreStore[key] }
     func coreStorageWrite(key: Data, value: Data) throws { coreStore[key] = value }
     func coreStorageClear(key: Data) throws { coreStore[key] = nil }

@@ -86,7 +86,22 @@ impl ChainRingResolver {
             .online_client(&location.chain_id)
             .await
             .map_err(unknown)?;
-        let at_block = client.at_current_block().await.map_err(unknown)?;
+        let at_block = match client.at_current_block().await {
+            Ok(at_block) => at_block,
+            Err(chain_head_error) => {
+                tracing::warn!(
+                    %chain_head_error,
+                    "ChainHead could not open the finalized ring snapshot; retrying with legacy RPC"
+                );
+                self.chain
+                    .legacy_online_client(&location.chain_id)
+                    .await
+                    .map_err(unknown)?
+                    .at_current_block()
+                    .await
+                    .map_err(unknown)?
+            }
+        };
         let Some(pallet) = at_block.metadata_ref().pallet_by_name(MEMBERS_PALLET) else {
             return Err(RingVrfError::RingNotFound);
         };

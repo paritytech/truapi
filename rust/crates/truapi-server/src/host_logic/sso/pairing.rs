@@ -27,6 +27,7 @@ use x25519_dalek::{PublicKey, StaticSecret};
 use crate::host_logic::session::SsoSessionInfo;
 
 const HANDSHAKE_TOPIC_SUFFIX: &[u8] = b"topic";
+const HANDSHAKE_CHANNEL_SUFFIX: &[u8] = b"channel";
 
 /// Byte length of the ChaCha20-Poly1305 nonce prepended to encrypted payloads.
 pub const AEAD_NONCE_LEN: usize = 12;
@@ -578,6 +579,21 @@ pub fn bootstrap_topic(
     keyed_hash(statement_store_public_key, &message)
 }
 
+/// Derive the statement channel for pairing answer statements from advertised
+/// host keys. Distinct from [`bootstrap_topic`] so a `Success` answer replaces
+/// an earlier `Pending` status in the store.
+pub fn bootstrap_channel(
+    statement_store_public_key: [u8; 32],
+    encryption_public_key: [u8; 32],
+) -> [u8; 32] {
+    let mut message =
+        Vec::with_capacity(encryption_public_key.len() + HANDSHAKE_CHANNEL_SUFFIX.len());
+    message.extend_from_slice(&encryption_public_key);
+    message.extend_from_slice(HANDSHAKE_CHANNEL_SUFFIX);
+
+    keyed_hash(statement_store_public_key, &message)
+}
+
 fn generate_statement_store_keypair() -> Result<([u8; 64], [u8; 32]), PairingBootstrapError> {
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed).map_err(PairingBootstrapError::Random)?;
@@ -767,6 +783,19 @@ mod tests {
                 generated.statement_store_public_key,
                 generated.encryption_public_key,
             )
+        );
+    }
+
+    #[test]
+    fn derives_pinned_topic_and_channel_vectors() {
+        let (_, public) = x25519_keypair(1);
+        assert_eq!(
+            hex::encode(bootstrap_topic(SS_PUBLIC, public)),
+            "ec8c8d7993ef1b367a704f34cec0fa1fe01d0a060a918688f26b23e88452a6af"
+        );
+        assert_eq!(
+            hex::encode(bootstrap_channel(SS_PUBLIC, public)),
+            "f7df2ba8c948e35c35edfaf8bad6cb4a8c4e0373f64bab787f68620a88f7c51f"
         );
     }
 

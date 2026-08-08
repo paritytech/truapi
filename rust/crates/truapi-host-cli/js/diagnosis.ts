@@ -22,6 +22,7 @@ const LONG_TIMEOUT_METHODS = new Set([
   "Account/get_account",
   "Account/get_account_alias",
   "Account/create_account_proof",
+  "Account/sign_vrf",
   "Resource Allocation/request",
   "Signing/sign_payload",
   "Signing/sign_raw",
@@ -126,11 +127,7 @@ async function runOne(
   if (!test.exampleSource) {
     return finish("fail", "no runnable example");
   }
-  const timeoutMs =
-    METHOD_TIMEOUT_MS.get(test.id) ??
-    (LONG_TIMEOUT_METHODS.has(test.id)
-      ? REMOTE_RESPONSE_TIMEOUT_MS
-      : UNARY_TIMEOUT_MS);
+  const timeoutMs = diagnosisTimeoutMs(test.id);
 
   const logs: LogEntry[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -160,6 +157,15 @@ async function runOne(
     if (timer !== undefined) clearTimeout(timer);
     run?.cancel();
   }
+}
+
+export function diagnosisTimeoutMs(id: string): number {
+  return (
+    METHOD_TIMEOUT_MS.get(id) ??
+    (LONG_TIMEOUT_METHODS.has(id)
+      ? REMOTE_RESPONSE_TIMEOUT_MS
+      : UNARY_TIMEOUT_MS)
+  );
 }
 
 function joinLogs(logs: LogEntry[]): string | undefined {

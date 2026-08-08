@@ -668,6 +668,13 @@ public protocol HostCallbacks: AnyObject, Sendable {
     func authStateChanged(state: AuthState)
 
     /**
+     * A paired host explicitly ended its SSO session. Native shells should
+     * remove the matching persisted host/device and update their UI. Ordinary
+     * transport interruptions are retried by the core and do not emit this.
+     */
+    func pairingPeerDisconnected(peer: NativePairingPeer)
+
+    /**
      * Read a core-owned host-private storage slot. `key` is a SCALE-encoded
      * [`CoreStorageKey`].
      */
@@ -924,6 +931,20 @@ open func authStateChanged(state: AuthState)  {try! rustCall() {
     uniffi_truapi_server_fn_method_hostcallbacks_auth_state_changed(
             self.uniffiCloneHandle(),
         FfiConverterTypeAuthState_lower(state),uniffiCallStatus
+    )
+}
+}
+
+    /**
+     * A paired host explicitly ended its SSO session. Native shells should
+     * remove the matching persisted host/device and update their UI. Ordinary
+     * transport interruptions are retried by the core and do not emit this.
+     */
+open func pairingPeerDisconnected(peer: NativePairingPeer)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_truapi_server_fn_method_hostcallbacks_pairing_peer_disconnected(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeNativePairingPeer_lower(peer),uniffiCallStatus
     )
 }
 }
@@ -1379,6 +1400,30 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 }
                 return uniffiObj.authStateChanged(
                      state: try FfiConverterTypeAuthState_lift(state)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        pairingPeerDisconnected: { (
+            uniffiHandle: UInt64,
+            peer: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.pairingPeerDisconnected(
+                     peer: try FfiConverterTypeNativePairingPeer_lift(peer)
                 )
             }
 
@@ -1888,6 +1933,14 @@ public protocol NativeTrUApiCoreProtocol: AnyObject, Sendable {
     func disconnect()
 
     /**
+     * Notify one paired host of a local disconnect and stop its responder.
+     *
+     * Blocks on the best-effort Statement Store submission, so call it off
+     * the host's main/UI thread.
+     */
+    func disconnectPairing(peer: NativePairingPeer) throws
+
+    /**
      * Notify the core that a native chain connection closed externally.
      */
     func notifyChainClosed(connectionId: UInt32)
@@ -1929,6 +1982,22 @@ public protocol NativeTrUApiCoreProtocol: AnyObject, Sendable {
     func permissionAuthorizationStatus(request: PermissionAuthorizationRequest) throws  -> PermissionAuthorizationStatus
 
     /**
+     * Answer a pairing deeplink and start serving the resulting SSO session
+     * in the core's background pool. Returns after the handshake statement is
+     * accepted, not when the long-lived session eventually ends.
+     *
+     * Blocks the calling thread on the handshake submission, so call it off
+     * the host's main/UI thread.
+     */
+    func respondToPairing(deeplink: String) throws  -> NativePairingPeer
+
+    /**
+     * Restore the background responder for a previously persisted pairing.
+     * Repeated calls replace the old subscription for the same peer.
+     */
+    func resumePairing(peer: NativePairingPeer) throws
+
+    /**
      * Update a stored permission authorization status. Passing
      * `.notDetermined` clears the stored value so the next product request
      * prompts again.
@@ -1948,6 +2017,17 @@ public protocol NativeTrUApiCoreProtocol: AnyObject, Sendable {
      * Stop the localhost WebSocket bridge (if running).
      */
     func stopWsBridge()
+
+    /**
+     * Stop all responder subscriptions without disconnecting their peers.
+     */
+    func suspendAllPairings()
+
+    /**
+     * Stop one responder subscription without notifying the peer. Used when
+     * the native app suspends and will restore sessions later.
+     */
+    func suspendPairing(peer: NativePairingPeer) throws
 
 }
 /**
@@ -2075,6 +2155,21 @@ open func disconnect()  {try! rustCall() {
 }
 
     /**
+     * Notify one paired host of a local disconnect and stop its responder.
+     *
+     * Blocks on the best-effort Statement Store submission, so call it off
+     * the host's main/UI thread.
+     */
+open func disconnectPairing(peer: NativePairingPeer)throws   {try rustCallWithError(FfiConverterTypeNativePairingError_lift) {
+        uniffiCallStatus in
+    uniffi_truapi_server_fn_method_nativetruapicore_disconnect_pairing(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeNativePairingPeer_lower(peer),uniffiCallStatus
+    )
+}
+}
+
+    /**
      * Notify the core that a native chain connection closed externally.
      */
 open func notifyChainClosed(connectionId: UInt32)  {try! rustCall() {
@@ -2160,6 +2255,37 @@ open func permissionAuthorizationStatus(request: PermissionAuthorizationRequest)
 }
 
     /**
+     * Answer a pairing deeplink and start serving the resulting SSO session
+     * in the core's background pool. Returns after the handshake statement is
+     * accepted, not when the long-lived session eventually ends.
+     *
+     * Blocks the calling thread on the handshake submission, so call it off
+     * the host's main/UI thread.
+     */
+open func respondToPairing(deeplink: String)throws  -> NativePairingPeer  {
+    return try  FfiConverterTypeNativePairingPeer_lift(try rustCallWithError(FfiConverterTypeNativePairingError_lift) {
+        uniffiCallStatus in
+    uniffi_truapi_server_fn_method_nativetruapicore_respond_to_pairing(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deeplink),uniffiCallStatus
+    )
+})
+}
+
+    /**
+     * Restore the background responder for a previously persisted pairing.
+     * Repeated calls replace the old subscription for the same peer.
+     */
+open func resumePairing(peer: NativePairingPeer)throws   {try rustCallWithError(FfiConverterTypeNativePairingError_lift) {
+        uniffiCallStatus in
+    uniffi_truapi_server_fn_method_nativetruapicore_resume_pairing(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeNativePairingPeer_lower(peer),uniffiCallStatus
+    )
+}
+}
+
+    /**
      * Update a stored permission authorization status. Passing
      * `.notDetermined` clears the stored value so the next product request
      * prompts again.
@@ -2198,6 +2324,30 @@ open func stopWsBridge()  {try! rustCall() {
         uniffiCallStatus in
     uniffi_truapi_server_fn_method_nativetruapicore_stop_ws_bridge(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+
+    /**
+     * Stop all responder subscriptions without disconnecting their peers.
+     */
+open func suspendAllPairings()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_truapi_server_fn_method_nativetruapicore_suspend_all_pairings(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+
+    /**
+     * Stop one responder subscription without notifying the peer. Used when
+     * the native app suspends and will restore sessions later.
+     */
+open func suspendPairing(peer: NativePairingPeer)throws   {try rustCallWithError(FfiConverterTypeNativePairingError_lift) {
+        uniffiCallStatus in
+    uniffi_truapi_server_fn_method_nativetruapicore_suspend_pairing(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeNativePairingPeer_lower(peer),uniffiCallStatus
     )
 }
 }
@@ -2248,6 +2398,76 @@ public func FfiConverterTypeNativeTrUApiCore_lower(_ value: NativeTrUApiCore) ->
 }
 
 
+
+
+/**
+ * Pairing-host identity persisted by a native signing host so its responder
+ * subscription can be restored after an app restart.
+ */
+public struct NativePairingPeer: Equatable, Hashable {
+    /**
+     * Pairing host's 32-byte sr25519 Statement Store account id.
+     */
+    public var statementAccountId: Data
+    /**
+     * Pairing host's 32-byte raw X25519 public key.
+     */
+    public var encryptionPublicKey: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Pairing host's 32-byte sr25519 Statement Store account id.
+         */statementAccountId: Data,
+        /**
+         * Pairing host's 32-byte raw X25519 public key.
+         */encryptionPublicKey: Data) {
+        self.statementAccountId = statementAccountId
+        self.encryptionPublicKey = encryptionPublicKey
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativePairingPeer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativePairingPeer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativePairingPeer {
+        return
+            try NativePairingPeer(
+                statementAccountId: FfiConverterData.read(from: &buf),
+                encryptionPublicKey: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NativePairingPeer, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.statementAccountId, into: &buf)
+        FfiConverterData.write(value.encryptionPublicKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePairingPeer_lift(_ buf: RustBuffer) throws -> NativePairingPeer {
+    return try FfiConverterTypeNativePairingPeer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePairingPeer_lower(_ value: NativePairingPeer) -> RustBuffer {
+    return FfiConverterTypeNativePairingPeer.lower(value)
+}
 
 
 /**
@@ -2825,6 +3045,122 @@ public func FfiConverterTypeNativePairingDeeplinkScheme_lower(_ value: NativePai
     return FfiConverterTypeNativePairingDeeplinkScheme.lower(value)
 }
 
+
+
+/**
+ * Invalid persisted peer data or an SSO responder failure.
+ */
+public
+enum NativePairingError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+
+
+    /**
+     * Statement Store account id was not exactly 32 bytes.
+     */
+    case InvalidStatementAccountId(
+        /**
+         * Supplied byte length.
+         */actual: UInt64
+    )
+    /**
+     * X25519 public key was not exactly 32 bytes.
+     */
+    case InvalidEncryptionPublicKey(
+        /**
+         * Supplied byte length.
+         */actual: UInt64
+    )
+    /**
+     * Pairing or responder startup failed.
+     */
+    case Failed(
+        /**
+         * Human-readable failure reason.
+         */reason: String
+    )
+
+
+
+
+
+
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+
+}
+
+#if compiler(>=6)
+extension NativePairingError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativePairingError: FfiConverterRustBuffer {
+    typealias SwiftType = NativePairingError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativePairingError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+
+
+
+        case 1: return .InvalidStatementAccountId(
+            actual: try FfiConverterUInt64.read(from: &buf)
+            )
+        case 2: return .InvalidEncryptionPublicKey(
+            actual: try FfiConverterUInt64.read(from: &buf)
+            )
+        case 3: return .Failed(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativePairingError, into buf: inout [UInt8]) {
+        switch value {
+
+
+
+
+
+        case let .InvalidStatementAccountId(actual):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt64.write(actual, into: &buf)
+
+
+        case let .InvalidEncryptionPublicKey(actual):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt64.write(actual, into: &buf)
+
+
+        case let .Failed(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePairingError_lift(_ buf: RustBuffer) throws -> NativePairingError {
+    return try FfiConverterTypeNativePairingError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePairingError_lower(_ value: NativePairingError) -> RustBuffer {
+    return FfiConverterTypeNativePairingError.lower(value)
+}
 
 
 /**
@@ -3535,43 +3871,46 @@ private let initializationResult: InitializationResult = {
     if (uniffi_truapi_server_checksum_method_hostcallbacks_auth_state_changed() != 48975) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_core_storage_read() != 59238) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_pairing_peer_disconnected() != 22344) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_core_storage_write() != 35684) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_core_storage_read() != 61703) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_core_storage_clear() != 61002) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_core_storage_write() != 4428) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_chain_connect() != 36320) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_core_storage_clear() != 43717) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_chain_send() != 10194) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_chain_connect() != 30923) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_chain_close() != 54867) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_chain_send() != 6042) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_confirm_user_action() != 23589) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_chain_close() != 51970) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_lookup_preimage() != 33694) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_confirm_user_action() != 20260) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_current_theme() != 20227) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_lookup_preimage() != 59647) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported() != 46490) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_current_theme() != 63562) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read() != 54709) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported() != 28665) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write() != 33044) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read() != 32804) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear() != 6971) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write() != 62222) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear() != 61208) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_truapi_server_checksum_method_nativetruapicore_activate_local_session() != 19215) {
@@ -3581,6 +3920,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_truapi_server_checksum_method_nativetruapicore_disconnect() != 18254) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_nativetruapicore_disconnect_pairing() != 173) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_truapi_server_checksum_method_nativetruapicore_notify_chain_closed() != 25320) {
@@ -3601,6 +3943,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_truapi_server_checksum_method_nativetruapicore_permission_authorization_status() != 21962) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_truapi_server_checksum_method_nativetruapicore_respond_to_pairing() != 17059) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_nativetruapicore_resume_pairing() != 58346) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_truapi_server_checksum_method_nativetruapicore_set_permission_authorization_status() != 37317) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3608,6 +3956,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_truapi_server_checksum_method_nativetruapicore_stop_ws_bridge() != 13438) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_nativetruapicore_suspend_all_pairings() != 64494) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_nativetruapicore_suspend_pairing() != 43595) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_truapi_server_checksum_constructor_nativetruapicore_with_runtime_config() != 54861) {

@@ -60,8 +60,16 @@ use pairing_host::PairingHost;
 pub(crate) use pairing_host::PairingHost as PairingHostRole;
 pub(crate) use services::RuntimeServices;
 pub use signing_host::ResponderExit;
+#[cfg(not(target_arch = "wasm32"))]
+pub use signing_host::ResponderPeer;
 pub(crate) use signing_host::{
     LocalActivation, SigningHost as SigningHostRole, respond_to_pairing,
+};
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use signing_host::{
+    answer_pairing, serve_session as serve_responder_session,
+    session_for_peer as responder_session_for_peer,
+    submit_disconnected as submit_responder_disconnected,
 };
 
 use authority::{

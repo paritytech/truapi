@@ -27,13 +27,12 @@ use super::SigningHost;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::chain_runtime::RuntimeFailure;
 use crate::host_logic::entropy::root_entropy_source;
-use crate::host_logic::product_account::{
-    ProductAccountError, derive_identity_keypair, derive_root_keypair_from_entropy,
-    product_public_key_to_address,
-};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::host_logic::product_account::{
-    derive_lite_person_ring_vrf_entropy, derive_sr25519_hard_path,
+    ProductAccountError, derive_lite_person_ring_vrf_entropy, derive_sr25519_hard_path,
+};
+use crate::host_logic::product_account::{
+    derive_identity_keypair, derive_root_keypair_from_entropy, product_public_key_to_address,
 };
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso::messages::{
@@ -45,8 +44,8 @@ use crate::host_logic::sso::messages::{
     build_signed_session_response_statement, decode_incoming_sso_request, v1,
 };
 use crate::host_logic::sso::pairing::{
-    ResponderIdentity, VersionedHandshakeProposal, bootstrap_topic, decode_pairing_deeplink,
-    derive_x25519_keypair_from_entropy, encrypt_v2_handshake_response,
+    ResponderIdentity, VersionedHandshakeProposal, bootstrap_channel, bootstrap_topic,
+    decode_pairing_deeplink, derive_x25519_keypair_from_entropy, encrypt_v2_handshake_response,
     establish_responder_session_info, v2,
 };
 use crate::host_logic::statement_store::{build_signed_statement, parse_new_statements_result};
@@ -78,10 +77,9 @@ const BULLETIN_AUTHORIZATION_WAIT: std::time::Duration = std::time::Duration::fr
 /// longer be validly replayed.
 const MAX_SERVED_REQUEST_IDS: usize = 1024;
 
-fn derive_responder_identity(
-    entropy: &[u8],
-) -> Result<(ResponderIdentity, [u8; 32]), ProductAccountError> {
-    let statement = derive_identity_keypair(entropy)?;
+fn derive_responder_identity(entropy: &[u8]) -> Result<(ResponderIdentity, [u8; 32]), String> {
+    let statement = derive_identity_keypair(entropy)
+        .map_err(|err| format!("identity account derivation failed: {err}"))?;
     let (encryption_secret_key, encryption_public_key) =
         derive_x25519_keypair_from_entropy(entropy, SSO_ENCRYPTION_DOMAIN);
     let (identity_chat_private_key, _) =
@@ -136,6 +134,22 @@ pub enum ResponderExit {
     PeerDisconnected,
     /// The statement subscription ended without a disconnect message.
     SubscriptionEnded,
+}
+
+/// Pairing-host identity needed to restore an SSO responder session.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResponderPeer {
+    /// Pairing host's sr25519 Statement Store account id.
+    pub statement_account_id: [u8; 32],
+    /// Pairing host's raw X25519 public key.
+    pub encryption_public_key: [u8; 32],
+}
+
+struct ResponderMaterial {
+    identity: ResponderIdentity,
+    identity_chat_private_key: [u8; 32],
+    root_account_id: [u8; 32],
+    root_entropy_source: [u8; 32],
 }
 
 /// Failure while deriving or allocating a Statement Store/Bulletin allowance.
@@ -217,55 +231,171 @@ pub(crate) async fn respond_to_pairing(
     signing_host: Arc<SigningHost>,
     deeplink: &str,
 ) -> Result<ResponderExit, String> {
+    let (_, session) = answer_pairing(services.clone(), signing_host.clone(), deeplink).await?;
+    serve_session(services, signing_host, session).await
+}
+
+/// Answer one pairing handshake and return the session material used by the
+/// long-running responder loop.
+///
+/// Native shells use this split form so their approval UI can complete once
+/// the handshake is actually on the Statement Store, while the core keeps the
+/// session subscription alive in a background task.
+pub(crate) async fn answer_pairing(
+    services: Arc<RuntimeServices>,
+    signing_host: Arc<SigningHost>,
+    deeplink: &str,
+) -> Result<(ResponderPeer, SsoSessionInfo), String> {
     let VersionedHandshakeProposal::V2(proposal) =
         decode_pairing_deeplink(deeplink).map_err(|err| err.to_string())?;
-    let entropy = signing_host
-        .root_entropy()
-        .map_err(|err| format!("signing host has no active local session: {err}"))?;
+    let peer = ResponderPeer {
+        statement_account_id: proposal.device.statement_account_id,
+        encryption_public_key: proposal.device.encryption_public_key,
+    };
+    let material = responder_material(&signing_host)?;
     // Product accounts and the SSO statement identity derive from the
     // canonical root key; the identity is the RFC-0022 uid.dot default account.
-    let root = derive_root_keypair_from_entropy(&entropy)
-        .map_err(|err| format!("root account derivation failed: {err}"))?;
-    let (identity, identity_chat_private_key) = derive_responder_identity(&entropy)
-        .map_err(|err| format!("responder identity derivation failed: {err}"))?;
     let session = establish_responder_session_info(
-        &identity,
-        proposal.device.statement_account_id,
-        proposal.device.encryption_public_key,
+        &material.identity,
+        peer.statement_account_id,
+        peer.encryption_public_key,
     )?;
 
+    match submit_pairing_answer(&services, &material, &session, &peer).await {
+        Ok(()) => Ok((peer, session)),
+        Err(reason) => {
+            let failed = v2::EncryptedResponse::Failed(reason.clone());
+            if let Err(status_error) = submit_handshake_response(
+                &services,
+                &session,
+                &peer,
+                &failed,
+                "sso-responder failed status",
+            )
+            .await
+            {
+                warn!(%status_error, "failed to post pairing Failed status");
+            }
+            Err(reason)
+        }
+    }
+}
+
+/// Post the wallet-side pairing answer sequence: a `Pending` status while the
+/// session is being prepared, then the `Success` payload.
+async fn submit_pairing_answer(
+    services: &Arc<RuntimeServices>,
+    material: &ResponderMaterial,
+    session: &SsoSessionInfo,
+    peer: &ResponderPeer,
+) -> Result<(), String> {
+    let pending = v2::EncryptedResponse::Pending(v2::Status::AllowanceAllocation);
+    if let Err(status_error) = submit_handshake_response(
+        services,
+        session,
+        peer,
+        &pending,
+        "sso-responder pending status",
+    )
+    .await
+    {
+        warn!(%status_error, "failed to post pairing Pending status");
+    }
+
     let success = v2::EncryptedResponse::Success(Box::new(v2::Success {
-        identity_account_id: identity.statement_public_key,
-        root_account_id: root.public.to_bytes(),
-        identity_chat_private_key,
-        sso_enc_pub_key: identity.encryption_public_key,
-        device_enc_pub_key: identity.encryption_public_key,
-        root_entropy_source: root_entropy_source(&entropy),
+        identity_account_id: material.identity.statement_public_key,
+        root_account_id: material.root_account_id,
+        identity_chat_private_key: material.identity_chat_private_key,
+        sso_enc_pub_key: material.identity.encryption_public_key,
+        // The headless responder has no separate device chat key; chat
+        // envelopes addressed to the device land on the session key.
+        device_enc_pub_key: material.identity.encryption_public_key,
+        root_entropy_source: material.root_entropy_source,
     }));
-    let handshake = encrypt_v2_handshake_response(proposal.device.encryption_public_key, &success)?;
-    let topic = bootstrap_topic(
-        proposal.device.statement_account_id,
-        proposal.device.encryption_public_key,
-    );
+    submit_handshake_response(services, session, peer, &success, "sso-responder handshake").await?;
+    debug!("answered pairing handshake");
+    Ok(())
+}
+
+/// Encrypt one handshake response to the peer and post it on the pairing
+/// topic/channel. Each statement uses fresh ephemeral encryption; the shared
+/// channel makes later responses replace earlier statuses in the store.
+async fn submit_handshake_response(
+    services: &Arc<RuntimeServices>,
+    session: &SsoSessionInfo,
+    peer: &ResponderPeer,
+    response: &v2::EncryptedResponse,
+    label: &'static str,
+) -> Result<(), String> {
+    let handshake = encrypt_v2_handshake_response(peer.encryption_public_key, response)?;
+    let topic = bootstrap_topic(peer.statement_account_id, peer.encryption_public_key);
+    let channel = bootstrap_channel(peer.statement_account_id, peer.encryption_public_key);
     let statement = build_signed_statement(
-        &session,
-        topic,
+        session,
+        channel,
         topic,
         handshake.encode(),
         fresh_statement_expiry(),
     )?;
+    services.statement_store.submit(statement, label).await
+}
+
+/// Reconstruct responder session material for a previously persisted peer.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn session_for_peer(
+    signing_host: &Arc<SigningHost>,
+    peer: &ResponderPeer,
+) -> Result<SsoSessionInfo, String> {
+    let material = responder_material(signing_host)?;
+    establish_responder_session_info(
+        &material.identity,
+        peer.statement_account_id,
+        peer.encryption_public_key,
+    )
+}
+
+fn responder_material(signing_host: &Arc<SigningHost>) -> Result<ResponderMaterial, String> {
+    let entropy = signing_host
+        .root_entropy()
+        .map_err(|err| format!("signing host has no active local session: {err}"))?;
+    let root = derive_root_keypair_from_entropy(&entropy)
+        .map_err(|err| format!("root account derivation failed: {err}"))?;
+    let (identity, identity_chat_private_key) = derive_responder_identity(&entropy)
+        .map_err(|err| format!("responder identity derivation failed: {err}"))?;
+    Ok(ResponderMaterial {
+        identity,
+        identity_chat_private_key,
+        root_account_id: root.public.to_bytes(),
+        root_entropy_source: root_entropy_source(&entropy),
+    })
+}
+
+/// Best-effort notification that the signing host ended one paired session.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) async fn submit_disconnected(
+    services: &Arc<RuntimeServices>,
+    session: &SsoSessionInfo,
+) -> Result<(), String> {
+    let message_id = "truapi:sso:disconnect".to_string();
+    let statement = build_outgoing_request_statement(
+        session,
+        message_id.clone(),
+        vec![RemoteMessage {
+            message_id,
+            data: RemoteMessageData::V1(v1::RemoteMessage::Disconnected),
+        }],
+        fresh_statement_expiry(),
+    )?;
     services
         .statement_store
-        .submit(statement, "sso-responder handshake")
-        .await?;
-    debug!("answered pairing handshake, serving SSO session");
-
-    serve_session(services, signing_host, session).await
+        .submit_fire_and_forget(statement, "sso-responder disconnect")
+        .await
+        .map_err(|err| format!("SSO disconnect submit failed: {err}"))
 }
 
 /// Serve inbound session statements until the session ends.
 #[instrument(skip_all, fields(runtime.method = "sso_responder.serve_session"))]
-async fn serve_session(
+pub(crate) async fn serve_session(
     services: Arc<RuntimeServices>,
     signing_host: Arc<SigningHost>,
     session: SsoSessionInfo,
@@ -685,13 +815,8 @@ async fn answer_remote_message(
         }
         v1::RemoteMessage::CreateTransactionLegacyRequest(request) => {
             let messages::CreateTransactionLegacyPayload::V1(payload) = request.payload;
-            let signed_transaction = create_transaction_response(
-                services,
-                signing_host,
-                CreateTransactionReview::LegacyAccount(payload.clone()),
-                CreateTransactionAuthorityRequest::IdentityAccount(payload),
-            )
-            .await;
+            let signed_transaction =
+                create_sso_identity_transaction_response(services, signing_host, payload).await;
             v1::RemoteMessage::CreateTransactionResponse(messages::CreateTransactionResponse {
                 responding_to: message_id,
                 signed_transaction,
@@ -1117,15 +1242,7 @@ async fn sign_raw_legacy_response(
         .current_session()
         .ok_or_else(|| "signing host session is not active".to_string())?;
     signing_host
-        .sign_raw(
-            &CallContext::default(),
-            &session,
-            SignRawAuthorityRequest::LegacyAccount {
-                account: request.account,
-                request: public_request,
-            },
-        )
-        .await
+        .sign_sso_raw_identity(&session, request.account, public_request.payload)
         .map(|response| response.signature)
         .map_err(|err| err.to_string())
 }
@@ -1187,6 +1304,28 @@ async fn create_transaction_response(
         .map_err(|err| err.to_string())
 }
 
+async fn create_sso_identity_transaction_response(
+    services: &Arc<RuntimeServices>,
+    signing_host: &Arc<SigningHost>,
+    request: api::LegacyAccountTxPayload,
+) -> Result<Vec<u8>, String> {
+    let session = signing_host
+        .current_session()
+        .ok_or_else(|| "signing host session is not active".to_string())?;
+    confirm(
+        services,
+        UserConfirmationReview::CreateTransaction(CreateTransactionReview::LegacyAccount(
+            request.clone(),
+        )),
+    )
+    .await?;
+    signing_host
+        .create_sso_identity_transaction(&session, request)
+        .await
+        .map(|response| response.transaction)
+        .map_err(|err| err.to_string())
+}
+
 async fn account_alias_response(
     signing_host: &Arc<SigningHost>,
     request: messages::RingVrfAliasRequest,
@@ -1194,10 +1333,8 @@ async fn account_alias_response(
     let session = signing_host
         .current_session()
         .ok_or_else(disconnected_ring_vrf)?;
-    let cx = CallContext::default();
     signing_host
-        .account_alias(
-            &cx,
+        .sso_account_alias(
             &session,
             AccountAliasAuthorityRequest {
                 calling_product_id: request.calling_product_id,
@@ -1215,10 +1352,8 @@ async fn create_proof_response(
     let session = signing_host
         .current_session()
         .ok_or_else(disconnected_ring_vrf)?;
-    let cx = CallContext::default();
     signing_host
-        .create_proof(
-            &cx,
+        .sso_create_proof(
             &session,
             CreateProofAuthorityRequest {
                 calling_product_id: request.calling_product_id,
@@ -1288,15 +1423,15 @@ mod tests {
     }
 
     #[test]
-    fn responder_advertises_and_signs_with_the_local_uid_identity() {
+    fn responder_advertises_and_signs_with_the_rfc0022_identity() {
         let (_services, signing_host) = signing_fixture(Arc::new(StubPlatform::default()));
-        let local_identity = signing_host
+        let rfc_identity = signing_host
             .current_session()
             .unwrap()
             .identity_account_id
             .unwrap();
         let (identity, _) = derive_responder_identity(&ENTROPY).unwrap();
-        assert_eq!(identity.statement_public_key, local_identity);
+        assert_eq!(identity.statement_public_key, rfc_identity);
 
         let (_, host_encryption_public_key) =
             derive_x25519_keypair_from_entropy(&[0x42; 16], b"sso");
@@ -1314,7 +1449,7 @@ mod tests {
         let verified =
             decode_verified_statement_data(&statement, Some(identity.statement_public_key))
                 .unwrap();
-        assert_eq!(verified.signer, local_identity);
+        assert_eq!(verified.signer, rfc_identity);
     }
 
     fn response_payload(answer: AnsweredRemoteMessage) -> v1::RemoteMessage {
@@ -1563,6 +1698,40 @@ mod tests {
             identity
                 .public
                 .verify_simple(b"substrate", &[0x00, 0x00, 1, 2, 3], &signature)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn legacy_raw_request_signs_with_the_rfc0022_identity() {
+        let (services, signing_host) = signing_fixture(Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            ..StubPlatform::default()
+        }));
+        let identity = derive_identity_keypair(&ENTROPY).unwrap();
+
+        let response = futures::executor::block_on(answer_remote_message(
+            &services,
+            &signing_host,
+            "legacy-raw-1".to_string(),
+            v1::RemoteMessage::SignRawLegacyRequest(messages::SignRawLegacyRequest {
+                account: identity.public.to_bytes(),
+                data: messages::SigningRawPayload::Bytes(b"hello".to_vec()),
+            }),
+        ))
+        .expect("response is emitted");
+
+        let v1::RemoteMessage::SignRawLegacyResponse(response) = response_payload(response) else {
+            panic!("expected raw-signing response");
+        };
+        let signature = schnorrkel::Signature::from_bytes(
+            &response.signature.expect("identity raw signing succeeds"),
+        )
+        .unwrap();
+        assert!(
+            identity
+                .public
+                .verify_simple(b"substrate", b"<Bytes>hello</Bytes>", &signature)
                 .is_ok()
         );
     }

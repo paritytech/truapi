@@ -290,88 +290,95 @@ typedef void (*UniffiCallbackInterfaceHostCallbacksMethod6)(uint64_t, RustBuffer
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD7
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD7
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod7)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod7)(uint64_t, RustBuffer, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD8
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD8
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod8)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod8)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD9
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD9
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod9)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod9)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD10
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD10
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod10)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod10)(uint64_t, RustBuffer, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD11
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD11
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod11)(uint64_t, uint32_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod11)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD12
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD12
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod12)(uint64_t, uint32_t, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod12)(uint64_t, uint32_t, RustBuffer, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD13
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD13
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod13)(uint64_t, RustBuffer, UniffiForeignFutureCompleteI8 _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod13)(uint64_t, uint32_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD14
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD14
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod14)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod14)(uint64_t, RustBuffer, UniffiForeignFutureCompleteI8 _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD15
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD15
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod15)(uint64_t, RustBuffer* _Nonnull, 
-        RustCallStatus *_Nonnull uniffiCallStatus
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod15)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD16
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD16
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod16)(uint64_t, RustBuffer, UniffiForeignFutureCompleteI8 _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod16)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD17
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD17
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod17)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
-        RustCallStatus *_Nonnull uniffiCallStatus
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod17)(uint64_t, RustBuffer, UniffiForeignFutureCompleteI8 _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD18
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD18
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod18)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod18)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD19
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD19
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod19)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod19)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD20
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD20
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod20)(uint64_t, RustBuffer, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -388,19 +395,20 @@ typedef struct UniffiVTableCallbackInterfaceHostCallbacks {
     UniffiCallbackInterfaceHostCallbacksMethod4 _Nonnull devicePermission;
     UniffiCallbackInterfaceHostCallbacksMethod5 _Nonnull remotePermission;
     UniffiCallbackInterfaceHostCallbacksMethod6 _Nonnull authStateChanged;
-    UniffiCallbackInterfaceHostCallbacksMethod7 _Nonnull coreStorageRead;
-    UniffiCallbackInterfaceHostCallbacksMethod8 _Nonnull coreStorageWrite;
-    UniffiCallbackInterfaceHostCallbacksMethod9 _Nonnull coreStorageClear;
-    UniffiCallbackInterfaceHostCallbacksMethod10 _Nonnull chainConnect;
-    UniffiCallbackInterfaceHostCallbacksMethod11 _Nonnull chainSend;
-    UniffiCallbackInterfaceHostCallbacksMethod12 _Nonnull chainClose;
-    UniffiCallbackInterfaceHostCallbacksMethod13 _Nonnull confirmUserAction;
-    UniffiCallbackInterfaceHostCallbacksMethod14 _Nonnull lookupPreimage;
-    UniffiCallbackInterfaceHostCallbacksMethod15 _Nonnull currentTheme;
-    UniffiCallbackInterfaceHostCallbacksMethod16 _Nonnull featureSupported;
-    UniffiCallbackInterfaceHostCallbacksMethod17 _Nonnull localStorageRead;
-    UniffiCallbackInterfaceHostCallbacksMethod18 _Nonnull localStorageWrite;
-    UniffiCallbackInterfaceHostCallbacksMethod19 _Nonnull localStorageClear;
+    UniffiCallbackInterfaceHostCallbacksMethod7 _Nonnull pairingPeerDisconnected;
+    UniffiCallbackInterfaceHostCallbacksMethod8 _Nonnull coreStorageRead;
+    UniffiCallbackInterfaceHostCallbacksMethod9 _Nonnull coreStorageWrite;
+    UniffiCallbackInterfaceHostCallbacksMethod10 _Nonnull coreStorageClear;
+    UniffiCallbackInterfaceHostCallbacksMethod11 _Nonnull chainConnect;
+    UniffiCallbackInterfaceHostCallbacksMethod12 _Nonnull chainSend;
+    UniffiCallbackInterfaceHostCallbacksMethod13 _Nonnull chainClose;
+    UniffiCallbackInterfaceHostCallbacksMethod14 _Nonnull confirmUserAction;
+    UniffiCallbackInterfaceHostCallbacksMethod15 _Nonnull lookupPreimage;
+    UniffiCallbackInterfaceHostCallbacksMethod16 _Nonnull currentTheme;
+    UniffiCallbackInterfaceHostCallbacksMethod17 _Nonnull featureSupported;
+    UniffiCallbackInterfaceHostCallbacksMethod18 _Nonnull localStorageRead;
+    UniffiCallbackInterfaceHostCallbacksMethod19 _Nonnull localStorageWrite;
+    UniffiCallbackInterfaceHostCallbacksMethod20 _Nonnull localStorageClear;
 } UniffiVTableCallbackInterfaceHostCallbacks;
 
 #endif
@@ -452,6 +460,11 @@ uint64_t uniffi_truapi_server_fn_method_hostcallbacks_remote_permission(uint64_t
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_HOSTCALLBACKS_AUTH_STATE_CHANGED
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_HOSTCALLBACKS_AUTH_STATE_CHANGED
 void uniffi_truapi_server_fn_method_hostcallbacks_auth_state_changed(uint64_t ptr, RustBuffer state, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_HOSTCALLBACKS_PAIRING_PEER_DISCONNECTED
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_HOSTCALLBACKS_PAIRING_PEER_DISCONNECTED
+void uniffi_truapi_server_fn_method_hostcallbacks_pairing_peer_disconnected(uint64_t ptr, RustBuffer peer, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_HOSTCALLBACKS_CORE_STORAGE_READ
@@ -549,6 +562,11 @@ void uniffi_truapi_server_fn_method_nativetruapicore_cancel_login(uint64_t ptr, 
 void uniffi_truapi_server_fn_method_nativetruapicore_disconnect(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_DISCONNECT_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_DISCONNECT_PAIRING
+void uniffi_truapi_server_fn_method_nativetruapicore_disconnect_pairing(uint64_t ptr, RustBuffer peer, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_NOTIFY_CHAIN_CLOSED
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_NOTIFY_CHAIN_CLOSED
 void uniffi_truapi_server_fn_method_nativetruapicore_notify_chain_closed(uint64_t ptr, uint32_t connection_id, RustCallStatus *_Nonnull out_status
@@ -579,6 +597,16 @@ void uniffi_truapi_server_fn_method_nativetruapicore_notify_theme_changed(uint64
 RustBuffer uniffi_truapi_server_fn_method_nativetruapicore_permission_authorization_status(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_RESPOND_TO_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_RESPOND_TO_PAIRING
+RustBuffer uniffi_truapi_server_fn_method_nativetruapicore_respond_to_pairing(uint64_t ptr, RustBuffer deeplink, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_RESUME_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_RESUME_PAIRING
+void uniffi_truapi_server_fn_method_nativetruapicore_resume_pairing(uint64_t ptr, RustBuffer peer, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_SET_PERMISSION_AUTHORIZATION_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_SET_PERMISSION_AUTHORIZATION_STATUS
 void uniffi_truapi_server_fn_method_nativetruapicore_set_permission_authorization_status(uint64_t ptr, RustBuffer request, RustBuffer status, RustCallStatus *_Nonnull out_status
@@ -592,6 +620,16 @@ RustBuffer uniffi_truapi_server_fn_method_nativetruapicore_start_ws_bridge(uint6
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_STOP_WS_BRIDGE
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_STOP_WS_BRIDGE
 void uniffi_truapi_server_fn_method_nativetruapicore_stop_ws_bridge(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_SUSPEND_ALL_PAIRINGS
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_SUSPEND_ALL_PAIRINGS
+void uniffi_truapi_server_fn_method_nativetruapicore_suspend_all_pairings(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_SUSPEND_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_SUSPEND_PAIRING
+void uniffi_truapi_server_fn_method_nativetruapicore_suspend_pairing(uint64_t ptr, RustBuffer peer, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_FUNC_PARSE_NAVIGATE
@@ -918,6 +956,12 @@ uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_auth_state_changed(v
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_PAIRING_PEER_DISCONNECTED
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_PAIRING_PEER_DISCONNECTED
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_pairing_peer_disconnected(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CORE_STORAGE_READ
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CORE_STORAGE_READ
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_core_storage_read(void
@@ -1014,6 +1058,12 @@ uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_disconnect(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_DISCONNECT_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_DISCONNECT_PAIRING
+uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_disconnect_pairing(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_NOTIFY_CHAIN_CLOSED
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_NOTIFY_CHAIN_CLOSED
 uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_notify_chain_closed(void
@@ -1050,6 +1100,18 @@ uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_permission_author
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_RESPOND_TO_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_RESPOND_TO_PAIRING
+uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_respond_to_pairing(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_RESUME_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_RESUME_PAIRING
+uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_resume_pairing(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_SET_PERMISSION_AUTHORIZATION_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_SET_PERMISSION_AUTHORIZATION_STATUS
 uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_set_permission_authorization_status(void
@@ -1065,6 +1127,18 @@ uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_start_ws_bridge(v
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_STOP_WS_BRIDGE
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_STOP_WS_BRIDGE
 uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_stop_ws_bridge(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_SUSPEND_ALL_PAIRINGS
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_SUSPEND_ALL_PAIRINGS
+uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_suspend_all_pairings(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_SUSPEND_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_SUSPEND_PAIRING
+uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_suspend_pairing(void
     
 );
 #endif

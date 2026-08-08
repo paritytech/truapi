@@ -26,6 +26,10 @@ use truapi::{CancellationReason, CancellationToken};
 /// Host-spec B.3.3 recommends seven-day statement expiry for session traffic:
 /// <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/B-inter-host.md?plain=1#L143-L145>
 const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
+/// Last process-local SSO statement priority. Statement Store requires a
+/// replacement on one channel to have a strictly greater `Expiry`, so two
+/// requests produced in the same second must not reuse the same value.
+static LAST_SSO_STATEMENT_EXPIRY: Mutex<u64> = Mutex::new(0);
 /// Disconnect reason reported when the local session logs out mid-request.
 pub(super) const SSO_LOCAL_DISCONNECT_REASON: &str = "SSO session disconnected";
 /// Disconnect reason reported when the paired signing host announces a disconnect.
@@ -424,7 +428,17 @@ pub(super) fn sso_message_id() -> String {
 /// high 32 bits, seven days from now.
 pub(super) fn fresh_statement_expiry() -> u64 {
     let timestamp = current_unix_secs().saturating_add(DEFAULT_SSO_STATEMENT_EXPIRY_SECS);
-    timestamp << 32
+    let mut last = LAST_SSO_STATEMENT_EXPIRY
+        .lock()
+        .expect("SSO statement expiry mutex poisoned");
+    next_statement_expiry(timestamp, &mut last)
+}
+
+fn next_statement_expiry(expiry_unix_secs: u64, last: &mut u64) -> u64 {
+    let timestamp_priority = expiry_unix_secs << 32;
+    let expiry = timestamp_priority.max(last.saturating_add(1));
+    *last = expiry;
+    expiry
 }
 
 #[cfg(test)]
@@ -446,6 +460,16 @@ mod tests {
         assert_ne!(first, second);
         assert!(first.bytes().all(is_nanoid_safe_byte));
         assert!(second.bytes().all(is_nanoid_safe_byte));
+    }
+
+    #[test]
+    fn statement_expiry_is_strictly_monotonic_within_one_second() {
+        let mut last = 0;
+        let first = next_statement_expiry(123, &mut last);
+        let second = next_statement_expiry(123, &mut last);
+
+        assert_eq!(first, 123 << 32);
+        assert_eq!(second, first + 1);
     }
 
     fn is_nanoid_safe_byte(value: u8) -> bool {
