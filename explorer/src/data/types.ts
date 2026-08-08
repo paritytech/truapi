@@ -5,6 +5,8 @@ export type MethodKind = "unary" | "subscription";
 export interface MethodInfo {
   name: string;
   type: MethodKind;
+  /** Whether the host initiates this subscription into the product. */
+  hostInitiated?: boolean;
   signature?: string;
   docUrl?: string;
   description?: string;

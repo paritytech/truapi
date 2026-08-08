@@ -105,7 +105,10 @@ export default function OverviewPage() {
                         />
                       )}
                     </div>
-                    <PatternBadge kind={method.type} />
+                    <PatternBadge
+                      kind={method.type}
+                      hostInitiated={method.hostInitiated}
+                    />
                   </Link>
                 ))}
               </div>

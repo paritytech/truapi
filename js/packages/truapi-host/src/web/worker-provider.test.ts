@@ -105,7 +105,11 @@ function runtimeConfig(
 function hostConfigFromRuntimeConfig(
   config: ProductRuntimeConfig,
 ): CreateWebWorkerPairingHostRuntimeOptions["hostConfig"] {
-  const { productId: _productId, ...hostConfig } = config;
+  const {
+    productId: _productId,
+    executionKind: _executionKind,
+    ...hostConfig
+  } = config;
   return hostConfig;
 }
 
@@ -147,7 +151,11 @@ async function createProviderFromRuntime(
     ...runtimeOptions,
     hostConfig: hostConfigFromRuntimeConfig(cfg),
   });
-  const provider = await runtime.createProvider({ productId: cfg.productId });
+  const provider = await runtime.createProvider(
+    cfg.executionKind === undefined
+      ? { productId: cfg.productId }
+      : { productId: cfg.productId, executionKind: cfg.executionKind },
+  );
   return {
     ...provider,
     dispose(): void {
@@ -272,6 +280,29 @@ describe("createWebWorkerPairingHostRuntime", () => {
 
     runtime.dispose();
     expect(worker.messages.at(-1)).toEqual({ kind: "dispose" });
+  });
+
+  it("binds a host-selected execution kind to the product core", async () => {
+    const worker = new FakeWorker();
+    const config = runtimeConfig({ executionKind: "Chat" });
+    const providerPromise = createProviderFromRuntime(
+      asWorker(worker),
+      makeHostCallbacks(),
+      { runtimeConfig: config },
+    );
+
+    worker.emit({ kind: "loaded" });
+    worker.emit({ kind: "ready" });
+    await settle();
+
+    const createCore = lastMessageOfKind(worker, "createCore");
+    expect(createCore).toEqual({
+      kind: "createCore",
+      coreId: 1,
+      product: { productId: "dotli.dot", executionKind: "Chat" },
+    });
+    worker.emit({ kind: "coreReady", coreId: 1 });
+    (await providerPromise).dispose();
   });
 
   it("dev global setLogLevel updates every live worker provider", async () => {

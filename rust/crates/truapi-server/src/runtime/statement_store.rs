@@ -462,7 +462,8 @@ mod tests {
         futures::executor::block_on(signing_host.activate_local_session(ENTROPY.to_vec()))
             .expect("activation succeeds");
         let host = ProductRuntimeHost::from_services(
-            services,
+            services.clone(),
+            crate::host_core::ConnectionAdapters::from_services(&services),
             signing_host.clone(),
             ProductContext::new(product_id.to_string()).expect("valid product id"),
         );

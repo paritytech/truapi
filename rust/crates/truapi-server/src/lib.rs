@@ -1,3 +1,8 @@
+#![allow(
+    clippy::double_must_use,
+    reason = "async-trait generates must_use futures for async trait methods"
+)]
+
 //! TrUAPI server runtime: dispatcher, frames, SCALE encoding, stream management.
 //!
 //! Hosts instantiate a role runtime around a [`truapi_platform::Platform`]
@@ -35,12 +40,15 @@ pub mod ws_bridge;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod native_renderer;
+
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
 pub use host_core::{
-    FrameSink, HostAdmin, PairingHostRuntime, ProductRuntime, ProductRuntimeError,
-    SigningHostRuntime,
+    FrameSink, HostAdmin, PairingHostRuntime, ProductRuntime, ProductRuntimeControl,
+    ProductRuntimeError, SigningHostRuntime,
 };
 pub use host_logic::session::{
     ExternalPairedSession, SsoSessionInfo, decode_persisted_session, encode_external_paired_session,
@@ -59,6 +67,9 @@ pub use ws_bridge::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::*;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use native_renderer::*;
 
 #[cfg(target_arch = "wasm32")]
 pub use wasm::*;

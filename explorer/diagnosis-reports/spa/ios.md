@@ -1,4 +1,4 @@
-## Truapi Desktop Diagnosis
+## Truapi iOS Diagnosis
 
 | Method | Status | Details |
 | --- | --- | --- |
@@ -22,22 +22,16 @@
 | `Chain/get_spec_properties` | ✅ |  |
 | `Chain/broadcast_transaction` | ✅ |  |
 | `Chain/stop_transaction` | ✅ |  |
-| `Chat/create_room` | ❌ | createRoom failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
-| `Chat/register_bot` | ❌ | registerBot failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
-| `Chat/list_subscribe` | ❌ | no elements in sequence |
-| `Chat/post_message` | ❌ | postMessage failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
-| `Chat/action_subscribe` | ❌ | no elements in sequence |
-| `Chat/custom_message_render_subscribe` | ❌ | timed out after 10s |
 | `Entropy/derive` | ✅ |  |
 | `Local Storage/read` | ✅ |  |
 | `Local Storage/write` | ✅ |  |
 | `Local Storage/clear` | ✅ |  |
 | `Notifications/send_push_notification` | ✅ |  |
 | `Notifications/cancel_push_notification` | ✅ |  |
-| `Payment/balance_subscribe` | ❌ | Subscription interrupted |
-| `Payment/top_up` | ❌ | topUp failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
-| `Payment/request` | ❌ | topUp failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
-| `Payment/status_subscribe` | ❌ | topUp failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
+| `Payment/balance_subscribe` | ✅ |  |
+| `Payment/top_up` | ✅ |  |
+| `Payment/request` | ✅ |  |
+| `Payment/status_subscribe` | ✅ |  |
 | `Permissions/request_device_permission` | ✅ |  |
 | `Permissions/request_remote_permission` | ✅ |  |
 | `Preimage/lookup_subscribe` | ✅ |  |
@@ -45,11 +39,11 @@
 | `Resource Allocation/request` | ✅ |  |
 | `Signing/create_transaction` | ✅ |  |
 | `Signing/create_transaction_with_legacy_account` | ❌ | createTransactionWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
-| `Signing/sign_raw_with_legacy_account` | ❌ | signRawWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Account can't be derived from product account id" } } } |
-| `Signing/sign_payload_with_legacy_account` | ❌ | signPayloadWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Account can't be derived from product account id" } } } |
+| `Signing/sign_raw_with_legacy_account` | ❌ | signRawWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
+| `Signing/sign_payload_with_legacy_account` | ❌ | signPayloadWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
 | `Signing/sign_raw` | ✅ |  |
 | `Signing/sign_payload` | ✅ |  |
-| `Statement Store/subscribe` | ✅ |  |
+| `Statement Store/subscribe` | ❌ | submitting proof: { "tag": "Sr25519", "value": { "signature": "0xfa44b13cbdcab2848cc94f72e272243be38813c027b95117c2ca02f9f4509d45fd5b5c663415f38a861e881ca854f7caa9c8c4a3fcab9a8d4529db01dc40158b", "signer": "0xb2d8f06be3aee758a87b0e2b429df44842463a2a37994d297abcd8a59b18e231" } } proof submitted: timed out after 10s |
 | `Statement Store/create_proof` | ✅ |  |
 | `Statement Store/submit` | ✅ |  |
 | `Statement Store/create_proof_authorized` | ✅ |  |

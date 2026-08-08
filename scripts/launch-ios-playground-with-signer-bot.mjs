@@ -5,6 +5,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { DEFAULT_BUNDLE, defaultAppPath, run } from "./lib/ios-simulator.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 loadDotEnv(resolve(repoRoot, ".env"));
@@ -13,14 +14,8 @@ const device =
   process.env.TRUAPI_IOS_E2E_DEVICE ??
   process.env.IOS_SIMULATOR_DEVICE ??
   "E606A6AE-0432-405F-A772-2A09515C896D";
-const bundle =
-  process.env.TRUAPI_IOS_E2E_BUNDLE ?? "io.pcf.polkadotapp.develop";
-const app =
-  process.env.TRUAPI_IOS_E2E_APP ??
-  resolve(
-    repoRoot,
-    "hosts/ios/build/DerivedData/Build/Products/Debug-iphonesimulator/polkadot-app.app",
-  );
+const bundle = process.env.TRUAPI_IOS_E2E_BUNDLE ?? DEFAULT_BUNDLE;
+const app = process.env.TRUAPI_IOS_E2E_APP ?? defaultAppPath(repoRoot);
 const productUrl =
   process.env.TRUAPI_IOS_E2E_PRODUCT_URL ?? "http://localhost:3000";
 const botBase = (
@@ -189,11 +184,4 @@ function parseDotEnvValue(value) {
 function nonEmpty(value) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
-}
-
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: "inherit", ...options });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with ${result.status}`);
-  }
 }

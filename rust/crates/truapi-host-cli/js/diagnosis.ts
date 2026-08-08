@@ -8,6 +8,7 @@ import {
   type LogEntry,
 } from "../../../../playground/src/lib/example-runner.ts";
 import { services } from "../../../../js/packages/truapi/src/playground/codegen/services.ts";
+import { servicesForExecution } from "../../../../js/packages/truapi/src/playground/services-types.ts";
 import type { TrUApiClient } from "../../../../js/packages/truapi/src/index.ts";
 
 // Starts from the playground diagnosis policy. The headless transport handles
@@ -17,7 +18,8 @@ import type { TrUApiClient } from "../../../../js/packages/truapi/src/index.ts";
 const UNARY_TIMEOUT_MS = 10_000;
 const REMOTE_RESPONSE_TIMEOUT_MS = 190_000;
 const LIVE_ALLOCATION_TIMEOUT_MS = 420_000;
-const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);
+const SPA_SERVICES = servicesForExecution(services, "Spa");
+const SKIPPED_SERVICES = new Set(["Coin Payment", "Payment"]);
 const LONG_TIMEOUT_METHODS = new Set([
   "Account/get_account",
   "Account/get_account_alias",
@@ -71,7 +73,7 @@ export interface DiagnosisOptions {
 export function createDiagnosisPlan(
   options: Pick<DiagnosisOptions, "runKnownUnsupported"> = {},
 ): DiagnosisCase[] {
-  return services.flatMap((service) =>
+  return SPA_SERVICES.flatMap((service) =>
     service.methods.map((method) => {
       const id = `${service.name}/${method.name}`;
       return {

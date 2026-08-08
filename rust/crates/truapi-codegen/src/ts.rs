@@ -936,12 +936,12 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
         import * as S from '../scale.js';
         import type {{ HexString }} from '../scale.js';
         import {{ SubscriptionError }} from '../transport.js';
-        import type {{ ObservableLike, Observer, Subscription, SubscriptionFrameIds, TrUApiTransport }} from '../transport.js';
+        import type {{ HostInitiatedSubscriptionRegistration, ObservableLike, ObservableSource, Observer, Subscription, SubscriptionFrameIds, TrUApiTransport }} from '../transport.js';
         import * as T from './types.js';
         import * as W from './wire-table.js';
 
         export {{ ResultAsync, SubscriptionError }};
-        export type {{ ObservableLike, Observer, Result, Subscription, TrUApiTransport }};
+        export type {{ ObservableLike, ObservableSource, Observer, Result, Subscription, TrUApiTransport }};
         export const TRUAPI_VERSION = {target_version} as const;
         export const TRUAPI_CODEC_VERSION = {codec_version} as const;
 
@@ -950,6 +950,13 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
           const cause = error instanceof Error ? error : new Error(String(error));
           return new SubscriptionError(cause.message, {{ cause }});
         }}
+
+        // `_interrupt` payload sent when a host-initiated request arrives with no
+        // registered handler: SCALE `Result::Err` discriminant, declining the start.
+        const HOST_INITIATED_DECLINE_PAYLOAD = new Uint8Array([0]);
+        // Items buffered per host-initiated stream while the product's handler
+        // observable has no subscriber yet.
+        const HOST_INITIATED_BUFFER_CAPACITY = 64;
 
         "#
     )
@@ -967,17 +974,36 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
             continue;
         }
 
-        write_jsdoc(&mut out, "", trait_def.docs.as_deref());
-        writedoc!(
+        let public_docs = trait_def.public_docs();
+        write_jsdoc(&mut out, "", public_docs.as_deref());
+        writeln!(out, "export class {}Client {{", trait_def.name).unwrap();
+        for method in methods
+            .iter()
+            .copied()
+            .filter(|method| method.wire.host_initiated)
+        {
+            emit_host_initiated_field(&mut out, method, &wrappers, &ctx, target_version)?;
+        }
+        writeln!(
             out,
-            "
-            export class {name}Client {{
-              constructor(private readonly transport: TrUApiTransport) {{}}
-
-            ",
-            name = trait_def.name
+            "  constructor(private readonly transport: TrUApiTransport) {{"
         )
         .unwrap();
+        for method in methods
+            .iter()
+            .copied()
+            .filter(|method| method.wire.host_initiated)
+        {
+            emit_host_initiated_registration(
+                &mut out,
+                trait_def,
+                method,
+                &wrappers,
+                &ctx,
+                target_version,
+            )?;
+        }
+        writeln!(out, "  }}\n").unwrap();
 
         for method in methods {
             emit_method(&mut out, trait_def, method, &wrappers, &ctx, target_version)?;
@@ -1067,22 +1093,32 @@ fn write_observable_helper(out: &mut String) {
           payload,
           decodeItem,
           decodeInterrupt,
+          onSubscribe,
         }}: {{
           transport: TrUApiTransport;
           ids: SubscriptionFrameIds;
           payload: Uint8Array;
           decodeItem: (payload: Uint8Array) => Item;
           decodeInterrupt?: (payload: Uint8Array) => Reason;
+          onSubscribe?: (subscription: Subscription) => {{ unsubscribe(): void }};
         }}): ObservableLike<Item, Reason> {{
           const observable: ObservableLike<Item, Reason> = {{
             subscribe(observer: Partial<Observer<Item, Reason>> = {{}}): Subscription {{
               let closed = false;
               let raw: Subscription | undefined;
+              let forwarding: {{ unsubscribe(): void }} | undefined;
+
+              const stopForwarding = () => {{
+                const active = forwarding;
+                forwarding = undefined;
+                active?.unsubscribe();
+              }};
 
               const fail = (error: unknown, stop = true) => {{
                 if (closed) return;
                 closed = true;
                 try {{
+                  stopForwarding();
                   if (stop) raw?.unsubscribe();
                 }} finally {{
                   observer.error?.(toSubscriptionError<Reason>(error));
@@ -1114,10 +1150,21 @@ fn write_observable_helper(out: &mut String) {
                     return;
                   }}
                   closed = true;
+                  stopForwarding();
                   observer.complete?.();
                 }},
                 onClose: fail,
               }});
+
+              if (!closed && onSubscribe) {{
+                try {{
+                  forwarding = onSubscribe(raw);
+                }} catch (error) {{
+                  raw.unsubscribe();
+                  throw error;
+                }}
+                if (closed) stopForwarding();
+              }}
 
               return {{
                 get subscriptionId() {{
@@ -1126,6 +1173,7 @@ fn write_observable_helper(out: &mut String) {
                 unsubscribe: () => {{
                   if (closed) return;
                   closed = true;
+                  stopForwarding();
                   raw?.unsubscribe();
                 }},
               }};
@@ -1417,6 +1465,10 @@ fn emit_method(
     let payload = emit_payload(&method.params, wrappers, ctx, wire_version)?;
     write_jsdoc(out, "  ", method.docs.as_deref());
 
+    if method.wire.host_initiated {
+        return emit_host_initiated_method(out, method, &payload, wrappers, ctx, wire_version);
+    }
+
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
             let is_handshake = trait_def.name == "System" && method.name == "handshake";
@@ -1515,6 +1567,112 @@ fn emit_method(
         }
     }
 
+    Ok(())
+}
+
+fn host_registration_field(method: &MethodDef) -> String {
+    format!("{}Registration", to_camel_case(&strip_prefix(&method.name)))
+}
+
+fn emit_host_initiated_types(
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    target_version: u32,
+) -> Result<(PayloadEmission, ResponseEmission, u32)> {
+    let wire_version = method_wire_version(method, wrappers, target_version)?.ok_or_else(|| {
+        anyhow::anyhow!("host-initiated method `{}` is not versioned", method.name)
+    })?;
+    let payload = emit_payload(&method.params, wrappers, ctx, Some(wire_version))?;
+    let ReturnType::Subscription(item) = &method.return_type else {
+        bail!(
+            "host-initiated method `{}` must return Subscription<T>",
+            method.name
+        );
+    };
+    let response = emit_response(item, wrappers, ctx, Some(wire_version))?;
+    Ok((payload, response, wire_version))
+}
+
+fn emit_host_initiated_field(
+    out: &mut String,
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    target_version: u32,
+) -> Result<()> {
+    let (payload, response, _) = emit_host_initiated_types(method, wrappers, ctx, target_version)?;
+    writeln!(
+        out,
+        "  private readonly {}: HostInitiatedSubscriptionRegistration<{}, {}>;",
+        host_registration_field(method),
+        payload.inner_type_ts,
+        response.inner_type_ts
+    )
+    .unwrap();
+    Ok(())
+}
+
+fn emit_host_initiated_registration(
+    out: &mut String,
+    trait_def: &TraitDef,
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    target_version: u32,
+) -> Result<()> {
+    let (payload, response, version) =
+        emit_host_initiated_types(method, wrappers, ctx, target_version)?;
+    let wire_const = wire_const_name(&trait_def.name, &method.name);
+    writedoc!(
+        out,
+        "
+            this.{field} = transport.registerHostInitiatedSubscription({{
+              ids: W.{wire_const},
+              decodeRequest: (payload) => {request_codec}.dec(payload).value,
+              encodeItem: (item) => {item_codec}.enc({{ tag: \"V{version}\", value: item }}),
+              interruptPayload: HOST_INITIATED_DECLINE_PAYLOAD,
+              bufferCapacity: HOST_INITIATED_BUFFER_CAPACITY,
+            }});
+        ",
+        field = host_registration_field(method),
+        request_codec = payload.wire_codec_expr,
+        item_codec = response.wire_codec_expr,
+    )
+    .unwrap();
+    Ok(())
+}
+
+fn emit_host_initiated_method(
+    out: &mut String,
+    method: &MethodDef,
+    payload: &PayloadEmission,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    wire_version: Option<u32>,
+) -> Result<()> {
+    let ReturnType::Subscription(item) = &method.return_type else {
+        bail!(
+            "host-initiated method `{}` must return Subscription<T>",
+            method.name
+        );
+    };
+    let response = emit_response(item, wrappers, ctx, wire_version)?;
+    let name = format!("on{}", strip_prefix(&method.name).to_case(Case::Pascal));
+    writedoc!(
+        out,
+        "
+          {name}(
+            handler: (request: {request}) => ObservableSource<{item}>,
+          ): {{ unsubscribe(): void }} {{
+            return this.{field}.setHandler(handler);
+          }}
+        ",
+        request = payload.inner_type_ts,
+        item = response.inner_type_ts,
+        field = host_registration_field(method),
+    )
+    .unwrap();
     Ok(())
 }
 

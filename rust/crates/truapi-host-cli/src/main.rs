@@ -1347,18 +1347,28 @@ async fn register_pairing_allowances(
         .await
         .map_err(anyhow::Error::msg)?;
 
-    // The signing account may be in an old ring, so scan back to genesis.
-    let current = alloc::ring::read_current_ring_index(&rpc)
-        .await
-        .map_err(anyhow::Error::msg)?;
-    let ring = alloc::find_including_ring(&rpc, &metadata, bandersnatch, current)
-        .await
-        .map_err(anyhow::Error::msg)?
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "signing account is not a LitePeople ring member; cannot grant allowance"
-            )
-        })?;
+    // Account provisioning waits for ring membership on a separate RPC
+    // connection. A load-balanced endpoint can briefly route this fresh
+    // connection to a node that has not observed the same ring yet.
+    let mut ring = None;
+    for attempt in 1..=10 {
+        // The signing account may be in an old ring, so scan back to genesis.
+        let current = alloc::ring::read_current_ring_index(&rpc)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        ring = alloc::find_including_ring(&rpc, &metadata, bandersnatch, current)
+            .await
+            .map_err(anyhow::Error::msg)?;
+        if ring.is_some() {
+            break;
+        }
+        if attempt < 10 {
+            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        }
+    }
+    let ring = ring.ok_or_else(|| {
+        anyhow::anyhow!("signing account is not a LitePeople ring member; cannot grant allowance")
+    })?;
     terminal_ui::output_event(SystemEvent::RingInfo {
         ring_index: ring.ring_index,
         members: ring.members.len(),

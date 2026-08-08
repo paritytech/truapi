@@ -7,15 +7,16 @@
 // ios/truapi-host/scripts/rebuild.sh); the xcframework is gitignored and
 // distributed as a GitHub release asset (ios/truapi-host/scripts/publish.sh).
 
+import Foundation
 import PackageDescription
 
-// Flip to true to build against the locally generated
-// ios/truapi-host/Binaries/truapi_server.xcframework (run rebuild.sh first);
-// false consumes the published release asset below (updated by publish.sh).
-let useLocalBinary = false
+// Set TRUAPI_USE_LOCAL_BINARY=1 to build against the locally generated
+// ios/truapi-host/Binaries/truapi_server.xcframework (run rebuild.sh first).
+// The published release asset remains the default for remote consumers.
+let useLocalBinary = ProcessInfo.processInfo.environment["TRUAPI_USE_LOCAL_BINARY"] == "1"
 
-let publishedBinaryURL = "https://github.com/paritytech/truapi/releases/download/%40parity%2Fios-host%400.4.0/truapi_server.xcframework.zip"
-let publishedBinaryChecksum = "a3029c071ef37e876ae51e45c177eab09cb976f9dbd729b93a2191d6ca8331be"
+let publishedBinaryURL = "https://github.com/paritytech/truapi/releases/download/%40parity%2Fios-host%400.4.0-chat-modality-shared-core.4/truapi_server.xcframework.zip"
+let publishedBinaryChecksum = "b4d7e633e8a86bdaf104a1bcafc883549fc893514451fe7caeb951107e5038f7"
 
 let binaryTarget: Target = useLocalBinary
     ? .binaryTarget(

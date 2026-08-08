@@ -70,8 +70,21 @@ pub struct TraitDef {
     pub module_path: Vec<String>,
     /// Methods declared on the trait, in declaration order.
     pub methods: Vec<MethodDef>,
-    /// Rustdoc comment on the trait, with hidden codegen markers stripped.
+    /// Rustdoc comment on the trait. Service markers are retained for codegen.
     pub docs: Option<String>,
+}
+
+impl TraitDef {
+    /// Required trusted execution kind declared by `#[truapi::service]`.
+    pub fn required_execution(&self) -> Option<&str> {
+        let docs = self.docs.as_deref()?;
+        extract_marker_value(docs, "@service_required_execution=")
+    }
+
+    /// User-facing trait documentation with codegen markers removed.
+    pub fn public_docs(&self) -> Option<String> {
+        clean_docs(self.docs.as_deref())
+    }
 }
 
 /// Trait method extracted from rustdoc, including its wire ids.
@@ -94,6 +107,8 @@ pub struct MethodDef {
 /// Raw wire ids extracted from `#[wire(...)]`.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct WireAttrs {
+    /// This subscription is started by the host and served by the product.
+    pub host_initiated: bool,
     /// Request frame discriminant.
     pub request_id: Option<u8>,
     /// Response frame discriminant.
@@ -630,7 +645,7 @@ fn extract_trait(
         name,
         module_path,
         methods,
-        docs: clean_docs(item.docs.as_deref()),
+        docs: item.docs.clone(),
     })
 }
 
@@ -650,8 +665,17 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
     let raw_output = sig
         .get("output")
         .with_context(|| format!("Method `{name}` missing rustdoc return type"))?;
-    let output = unwrap_future_output(raw_output)
-        .with_context(|| format!("Method `{name}` has an invalid Future return type"))?;
+    let wire = item
+        .docs
+        .as_deref()
+        .map(extract_wire_attrs)
+        .unwrap_or_default();
+    let output = if wire.host_initiated {
+        raw_output
+    } else {
+        unwrap_future_output(raw_output)
+            .with_context(|| format!("Method `{name}` has an invalid Future return type"))?
+    };
 
     let (kind, return_type) = if is_result_subscription_return(output) {
         (
@@ -739,11 +763,9 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
         );
     }
 
-    let wire = item
-        .docs
-        .as_deref()
-        .map(extract_wire_attrs)
-        .unwrap_or_default();
+    if wire.host_initiated && !matches!(kind, MethodKind::Subscription) {
+        bail!("Host-initiated method `{name}` must return Subscription<T>");
+    }
 
     Ok(Some(MethodDef {
         name,
@@ -775,7 +797,16 @@ pub fn clean_docs(docs: Option<&str>) -> Option<String> {
 
 fn is_codegen_doc_marker(line: &str) -> bool {
     let line = line.trim_start();
-    line.starts_with("@wire_")
+    line.starts_with("@wire_") || line.starts_with("@service_")
+}
+
+fn extract_marker_value<'a>(docs: &'a str, marker: &str) -> Option<&'a str> {
+    docs.lines().find_map(|line| {
+        line.trim_start()
+            .strip_prefix(marker)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    })
 }
 
 /// Extracts `@wire_<name>_id=N` markers from a doc comment block. Annotated
@@ -785,6 +816,9 @@ fn extract_wire_attrs(docs: &str) -> WireAttrs {
     let mut attrs = WireAttrs::default();
     for line in docs.lines() {
         let line = line.trim_start();
+        if line.starts_with("@wire_host_initiated") {
+            attrs.host_initiated = true;
+        }
         for (needle, target) in [
             ("@wire_request_id=", &mut attrs.request_id),
             ("@wire_response_id=", &mut attrs.response_id),
@@ -1450,9 +1484,22 @@ mod tests {
 
     #[test]
     fn clean_docs_strips_wire_markers() {
-        let docs = "Trait summary.\n\n@wire_request_id=7\n";
+        let docs = "Trait summary.\n\n@wire_request_id=7\n@service_required_execution=Chat\n";
 
         assert_eq!(clean_docs(Some(docs)).as_deref(), Some("Trait summary."));
+    }
+
+    #[test]
+    fn trait_exposes_required_execution_without_leaking_marker() {
+        let trait_def = TraitDef {
+            name: "Chat".into(),
+            module_path: Vec::new(),
+            methods: Vec::new(),
+            docs: Some("Chat operations.\n\n@service_required_execution=Chat".into()),
+        };
+
+        assert_eq!(trait_def.required_execution(), Some("Chat"));
+        assert_eq!(trait_def.public_docs().as_deref(), Some("Chat operations."));
     }
 
     #[test]

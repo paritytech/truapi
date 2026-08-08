@@ -75,6 +75,7 @@ impl TrUApiCore {
     ) -> Self {
         let runtime = Arc::new(ProductRuntimeHost::from_services(
             services.clone(),
+            crate::host_core::ConnectionAdapters::from_services(&services),
             authority.clone(),
             product,
         ));
@@ -88,7 +89,8 @@ impl TrUApiCore {
         spawner: Spawner,
         session_state: Arc<SessionState>,
     ) -> Self {
-        let mut dispatcher = Dispatcher::new(spawner);
+        let execution_kind = runtime.execution_kind();
+        let mut dispatcher = Dispatcher::for_execution(spawner, execution_kind);
         dispatcher::register(&mut dispatcher, runtime);
         Self {
             dispatcher,

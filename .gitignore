@@ -10,6 +10,7 @@ lerna-debug.log*
 # Build artifacts
 node_modules
 target
+/artifacts/
 
 # SwiftPM (root Package.swift for ios/truapi-host)
 /.build/

@@ -4,15 +4,15 @@ Docs-only browser for the TrUAPI service surface. All trait and type data is sou
 
 ## Host compatibility matrix
 
-The **Compatibility** page (`/v/<version>/compatibility`) renders a host × method matrix aggregated from the playground's per-host Diagnosis reports. The committed per-host reports under [`diagnosis-reports/`](diagnosis-reports/) are the source of truth; [`src/data/compatibility.ts`](src/data/compatibility.ts) is a generated artifact (git-ignored) that [`scripts/aggregate-diagnosis-matrix.mjs`](scripts/aggregate-diagnosis-matrix.mjs) rebuilds from those reports at `dev` / `build` / `lint` time (via the `predev` / `prebuild` / `prelint` scripts). It is the **only** runtime-derived data in the explorer; everything else flows from Rust via codegen.
+The **Compatibility** page (`/v/<version>/compatibility`) renders separate SPA and Chat host × method matrices aggregated from the playground's per-host Diagnosis reports. The committed per-host reports under [`diagnosis-reports/`](diagnosis-reports/) are the source of truth; [`src/data/compatibility.ts`](src/data/compatibility.ts) is a generated artifact (git-ignored) that [`scripts/aggregate-diagnosis-matrix.mjs`](scripts/aggregate-diagnosis-matrix.mjs) rebuilds from those reports at `dev` / `build` / `lint` time (via the `predev` / `prebuild` / `prelint` scripts). It is the **only** runtime-derived data in the explorer; everything else flows from Rust via codegen.
 
 ### Updating the matrix
 
 Because the matrix is regenerated from `diagnosis-reports/` on every `dev` / `build` / `lint`, you only ever commit reports, never `src/data/compatibility.ts`.
 
-**From the playground (recommended).** Open the playground in the host you want to (re)measure, run the Diagnosis, and click **Submit report ↗**. That files a pre-filled `diagnosis-report` issue; the [`diagnosis-report`](../.github/workflows/diagnosis-report.yml) workflow writes the report to `diagnosis-reports/<host>.md` and opens (or updates) that host's PR.
+**From the playground (recommended).** Open the playground in the host you want to (re)measure, run the Diagnosis, and click **Submit report ↗**. That files a pre-filled `diagnosis-report` issue; the [`diagnosis-report`](../.github/workflows/diagnosis-report.yml) workflow writes the report to `diagnosis-reports/spa/<host>.md` (or `diagnosis-reports/chat/<host>.md` for Chat reports) and opens (or updates) that host's PR.
 
-**By hand.** Click **Copy report** instead (see [`../playground/README.md#diagnosis`](../playground/README.md#diagnosis)), save the markdown to a host-named file (e.g. `web.md`, `desktop.md`, `android.md`, `ios.md`), drop it into [`diagnosis-reports/`](diagnosis-reports/) overwriting that host's previous report, and commit. Run `npm run generate-matrix` from `explorer/` to preview locally (or just `npm run dev`, which regenerates first). The Compatibility page and each method's Host support row pick up the new data on the next build / Vite HMR.
+**By hand.** Click **Copy report** instead (see [`../playground/README.md#diagnosis`](../playground/README.md#diagnosis)), save the markdown to a host-named file under [`diagnosis-reports/spa/`](diagnosis-reports/spa/) (e.g. `spa/web.md`, `spa/desktop.md`, `spa/android.md`, `spa/ios.md`), overwriting that host's previous report, and commit. Chat worker reports live under [`diagnosis-reports/chat/`](diagnosis-reports/chat/), such as `chat/ios.md`, and are rendered in the separate Chat section. Run `npm run generate-matrix` from `explorer/` to preview locally (or just `npm run dev`, which regenerates first). The Compatibility page and each method's Host support row pick up the new data on the next build / Vite HMR.
 
 ### Data shape
 

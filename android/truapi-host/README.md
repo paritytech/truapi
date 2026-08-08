@@ -208,7 +208,6 @@ val endpoint = core.startWsBridge()
 
 // Call these from host/platform observers so native subscriptions see updates
 // after their immediate current item.
-core.notifySessionStoreChanged()
 core.notifyThemeChanged(ThemeVariant.DARK)
 core.notifyPreimageChanged(preimageKey, preimageBytesOrNull)
 core.notifyChainResponse(chainConnectionId, jsonRpcResponse)

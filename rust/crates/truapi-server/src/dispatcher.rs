@@ -54,6 +54,9 @@ pub struct Dispatcher {
     by_start: HashMap<u8, SubscriptionEntry>,
     stop_ids: HashSet<u8>,
     subscriptions: SubscriptionManager,
+    /// Trusted executable kind bound to this connection; `None` leaves the
+    /// surface unrestricted for direct dispatcher embeddings.
+    execution: Option<truapi_platform::ProductExecutionKind>,
 }
 
 impl Dispatcher {
@@ -64,7 +67,24 @@ impl Dispatcher {
             by_start: HashMap::new(),
             stop_ids: HashSet::new(),
             subscriptions: SubscriptionManager::new(spawner),
+            execution: None,
         }
+    }
+
+    /// Construct a dispatcher bound to a trusted executable kind.
+    pub fn for_execution(
+        spawner: Spawner,
+        execution: truapi_platform::ProductExecutionKind,
+    ) -> Self {
+        Self {
+            execution: Some(execution),
+            ..Self::new(spawner)
+        }
+    }
+
+    /// Return whether this connection may access a service execution kind.
+    pub fn allows_execution(&self, required: truapi_platform::ProductExecutionKind) -> bool {
+        self.execution.is_none_or(|actual| actual == required)
     }
 
     /// Register a request-response handler, keyed on `ids.request_id`. Returns
@@ -134,9 +154,10 @@ impl Dispatcher {
             // Reserve the slot before awaiting the handler so a `_stop`
             // arriving while the handler resolves cancels the pending
             // subscription instead of racing the registration.
-            let token = self.subscriptions.reserve(message.request_id.clone());
             let request_id = message.request_id.clone();
-            match (entry.handler)(request_id, message.payload.value).await {
+            let token = self.subscriptions.reserve(request_id.clone());
+            let result = (entry.handler)(request_id, message.payload.value).await;
+            match result {
                 Ok(stream) => {
                     self.subscriptions.activate(
                         token,
@@ -274,5 +295,16 @@ mod tests {
             prev.is_some(),
             "second registration must return the previous handler"
         );
+    }
+
+    #[test]
+    fn execution_filter_is_bound_to_the_connection() {
+        let spa =
+            Dispatcher::for_execution(test_spawner(), truapi_platform::ProductExecutionKind::Spa);
+        let chat =
+            Dispatcher::for_execution(test_spawner(), truapi_platform::ProductExecutionKind::Chat);
+
+        assert!(!spa.allows_execution(truapi_platform::ProductExecutionKind::Chat));
+        assert!(chat.allows_execution(truapi_platform::ProductExecutionKind::Chat));
     }
 }

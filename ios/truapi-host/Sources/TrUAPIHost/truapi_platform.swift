@@ -398,7 +398,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-// Initial value and increment amount for handles.
+// Initial value and increment amount for handles. 
 // These ensure that SWIFT handles always have the lowest bit set
 fileprivate let UNIFFI_HANDLEMAP_INITIAL: UInt64 = 1
 fileprivate let UNIFFI_HANDLEMAP_DELTA: UInt64 = 2
@@ -561,7 +561,7 @@ public struct AccountAccessReview: Equatable, Hashable {
     public init(
         /**
          * Product currently handling the request.
-         */requestingProductId: String,
+         */requestingProductId: String, 
         /**
          * Product whose account is being requested.
          */targetProductId: String) {
@@ -569,9 +569,9 @@ public struct AccountAccessReview: Equatable, Hashable {
         self.targetProductId = targetProductId
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -585,7 +585,7 @@ public struct FfiConverterTypeAccountAccessReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccountAccessReview {
         return
             try AccountAccessReview(
-                requestingProductId: FfiConverterString.read(from: &buf),
+                requestingProductId: FfiConverterString.read(from: &buf), 
                 targetProductId: FfiConverterString.read(from: &buf)
         )
     }
@@ -634,10 +634,10 @@ public struct AccountAliasReview: Equatable, Hashable {
     public init(
         /**
          * Product requesting the alias.
-         */callingProductId: String,
+         */callingProductId: String, 
         /**
          * Product-scoped context the alias is bound to.
-         */context: ProductProofContext,
+         */context: ProductProofContext, 
         /**
          * Ring the alias is derived against.
          */ringLocation: RingLocation) {
@@ -646,9 +646,9 @@ public struct AccountAliasReview: Equatable, Hashable {
         self.ringLocation = ringLocation
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -662,8 +662,8 @@ public struct FfiConverterTypeAccountAliasReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccountAliasReview {
         return
             try AccountAliasReview(
-                callingProductId: FfiConverterString.read(from: &buf),
-                context: FfiConverterTypeProductProofContext.read(from: &buf),
+                callingProductId: FfiConverterString.read(from: &buf), 
+                context: FfiConverterTypeProductProofContext.read(from: &buf), 
                 ringLocation: FfiConverterTypeRingLocation.read(from: &buf)
         )
     }
@@ -717,13 +717,13 @@ public struct CreateProofReview: Equatable, Hashable {
     public init(
         /**
          * Product requesting the proof.
-         */callingProductId: String,
+         */callingProductId: String, 
         /**
          * Product-scoped context the proof's alias is bound to.
-         */context: ProductProofContext,
+         */context: ProductProofContext, 
         /**
          * Ring the proof is generated against.
-         */ringLocation: RingLocation,
+         */ringLocation: RingLocation, 
         /**
          * Opaque message bound into the proof.
          */message: Data) {
@@ -733,9 +733,9 @@ public struct CreateProofReview: Equatable, Hashable {
         self.message = message
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -749,9 +749,9 @@ public struct FfiConverterTypeCreateProofReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CreateProofReview {
         return
             try CreateProofReview(
-                callingProductId: FfiConverterString.read(from: &buf),
-                context: FfiConverterTypeProductProofContext.read(from: &buf),
-                ringLocation: FfiConverterTypeRingLocation.read(from: &buf),
+                callingProductId: FfiConverterString.read(from: &buf), 
+                context: FfiConverterTypeProductProofContext.read(from: &buf), 
+                ringLocation: FfiConverterTypeRingLocation.read(from: &buf), 
                 message: FfiConverterData.read(from: &buf)
         )
     }
@@ -798,9 +798,9 @@ public struct IdentityDisclosureReview: Equatable, Hashable {
         self.productId = productId
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -857,9 +857,9 @@ public struct PreimageSubmitReview: Equatable, Hashable {
         self.size = size
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -918,7 +918,7 @@ public struct ResourceAllocationReview: Equatable, Hashable {
     public init(
         /**
          * Product the allocation is requested for.
-         */callingProductId: String,
+         */callingProductId: String, 
         /**
          * Resources to allocate.
          */resources: [AllocatableResource]) {
@@ -926,9 +926,9 @@ public struct ResourceAllocationReview: Equatable, Hashable {
         self.resources = resources
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -942,7 +942,7 @@ public struct FfiConverterTypeResourceAllocationReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ResourceAllocationReview {
         return
             try ResourceAllocationReview(
-                callingProductId: FfiConverterString.read(from: &buf),
+                callingProductId: FfiConverterString.read(from: &buf), 
                 resources: FfiConverterSequenceTypeAllocatableResource.read(from: &buf)
         )
     }
@@ -996,13 +996,13 @@ public struct SessionUiInfo: Equatable, Hashable {
     public init(
         /**
          * 32-byte sr25519 root public key of the active session.
-         */publicKey: Bytes32,
+         */publicKey: Bytes32, 
         /**
          * Wallet identity account id used for People-chain username lookup.
-         */identityAccountId: Bytes32?,
+         */identityAccountId: Bytes32?, 
         /**
          * Short username from the People-chain identity record.
-         */liteUsername: String?,
+         */liteUsername: String?, 
         /**
          * Fully qualified username from the People-chain identity record.
          */fullUsername: String?) {
@@ -1012,9 +1012,9 @@ public struct SessionUiInfo: Equatable, Hashable {
         self.fullUsername = fullUsername
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1028,9 +1028,9 @@ public struct FfiConverterTypeSessionUiInfo: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SessionUiInfo {
         return
             try SessionUiInfo(
-                publicKey: FfiConverterTypeBytes32.read(from: &buf),
-                identityAccountId: FfiConverterOptionTypeBytes32.read(from: &buf),
-                liteUsername: FfiConverterOptionString.read(from: &buf),
+                publicKey: FfiConverterTypeBytes32.read(from: &buf), 
+                identityAccountId: FfiConverterOptionTypeBytes32.read(from: &buf), 
+                liteUsername: FfiConverterOptionString.read(from: &buf), 
                 fullUsername: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -1077,7 +1077,7 @@ public struct SignVrfReview: Equatable, Hashable {
     public init(
         /**
          * Product making the request.
-         */callingProductId: String,
+         */callingProductId: String, 
         /**
          * Product account and exact ordered transcript.
          */request: HostAccountSignVrfRequest) {
@@ -1085,9 +1085,9 @@ public struct SignVrfReview: Equatable, Hashable {
         self.request = request
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1101,7 +1101,7 @@ public struct FfiConverterTypeSignVrfReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SignVrfReview {
         return
             try SignVrfReview(
-                callingProductId: FfiConverterString.read(from: &buf),
+                callingProductId: FfiConverterString.read(from: &buf), 
                 request: FfiConverterTypeHostAccountSignVrfRequest.read(from: &buf)
         )
     }
@@ -1149,7 +1149,7 @@ public struct StatementStoreProductSignReview: Equatable, Hashable {
     public init(
         /**
          * Product account that will sign the statement payload.
-         */account: ProductAccountId,
+         */account: ProductAccountId, 
         /**
          * Exact unsigned statement payload to be signed.
          */payload: Data) {
@@ -1157,9 +1157,9 @@ public struct StatementStoreProductSignReview: Equatable, Hashable {
         self.payload = payload
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1173,7 +1173,7 @@ public struct FfiConverterTypeStatementStoreProductSignReview: FfiConverterRustB
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StatementStoreProductSignReview {
         return
             try StatementStoreProductSignReview(
-                account: FfiConverterTypeProductAccountId.read(from: &buf),
+                account: FfiConverterTypeProductAccountId.read(from: &buf), 
                 payload: FfiConverterData.read(from: &buf)
         )
     }
@@ -1207,7 +1207,7 @@ public func FfiConverterTypeStatementStoreProductSignReview_lower(_ value: State
  */
 
 public enum AuthState: Equatable, Hashable {
-
+    
     /**
      * No active session and no login in progress.
      */
@@ -1261,50 +1261,50 @@ public struct FfiConverterTypeAuthState: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AuthState {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .disconnected
-
+        
         case 2: return .pairing(deeplink: try FfiConverterString.read(from: &buf)
         )
-
+        
         case 3: return .connected(try FfiConverterTypeSessionUiInfo.read(from: &buf)
         )
-
+        
         case 4: return .loginFailed(reason: try FfiConverterString.read(from: &buf)
         )
-
+        
         case 5: return .authenticating
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: AuthState, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .disconnected:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case let .pairing(deeplink):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(deeplink, into: &buf)
-
-
+            
+        
         case let .connected(v1):
             writeInt(&buf, Int32(3))
             FfiConverterTypeSessionUiInfo.write(v1, into: &buf)
-
-
+            
+        
         case let .loginFailed(reason):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(reason, into: &buf)
-
-
+            
+        
         case .authenticating:
             writeInt(&buf, Int32(5))
-
+        
         }
     }
 }
@@ -1331,7 +1331,7 @@ public func FfiConverterTypeAuthState_lower(_ value: AuthState) -> RustBuffer {
  */
 
 public enum CreateTransactionReview: Equatable, Hashable {
-
+    
     /**
      * Product-account transaction request.
      */
@@ -1362,30 +1362,30 @@ public struct FfiConverterTypeCreateTransactionReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CreateTransactionReview {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .product(try FfiConverterTypeProductAccountTxPayload.read(from: &buf)
         )
-
+        
         case 2: return .legacyAccount(try FfiConverterTypeLegacyAccountTxPayload.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: CreateTransactionReview, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .product(v1):
             writeInt(&buf, Int32(1))
             FfiConverterTypeProductAccountTxPayload.write(v1, into: &buf)
-
-
+            
+        
         case let .legacyAccount(v1):
             writeInt(&buf, Int32(2))
             FfiConverterTypeLegacyAccountTxPayload.write(v1, into: &buf)
-
+            
         }
     }
 }
@@ -1413,7 +1413,7 @@ public func FfiConverterTypeCreateTransactionReview_lower(_ value: CreateTransac
  */
 
 public enum PermissionAuthorizationRequest: Equatable, Hashable {
-
+    
     /**
      * Device-level permission such as camera, microphone, or location.
      */
@@ -1456,44 +1456,44 @@ public struct FfiConverterTypePermissionAuthorizationRequest: FfiConverterRustBu
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PermissionAuthorizationRequest {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .device(try FfiConverterTypeHostDevicePermissionRequest.read(from: &buf)
         )
-
+        
         case 2: return .remote(try FfiConverterTypeRemotePermissionRequest.read(from: &buf)
         )
-
+        
         case 3: return .identityDisclosure
-
+        
         case 4: return .accountAccess(targetProductId: try FfiConverterString.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: PermissionAuthorizationRequest, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .device(v1):
             writeInt(&buf, Int32(1))
             FfiConverterTypeHostDevicePermissionRequest.write(v1, into: &buf)
-
-
+            
+        
         case let .remote(v1):
             writeInt(&buf, Int32(2))
             FfiConverterTypeRemotePermissionRequest.write(v1, into: &buf)
-
-
+            
+        
         case .identityDisclosure:
             writeInt(&buf, Int32(3))
-
-
+        
+        
         case let .accountAccess(targetProductId):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(targetProductId, into: &buf)
-
+            
         }
     }
 }
@@ -1523,7 +1523,7 @@ public func FfiConverterTypePermissionAuthorizationRequest_lower(_ value: Permis
  */
 
 public enum PermissionAuthorizationStatus: Equatable, Hashable {
-
+    
     /**
      * No persisted authorization exists.
      */
@@ -1556,32 +1556,32 @@ public struct FfiConverterTypePermissionAuthorizationStatus: FfiConverterRustBuf
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PermissionAuthorizationStatus {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .notDetermined
-
+        
         case 2: return .denied
-
+        
         case 3: return .authorized
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: PermissionAuthorizationStatus, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .notDetermined:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .denied:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case .authorized:
             writeInt(&buf, Int32(3))
-
+        
         }
     }
 }
@@ -1604,11 +1604,86 @@ public func FfiConverterTypePermissionAuthorizationStatus_lower(_ value: Permiss
 
 
 /**
+ * Trusted kind of product executable attached to a TrUAPI connection.
+ */
+
+public enum ProductExecutionKind: Equatable, Hashable {
+    
+    /**
+     * Visible single-page application entrypoint such as `app/index.html`.
+     */
+    case spa
+    /**
+     * Headless worker executable that provides the Chat modality.
+     */
+    case chat
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ProductExecutionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProductExecutionKind: FfiConverterRustBuffer {
+    typealias SwiftType = ProductExecutionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProductExecutionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .spa
+        
+        case 2: return .chat
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ProductExecutionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .spa:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .chat:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProductExecutionKind_lift(_ buf: RustBuffer) throws -> ProductExecutionKind {
+    return try FfiConverterTypeProductExecutionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProductExecutionKind_lower(_ value: ProductExecutionKind) -> RustBuffer {
+    return FfiConverterTypeProductExecutionKind.lower(value)
+}
+
+
+
+/**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */
 
 public enum SignPayloadReview: Equatable, Hashable {
-
+    
     /**
      * Product-account signing request.
      */
@@ -1639,30 +1714,30 @@ public struct FfiConverterTypeSignPayloadReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SignPayloadReview {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .product(try FfiConverterTypeHostSignPayloadRequest.read(from: &buf)
         )
-
+        
         case 2: return .legacyAccount(try FfiConverterTypeHostSignPayloadWithLegacyAccountRequest.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: SignPayloadReview, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .product(v1):
             writeInt(&buf, Int32(1))
             FfiConverterTypeHostSignPayloadRequest.write(v1, into: &buf)
-
-
+            
+        
         case let .legacyAccount(v1):
             writeInt(&buf, Int32(2))
             FfiConverterTypeHostSignPayloadWithLegacyAccountRequest.write(v1, into: &buf)
-
+            
         }
     }
 }
@@ -1689,7 +1764,7 @@ public func FfiConverterTypeSignPayloadReview_lower(_ value: SignPayloadReview) 
  */
 
 public enum SignRawReview: Equatable, Hashable {
-
+    
     /**
      * Product-account raw signing request.
      */
@@ -1720,30 +1795,30 @@ public struct FfiConverterTypeSignRawReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SignRawReview {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .product(try FfiConverterTypeHostSignRawRequest.read(from: &buf)
         )
-
+        
         case 2: return .legacyAccount(try FfiConverterTypeHostSignRawWithLegacyAccountRequest.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: SignRawReview, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .product(v1):
             writeInt(&buf, Int32(1))
             FfiConverterTypeHostSignRawRequest.write(v1, into: &buf)
-
-
+            
+        
         case let .legacyAccount(v1):
             writeInt(&buf, Int32(2))
             FfiConverterTypeHostSignRawWithLegacyAccountRequest.write(v1, into: &buf)
-
+            
         }
     }
 }
@@ -1770,7 +1845,7 @@ public func FfiConverterTypeSignRawReview_lower(_ value: SignRawReview) -> RustB
  */
 
 public enum UserConfirmationReview: Equatable, Hashable {
-
+    
     /**
      * Sign a SCALE payload with a product or legacy account.
      */
@@ -1846,102 +1921,102 @@ public struct FfiConverterTypeUserConfirmationReview: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UserConfirmationReview {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .signPayload(try FfiConverterTypeSignPayloadReview.read(from: &buf)
         )
-
+        
         case 2: return .signRaw(try FfiConverterTypeSignRawReview.read(from: &buf)
         )
-
+        
         case 3: return .statementStoreProductSign(try FfiConverterTypeStatementStoreProductSignReview.read(from: &buf)
         )
-
+        
         case 4: return .createTransaction(try FfiConverterTypeCreateTransactionReview.read(from: &buf)
         )
-
+        
         case 5: return .accountAlias(try FfiConverterTypeAccountAliasReview.read(from: &buf)
         )
-
+        
         case 6: return .createProof(try FfiConverterTypeCreateProofReview.read(from: &buf)
         )
-
+        
         case 7: return .identityDisclosure(try FfiConverterTypeIdentityDisclosureReview.read(from: &buf)
         )
-
+        
         case 8: return .resourceAllocation(try FfiConverterTypeResourceAllocationReview.read(from: &buf)
         )
-
+        
         case 9: return .preimageSubmit(try FfiConverterTypePreimageSubmitReview.read(from: &buf)
         )
-
+        
         case 10: return .accountAccess(try FfiConverterTypeAccountAccessReview.read(from: &buf)
         )
-
+        
         case 11: return .signVrf(try FfiConverterTypeSignVrfReview.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: UserConfirmationReview, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .signPayload(v1):
             writeInt(&buf, Int32(1))
             FfiConverterTypeSignPayloadReview.write(v1, into: &buf)
-
-
+            
+        
         case let .signRaw(v1):
             writeInt(&buf, Int32(2))
             FfiConverterTypeSignRawReview.write(v1, into: &buf)
-
-
+            
+        
         case let .statementStoreProductSign(v1):
             writeInt(&buf, Int32(3))
             FfiConverterTypeStatementStoreProductSignReview.write(v1, into: &buf)
-
-
+            
+        
         case let .createTransaction(v1):
             writeInt(&buf, Int32(4))
             FfiConverterTypeCreateTransactionReview.write(v1, into: &buf)
-
-
+            
+        
         case let .accountAlias(v1):
             writeInt(&buf, Int32(5))
             FfiConverterTypeAccountAliasReview.write(v1, into: &buf)
-
-
+            
+        
         case let .createProof(v1):
             writeInt(&buf, Int32(6))
             FfiConverterTypeCreateProofReview.write(v1, into: &buf)
-
-
+            
+        
         case let .identityDisclosure(v1):
             writeInt(&buf, Int32(7))
             FfiConverterTypeIdentityDisclosureReview.write(v1, into: &buf)
-
-
+            
+        
         case let .resourceAllocation(v1):
             writeInt(&buf, Int32(8))
             FfiConverterTypeResourceAllocationReview.write(v1, into: &buf)
-
-
+            
+        
         case let .preimageSubmit(v1):
             writeInt(&buf, Int32(9))
             FfiConverterTypePreimageSubmitReview.write(v1, into: &buf)
-
-
+            
+        
         case let .accountAccess(v1):
             writeInt(&buf, Int32(10))
             FfiConverterTypeAccountAccessReview.write(v1, into: &buf)
-
-
+            
+        
         case let .signVrf(v1):
             writeInt(&buf, Int32(11))
             FfiConverterTypeSignVrfReview.write(v1, into: &buf)
-
+            
         }
     }
 }

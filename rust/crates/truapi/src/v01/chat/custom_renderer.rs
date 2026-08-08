@@ -22,6 +22,7 @@ pub struct Dimensions {
 
 /// Text typography presets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum TypographyStyle {
     /// Large headline text.
     HeadlineLarge,
@@ -37,6 +38,7 @@ pub enum TypographyStyle {
 
 /// Button style variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum ButtonVariant {
     /// Emphasized button for the primary action.
     Primary,
@@ -48,6 +50,7 @@ pub enum ButtonVariant {
 
 /// Semantic color tokens for theming.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum ColorToken {
     /// Primary foreground (text) color.
     FgPrimary,
@@ -71,6 +74,7 @@ pub enum ColorToken {
 
 /// 2D content alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum ContentAlignment {
     /// Top edge, start side.
     TopStart,
@@ -94,6 +98,7 @@ pub enum ContentAlignment {
 
 /// Horizontal alignment options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum HorizontalAlignment {
     /// Align to the start edge.
     Start,
@@ -105,6 +110,7 @@ pub enum HorizontalAlignment {
 
 /// Vertical alignment options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum VerticalAlignment {
     /// Align to the top.
     Top,
@@ -116,6 +122,7 @@ pub enum VerticalAlignment {
 
 /// Layout arrangement (like CSS flexbox `justify-content`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Arrangement {
     /// Pack children at the start.
     Start,
@@ -309,14 +316,13 @@ pub enum CustomRendererNode {
     TextField(Component<TextFieldProps>),
 }
 
-/// Subscribe payload identifying the chat message to render. The host responds
-/// with a stream of [`CustomRendererNode`] trees describing the rendered UI.
+/// Render work sent by the host when a native custom-message cell appears.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct ProductChatCustomMessageRenderSubscribeRequest {
-    /// Message identifier.
+pub struct ProductChatCustomMessageRenderRequest {
+    /// Stable identifier used to correlate triggered actions.
     pub message_id: String,
-    /// Application-defined message type.
+    /// Product-defined discriminator used to select a renderer.
     pub message_type: String,
-    /// Binary payload.
+    /// Stored product-defined message payload.
     pub payload: Vec<u8>,
 }

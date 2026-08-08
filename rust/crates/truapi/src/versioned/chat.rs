@@ -14,6 +14,36 @@ truapi_macros::versioned_type! {
     pub enum HostChatPostMessageError { V1 => v01::HostChatPostMessageError }
     pub enum HostChatListSubscribeItem { V1 => v01::HostChatListSubscribeItem }
     pub enum HostChatActionSubscribeItem { V1 => v01::HostChatActionSubscribeItem }
-    pub enum ProductChatCustomMessageRenderSubscribeRequest { V1 => v01::ProductChatCustomMessageRenderSubscribeRequest }
-    pub enum ProductChatCustomMessageRenderSubscribeItem { V1 => v01::CustomRendererNode }
+    pub enum ProductChatCustomMessageRenderRequest { V1 => v01::ProductChatCustomMessageRenderRequest }
+    pub enum ProductChatCustomMessageRenderItem { V1 => v01::CustomRendererNode }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parity_scale_codec::Encode;
+
+    #[test]
+    fn custom_render_start_matches_legacy_wire_fixture() {
+        let request =
+            ProductChatCustomMessageRenderRequest::V1(v01::ProductChatCustomMessageRenderRequest {
+                message_id: "message-1".into(),
+                message_type: "vote".into(),
+                payload: vec![1, 2],
+            });
+
+        assert_eq!(
+            hex::encode(request.encode()),
+            "00246d6573736167652d3110766f7465080102"
+        );
+    }
+
+    #[test]
+    fn custom_render_receive_matches_legacy_wire_fixture() {
+        let item = ProductChatCustomMessageRenderItem::V1(v01::CustomRendererNode::String {
+            text: "Votes: 1".into(),
+        });
+
+        assert_eq!(hex::encode(item.encode()), "000120566f7465733a2031");
+    }
 }

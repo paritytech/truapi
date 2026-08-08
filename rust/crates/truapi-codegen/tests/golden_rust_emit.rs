@@ -10,6 +10,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+fn nightly_toolchain() -> String {
+    std::env::var("TRUAPI_NIGHTLY_TOOLCHAIN").unwrap_or_else(|_| "nightly".to_string())
+}
+
 fn quoted_strings_in_const_array(src: &str, const_name: &str) -> Vec<String> {
     let marker = format!("export const {const_name} = [");
     let start = src
@@ -58,16 +62,16 @@ fn produce_rustdoc_json_for_package(
     target_dir: &Path,
     package: &str,
 ) -> PathBuf {
-    let output = Command::new("cargo")
-        .args(["+nightly", "rustdoc", "-p", package, "--target-dir"])
+    let mut command = Command::new("cargo");
+    command
+        .arg(format!("+{}", nightly_toolchain()))
+        .args(["rustdoc", "-p", package, "--target-dir"])
         .arg(target_dir)
         .args(["--", "-Z", "unstable-options", "--output-format", "json"])
-        .current_dir(workspace_root)
-        .output()
-        .expect(
-            "failed to spawn `cargo +nightly rustdoc`; install nightly via \
-             `rustup toolchain install nightly`",
-        );
+        .current_dir(workspace_root);
+    let output = command.output().expect(
+        "failed to spawn nightly rustdoc; install the selected nightly toolchain via rustup",
+    );
     assert!(
         output.status.success(),
         "`cargo +nightly rustdoc -p {package}` failed (status {}); nightly toolchain is required.\nstdout:\n{}\nstderr:\n{}",
@@ -98,8 +102,17 @@ fn rustfmt_generated(files: &[PathBuf]) {
         return;
     }
 
+    // Keep this hermetic: rustfmt otherwise walks up from the generated file
+    // in the system temp directory and may inherit another checkout's config.
+    let config_dir = tempfile::tempdir().expect("rustfmt config tempdir");
+    let config_path = config_dir.path().join("rustfmt.toml");
+    fs::write(&config_path, "edition = \"2024\"\n").expect("write rustfmt config");
+
     let mut command = Command::new("rustfmt");
-    command.args(["+nightly", "--edition", "2024"]);
+    command
+        .arg(format!("+{}", nightly_toolchain()))
+        .args(["--edition", "2024", "--config-path"])
+        .arg(config_path);
     for file in files {
         command.arg(file);
     }

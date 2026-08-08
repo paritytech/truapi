@@ -57,11 +57,19 @@ fn generate_playground_services_code(
             "
               {{
                 name: {name},
-                methods: [
             ",
             name = ts_string_literal(&service_display_name(trait_def)),
         )
         .unwrap();
+        if let Some(required_execution) = trait_def.required_execution() {
+            writeln!(
+                out,
+                "    requiredExecution: {},",
+                ts_string_literal(required_execution)
+            )
+            .unwrap();
+        }
+        writeln!(out, "    methods: [").unwrap();
 
         for method in methods {
             let wire_version = method_wire_version(method, &wrappers, target_version)?;
@@ -90,6 +98,9 @@ fn generate_playground_services_code(
                 doc_url = ts_string_literal(&doc_url),
             )
             .unwrap();
+            if method.wire.host_initiated {
+                writeln!(out, "        hostInitiated: true,").unwrap();
+            }
             if let Some(description) = docs.description {
                 writeln!(
                     out,

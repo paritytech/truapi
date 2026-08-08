@@ -190,8 +190,8 @@ pub const CHAT_ACTION_SUBSCRIBE: SubscriptionFrameIds = SubscriptionFrameIds {
     receive_id: 51,
 };
 
-/// Wire discriminants for `chat_custom_message_render_subscribe`.
-pub const CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE: SubscriptionFrameIds = SubscriptionFrameIds {
+/// Wire discriminants for `chat_custom_message_render`.
+pub const CHAT_CUSTOM_MESSAGE_RENDER: SubscriptionFrameIds = SubscriptionFrameIds {
     start_id: 52,
     stop_id: 53,
     interrupt_id: 54,
@@ -562,8 +562,8 @@ pub const WIRE_TABLE: &[WireEntry] = &[
         kind: WireKind::Subscription(CHAT_ACTION_SUBSCRIBE),
     },
     WireEntry {
-        method: "chat_custom_message_render_subscribe",
-        kind: WireKind::Subscription(CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE),
+        method: "chat_custom_message_render",
+        kind: WireKind::Subscription(CHAT_CUSTOM_MESSAGE_RENDER),
     },
     WireEntry {
         method: "statement_store_subscribe",

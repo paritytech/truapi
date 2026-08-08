@@ -84,7 +84,10 @@ export default function MethodPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-white font-mono break-all">
             {method.name}
           </h1>
-          <PatternBadge kind={method.type} />
+          <PatternBadge
+            kind={method.type}
+            hostInitiated={method.hostInitiated}
+          />
         </div>
         {method.description && (
           <MarkdownText

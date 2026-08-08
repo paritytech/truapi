@@ -667,7 +667,7 @@ The top-level `--script` option does not update remembered `/script` state.
 | `ring-vrf-smoke.ts` | Verify alias/proof behavior for the Paseo Next v2 LitePeople ring. |
 | `preimage-smoke.ts` | Exercise Bulletin preimage submission and lookup. |
 
-`battery.ts` writes to `explorer/diagnosis-reports/<role>-cli.md` unless
+`battery.ts` writes to `explorer/diagnosis-reports/spa/<role>-cli.md` unless
 `TRUAPI_BATTERY_REPORT_PATH` overrides the destination. `scripts/battery.sh` in
 the repository root produces both reports in one invocation: it runs the direct
 signing-host phase, then starts a pairing host and answers its emitted link
@@ -1228,7 +1228,8 @@ reports:
 
 Deliberately unavailable methods:
 
-- all six generated Chat methods;
+- all five product-initiated Chat methods; the host-initiated custom-render
+  subscription is also unused because the CLI has no native Chat UI;
 - all nine generated Coin Payment methods; and
 - all four generated Payment methods.
 
@@ -1548,13 +1549,14 @@ The implementation is covered by:
 - script-runner/Bun diagnosis tests;
 - paired and direct `battery.ts` runs, both driven by `scripts/battery.sh`; and
 - checked-in compatibility reports:
-  - `explorer/diagnosis-reports/pairing-host-cli.md`
-  - `explorer/diagnosis-reports/signing-host-cli.md`
+  - `explorer/diagnosis-reports/spa/pairing-host-cli.md`
+  - `explorer/diagnosis-reports/spa/signing-host-cli.md`
 
 The reports currently have identical method results apart from their title:
 
 - 45 implemented-success methods;
-- 6 unavailable Chat methods;
+- 6 unavailable Chat surface entries (five product-initiated methods plus the
+  host-initiated custom-render subscription);
 - 9 unavailable Coin Payment methods; and
 - 4 unavailable Payment methods.
 

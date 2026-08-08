@@ -2,9 +2,9 @@
 # Run the generated full-surface battery against the headless truapi-host CLI,
 # built from source, and write both committed CLI diagnosis reports:
 #
-#   explorer/diagnosis-reports/signing-host-cli.md   direct signing-host run
-#   explorer/diagnosis-reports/pairing-host-cli.md   pairing host, paired with a
-#                                                    signing host this script starts
+#   explorer/diagnosis-reports/spa/signing-host-cli.md   direct signing-host run
+#   explorer/diagnosis-reports/spa/pairing-host-cli.md   pairing host, paired with a
+#                                                        signing host this script starts
 #
 # Usage:
 #   scripts/battery.sh                    # both phases
@@ -45,7 +45,7 @@ unset DYLD_LIBRARY_PATH
 
 SCRIPT="rust/crates/truapi-host-cli/js/scripts/battery.ts"
 PRODUCT_ID="truapi-playground.dot"
-REPORTS="explorer/diagnosis-reports"
+REPORTS="explorer/diagnosis-reports/spa"
 LOG_DIR="target/battery"
 PAIRING_STATE="target/battery/pairing-host-state"
 PHASE_TIMEOUT="${BATTERY_PHASE_TIMEOUT:-900}"

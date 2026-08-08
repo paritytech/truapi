@@ -1,13 +1,6 @@
 import type { ServiceInfo } from "./services";
-import type { TestEntry, TestStatus } from "./auto-test";
-
-const ICON: Record<TestStatus, string> = {
-  pass: "✅",
-  fail: "❌",
-  skipped: "⏭",
-  idle: "·",
-  running: "↻",
-};
+import type { TestEntry } from "./auto-test";
+import { renderDiagnosisMarkdown } from "@/shared/diagnosis";
 
 export type HostMode = "Web" | "Desktop" | "Android" | "iOS" | "Unknown";
 
@@ -47,46 +40,19 @@ export function renderReportMarkdown(
   meta: { mode?: HostMode; dropSuccessDetails?: boolean } = {},
 ): string {
   const mode = meta.mode ?? detectHostMode();
-  let pass = 0;
-  let fail = 0;
-  const rows: string[] = [];
+  const rows = [];
   for (const svc of services) {
     for (const m of svc.methods) {
       const id = `${svc.name}/${m.name}`;
       const entry = results[id];
       const status = entry?.status ?? "idle";
-      // Skipped methods are reported as failed so every truapi method stays in
-      // the compatibility matrix (the aggregator keeps only ✅/❌ cells); the
-      // reason the method was skipped travels in the Details column.
-      const reportStatus = status === "skipped" ? "fail" : status;
-      if (reportStatus === "pass") pass++;
-      else if (reportStatus === "fail") fail++;
-      // The issue-URL variant drops success-row details (bulky response
-      // payloads) to keep the URL under GitHub's length limit; failures keep
-      // their (short) details.
-      const detail =
-        meta.dropSuccessDetails && reportStatus === "pass"
-          ? ""
-          : detailCell(entry);
-      rows.push(`| \`${id}\` | ${ICON[reportStatus]} | ${detail} |`);
+      rows.push({ id, status, details: entry?.output });
     }
   }
-
-  const lines: string[] = [];
-  lines.push(`## Truapi ${mode} Diagnosis`);
-  lines.push("");
-  lines.push(`**${pass} success · ${fail} failed**`);
-  lines.push("");
-  lines.push("| Method | Status | Details |");
-  lines.push("| --- | --- | --- |");
-  lines.push(...rows);
-  return lines.join("\n");
-}
-
-// Method output flattened to a single escaped table cell.
-function detailCell(entry: TestEntry | undefined): string {
-  if (entry?.output == null) return "";
-  return entry.output.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim();
+  return renderDiagnosisMarkdown(rows, {
+    title: `Truapi ${mode} Diagnosis`,
+    dropSuccessDetails: meta.dropSuccessDetails,
+  });
 }
 
 // Repo that receives the pre-filled diagnosis-report issues; the

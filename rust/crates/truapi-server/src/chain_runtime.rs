@@ -741,6 +741,15 @@ impl ChainRuntime {
         local_follow_id: String,
         with_runtime: bool,
     ) -> Result<String, RuntimeFailure> {
+        let requested_id = local_follow_id;
+        let local_follow_id = connection
+            .resolve_local_follow_id(&requested_id)
+            .ok_or_else(|| {
+                RuntimeFailure::host_failure(
+                    method,
+                    format!("unknown follow subscription id {requested_id:?}"),
+                )
+            })?;
         let remote_follow_id = connection
             .require_remote_follow(method, local_follow_id.clone())
             .await?;
@@ -891,12 +900,52 @@ impl ChainConnection {
         Ok(SubxtConnection { client })
     }
 
+    /// Whether the already-resolved follow was registered with runtime metadata.
     fn follow_with_runtime(&self, local_follow_id: &str) -> bool {
         self.follows
             .lock()
             .unwrap()
             .get(local_follow_id)
             .is_some_and(|follow| follow.with_runtime)
+    }
+
+    /// Resolve the product-visible follow id to the transport-owned follow.
+    ///
+    /// Product adapters assign their own ids (for example `follow_0`) after
+    /// starting a subscription, while the dispatcher keys that subscription
+    /// by its transport request id. The first follow-bound request claims the
+    /// sole unaliased follow for this chain; later requests reuse that alias.
+    fn resolve_local_follow_id(&self, requested_id: &str) -> Option<String> {
+        let mut follows = self.follows.lock().unwrap();
+
+        if follows.contains_key(requested_id) {
+            return Some(requested_id.to_string());
+        }
+
+        if let Some((local_follow_id, _)) = follows
+            .iter()
+            .find(|(_, follow)| follow.client_subscription_id.as_deref() == Some(requested_id))
+        {
+            return Some(local_follow_id.clone());
+        }
+
+        let unaliased: Vec<_> = follows
+            .iter()
+            .filter(|(_, follow)| follow.client_subscription_id.is_none())
+            .map(|(local_follow_id, _)| local_follow_id.clone())
+            .take(2)
+            .collect();
+
+        let [local_follow_id] = unaliased.as_slice() else {
+            return None;
+        };
+
+        follows
+            .get_mut(local_follow_id)
+            .expect("unaliased follow still exists")
+            .client_subscription_id = Some(requested_id.to_string());
+
+        Some(local_follow_id.clone())
     }
 
     fn remote_follow_id(&self, local_follow_id: &str) -> Option<String> {
@@ -928,6 +977,7 @@ impl ChainConnection {
                     local_follow_id.to_string(),
                     FollowState {
                         with_runtime,
+                        client_subscription_id: None,
                         remote_subscription_id: None,
                         abort: None,
                         sender,
@@ -1003,20 +1053,12 @@ impl ChainConnection {
             return Ok(remote_follow_id);
         }
 
-        let setup = {
-            let follows = self.follows.lock().unwrap();
-            if !follows.contains_key(&local_follow_id) {
-                return Err(RuntimeFailure::host_failure(
-                    method,
-                    format!("unknown follow subscription id {local_follow_id:?}"),
-                ));
-            }
-            self.follow_setups
-                .lock()
-                .unwrap()
-                .get(&local_follow_id)
-                .cloned()
-        };
+        let setup = self
+            .follow_setups
+            .lock()
+            .unwrap()
+            .get(&local_follow_id)
+            .cloned();
 
         match setup {
             Some(setup) => setup.await.map_err(|failure| failure.reclassify(method)),
@@ -1159,6 +1201,7 @@ impl ChainConnection {
 
 struct FollowState {
     with_runtime: bool,
+    client_subscription_id: Option<String>,
     remote_subscription_id: Option<String>,
     abort: Option<AbortHandle>,
     /// Local subscriber; dropping it (with the follow state) is what ends the
@@ -1822,6 +1865,56 @@ mod tests {
         let sent = provider.sent.lock().unwrap().clone();
         assert_eq!(sent.len(), 2);
         assert!(sent[0].contains("chainHead_v1_follow"));
+        assert!(sent[1].contains("chainHead_v1_header"));
+    }
+
+    #[test]
+    fn header_request_binds_product_follow_alias_to_transport_follow() {
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            if request.contains("chainHead_v1_follow") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-FOLLOW"}}"#
+                ))
+            } else if request.contains("chainHead_v1_header") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"0xdeadbeef"}}"#
+                ))
+            } else {
+                None
+            }
+        }));
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+        let _follow_stream = runtime.remote_chain_head_follow(
+            "transport-request-id".to_string(),
+            RemoteChainHeadFollowRequest {
+                genesis_hash: vec![0u8; 32],
+                with_runtime: true,
+            },
+        );
+        let sent = wait_for_sent(&provider, |sent| {
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow"))
+        });
+        assert!(
+            sent.iter()
+                .any(|request| request.contains("chainHead_v1_follow")),
+            "follow setup did not start; sent: {sent:?}",
+        );
+
+        let response = futures::executor::block_on(runtime.remote_chain_head_header(
+            RemoteChainHeadHeaderRequest {
+                genesis_hash: vec![0u8; 32],
+                follow_subscription_id: "follow_0".to_string(),
+                hash: vec![1u8; 32],
+            },
+        ))
+        .expect("product alias should resolve to the active transport follow");
+
+        assert_eq!(response.header, Some(vec![0xde, 0xad, 0xbe, 0xef]));
+        assert_eq!(provider.connect_calls.load(Ordering::SeqCst), 1);
+        let sent = provider.sent.lock().unwrap().clone();
+        assert_eq!(sent.len(), 2);
         assert!(sent[1].contains("chainHead_v1_header"));
     }
 

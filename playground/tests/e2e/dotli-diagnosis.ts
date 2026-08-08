@@ -58,12 +58,7 @@ const signingHostConfig: SigningHostCliConfig = {
 };
 const expectedHostGaps = [
   "Account/create_account_proof",
-  "Chat/create_room",
-  "Chat/register_bot",
-  "Chat/list_subscribe",
-  "Chat/post_message",
-  "Chat/action_subscribe",
-  "Chat/custom_message_render_subscribe",
+  "Account/sign_vrf",
   "Coin Payment/create_purse",
   "Coin Payment/query_purse",
   "Coin Payment/rebalance_purse",
@@ -313,6 +308,8 @@ function isRetryableSigningHostPairError(error: unknown): boolean {
   return (
     message.includes("Invalid Transaction") ||
     message.includes("temporarily banned") ||
+    message.includes("did not appear in a LitePeople ring") ||
+    message.includes("not a LitePeople ring member") ||
     message.includes("timed out waiting for author_submitAndWatchExtrinsic")
   );
 }

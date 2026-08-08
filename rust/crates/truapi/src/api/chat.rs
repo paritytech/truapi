@@ -4,13 +4,14 @@ use crate::versioned::chat::{
     HostChatActionSubscribeItem, HostChatCreateRoomError, HostChatCreateRoomRequest,
     HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageError,
     HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotError,
-    HostChatRegisterBotRequest, HostChatRegisterBotResponse,
-    ProductChatCustomMessageRenderSubscribeItem, ProductChatCustomMessageRenderSubscribeRequest,
+    HostChatRegisterBotRequest, HostChatRegisterBotResponse, ProductChatCustomMessageRenderItem,
+    ProductChatCustomMessageRenderRequest,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Chat room, bot, and message APIs.
+#[crate::service(required_execution = Chat)]
 #[crate::async_trait]
 pub trait Chat: Send + Sync {
     /// Create a chat room.
@@ -105,32 +106,20 @@ pub trait Chat: Send + Sync {
         Subscription::empty()
     }
 
-    /// Subscribe to custom message render requests from the host. Each
-    /// emitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)
-    /// tree describing the rendered UI.
+    /// Streams renderer trees for one stored custom message.
     ///
     /// ```ts
-    /// import { firstValueFrom, from } from "rxjs";
-    ///
-    /// const item = await firstValueFrom(
-    ///   from(
-    ///     truapi.chat.customMessageRenderSubscribe({
-    ///       request: {
-    ///         messageId: "msg-1",
-    ///         messageType: "custom-render-demo",
-    ///         payload: "0x",
-    ///       },
-    ///     }),
-    ///   ),
-    /// );
-    /// console.log("render request received:", item);
+    /// import { of } from "rxjs";
+    /// truapi.chat.onCustomMessageRender(({ messageType, payload }) => {
+    ///   return of({ tag: "String", value: { text: `${messageType}: ${payload}` } });
+    /// });
     /// ```
-    #[wire(start_id = 52)]
-    async fn custom_message_render_subscribe(
+    #[wire(host_initiated, start_id = 52)]
+    fn custom_message_render(
         &self,
         _cx: &CallContext,
-        _request: ProductChatCustomMessageRenderSubscribeRequest,
-    ) -> Subscription<ProductChatCustomMessageRenderSubscribeItem> {
+        _request: ProductChatCustomMessageRenderRequest,
+    ) -> Subscription<ProductChatCustomMessageRenderItem> {
         Subscription::empty()
     }
 }

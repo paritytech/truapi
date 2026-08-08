@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build",
     "prelint": "npm run generate-matrix",
     "lint": "tsc -b --noEmit",
+    "test": "node --test scripts/*.test.mjs",
     "preview": "vite preview",
     "generate-matrix": "node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibility.ts diagnosis-reports"
   },

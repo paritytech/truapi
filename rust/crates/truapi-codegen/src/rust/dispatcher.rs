@@ -64,6 +64,7 @@ pub fn generate_dispatcher(api: &ApiDefinition) -> Result<String> {
     );
     writeln!(out).unwrap();
     write_top_register(&mut out, &traits);
+    write_host_initiated_callers(&mut out, api, &traits)?;
 
     for module in &modules {
         writeln!(out).unwrap();
@@ -105,9 +106,19 @@ fn build_module(api: &ApiDefinition, trait_def: &TraitDef) -> Result<ModuleEmiss
     let module = module_for_trait(&trait_def.name);
 
     let mut methods = Vec::with_capacity(trait_def.methods.len());
-    for method in &trait_def.methods {
+    for method in trait_def
+        .methods
+        .iter()
+        .filter(|method| !method.wire.host_initiated)
+    {
         let wire_method = wire_method_name(&trait_def.name, &method.name);
-        methods.push(MethodEmission::build(api, &module, &wire_method, method)?);
+        methods.push(MethodEmission::build(
+            api,
+            &module,
+            &wire_method,
+            method,
+            trait_def.required_execution(),
+        )?);
     }
     let uses_raw_err_payload = methods.iter().any(MethodEmission::uses_raw_err_payload);
     let uses_raw_unit_ok_payload = methods.iter().any(MethodEmission::uses_raw_unit_ok_payload);
@@ -139,6 +150,65 @@ fn build_module(api: &ApiDefinition, trait_def: &TraitDef) -> Result<ModuleEmiss
     })
 }
 
+fn write_host_initiated_callers(
+    out: &mut String,
+    api: &ApiDefinition,
+    traits: &[&TraitDef],
+) -> Result<()> {
+    let wrappers = versioned_wrapper_names(api);
+    for trait_def in traits {
+        let module = module_for_trait(&trait_def.name);
+        for method in trait_def
+            .methods
+            .iter()
+            .filter(|method| method.wire.host_initiated)
+        {
+            let [request] = method.params.as_slice() else {
+                bail!(
+                    "Host-initiated method `{}` must have exactly one request parameter",
+                    method.name
+                );
+            };
+            let request = versioned_wrapper_root(
+                &method.name,
+                "host-initiated request",
+                &request.type_ref,
+                &wrappers,
+            )?;
+            let ReturnType::Subscription(item) = &method.return_type else {
+                bail!(
+                    "Host-initiated method `{}` must return Subscription<T>",
+                    method.name
+                );
+            };
+            let item =
+                versioned_wrapper_root(&method.name, "host-initiated item", item, &wrappers)?;
+            let wire_name = wire_method_name(&trait_def.name, &method.name);
+            let ids = const_name(&wire_name);
+            writedoc!(
+                out,
+                r#"
+
+                /// Start the host-initiated `{wire_name}` subscription.
+                pub(crate) fn {wire_name}(
+                    subscriptions: &HostInitiatedSubscriptionManager,
+                    transport: Arc<dyn Transport>,
+                    request: versioned::{module}::{request},
+                ) -> truapi::Subscription<versioned::{module}::{item}> {{
+                    subscriptions.start(
+                        wire_table::{ids},
+                        parity_scale_codec::Encode::encode(&request),
+                        transport,
+                    )
+                }}
+                "#
+            )
+            .unwrap();
+        }
+    }
+    Ok(())
+}
+
 struct MethodEmission {
     /// Rust method name on the host trait (used for the `host.<name>(...)` call).
     name: String,
@@ -151,6 +221,7 @@ struct MethodEmission {
     response_wrapper: Option<String>,
     error_payload: WirePayload,
     item_wrapper: Option<String>,
+    required_execution: Option<String>,
 }
 
 #[derive(Clone)]
@@ -165,6 +236,7 @@ impl MethodEmission {
         module: &str,
         wire_method: &str,
         method: &MethodDef,
+        required_execution: Option<&str>,
     ) -> Result<Self> {
         let versioned_wrappers = versioned_wrapper_names(api);
         let request_payload = match method.params.as_slice() {
@@ -183,7 +255,6 @@ impl MethodEmission {
                 method.params.len()
             ),
         };
-
         let error_payload = match &method.return_type {
             ReturnType::Result { err, .. } | ReturnType::ResultSubscription { err, .. } => {
                 wire_payload_for_error(&method.name, err, &versioned_wrappers)?
@@ -240,6 +311,7 @@ impl MethodEmission {
             response_wrapper,
             error_payload,
             item_wrapper,
+            required_execution: required_execution.map(str::to_string),
         })
     }
 
@@ -267,16 +339,17 @@ impl MethodEmission {
         let method = &self.name;
         let ids = const_name(&self.wire_name);
 
+        writeln!(out, "    {{").unwrap();
+        self.write_execution_binding(out);
         write_indented(
             out,
-            4,
+            8,
             &formatdoc! {
                 r#"
-                {{
-                    let host = {host_expr};
-                    dispatcher.on_request(wire_table::{ids}, move |request_id: String, bytes: Vec<u8>| {{
-                        let host = host.clone();
-                        Box::pin(async move {{
+                let host = {host_expr};
+                dispatcher.on_request(wire_table::{ids}, move |request_id: String, bytes: Vec<u8>| {{
+                    let host = host.clone();
+                    Box::pin(async move {{
                 "#
             },
         );
@@ -352,6 +425,7 @@ impl MethodEmission {
             "                let cx = CallContext::with_request_id(request_id.clone());"
         )
         .unwrap();
+        self.write_request_execution_check(out, target_version_expr.as_deref())?;
         match &self.response_wrapper {
             Some(response) => {
                 let Some(target_version_expr) = target_version_expr.as_deref() else {
@@ -434,16 +508,17 @@ impl MethodEmission {
 
         let is_result_sub = matches!(self.kind, MethodKind::ResultSubscription);
 
+        writeln!(out, "    {{").unwrap();
+        self.write_execution_binding(out);
         write_indented(
             out,
-            4,
+            8,
             &formatdoc! {
                 r#"
-                {{
-                    let host = {host_expr};
-                    dispatcher.on_subscription(wire_table::{ids}, move |request_id: String, bytes: Vec<u8>| {{
-                        let host = host.clone();
-                        Box::pin(async move {{
+                let host = {host_expr};
+                dispatcher.on_subscription(wire_table::{ids}, move |request_id: String, bytes: Vec<u8>| {{
+                    let host = host.clone();
+                    Box::pin(async move {{
                 "#
             },
         );
@@ -506,6 +581,28 @@ impl MethodEmission {
             "                let cx = CallContext::with_request_id(request_id.clone());"
         )
         .unwrap();
+        if self.required_execution.is_some() && is_result_sub {
+            let error = error.expect("result subscription error checked above");
+            write_indented(
+                out,
+                16,
+                &formatdoc! {
+                    r#"
+                    if !execution_allowed {{
+                        let error: truapi::CallError<versioned::{module}::{error}> =
+                            truapi::CallError::Denied;
+                        return Err(encode_versioned_interrupt_payload(error, {target_version_expr}));
+                    }}
+                    "#
+                },
+            );
+        } else if self.required_execution.is_some() {
+            writeln!(
+                out,
+                "                if !execution_allowed {{ return Err(Vec::new()); }}"
+            )
+            .unwrap();
+        }
         if is_result_sub {
             if error.is_none() {
                 bail!("Method `{method}`: result subscription methods must have an error wrapper");
@@ -547,6 +644,61 @@ impl MethodEmission {
                 "#
             },
         );
+        Ok(())
+    }
+
+    fn write_execution_binding(&self, out: &mut String) {
+        if let Some(required) = self.required_execution.as_ref() {
+            writeln!(
+                out,
+                "        let execution_allowed = dispatcher.allows_execution(ProductExecutionKind::{required});"
+            )
+            .unwrap();
+        }
+    }
+
+    fn write_request_execution_check(
+        &self,
+        out: &mut String,
+        target_version_expr: Option<&str>,
+    ) -> Result<()> {
+        if self.required_execution.is_none() {
+            return Ok(());
+        }
+        let module = &self.module;
+        match (&self.error_payload, target_version_expr) {
+            (WirePayload::Versioned(error), Some(target)) => write_indented(
+                out,
+                16,
+                &formatdoc! {
+                    r#"
+                    if !execution_allowed {{
+                        let error: truapi::CallError<versioned::{module}::{error}> =
+                            truapi::CallError::Denied;
+                        return Ok(encode_versioned_err_payload(error, {target}));
+                    }}
+                    "#
+                },
+            ),
+            (WirePayload::Raw(error), _) => {
+                let error = rust_type_ref(error)?;
+                write_indented(
+                    out,
+                    16,
+                    &formatdoc! {
+                        r#"
+                        if !execution_allowed {{
+                            let error: truapi::CallError<{error}> = truapi::CallError::Denied;
+                            return Ok(encode_raw_err_payload(error));
+                        }}
+                        "#
+                    },
+                );
+            }
+            (WirePayload::Versioned(_), None) => {
+                bail!("execution-filtered request has no target wire version")
+            }
+        }
         Ok(())
     }
 }
@@ -734,6 +886,7 @@ fn write_imports(
         r#"
         }};
         use truapi::versioned::{{self, Versioned}};
+        use truapi_platform::ProductExecutionKind;
 
         use crate::dispatcher::Dispatcher;
         use crate::frame::encode_versioned_err_payload;
@@ -741,7 +894,8 @@ fn write_imports(
         use crate::frame::encode_versioned_ok_payload;
         use crate::frame::encode_versioned_unit_ok_payload;
         use crate::generated::wire_table;
-        use crate::subscription::subscription_stream;
+        use crate::subscription::{{HostInitiatedSubscriptionManager, subscription_stream}};
+        use crate::transport::Transport;
         "#
     )
     .unwrap();

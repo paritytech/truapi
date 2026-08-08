@@ -39,6 +39,7 @@ import uniffi.truapi_server.HostCallbacks
 import uniffi.truapi_server.HostNavigateRejection
 import uniffi.truapi_server.HostRejection
 import uniffi.truapi_server.HostStorageException
+import uniffi.truapi_platform.ProductExecutionKind as UniFfiProductExecutionKind
 import uniffi.truapi_server.NativeRuntimeConfigException
 import uniffi.truapi_server.NativeTrUApiCore
 import uniffi.truapi_server.WsBridgeEndpoint
@@ -63,6 +64,18 @@ enum class PairingDeeplinkScheme {
         }
 }
 
+/** Trusted kind of executable attached to a product connection. */
+enum class ProductExecutionKind {
+    SPA,
+    CHAT;
+
+    internal fun toNative(): UniFfiProductExecutionKind =
+        when (this) {
+            SPA -> UniFfiProductExecutionKind.SPA
+            CHAT -> UniFfiProductExecutionKind.CHAT
+        }
+}
+
 /**
  * Static product and pairing config supplied before the Rust core handles
  * product calls. One core instance represents one product identity.
@@ -75,6 +88,7 @@ enum class PairingDeeplinkScheme {
  */
 data class RuntimeConfig(
     val productId: String,
+    val executionKind: ProductExecutionKind = ProductExecutionKind.SPA,
     val hostName: String,
     val hostIcon: String? = null,
     val hostVersion: String? = null,
@@ -89,6 +103,7 @@ data class RuntimeConfig(
     internal fun toNative(): UniFfiNativeRuntimeConfig =
         UniFfiNativeRuntimeConfig(
             productId = productId,
+            executionKind = executionKind.toNative(),
             hostName = hostName,
             hostIcon = hostIcon,
             hostVersion = hostVersion,
@@ -105,6 +120,7 @@ data class RuntimeConfig(
         if (this === other) return true
         if (other !is RuntimeConfig) return false
         return productId == other.productId &&
+            executionKind == other.executionKind &&
             hostName == other.hostName &&
             hostIcon == other.hostIcon &&
             hostVersion == other.hostVersion &&
@@ -122,6 +138,7 @@ data class RuntimeConfig(
 
     override fun hashCode(): Int {
         var result = productId.hashCode()
+        result = 31 * result + executionKind.hashCode()
         result = 31 * result + hostName.hashCode()
         result = 31 * result + (hostIcon?.hashCode() ?: 0)
         result = 31 * result + (hostVersion?.hashCode() ?: 0)

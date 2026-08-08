@@ -79,7 +79,7 @@ function startAccountConnectionStatusProbe(): AccountStatus[] {
   accountStatuses = [];
   const client = getClientSync();
   if (!client) {
-    throw new Error("App must be opened inside a TrUAPI host.");
+    throw new Error("SPA must be opened inside a TrUAPI host.");
   }
   accountStatusSub = client.account.connectionStatusSubscribe().subscribe({
     next: notifyAccountStatus,

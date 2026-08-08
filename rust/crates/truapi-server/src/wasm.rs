@@ -26,7 +26,7 @@ use truapi::v01;
 use truapi_platform::SigningHostConfig;
 use truapi_platform::{
     ChainProvider, HostInfo, JsonRpcConnection, PairingHostConfig, PlatformInfo, ProductContext,
-    RuntimeConfigValidationError,
+    ProductExecutionKind, RuntimeConfigValidationError,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -523,12 +523,21 @@ fn product_context_from_js(value: &JsValue) -> Result<ProductContext, JsValue> {
     if value.is_null() || value.is_undefined() {
         return Err(JsValue::from_str("product is required"));
     }
-    ProductContext::new(get_required_string_at(
-        value,
-        "productId",
-        "runtimeConfig.productId",
-    )?)
-    .map_err(runtime_config_validation_to_js)
+    let product_id = get_required_string_at(value, "productId", "runtimeConfig.productId")?;
+    let execution_kind =
+        match get_optional_string_at(value, "executionKind", "runtimeConfig.executionKind")?
+            .as_deref()
+        {
+            None | Some("Spa") => ProductExecutionKind::Spa,
+            Some("Chat") => ProductExecutionKind::Chat,
+            Some(other) => {
+                return Err(JsValue::from_str(&format!(
+                    "runtimeConfig.executionKind must be Spa or Chat, got {other:?}"
+                )));
+            }
+        };
+    ProductContext::new_with_execution(product_id, execution_kind)
+        .map_err(runtime_config_validation_to_js)
 }
 
 fn runtime_config_field_to_js(field: &str) -> &str {

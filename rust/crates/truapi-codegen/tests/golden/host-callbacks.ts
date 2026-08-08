@@ -25,6 +25,11 @@ import {
 
 import type {
   GenericError,
+  HostChatCreateRoomRequest,
+  HostChatCreateRoomResponse,
+  HostChatListSubscribeItem,
+  HostChatPostMessageRequest,
+  HostChatPostMessageResponse,
   HostDevicePermissionResponse,
   HostFeatureSupportedRequest,
   HostFeatureSupportedResponse,
@@ -233,6 +238,33 @@ export interface PreimageSubmitReview {
    */
   size: bigint;
 }
+
+/**
+ * Product identity attached to one product-facing TrUAPI connection.
+ *
+ * A host may create multiple product runtimes from the same long-lived host
+ * runtime, each with its own product context.
+ */
+export interface ProductContext {
+  /**
+   * Product identifier used for account derivation and product-scoped
+   * storage/permission namespaces.
+   *
+   * Host-spec C.7 defines accepted product id forms:
+   * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/spec/C-account-derivation.md?plain=1#L109-L128>
+   */
+  productId: string;
+
+  /**
+   * Trusted kind of executable attached to this connection by the host.
+   */
+  executionKind: ProductExecutionKind;
+}
+
+/**
+ * Trusted kind of product executable attached to a TrUAPI connection.
+ */
+export type ProductExecutionKind = "Spa" | "Chat";
 
 /**
  * Review shown before allocating resources for a product. Names the
@@ -525,6 +557,27 @@ export const PreimageSubmitReview: S.Codec<PreimageSubmitReview> = S.lazy(
 );
 
 /**
+ * Product identity attached to one product-facing TrUAPI connection.
+ *
+ * A host may create multiple product runtimes from the same long-lived host
+ * runtime, each with its own product context.
+ */
+export const ProductContext: S.Codec<ProductContext> = S.lazy(
+  (): S.Codec<ProductContext> =>
+    S.Struct({
+      productId: S.str,
+      executionKind: ProductExecutionKind,
+    }) as S.Codec<ProductContext>,
+);
+
+/**
+ * Trusted kind of product executable attached to a TrUAPI connection.
+ */
+export const ProductExecutionKind: S.Codec<ProductExecutionKind> = S.lazy(
+  (): S.Codec<ProductExecutionKind> => S.Status("Spa", "Chat"),
+);
+
+/**
  * Review shown before allocating resources for a product. Names the
  * beneficiary product so the user knows which product receives the
  * (signing-capable) allowance key they are approving.
@@ -647,6 +700,35 @@ export interface ChainProvider {
    * Drop the returned connection to disconnect.
    */
   connect(genesisHash: Uint8Array): Promise<JsonRpcConnection>;
+}
+
+/**
+ * Host-implemented adapter through which product Chat calls reach native
+ * storage and UI.
+ */
+export interface ChatPlatform {
+  /**
+   * Create or resolve a product-scoped native chat room.
+   */
+  createRoom(
+    product: ProductContext,
+    request: HostChatCreateRoomRequest,
+  ): Promise<HostChatCreateRoomResponse>;
+
+  /**
+   * Persist a product-authored message in a native chat room.
+   */
+  postMessage(
+    product: ProductContext,
+    request: HostChatPostMessageRequest,
+  ): Promise<HostChatPostMessageResponse>;
+
+  /**
+   * Emit the current product-scoped room list and later replacements.
+   */
+  subscribeRooms(
+    product: ProductContext,
+  ): AsyncIterable<HostChatListSubscribeItem>;
 }
 
 /**

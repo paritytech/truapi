@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { services } from "../../../../js/packages/truapi/src/playground/codegen/services.ts";
+import { servicesForExecution } from "../../../../js/packages/truapi/src/playground/services-types.ts";
 import { BatteryReporter, shouldUseColor } from "./battery-reporter.ts";
 import {
   cliDiagnosisReportMetadata,
@@ -35,8 +36,9 @@ describe("generated-example battery", () => {
   });
 
   test("derives every case from the generated playground manifest", () => {
-    const generatedIds = services.flatMap((service) =>
-      service.methods.map((method) => `${service.name}/${method.name}`),
+    const generatedIds = servicesForExecution(services, "Spa").flatMap(
+      (service) =>
+        service.methods.map((method) => `${service.name}/${method.name}`),
     );
     const plan = createDiagnosisPlan({ runKnownUnsupported: true });
 

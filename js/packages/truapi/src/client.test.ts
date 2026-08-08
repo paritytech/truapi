@@ -82,6 +82,67 @@ function accountGetResponsePayload(
     ).enc({ tag: "V1", value });
 }
 
+function rendererStart(
+    requestId: string,
+    request: T.ProductChatCustomMessageRenderRequest,
+): Uint8Array {
+    return unwrap(
+        encodeWireMessage({
+            requestId,
+            payload: {
+                id: W.CHAT_CUSTOM_MESSAGE_RENDER.start,
+                value: T.VersionedProductChatCustomMessageRenderRequest.enc({
+                    tag: "V1",
+                    value: request,
+                }),
+            },
+        }),
+        "encode renderer start",
+    );
+}
+
+function rendererReceive(requestId: string, node: T.CustomRendererNode): Uint8Array {
+    return unwrap(
+        encodeWireMessage({
+            requestId,
+            payload: {
+                id: W.CHAT_CUSTOM_MESSAGE_RENDER.receive,
+                value: T.VersionedProductChatCustomMessageRenderItem.enc({
+                    tag: "V1",
+                    value: node,
+                }),
+            },
+        }),
+        "encode renderer receive",
+    );
+}
+
+function rendererInterrupt(requestId: string): Uint8Array {
+    return unwrap(
+        encodeWireMessage({
+            requestId,
+            payload: {
+                id: W.CHAT_CUSTOM_MESSAGE_RENDER.interrupt,
+                value: new Uint8Array([0]),
+            },
+        }),
+        "encode renderer interrupt",
+    );
+}
+
+function rendererStop(requestId: string): Uint8Array {
+    return unwrap(
+        encodeWireMessage({
+            requestId,
+            payload: {
+                id: W.CHAT_CUSTOM_MESSAGE_RENDER.stop,
+                value: new Uint8Array(),
+            },
+        }),
+        "encode renderer stop",
+    );
+}
+
 describe("generated client transport", () => {
     it("encodes unit-only enums as a single-byte SCALE discriminant", () => {
         // Unit-only enums expose a string union on the public API while
@@ -96,7 +157,10 @@ describe("generated client transport", () => {
         const client = createClient(transport);
 
         const request = {
-            productAccountId: { dotNsIdentifier: "foo", derivationIndex: { tag: "Index", value: 0 } },
+            productAccountId: {
+                dotNsIdentifier: "foo",
+                derivationIndex: { tag: "Index", value: 0 },
+            },
         };
         void client.account.getAccount(request);
 
@@ -156,7 +220,10 @@ describe("generated client transport", () => {
         const client = createClient(transport);
 
         const response = client.account.getAccount({
-            productAccountId: { dotNsIdentifier: "foo", derivationIndex: { tag: "Index", value: 0 } },
+            productAccountId: {
+                dotNsIdentifier: "foo",
+                derivationIndex: { tag: "Index", value: 0 },
+            },
         });
         const reason = { tag: "V1", value: { tag: "NotConnected", value: undefined } } as const;
         const frame = unwrap(
@@ -235,6 +302,165 @@ describe("generated client transport", () => {
         fixture.receive(frame);
 
         expect(events).toEqual(["Connected"]);
+    });
+
+    it("buffers a host render start until the product registers its handler", () => {
+        const fixture = providerFixture();
+        const client = createClient(createTransport(fixture.provider));
+        const request: T.ProductChatCustomMessageRenderRequest = {
+            messageId: "message-1",
+            messageType: "vote",
+            payload: "0x0102",
+        };
+        // Legacy hosts use opaque ids rather than the Rust host's `h:` prefix.
+        fixture.receive(rendererStart("legacy-render-1", request));
+
+        const handled: T.ProductChatCustomMessageRenderRequest[] = [];
+        client.chat.onCustomMessageRender((value) => {
+            handled.push(value);
+            return { subscribe: () => ({ unsubscribe() {} }) };
+        });
+
+        expect(handled).toEqual([request]);
+        expect(fixture.sent).toHaveLength(0);
+    });
+
+    it("streams complete replacement trees on the host-owned request id", () => {
+        const fixture = providerFixture();
+        const client = createClient(createTransport(fixture.provider));
+        let observer: { next?: (node: T.CustomRendererNode) => void } = {};
+        client.chat.onCustomMessageRender(() => ({
+            subscribe(next) {
+                observer = next;
+                return { unsubscribe() {} };
+            },
+        }));
+
+        fixture.receive(
+            rendererStart("h:7", {
+                messageId: "message-7",
+                messageType: "vote",
+                payload: "0x",
+            }),
+        );
+        const first = { tag: "String", value: { text: "Votes: 1" } } as const;
+        const second = { tag: "String", value: { text: "Votes: 2" } } as const;
+        observer.next?.(first);
+        observer.next?.(second);
+
+        expect(fixture.sent.map(toHex)).toEqual(
+            [rendererReceive("h:7", first), rendererReceive("h:7", second)].map(toHex),
+        );
+    });
+
+    it("declines a render when the handler throws", () => {
+        const fixture = providerFixture();
+        const client = createClient(createTransport(fixture.provider));
+        client.chat.onCustomMessageRender(() => {
+            throw new Error("unsupported renderer");
+        });
+
+        fixture.receive(
+            rendererStart("h:2", {
+                messageId: "message-2",
+                messageType: "unknown",
+                payload: "0x",
+            }),
+        );
+
+        expect(toHex(fixture.sent[0])).toBe(toHex(rendererInterrupt("h:2")));
+    });
+
+    it("declines a render when its handler stream errors", () => {
+        const fixture = providerFixture();
+        const client = createClient(createTransport(fixture.provider));
+        client.chat.onCustomMessageRender(() => ({
+            subscribe(observer) {
+                observer.error?.(new Error("renderer failed"));
+                return { unsubscribe() {} };
+            },
+        }));
+
+        fixture.receive(
+            rendererStart("h:3", {
+                messageId: "message-3",
+                messageType: "vote",
+                payload: "0x",
+            }),
+        );
+
+        expect(toHex(fixture.sent[0])).toBe(toHex(rendererInterrupt("h:3")));
+    });
+
+    it("keeps a completed render alive until the host stops it", () => {
+        const fixture = providerFixture();
+        const client = createClient(createTransport(fixture.provider));
+        let disposed = false;
+        client.chat.onCustomMessageRender(() => ({
+            subscribe(observer) {
+                observer.complete?.();
+                return { unsubscribe: () => (disposed = true) };
+            },
+        }));
+
+        fixture.receive(
+            rendererStart("h:4", {
+                messageId: "message-4",
+                messageType: "vote",
+                payload: "0x",
+            }),
+        );
+        expect(fixture.sent).toHaveLength(0);
+        expect(disposed).toBe(false);
+
+        fixture.receive(rendererStop("h:4"));
+        expect(disposed).toBe(true);
+        expect(fixture.sent).toHaveLength(0);
+    });
+
+    it("interrupts the oldest buffered render when capacity is exceeded", () => {
+        const fixture = providerFixture();
+        createClient(createTransport(fixture.provider));
+        for (let index = 1; index <= 65; index += 1) {
+            fixture.receive(
+                rendererStart(`h:${index}`, {
+                    messageId: `message-${index}`,
+                    messageType: "vote",
+                    payload: "0x",
+                }),
+            );
+        }
+
+        expect(fixture.sent).toHaveLength(1);
+        expect(toHex(fixture.sent[0])).toBe(toHex(rendererInterrupt("h:1")));
+    });
+
+    it("disposes only the stopped render instance", () => {
+        const fixture = providerFixture();
+        const client = createClient(createTransport(fixture.provider));
+        const disposed: string[] = [];
+        client.chat.onCustomMessageRender((request) => ({
+            subscribe() {
+                return { unsubscribe: () => disposed.push(request.messageId) };
+            },
+        }));
+        fixture.receive(
+            rendererStart("h:1", {
+                messageId: "one",
+                messageType: "vote",
+                payload: "0x",
+            }),
+        );
+        fixture.receive(
+            rendererStart("h:2", {
+                messageId: "two",
+                messageType: "vote",
+                payload: "0x",
+            }),
+        );
+
+        fixture.receive(rendererStop("h:1"));
+        expect(disposed).toEqual(["one"]);
     });
 
     it("completes the observable on a payloadless interrupt terminator", () => {

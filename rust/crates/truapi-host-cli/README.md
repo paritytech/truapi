@@ -245,9 +245,8 @@ Five scripts ship under `js/scripts/`:
   attempts all examples (including APIs the browser diagnosis classifies as
   intentionally unsupported), prints test-reporter rows with timings and clean
   failure details, writes the browser-shaped result matrix to
-  the role-specific report under `explorer/diagnosis-reports/`, and exits
-  nonzero if any example fails outside the committed unsupported baseline. A
-  paired run writes `pairing-host-cli.md`; a
+  the role-specific report under `explorer/diagnosis-reports/spa/`, and exits
+  nonzero if any example fails. A paired run writes `pairing-host-cli.md`; a
   direct signing-host run writes `signing-host-cli.md`. Override the artifact
   path with `TRUAPI_BATTERY_REPORT_PATH`.
 

@@ -1,5 +1,6 @@
 export type {
   ObservableLike,
+  ObservableSource,
   Observer,
   Payload,
   ProtocolMessage,

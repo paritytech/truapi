@@ -2,6 +2,7 @@ import type { MethodKind } from "../data/types";
 
 interface PatternBadgeProps {
   kind: MethodKind;
+  hostInitiated?: boolean;
 }
 
 const config: Record<
@@ -23,13 +24,17 @@ const config: Record<
 };
 
 /** Pattern pill rendered on method headers and lists. */
-export default function PatternBadge({ kind }: PatternBadgeProps) {
+export default function PatternBadge({
+  kind,
+  hostInitiated,
+}: PatternBadgeProps) {
   const c = config[kind];
+  const label = hostInitiated ? "Host subscription" : c.label;
   return (
     <span
       className={`inline-flex items-center shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium border ${c.bg} ${c.border} ${c.text}`}
     >
-      {c.label}
+      {label}
     </span>
   );
 }

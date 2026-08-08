@@ -1,4 +1,4 @@
-## Truapi iOS Diagnosis
+## Truapi Android Diagnosis
 
 | Method | Status | Details |
 | --- | --- | --- |
@@ -22,12 +22,6 @@
 | `Chain/get_spec_properties` | ✅ |  |
 | `Chain/broadcast_transaction` | ✅ |  |
 | `Chain/stop_transaction` | ✅ |  |
-| `Chat/create_room` | ❌ | timed out after 10s |
-| `Chat/register_bot` | ❌ | registerBot failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
-| `Chat/list_subscribe` | ❌ | timed out after 10s |
-| `Chat/post_message` | ❌ | postMessage failed: { "error": { "tag": "Unknown", "value": { "reason": "Error: Messages are not supported" } } } |
-| `Chat/action_subscribe` | ❌ | timed out after 10s |
-| `Chat/custom_message_render_subscribe` | ❌ | timed out after 10s |
 | `Entropy/derive` | ✅ |  |
 | `Local Storage/read` | ✅ |  |
 | `Local Storage/write` | ✅ |  |
@@ -49,7 +43,7 @@
 | `Signing/sign_payload_with_legacy_account` | ❌ | signPayloadWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
 | `Signing/sign_raw` | ✅ |  |
 | `Signing/sign_payload` | ✅ |  |
-| `Statement Store/subscribe` | ❌ | submitting proof: { "tag": "Sr25519", "value": { "signature": "0xfa44b13cbdcab2848cc94f72e272243be38813c027b95117c2ca02f9f4509d45fd5b5c663415f38a861e881ca854f7caa9c8c4a3fcab9a8d4529db01dc40158b", "signer": "0xb2d8f06be3aee758a87b0e2b429df44842463a2a37994d297abcd8a59b18e231" } } proof submitted: timed out after 10s |
+| `Statement Store/subscribe` | ❌ | submitting proof: { "tag": "Sr25519", "value": { "signature": "0x787cd296d80ffd9f0ed27c0fc727e12e0f1dbb70003ec490677ad59f3104350496c08caf27d2e4eb197967ec5be9c13703e09e731285d99e9c2d3b9df63c148b", "signer": "0xf601e46c084b558a21a979321f96f61c011f119b67ad30269b58234c3e47553a" } } proof submitted: timed out after 10s |
 | `Statement Store/create_proof` | ✅ |  |
 | `Statement Store/submit` | ✅ |  |
 | `Statement Store/create_proof_authorized` | ✅ |  |

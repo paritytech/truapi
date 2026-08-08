@@ -99,7 +99,8 @@ export function DiagnosisView({
   };
 
   // Open a pre-filled GitHub issue carrying the report; the diagnosis-report
-  // workflow writes it to diagnosis-reports/<host>.md and opens a PR. The host
+  // workflow writes it to diagnosis-reports/spa/<host>.md (or chat/<host>.md
+  // for Chat reports) and opens a PR. The host
   // opens the link via `navigate_to` (a sandboxed app can't `window.open`).
   // The full report goes to the clipboard (lossless fallback); the URL carries
   // a compact variant with success-row details dropped, so it stays under
@@ -137,12 +138,13 @@ export function DiagnosisView({
           <span className="panel__label">About</span>
         </div>
         <p className="panel__desc">
-          Runs every TrUAPI method against the connected host to build a
-          coverage report — which methods work, which fail, and which
-          aren&apos;t wired yet. Methods run one at a time, in order; those that
-          need your approval (signing, permission and resource requests) wait on
-          your response before the run continues. When it finishes, copy the
-          report below.
+          Runs every SPA-compatible TrUAPI method against the connected host to
+          build a coverage report — which methods work, which fail, and which
+          aren&apos;t wired yet. Chat APIs run in the separate native Chat
+          diagnosis. Methods run one at a time, in order; those that need your
+          approval (signing, permission and resource requests) wait on your
+          response before the run continues. When it finishes, copy the report
+          below.
         </p>
         <p className="diag__callout">
           Before you start: make sure you are <strong>logged in</strong>, and

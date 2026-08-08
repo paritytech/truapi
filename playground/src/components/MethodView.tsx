@@ -124,7 +124,7 @@ export function MethodView({
       const client = getClientSync();
       if (!client) {
         throw new Error(
-          "App must be opened inside a TrUAPI host (iframe or webview).",
+          "SPA must be opened inside a TrUAPI host (iframe or webview).",
         );
       }
       const run = await runExample({ source, client, onLog });

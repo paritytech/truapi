@@ -23,12 +23,6 @@
 | `Chain/get_spec_properties` | ✅ |  |
 | `Chain/broadcast_transaction` | ✅ |  |
 | `Chain/stop_transaction` | ✅ |  |
-| `Chat/create_room` | ❌ | createRoom failed: { "error": { "tag": "HostFailure", "value": { "reason": "unavailable" } } } |
-| `Chat/register_bot` | ❌ | registerBot failed: { "error": { "tag": "HostFailure", "value": { "reason": "unavailable" } } } |
-| `Chat/list_subscribe` | ❌ | no elements in sequence |
-| `Chat/post_message` | ❌ | postMessage failed: { "error": { "tag": "HostFailure", "value": { "reason": "unavailable" } } } |
-| `Chat/action_subscribe` | ❌ | no elements in sequence |
-| `Chat/custom_message_render_subscribe` | ❌ | no elements in sequence |
 | `Coin Payment/create_purse` | ❌ | createPurse failed: { "error": { "tag": "HostFailure", "value": { "reason": "unavailable" } } } |
 | `Coin Payment/query_purse` | ❌ | queryPurse failed: { "error": { "tag": "HostFailure", "value": { "reason": "unavailable" } } } |
 | `Coin Payment/rebalance_purse` | ❌ | Subscription interrupted |

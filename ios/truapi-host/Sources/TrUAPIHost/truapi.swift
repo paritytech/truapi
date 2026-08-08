@@ -398,7 +398,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-// Initial value and increment amount for handles.
+// Initial value and increment amount for handles. 
 // These ensure that SWIFT handles always have the lowest bit set
 fileprivate let UNIFFI_HANDLEMAP_INITIAL: UInt64 = 1
 fileprivate let UNIFFI_HANDLEMAP_DELTA: UInt64 = 2
@@ -600,6 +600,736 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 /**
+ * Payload when a user clicks an action button.
+ */
+public struct ActionTrigger: Equatable, Hashable {
+    /**
+     * Message containing the action.
+     */
+    public var messageId: String
+    /**
+     * Which action was triggered.
+     */
+    public var actionId: String
+    /**
+     * Optional additional data.
+     */
+    public var payload: Data?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Message containing the action.
+         */messageId: String, 
+        /**
+         * Which action was triggered.
+         */actionId: String, 
+        /**
+         * Optional additional data.
+         */payload: Data?) {
+        self.messageId = messageId
+        self.actionId = actionId
+        self.payload = payload
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ActionTrigger: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeActionTrigger: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ActionTrigger {
+        return
+            try ActionTrigger(
+                messageId: FfiConverterString.read(from: &buf), 
+                actionId: FfiConverterString.read(from: &buf), 
+                payload: FfiConverterOptionData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ActionTrigger, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.messageId, into: &buf)
+        FfiConverterString.write(value.actionId, into: &buf)
+        FfiConverterOptionData.write(value.payload, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeActionTrigger_lift(_ buf: RustBuffer) throws -> ActionTrigger {
+    return try FfiConverterTypeActionTrigger.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeActionTrigger_lower(_ value: ActionTrigger) -> RustBuffer {
+    return FfiConverterTypeActionTrigger.lower(value)
+}
+
+
+/**
+ * A clickable action button in a chat message.
+ */
+public struct ChatAction: Equatable, Hashable {
+    /**
+     * Action identifier.
+     */
+    public var actionId: String
+    /**
+     * Button label.
+     */
+    public var title: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Action identifier.
+         */actionId: String, 
+        /**
+         * Button label.
+         */title: String) {
+        self.actionId = actionId
+        self.title = title
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatAction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatAction {
+        return
+            try ChatAction(
+                actionId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatAction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.actionId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAction_lift(_ buf: RustBuffer) throws -> ChatAction {
+    return try FfiConverterTypeChatAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAction_lower(_ value: ChatAction) -> RustBuffer {
+    return FfiConverterTypeChatAction.lower(value)
+}
+
+
+/**
+ * A set of action buttons with optional text.
+ */
+public struct ChatActions: Equatable, Hashable {
+    /**
+     * Optional message text.
+     */
+    public var text: String?
+    /**
+     * List of action buttons.
+     */
+    public var actions: [ChatAction]
+    /**
+     * `Column` or `Grid` layout.
+     */
+    public var layout: ChatActionLayout
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Optional message text.
+         */text: String?, 
+        /**
+         * List of action buttons.
+         */actions: [ChatAction], 
+        /**
+         * `Column` or `Grid` layout.
+         */layout: ChatActionLayout) {
+        self.text = text
+        self.actions = actions
+        self.layout = layout
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatActions: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatActions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatActions {
+        return
+            try ChatActions(
+                text: FfiConverterOptionString.read(from: &buf), 
+                actions: FfiConverterSequenceTypeChatAction.read(from: &buf), 
+                layout: FfiConverterTypeChatActionLayout.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatActions, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.text, into: &buf)
+        FfiConverterSequenceTypeChatAction.write(value.actions, into: &buf)
+        FfiConverterTypeChatActionLayout.write(value.layout, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatActions_lift(_ buf: RustBuffer) throws -> ChatActions {
+    return try FfiConverterTypeChatActions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatActions_lower(_ value: ChatActions) -> RustBuffer {
+    return FfiConverterTypeChatActions.lower(value)
+}
+
+
+/**
+ * A slash command from a chat user.
+ */
+public struct ChatCommand: Equatable, Hashable {
+    /**
+     * Command name.
+     */
+    public var command: String
+    /**
+     * Command arguments.
+     */
+    public var payload: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Command name.
+         */command: String, 
+        /**
+         * Command arguments.
+         */payload: String) {
+        self.command = command
+        self.payload = payload
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatCommand: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatCommand: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatCommand {
+        return
+            try ChatCommand(
+                command: FfiConverterString.read(from: &buf), 
+                payload: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatCommand, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.command, into: &buf)
+        FfiConverterString.write(value.payload, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatCommand_lift(_ buf: RustBuffer) throws -> ChatCommand {
+    return try FfiConverterTypeChatCommand.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatCommand_lower(_ value: ChatCommand) -> RustBuffer {
+    return FfiConverterTypeChatCommand.lower(value)
+}
+
+
+/**
+ * A custom message with application-defined type and binary payload.
+ */
+public struct ChatCustomMessage: Equatable, Hashable {
+    /**
+     * Application-defined type key.
+     */
+    public var messageType: String
+    /**
+     * Binary payload.
+     */
+    public var payload: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Application-defined type key.
+         */messageType: String, 
+        /**
+         * Binary payload.
+         */payload: Data) {
+        self.messageType = messageType
+        self.payload = payload
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatCustomMessage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatCustomMessage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatCustomMessage {
+        return
+            try ChatCustomMessage(
+                messageType: FfiConverterString.read(from: &buf), 
+                payload: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatCustomMessage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.messageType, into: &buf)
+        FfiConverterData.write(value.payload, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatCustomMessage_lift(_ buf: RustBuffer) throws -> ChatCustomMessage {
+    return try FfiConverterTypeChatCustomMessage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatCustomMessage_lower(_ value: ChatCustomMessage) -> RustBuffer {
+    return FfiConverterTypeChatCustomMessage.lower(value)
+}
+
+
+/**
+ * A file attachment in a chat message.
+ */
+public struct ChatFile: Equatable, Hashable {
+    /**
+     * File download URL.
+     */
+    public var url: String
+    /**
+     * File name.
+     */
+    public var fileName: String
+    /**
+     * MIME type.
+     */
+    public var mimeType: String
+    /**
+     * File size in bytes.
+     */
+    public var sizeBytes: UInt64
+    /**
+     * Optional caption text.
+     */
+    public var text: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * File download URL.
+         */url: String, 
+        /**
+         * File name.
+         */fileName: String, 
+        /**
+         * MIME type.
+         */mimeType: String, 
+        /**
+         * File size in bytes.
+         */sizeBytes: UInt64, 
+        /**
+         * Optional caption text.
+         */text: String?) {
+        self.url = url
+        self.fileName = fileName
+        self.mimeType = mimeType
+        self.sizeBytes = sizeBytes
+        self.text = text
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatFile: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatFile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatFile {
+        return
+            try ChatFile(
+                url: FfiConverterString.read(from: &buf), 
+                fileName: FfiConverterString.read(from: &buf), 
+                mimeType: FfiConverterString.read(from: &buf), 
+                sizeBytes: FfiConverterUInt64.read(from: &buf), 
+                text: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatFile, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterString.write(value.fileName, into: &buf)
+        FfiConverterString.write(value.mimeType, into: &buf)
+        FfiConverterUInt64.write(value.sizeBytes, into: &buf)
+        FfiConverterOptionString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatFile_lift(_ buf: RustBuffer) throws -> ChatFile {
+    return try FfiConverterTypeChatFile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatFile_lower(_ value: ChatFile) -> RustBuffer {
+    return FfiConverterTypeChatFile.lower(value)
+}
+
+
+/**
+ * A media attachment.
+ */
+public struct ChatMedia: Equatable, Hashable {
+    /**
+     * Media URL.
+     */
+    public var url: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Media URL.
+         */url: String) {
+        self.url = url
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatMedia: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatMedia: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatMedia {
+        return
+            try ChatMedia(
+                url: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatMedia, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMedia_lift(_ buf: RustBuffer) throws -> ChatMedia {
+    return try FfiConverterTypeChatMedia.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMedia_lower(_ value: ChatMedia) -> RustBuffer {
+    return FfiConverterTypeChatMedia.lower(value)
+}
+
+
+/**
+ * A reaction to a chat message.
+ */
+public struct ChatReaction: Equatable, Hashable {
+    /**
+     * Message being reacted to.
+     */
+    public var messageId: String
+    /**
+     * Emoji reaction.
+     */
+    public var emoji: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Message being reacted to.
+         */messageId: String, 
+        /**
+         * Emoji reaction.
+         */emoji: String) {
+        self.messageId = messageId
+        self.emoji = emoji
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatReaction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatReaction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatReaction {
+        return
+            try ChatReaction(
+                messageId: FfiConverterString.read(from: &buf), 
+                emoji: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatReaction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.messageId, into: &buf)
+        FfiConverterString.write(value.emoji, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatReaction_lift(_ buf: RustBuffer) throws -> ChatReaction {
+    return try FfiConverterTypeChatReaction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatReaction_lower(_ value: ChatReaction) -> RustBuffer {
+    return FfiConverterTypeChatReaction.lower(value)
+}
+
+
+/**
+ * Rich text message with optional media.
+ */
+public struct ChatRichText: Equatable, Hashable {
+    /**
+     * Optional text content.
+     */
+    public var text: String?
+    /**
+     * Attached media items.
+     */
+    public var media: [ChatMedia]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Optional text content.
+         */text: String?, 
+        /**
+         * Attached media items.
+         */media: [ChatMedia]) {
+        self.text = text
+        self.media = media
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatRichText: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatRichText: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatRichText {
+        return
+            try ChatRichText(
+                text: FfiConverterOptionString.read(from: &buf), 
+                media: FfiConverterSequenceTypeChatMedia.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatRichText, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.text, into: &buf)
+        FfiConverterSequenceTypeChatMedia.write(value.media, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatRichText_lift(_ buf: RustBuffer) throws -> ChatRichText {
+    return try FfiConverterTypeChatRichText.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatRichText_lower(_ value: ChatRichText) -> RustBuffer {
+    return FfiConverterTypeChatRichText.lower(value)
+}
+
+
+/**
+ * A chat room the product participates in.
+ */
+public struct ChatRoom: Equatable, Hashable {
+    /**
+     * Room identifier.
+     */
+    public var roomId: String
+    /**
+     * `RoomHost` or `Bot`.
+     */
+    public var participatingAs: ChatRoomParticipation
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Room identifier.
+         */roomId: String, 
+        /**
+         * `RoomHost` or `Bot`.
+         */participatingAs: ChatRoomParticipation) {
+        self.roomId = roomId
+        self.participatingAs = participatingAs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatRoom: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatRoom: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatRoom {
+        return
+            try ChatRoom(
+                roomId: FfiConverterString.read(from: &buf), 
+                participatingAs: FfiConverterTypeChatRoomParticipation.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatRoom, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.roomId, into: &buf)
+        FfiConverterTypeChatRoomParticipation.write(value.participatingAs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatRoom_lift(_ buf: RustBuffer) throws -> ChatRoom {
+    return try FfiConverterTypeChatRoom.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatRoom_lower(_ value: ChatRoom) -> RustBuffer {
+    return FfiConverterTypeChatRoom.lower(value)
+}
+
+
+/**
  * Request to produce an sr25519 VRF signature from a product account over a
  * caller-supplied Merlin transcript.
  */
@@ -622,10 +1352,10 @@ public struct HostAccountSignVrfRequest: Equatable, Hashable {
     public init(
         /**
          * Account whose key signs the VRF.
-         */account: ProductAccountId,
+         */account: ProductAccountId, 
         /**
          * Root domain-separation label: `Transcript::new(transcript_label)`.
-         */transcriptLabel: Data,
+         */transcriptLabel: Data, 
         /**
          * Transcript items replayed in order as `append_message(label, value)`.
          */items: [VrfTranscriptItem]) {
@@ -634,9 +1364,9 @@ public struct HostAccountSignVrfRequest: Equatable, Hashable {
         self.items = items
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -650,8 +1380,8 @@ public struct FfiConverterTypeHostAccountSignVrfRequest: FfiConverterRustBuffer 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostAccountSignVrfRequest {
         return
             try HostAccountSignVrfRequest(
-                account: FfiConverterTypeProductAccountId.read(from: &buf),
-                transcriptLabel: FfiConverterData.read(from: &buf),
+                account: FfiConverterTypeProductAccountId.read(from: &buf), 
+                transcriptLabel: FfiConverterData.read(from: &buf), 
                 items: FfiConverterSequenceTypeVrfTranscriptItem.read(from: &buf)
         )
     }
@@ -676,6 +1406,85 @@ public func FfiConverterTypeHostAccountSignVrfRequest_lift(_ buf: RustBuffer) th
 #endif
 public func FfiConverterTypeHostAccountSignVrfRequest_lower(_ value: HostAccountSignVrfRequest) -> RustBuffer {
     return FfiConverterTypeHostAccountSignVrfRequest.lower(value)
+}
+
+
+/**
+ * A chat action received from the host.
+ */
+public struct HostChatActionSubscribeItem: Equatable, Hashable {
+    /**
+     * Room where the action occurred.
+     */
+    public var roomId: String
+    /**
+     * Peer who initiated the action.
+     */
+    public var peer: String
+    /**
+     * The action payload.
+     */
+    public var payload: ChatActionPayload
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Room where the action occurred.
+         */roomId: String, 
+        /**
+         * Peer who initiated the action.
+         */peer: String, 
+        /**
+         * The action payload.
+         */payload: ChatActionPayload) {
+        self.roomId = roomId
+        self.peer = peer
+        self.payload = payload
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HostChatActionSubscribeItem: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHostChatActionSubscribeItem: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostChatActionSubscribeItem {
+        return
+            try HostChatActionSubscribeItem(
+                roomId: FfiConverterString.read(from: &buf), 
+                peer: FfiConverterString.read(from: &buf), 
+                payload: FfiConverterTypeChatActionPayload.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HostChatActionSubscribeItem, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.roomId, into: &buf)
+        FfiConverterString.write(value.peer, into: &buf)
+        FfiConverterTypeChatActionPayload.write(value.payload, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHostChatActionSubscribeItem_lift(_ buf: RustBuffer) throws -> HostChatActionSubscribeItem {
+    return try FfiConverterTypeHostChatActionSubscribeItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHostChatActionSubscribeItem_lower(_ value: HostChatActionSubscribeItem) -> RustBuffer {
+    return FfiConverterTypeHostChatActionSubscribeItem.lower(value)
 }
 
 
@@ -708,10 +1517,10 @@ public struct HostPushNotificationRequest: Equatable, Hashable {
     public init(
         /**
          * Notification text.
-         */text: String,
+         */text: String, 
         /**
          * Optional URL to open on tap.
-         */deeplink: String?,
+         */deeplink: String?, 
         /**
          * Optional Unix timestamp in milliseconds (UTC) at which the notification
          * should fire. `None` fires immediately.
@@ -721,9 +1530,9 @@ public struct HostPushNotificationRequest: Equatable, Hashable {
         self.scheduledAt = scheduledAt
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -737,8 +1546,8 @@ public struct FfiConverterTypeHostPushNotificationRequest: FfiConverterRustBuffe
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostPushNotificationRequest {
         return
             try HostPushNotificationRequest(
-                text: FfiConverterString.read(from: &buf),
-                deeplink: FfiConverterOptionString.read(from: &buf),
+                text: FfiConverterString.read(from: &buf), 
+                deeplink: FfiConverterOptionString.read(from: &buf), 
                 scheduledAt: FfiConverterOptionUInt64.read(from: &buf)
         )
     }
@@ -837,46 +1646,46 @@ public struct HostSignPayloadData: Equatable, Hashable {
     public init(
         /**
          * Reference block hash.
-         */blockHash: Data,
+         */blockHash: Data, 
         /**
          * Reference block number.
-         */blockNumber: Data,
+         */blockNumber: Data, 
         /**
          * Mortality era encoding.
-         */era: Data,
+         */era: Data, 
         /**
          * Chain genesis hash.
-         */genesisHash: Data,
+         */genesisHash: Data, 
         /**
          * SCALE-encoded call data.
-         */method: Data,
+         */method: Data, 
         /**
          * Account nonce.
-         */nonce: Data,
+         */nonce: Data, 
         /**
          * Runtime spec version.
-         */specVersion: Data,
+         */specVersion: Data, 
         /**
          * Transaction tip.
-         */tip: Data,
+         */tip: Data, 
         /**
          * Transaction format version.
-         */transactionVersion: Data,
+         */transactionVersion: Data, 
         /**
          * Extension identifiers.
-         */signedExtensions: [String],
+         */signedExtensions: [String], 
         /**
          * Extrinsic version.
-         */version: UInt32,
+         */version: UInt32, 
         /**
          * For multi-asset tips.
-         */assetId: Data?,
+         */assetId: Data?, 
         /**
          * CheckMetadataHash extension.
-         */metadataHash: Data?,
+         */metadataHash: Data?, 
         /**
          * Metadata mode.
-         */mode: UInt32?,
+         */mode: UInt32?, 
         /**
          * Request signed transaction back.
          */withSignedTransaction: Bool?) {
@@ -897,9 +1706,9 @@ public struct HostSignPayloadData: Equatable, Hashable {
         self.withSignedTransaction = withSignedTransaction
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -913,20 +1722,20 @@ public struct FfiConverterTypeHostSignPayloadData: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostSignPayloadData {
         return
             try HostSignPayloadData(
-                blockHash: FfiConverterData.read(from: &buf),
-                blockNumber: FfiConverterData.read(from: &buf),
-                era: FfiConverterData.read(from: &buf),
-                genesisHash: FfiConverterData.read(from: &buf),
-                method: FfiConverterData.read(from: &buf),
-                nonce: FfiConverterData.read(from: &buf),
-                specVersion: FfiConverterData.read(from: &buf),
-                tip: FfiConverterData.read(from: &buf),
-                transactionVersion: FfiConverterData.read(from: &buf),
-                signedExtensions: FfiConverterSequenceString.read(from: &buf),
-                version: FfiConverterUInt32.read(from: &buf),
-                assetId: FfiConverterOptionData.read(from: &buf),
-                metadataHash: FfiConverterOptionData.read(from: &buf),
-                mode: FfiConverterOptionUInt32.read(from: &buf),
+                blockHash: FfiConverterData.read(from: &buf), 
+                blockNumber: FfiConverterData.read(from: &buf), 
+                era: FfiConverterData.read(from: &buf), 
+                genesisHash: FfiConverterData.read(from: &buf), 
+                method: FfiConverterData.read(from: &buf), 
+                nonce: FfiConverterData.read(from: &buf), 
+                specVersion: FfiConverterData.read(from: &buf), 
+                tip: FfiConverterData.read(from: &buf), 
+                transactionVersion: FfiConverterData.read(from: &buf), 
+                signedExtensions: FfiConverterSequenceString.read(from: &buf), 
+                version: FfiConverterUInt32.read(from: &buf), 
+                assetId: FfiConverterOptionData.read(from: &buf), 
+                metadataHash: FfiConverterOptionData.read(from: &buf), 
+                mode: FfiConverterOptionUInt32.read(from: &buf), 
                 withSignedTransaction: FfiConverterOptionBool.read(from: &buf)
         )
     }
@@ -984,7 +1793,7 @@ public struct HostSignPayloadRequest: Equatable, Hashable {
     public init(
         /**
          * Product account that will sign this payload.
-         */account: ProductAccountId,
+         */account: ProductAccountId, 
         /**
          * The extrinsic payload to sign.
          */payload: HostSignPayloadData) {
@@ -992,9 +1801,9 @@ public struct HostSignPayloadRequest: Equatable, Hashable {
         self.payload = payload
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1008,7 +1817,7 @@ public struct FfiConverterTypeHostSignPayloadRequest: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostSignPayloadRequest {
         return
             try HostSignPayloadRequest(
-                account: FfiConverterTypeProductAccountId.read(from: &buf),
+                account: FfiConverterTypeProductAccountId.read(from: &buf), 
                 payload: FfiConverterTypeHostSignPayloadData.read(from: &buf)
         )
     }
@@ -1055,7 +1864,7 @@ public struct HostSignPayloadWithLegacyAccountRequest: Equatable, Hashable {
     public init(
         /**
          * Signer address (SS58 or hex) of the legacy account.
-         */signer: String,
+         */signer: String, 
         /**
          * The extrinsic payload to sign.
          */payload: HostSignPayloadData) {
@@ -1063,9 +1872,9 @@ public struct HostSignPayloadWithLegacyAccountRequest: Equatable, Hashable {
         self.payload = payload
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1079,7 +1888,7 @@ public struct FfiConverterTypeHostSignPayloadWithLegacyAccountRequest: FfiConver
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostSignPayloadWithLegacyAccountRequest {
         return
             try HostSignPayloadWithLegacyAccountRequest(
-                signer: FfiConverterString.read(from: &buf),
+                signer: FfiConverterString.read(from: &buf), 
                 payload: FfiConverterTypeHostSignPayloadData.read(from: &buf)
         )
     }
@@ -1124,7 +1933,7 @@ public struct HostSignRawRequest: Equatable, Hashable {
     public init(
         /**
          * Product account that will sign this payload.
-         */account: ProductAccountId,
+         */account: ProductAccountId, 
         /**
          * The payload to sign.
          */payload: RawPayload) {
@@ -1132,9 +1941,9 @@ public struct HostSignRawRequest: Equatable, Hashable {
         self.payload = payload
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1148,7 +1957,7 @@ public struct FfiConverterTypeHostSignRawRequest: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostSignRawRequest {
         return
             try HostSignRawRequest(
-                account: FfiConverterTypeProductAccountId.read(from: &buf),
+                account: FfiConverterTypeProductAccountId.read(from: &buf), 
                 payload: FfiConverterTypeRawPayload.read(from: &buf)
         )
     }
@@ -1194,7 +2003,7 @@ public struct HostSignRawWithLegacyAccountRequest: Equatable, Hashable {
     public init(
         /**
          * Signer address (SS58 or hex) of the legacy account.
-         */signer: String,
+         */signer: String, 
         /**
          * The data to sign.
          */payload: RawPayload) {
@@ -1202,9 +2011,9 @@ public struct HostSignRawWithLegacyAccountRequest: Equatable, Hashable {
         self.payload = payload
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1218,7 +2027,7 @@ public struct FfiConverterTypeHostSignRawWithLegacyAccountRequest: FfiConverterR
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostSignRawWithLegacyAccountRequest {
         return
             try HostSignRawWithLegacyAccountRequest(
-                signer: FfiConverterString.read(from: &buf),
+                signer: FfiConverterString.read(from: &buf), 
                 payload: FfiConverterTypeRawPayload.read(from: &buf)
         )
     }
@@ -1278,16 +2087,16 @@ public struct LegacyAccountTxPayload: Equatable, Hashable {
     public init(
         /**
          * Raw 32-byte public key of the legacy account.
-         */signer: Bytes32,
+         */signer: Bytes32, 
         /**
          * Chain where the transaction will execute.
-         */genesisHash: Bytes32,
+         */genesisHash: Bytes32, 
         /**
          * SCALE-encoded Call data.
-         */callData: Data,
+         */callData: Data, 
         /**
          * Transaction extensions supplied by the caller.
-         */extensions: [TxPayloadExtension],
+         */extensions: [TxPayloadExtension], 
         /**
          * 0 for Extrinsic V4, runtime-supported value for V5.
          */txExtVersion: UInt8) {
@@ -1298,9 +2107,9 @@ public struct LegacyAccountTxPayload: Equatable, Hashable {
         self.txExtVersion = txExtVersion
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1314,10 +2123,10 @@ public struct FfiConverterTypeLegacyAccountTxPayload: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LegacyAccountTxPayload {
         return
             try LegacyAccountTxPayload(
-                signer: FfiConverterTypeBytes32.read(from: &buf),
-                genesisHash: FfiConverterTypeBytes32.read(from: &buf),
-                callData: FfiConverterData.read(from: &buf),
-                extensions: FfiConverterSequenceTypeTxPayloadExtension.read(from: &buf),
+                signer: FfiConverterTypeBytes32.read(from: &buf), 
+                genesisHash: FfiConverterTypeBytes32.read(from: &buf), 
+                callData: FfiConverterData.read(from: &buf), 
+                extensions: FfiConverterSequenceTypeTxPayloadExtension.read(from: &buf), 
                 txExtVersion: FfiConverterUInt8.read(from: &buf)
         )
     }
@@ -1366,7 +2175,7 @@ public struct ProductAccountId: Equatable, Hashable {
     public init(
         /**
          * A dotNS domain name identifier (e.g., `"my-product.dot"`).
-         */dotNsIdentifier: String,
+         */dotNsIdentifier: String, 
         /**
          * Account selector within the product subtree.
          */derivationIndex: DerivationIndex) {
@@ -1374,9 +2183,9 @@ public struct ProductAccountId: Equatable, Hashable {
         self.derivationIndex = derivationIndex
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1390,7 +2199,7 @@ public struct FfiConverterTypeProductAccountId: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProductAccountId {
         return
             try ProductAccountId(
-                dotNsIdentifier: FfiConverterString.read(from: &buf),
+                dotNsIdentifier: FfiConverterString.read(from: &buf), 
                 derivationIndex: FfiConverterTypeDerivationIndex.read(from: &buf)
         )
     }
@@ -1451,16 +2260,16 @@ public struct ProductAccountTxPayload: Equatable, Hashable {
     public init(
         /**
          * Product account that will sign the transaction.
-         */signer: ProductAccountId,
+         */signer: ProductAccountId, 
         /**
          * Chain where the transaction will execute.
-         */genesisHash: Bytes32,
+         */genesisHash: Bytes32, 
         /**
          * SCALE-encoded Call data.
-         */callData: Data,
+         */callData: Data, 
         /**
          * Transaction extensions supplied by the caller.
-         */extensions: [TxPayloadExtension],
+         */extensions: [TxPayloadExtension], 
         /**
          * 0 for Extrinsic V4, runtime-supported value for V5.
          */txExtVersion: UInt8) {
@@ -1471,9 +2280,9 @@ public struct ProductAccountTxPayload: Equatable, Hashable {
         self.txExtVersion = txExtVersion
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1487,10 +2296,10 @@ public struct FfiConverterTypeProductAccountTxPayload: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProductAccountTxPayload {
         return
             try ProductAccountTxPayload(
-                signer: FfiConverterTypeProductAccountId.read(from: &buf),
-                genesisHash: FfiConverterTypeBytes32.read(from: &buf),
-                callData: FfiConverterData.read(from: &buf),
-                extensions: FfiConverterSequenceTypeTxPayloadExtension.read(from: &buf),
+                signer: FfiConverterTypeProductAccountId.read(from: &buf), 
+                genesisHash: FfiConverterTypeBytes32.read(from: &buf), 
+                callData: FfiConverterData.read(from: &buf), 
+                extensions: FfiConverterSequenceTypeTxPayloadExtension.read(from: &buf), 
                 txExtVersion: FfiConverterUInt8.read(from: &buf)
         )
     }
@@ -1543,7 +2352,7 @@ public struct ProductProofContext: Equatable, Hashable {
     public init(
         /**
          * dotNS product identifier (e.g. `"my-product.dot"`) scoping the context.
-         */productId: String,
+         */productId: String, 
         /**
          * Selector distinguishing contexts within the product; expands to the
          * same 32-byte derivation index as [`ProductAccountId::derivation_index`].
@@ -1552,9 +2361,9 @@ public struct ProductProofContext: Equatable, Hashable {
         self.suffix = suffix
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1568,7 +2377,7 @@ public struct FfiConverterTypeProductProofContext: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProductProofContext {
         return
             try ProductProofContext(
-                productId: FfiConverterString.read(from: &buf),
+                productId: FfiConverterString.read(from: &buf), 
                 suffix: FfiConverterTypeDerivationIndex.read(from: &buf)
         )
     }
@@ -1613,9 +2422,9 @@ public struct RemotePermissionRequest: Equatable, Hashable {
         self.permission = permission
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1673,7 +2482,7 @@ public struct RingLocation: Equatable, Hashable {
     public init(
         /**
          * Genesis hash of the chain hosting the ring.
-         */chainId: Bytes32,
+         */chainId: Bytes32, 
         /**
          * Path addressing the ring within the chain.
          */junctions: [RingLocationJunction]) {
@@ -1681,9 +2490,9 @@ public struct RingLocation: Equatable, Hashable {
         self.junctions = junctions
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1697,7 +2506,7 @@ public struct FfiConverterTypeRingLocation: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RingLocation {
         return
             try RingLocation(
-                chainId: FfiConverterTypeBytes32.read(from: &buf),
+                chainId: FfiConverterTypeBytes32.read(from: &buf), 
                 junctions: FfiConverterSequenceTypeRingLocationJunction.read(from: &buf)
         )
     }
@@ -1746,10 +2555,10 @@ public struct TxPayloadExtension: Equatable, Hashable {
     public init(
         /**
          * Extension name (e.g., `"CheckSpecVersion"`).
-         */id: String,
+         */id: String, 
         /**
          * SCALE-encoded extra data (in extrinsic body).
-         */extra: Data,
+         */extra: Data, 
         /**
          * SCALE-encoded implicit data (signed, not in body).
          */additionalSigned: Data) {
@@ -1758,9 +2567,9 @@ public struct TxPayloadExtension: Equatable, Hashable {
         self.additionalSigned = additionalSigned
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1774,8 +2583,8 @@ public struct FfiConverterTypeTxPayloadExtension: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TxPayloadExtension {
         return
             try TxPayloadExtension(
-                id: FfiConverterString.read(from: &buf),
-                extra: FfiConverterData.read(from: &buf),
+                id: FfiConverterString.read(from: &buf), 
+                extra: FfiConverterData.read(from: &buf), 
                 additionalSigned: FfiConverterData.read(from: &buf)
         )
     }
@@ -1821,7 +2630,7 @@ public struct VrfTranscriptItem: Equatable, Hashable {
     public init(
         /**
          * Merlin `append_message` label.
-         */label: Data,
+         */label: Data, 
         /**
          * Merlin `append_message` value.
          */value: Data) {
@@ -1829,9 +2638,9 @@ public struct VrfTranscriptItem: Equatable, Hashable {
         self.value = value
     }
 
+    
 
-
-
+    
 }
 
 #if compiler(>=6)
@@ -1845,7 +2654,7 @@ public struct FfiConverterTypeVrfTranscriptItem: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VrfTranscriptItem {
         return
             try VrfTranscriptItem(
-                label: FfiConverterData.read(from: &buf),
+                label: FfiConverterData.read(from: &buf), 
                 value: FfiConverterData.read(from: &buf)
         )
     }
@@ -1883,7 +2692,7 @@ public func FfiConverterTypeVrfTranscriptItem_lower(_ value: VrfTranscriptItem) 
  */
 
 public enum AllocatableResource: Equatable, Hashable {
-
+    
     /**
      * Statement Store slot allowance for the product's own allowance account.
      */
@@ -1922,40 +2731,40 @@ public struct FfiConverterTypeAllocatableResource: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AllocatableResource {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .statementStoreAllowance
-
+        
         case 2: return .bulletinAllowance
-
+        
         case 3: return .smartContractAllowance(try FfiConverterTypeDerivationIndex.read(from: &buf)
         )
-
+        
         case 4: return .autoSigning
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: AllocatableResource, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .statementStoreAllowance:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .bulletinAllowance:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case let .smartContractAllowance(v1):
             writeInt(&buf, Int32(3))
             FfiConverterTypeDerivationIndex.write(v1, into: &buf)
-
-
+            
+        
         case .autoSigning:
             writeInt(&buf, Int32(4))
-
+        
         }
     }
 }
@@ -1978,6 +2787,964 @@ public func FfiConverterTypeAllocatableResource_lower(_ value: AllocatableResour
 
 
 /**
+ * Layout arrangement (like CSS flexbox `justify-content`).
+ */
+
+public enum Arrangement: Equatable, Hashable {
+    
+    /**
+     * Pack children at the start.
+     */
+    case start
+    /**
+     * Pack children at the end.
+     */
+    case end
+    /**
+     * Pack children in the center.
+     */
+    case center
+    /**
+     * Distribute with space between children.
+     */
+    case spaceBetween
+    /**
+     * Distribute with space around each child.
+     */
+    case spaceAround
+    /**
+     * Distribute with equal space between and around children.
+     */
+    case spaceEvenly
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension Arrangement: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeArrangement: FfiConverterRustBuffer {
+    typealias SwiftType = Arrangement
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Arrangement {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .start
+        
+        case 2: return .end
+        
+        case 3: return .center
+        
+        case 4: return .spaceBetween
+        
+        case 5: return .spaceAround
+        
+        case 6: return .spaceEvenly
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Arrangement, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .start:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .end:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .center:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .spaceBetween:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .spaceAround:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .spaceEvenly:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArrangement_lift(_ buf: RustBuffer) throws -> Arrangement {
+    return try FfiConverterTypeArrangement.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeArrangement_lower(_ value: Arrangement) -> RustBuffer {
+    return FfiConverterTypeArrangement.lower(value)
+}
+
+
+
+/**
+ * Button style variants.
+ */
+
+public enum ButtonVariant: Equatable, Hashable {
+    
+    /**
+     * Emphasized button for the primary action.
+     */
+    case primary
+    /**
+     * De-emphasized button for secondary actions.
+     */
+    case secondary
+    /**
+     * Text-only button without a background.
+     */
+    case text
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ButtonVariant: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeButtonVariant: FfiConverterRustBuffer {
+    typealias SwiftType = ButtonVariant
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ButtonVariant {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .primary
+        
+        case 2: return .secondary
+        
+        case 3: return .text
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ButtonVariant, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .primary:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .secondary:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .text:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeButtonVariant_lift(_ buf: RustBuffer) throws -> ButtonVariant {
+    return try FfiConverterTypeButtonVariant.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeButtonVariant_lower(_ value: ButtonVariant) -> RustBuffer {
+    return FfiConverterTypeButtonVariant.lower(value)
+}
+
+
+
+/**
+ * Layout for action buttons.
+ */
+
+public enum ChatActionLayout: Equatable, Hashable {
+    
+    /**
+     * Buttons stacked vertically.
+     */
+    case column
+    /**
+     * Buttons arranged in a grid.
+     */
+    case grid
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatActionLayout: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatActionLayout: FfiConverterRustBuffer {
+    typealias SwiftType = ChatActionLayout
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatActionLayout {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .column
+        
+        case 2: return .grid
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatActionLayout, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .column:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .grid:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatActionLayout_lift(_ buf: RustBuffer) throws -> ChatActionLayout {
+    return try FfiConverterTypeChatActionLayout.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatActionLayout_lower(_ value: ChatActionLayout) -> RustBuffer {
+    return FfiConverterTypeChatActionLayout.lower(value)
+}
+
+
+
+/**
+ * Payload of a received chat action.
+ */
+
+public enum ChatActionPayload: Equatable, Hashable {
+    
+    /**
+     * A peer posted a message.
+     */
+    case messagePosted(ChatMessageContent
+    )
+    /**
+     * A user triggered an action button.
+     */
+    case actionTriggered(ActionTrigger
+    )
+    /**
+     * A user issued a command.
+     */
+    case command(ChatCommand
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatActionPayload: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatActionPayload: FfiConverterRustBuffer {
+    typealias SwiftType = ChatActionPayload
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatActionPayload {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .messagePosted(try FfiConverterTypeChatMessageContent.read(from: &buf)
+        )
+        
+        case 2: return .actionTriggered(try FfiConverterTypeActionTrigger.read(from: &buf)
+        )
+        
+        case 3: return .command(try FfiConverterTypeChatCommand.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatActionPayload, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .messagePosted(v1):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeChatMessageContent.write(v1, into: &buf)
+            
+        
+        case let .actionTriggered(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeActionTrigger.write(v1, into: &buf)
+            
+        
+        case let .command(v1):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeChatCommand.write(v1, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatActionPayload_lift(_ buf: RustBuffer) throws -> ChatActionPayload {
+    return try FfiConverterTypeChatActionPayload.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatActionPayload_lower(_ value: ChatActionPayload) -> RustBuffer {
+    return FfiConverterTypeChatActionPayload.lower(value)
+}
+
+
+
+/**
+ * Content of a chat message -- one of several types.
+ */
+
+public enum ChatMessageContent: Equatable, Hashable {
+    
+    /**
+     * Plain text message.
+     */
+    case text(
+        /**
+         * Message text.
+         */text: String
+    )
+    /**
+     * Rich text with media.
+     */
+    case richText(ChatRichText
+    )
+    /**
+     * Action button set.
+     */
+    case actions(ChatActions
+    )
+    /**
+     * File attachment.
+     */
+    case file(ChatFile
+    )
+    /**
+     * Emoji reaction.
+     */
+    case reaction(ChatReaction
+    )
+    /**
+     * Reaction removal.
+     */
+    case reactionRemoved(ChatReaction
+    )
+    /**
+     * Custom message.
+     */
+    case custom(ChatCustomMessage
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatMessageContent: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatMessageContent: FfiConverterRustBuffer {
+    typealias SwiftType = ChatMessageContent
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatMessageContent {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .text(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .richText(try FfiConverterTypeChatRichText.read(from: &buf)
+        )
+        
+        case 3: return .actions(try FfiConverterTypeChatActions.read(from: &buf)
+        )
+        
+        case 4: return .file(try FfiConverterTypeChatFile.read(from: &buf)
+        )
+        
+        case 5: return .reaction(try FfiConverterTypeChatReaction.read(from: &buf)
+        )
+        
+        case 6: return .reactionRemoved(try FfiConverterTypeChatReaction.read(from: &buf)
+        )
+        
+        case 7: return .custom(try FfiConverterTypeChatCustomMessage.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatMessageContent, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .text(text):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(text, into: &buf)
+            
+        
+        case let .richText(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeChatRichText.write(v1, into: &buf)
+            
+        
+        case let .actions(v1):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeChatActions.write(v1, into: &buf)
+            
+        
+        case let .file(v1):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeChatFile.write(v1, into: &buf)
+            
+        
+        case let .reaction(v1):
+            writeInt(&buf, Int32(5))
+            FfiConverterTypeChatReaction.write(v1, into: &buf)
+            
+        
+        case let .reactionRemoved(v1):
+            writeInt(&buf, Int32(6))
+            FfiConverterTypeChatReaction.write(v1, into: &buf)
+            
+        
+        case let .custom(v1):
+            writeInt(&buf, Int32(7))
+            FfiConverterTypeChatCustomMessage.write(v1, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessageContent_lift(_ buf: RustBuffer) throws -> ChatMessageContent {
+    return try FfiConverterTypeChatMessageContent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessageContent_lower(_ value: ChatMessageContent) -> RustBuffer {
+    return FfiConverterTypeChatMessageContent.lower(value)
+}
+
+
+
+/**
+ * How the product participates in a chat room.
+ */
+
+public enum ChatRoomParticipation: Equatable, Hashable {
+    
+    /**
+     * The product owns and hosts the room.
+     */
+    case roomHost
+    /**
+     * The product participates as a registered bot.
+     */
+    case bot
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatRoomParticipation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatRoomParticipation: FfiConverterRustBuffer {
+    typealias SwiftType = ChatRoomParticipation
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatRoomParticipation {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .roomHost
+        
+        case 2: return .bot
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatRoomParticipation, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .roomHost:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .bot:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatRoomParticipation_lift(_ buf: RustBuffer) throws -> ChatRoomParticipation {
+    return try FfiConverterTypeChatRoomParticipation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatRoomParticipation_lower(_ value: ChatRoomParticipation) -> RustBuffer {
+    return FfiConverterTypeChatRoomParticipation.lower(value)
+}
+
+
+
+/**
+ * Whether the room was newly created or already existed.
+ */
+
+public enum ChatRoomRegistrationStatus: Equatable, Hashable {
+    
+    /**
+     * The room was created.
+     */
+    case new
+    /**
+     * A room with this ID already existed.
+     */
+    case exists
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatRoomRegistrationStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatRoomRegistrationStatus: FfiConverterRustBuffer {
+    typealias SwiftType = ChatRoomRegistrationStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatRoomRegistrationStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .new
+        
+        case 2: return .exists
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatRoomRegistrationStatus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .new:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .exists:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatRoomRegistrationStatus_lift(_ buf: RustBuffer) throws -> ChatRoomRegistrationStatus {
+    return try FfiConverterTypeChatRoomRegistrationStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatRoomRegistrationStatus_lower(_ value: ChatRoomRegistrationStatus) -> RustBuffer {
+    return FfiConverterTypeChatRoomRegistrationStatus.lower(value)
+}
+
+
+
+/**
+ * Semantic color tokens for theming.
+ */
+
+public enum ColorToken: Equatable, Hashable {
+    
+    /**
+     * Primary foreground (text) color.
+     */
+    case fgPrimary
+    /**
+     * Secondary foreground color.
+     */
+    case fgSecondary
+    /**
+     * Tertiary foreground color.
+     */
+    case fgTertiary
+    /**
+     * Main surface background.
+     */
+    case bgSurfaceMain
+    /**
+     * Container surface background.
+     */
+    case bgSurfaceContainer
+    /**
+     * Nested surface background.
+     */
+    case bgSurfaceNested
+    /**
+     * Foreground color for success states.
+     */
+    case fgSuccess
+    /**
+     * Foreground color for error states.
+     */
+    case fgError
+    /**
+     * Foreground color for warning states.
+     */
+    case fgWarning
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ColorToken: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeColorToken: FfiConverterRustBuffer {
+    typealias SwiftType = ColorToken
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ColorToken {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .fgPrimary
+        
+        case 2: return .fgSecondary
+        
+        case 3: return .fgTertiary
+        
+        case 4: return .bgSurfaceMain
+        
+        case 5: return .bgSurfaceContainer
+        
+        case 6: return .bgSurfaceNested
+        
+        case 7: return .fgSuccess
+        
+        case 8: return .fgError
+        
+        case 9: return .fgWarning
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ColorToken, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .fgPrimary:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .fgSecondary:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .fgTertiary:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .bgSurfaceMain:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .bgSurfaceContainer:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .bgSurfaceNested:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .fgSuccess:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .fgError:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .fgWarning:
+            writeInt(&buf, Int32(9))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeColorToken_lift(_ buf: RustBuffer) throws -> ColorToken {
+    return try FfiConverterTypeColorToken.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeColorToken_lower(_ value: ColorToken) -> RustBuffer {
+    return FfiConverterTypeColorToken.lower(value)
+}
+
+
+
+/**
+ * 2D content alignment.
+ */
+
+public enum ContentAlignment: Equatable, Hashable {
+    
+    /**
+     * Top edge, start side.
+     */
+    case topStart
+    /**
+     * Top edge, horizontally centered.
+     */
+    case topCenter
+    /**
+     * Top edge, end side.
+     */
+    case topEnd
+    /**
+     * Vertically centered, start side.
+     */
+    case centerStart
+    /**
+     * Centered on both axes.
+     */
+    case center
+    /**
+     * Vertically centered, end side.
+     */
+    case centerEnd
+    /**
+     * Bottom edge, start side.
+     */
+    case bottomStart
+    /**
+     * Bottom edge, horizontally centered.
+     */
+    case bottomCenter
+    /**
+     * Bottom edge, end side.
+     */
+    case bottomEnd
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ContentAlignment: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeContentAlignment: FfiConverterRustBuffer {
+    typealias SwiftType = ContentAlignment
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ContentAlignment {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .topStart
+        
+        case 2: return .topCenter
+        
+        case 3: return .topEnd
+        
+        case 4: return .centerStart
+        
+        case 5: return .center
+        
+        case 6: return .centerEnd
+        
+        case 7: return .bottomStart
+        
+        case 8: return .bottomCenter
+        
+        case 9: return .bottomEnd
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ContentAlignment, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .topStart:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .topCenter:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .topEnd:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .centerStart:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .center:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .centerEnd:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .bottomStart:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .bottomCenter:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .bottomEnd:
+            writeInt(&buf, Int32(9))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeContentAlignment_lift(_ buf: RustBuffer) throws -> ContentAlignment {
+    return try FfiConverterTypeContentAlignment.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeContentAlignment_lower(_ value: ContentAlignment) -> RustBuffer {
+    return FfiConverterTypeContentAlignment.lower(value)
+}
+
+
+
+/**
  * Account selector within a product subtree. Encodes as
  * `Either<u32, [u8; 32]>` on the wire (`Index` = left, `Raw` = right).
  *
@@ -1988,7 +3755,7 @@ public func FfiConverterTypeAllocatableResource_lower(_ value: AllocatableResour
  */
 
 public enum DerivationIndex: Equatable, Hashable {
-
+    
     /**
      * Plain account index.
      */
@@ -2019,30 +3786,30 @@ public struct FfiConverterTypeDerivationIndex: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DerivationIndex {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .index(try FfiConverterUInt32.read(from: &buf)
         )
-
+        
         case 2: return .raw(try FfiConverterTypeBytes32.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: DerivationIndex, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .index(v1):
             writeInt(&buf, Int32(1))
             FfiConverterUInt32.write(v1, into: &buf)
-
-
+            
+        
         case let .raw(v1):
             writeInt(&buf, Int32(2))
             FfiConverterTypeBytes32.write(v1, into: &buf)
-
+            
         }
     }
 }
@@ -2065,6 +3832,91 @@ public func FfiConverterTypeDerivationIndex_lower(_ value: DerivationIndex) -> R
 
 
 /**
+ * Horizontal alignment options.
+ */
+
+public enum HorizontalAlignment: Equatable, Hashable {
+    
+    /**
+     * Align to the start edge.
+     */
+    case start
+    /**
+     * Center horizontally.
+     */
+    case center
+    /**
+     * Align to the end edge.
+     */
+    case end
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension HorizontalAlignment: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHorizontalAlignment: FfiConverterRustBuffer {
+    typealias SwiftType = HorizontalAlignment
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HorizontalAlignment {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .start
+        
+        case 2: return .center
+        
+        case 3: return .end
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HorizontalAlignment, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .start:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .center:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .end:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHorizontalAlignment_lift(_ buf: RustBuffer) throws -> HorizontalAlignment {
+    return try FfiConverterTypeHorizontalAlignment.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHorizontalAlignment_lower(_ value: HorizontalAlignment) -> RustBuffer {
+    return FfiConverterTypeHorizontalAlignment.lower(value)
+}
+
+
+
+/**
  * Device-capability permission requested from the host (RFC 0002).
  *
  * The user's decision is persisted indefinitely after the first prompt and
@@ -2073,7 +3925,7 @@ public func FfiConverterTypeDerivationIndex_lower(_ value: DerivationIndex) -> R
  */
 
 public enum HostDevicePermissionRequest: Equatable, Hashable {
-
+    
     /**
      * Showing system notifications.
      */
@@ -2130,68 +3982,68 @@ public struct FfiConverterTypeHostDevicePermissionRequest: FfiConverterRustBuffe
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostDevicePermissionRequest {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .notifications
-
+        
         case 2: return .camera
-
+        
         case 3: return .microphone
-
+        
         case 4: return .bluetooth
-
+        
         case 5: return .nfc
-
+        
         case 6: return .location
-
+        
         case 7: return .clipboard
-
+        
         case 8: return .openUrl
-
+        
         case 9: return .biometrics
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: HostDevicePermissionRequest, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .notifications:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .camera:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case .microphone:
             writeInt(&buf, Int32(3))
-
-
+        
+        
         case .bluetooth:
             writeInt(&buf, Int32(4))
-
-
+        
+        
         case .nfc:
             writeInt(&buf, Int32(5))
-
-
+        
+        
         case .location:
             writeInt(&buf, Int32(6))
-
-
+        
+        
         case .clipboard:
             writeInt(&buf, Int32(7))
-
-
+        
+        
         case .openUrl:
             writeInt(&buf, Int32(8))
-
-
+        
+        
         case .biometrics:
             writeInt(&buf, Int32(9))
-
+        
         }
     }
 }
@@ -2218,7 +4070,7 @@ public func FfiConverterTypeHostDevicePermissionRequest_lower(_ value: HostDevic
  */
 
 public enum HostFeatureSupportedRequest: Equatable, Hashable {
-
+    
     /**
      * Ask whether the host can interact with the chain identified by genesis hash.
      */
@@ -2247,22 +4099,22 @@ public struct FfiConverterTypeHostFeatureSupportedRequest: FfiConverterRustBuffe
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostFeatureSupportedRequest {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .chain(genesisHash: try FfiConverterData.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: HostFeatureSupportedRequest, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .chain(genesisHash):
             writeInt(&buf, Int32(1))
             FfiConverterData.write(genesisHash, into: &buf)
-
+            
         }
     }
 }
@@ -2289,7 +4141,7 @@ public func FfiConverterTypeHostFeatureSupportedRequest_lower(_ value: HostFeatu
  */
 
 public enum HostLocalStorageReadError: Equatable, Hashable {
-
+    
     /**
      * Storage quota exceeded.
      */
@@ -2322,28 +4174,28 @@ public struct FfiConverterTypeHostLocalStorageReadError: FfiConverterRustBuffer 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostLocalStorageReadError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .full
-
+        
         case 2: return .unknown(reason: try FfiConverterString.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: HostLocalStorageReadError, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .full:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case let .unknown(reason):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(reason, into: &buf)
-
+            
         }
     }
 }
@@ -2370,7 +4222,7 @@ public func FfiConverterTypeHostLocalStorageReadError_lower(_ value: HostLocalSt
  */
 
 public enum HostNavigateToError: Equatable, Hashable {
-
+    
     /**
      * User denied the navigation prompt.
      */
@@ -2403,28 +4255,28 @@ public struct FfiConverterTypeHostNavigateToError: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostNavigateToError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .permissionDenied
-
+        
         case 2: return .unknown(reason: try FfiConverterString.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: HostNavigateToError, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .permissionDenied:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case let .unknown(reason):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(reason, into: &buf)
-
+            
         }
     }
 }
@@ -2451,7 +4303,7 @@ public func FfiConverterTypeHostNavigateToError_lower(_ value: HostNavigateToErr
  */
 
 public enum RawPayload: Equatable, Hashable {
-
+    
     /**
      * Raw binary data to sign.
      */
@@ -2488,30 +4340,30 @@ public struct FfiConverterTypeRawPayload: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RawPayload {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .bytes(bytes: try FfiConverterData.read(from: &buf)
         )
-
+        
         case 2: return .payload(payload: try FfiConverterString.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: RawPayload, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .bytes(bytes):
             writeInt(&buf, Int32(1))
             FfiConverterData.write(bytes, into: &buf)
-
-
+            
+        
         case let .payload(payload):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(payload, into: &buf)
-
+            
         }
     }
 }
@@ -2541,7 +4393,7 @@ public func FfiConverterTypeRawPayload_lower(_ value: RawPayload) -> RustBuffer 
  */
 
 public enum RemotePermission: Equatable, Hashable {
-
+    
     /**
      * Outbound HTTP/WebSocket access to a set of domains.
      */
@@ -2586,46 +4438,46 @@ public struct FfiConverterTypeRemotePermission: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RemotePermission {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .remote(domains: try FfiConverterSequenceString.read(from: &buf)
         )
-
+        
         case 2: return .webRtc
-
+        
         case 3: return .chainSubmit
-
+        
         case 4: return .preimageSubmit
-
+        
         case 5: return .statementSubmit
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: RemotePermission, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .remote(domains):
             writeInt(&buf, Int32(1))
             FfiConverterSequenceString.write(domains, into: &buf)
-
-
+            
+        
         case .webRtc:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case .chainSubmit:
             writeInt(&buf, Int32(3))
-
-
+        
+        
         case .preimageSubmit:
             writeInt(&buf, Int32(4))
-
-
+        
+        
         case .statementSubmit:
             writeInt(&buf, Int32(5))
-
+        
         }
     }
 }
@@ -2652,7 +4504,7 @@ public func FfiConverterTypeRemotePermission_lower(_ value: RemotePermission) ->
  */
 
 public enum RingLocationJunction: Equatable, Hashable {
-
+    
     /**
      * Pallet instance hosting the ring collection.
      */
@@ -2683,30 +4535,30 @@ public struct FfiConverterTypeRingLocationJunction: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RingLocationJunction {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .palletInstance(try FfiConverterUInt8.read(from: &buf)
         )
-
+        
         case 2: return .collectionId(try FfiConverterData.read(from: &buf)
         )
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: RingLocationJunction, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case let .palletInstance(v1):
             writeInt(&buf, Int32(1))
             FfiConverterUInt8.write(v1, into: &buf)
-
-
+            
+        
         case let .collectionId(v1):
             writeInt(&buf, Int32(2))
             FfiConverterData.write(v1, into: &buf)
-
+            
         }
     }
 }
@@ -2733,7 +4585,7 @@ public func FfiConverterTypeRingLocationJunction_lower(_ value: RingLocationJunc
  */
 
 public enum ThemeVariant: Equatable, Hashable {
-
+    
     /**
      * Light appearance.
      */
@@ -2762,26 +4614,26 @@ public struct FfiConverterTypeThemeVariant: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ThemeVariant {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .light
-
+        
         case 2: return .dark
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: ThemeVariant, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .light:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .dark:
             writeInt(&buf, Int32(2))
-
+        
         }
     }
 }
@@ -2799,6 +4651,196 @@ public func FfiConverterTypeThemeVariant_lift(_ buf: RustBuffer) throws -> Theme
 #endif
 public func FfiConverterTypeThemeVariant_lower(_ value: ThemeVariant) -> RustBuffer {
     return FfiConverterTypeThemeVariant.lower(value)
+}
+
+
+
+/**
+ * Text typography presets.
+ */
+
+public enum TypographyStyle: Equatable, Hashable {
+    
+    /**
+     * Large headline text.
+     */
+    case headlineLarge
+    /**
+     * Medium title text, regular weight.
+     */
+    case titleMediumRegular
+    /**
+     * Large body text, regular weight.
+     */
+    case bodyLargeRegular
+    /**
+     * Medium body text, regular weight.
+     */
+    case bodyMediumRegular
+    /**
+     * Small body text, regular weight.
+     */
+    case bodySmallRegular
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TypographyStyle: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTypographyStyle: FfiConverterRustBuffer {
+    typealias SwiftType = TypographyStyle
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TypographyStyle {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .headlineLarge
+        
+        case 2: return .titleMediumRegular
+        
+        case 3: return .bodyLargeRegular
+        
+        case 4: return .bodyMediumRegular
+        
+        case 5: return .bodySmallRegular
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TypographyStyle, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .headlineLarge:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .titleMediumRegular:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .bodyLargeRegular:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .bodyMediumRegular:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .bodySmallRegular:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTypographyStyle_lift(_ buf: RustBuffer) throws -> TypographyStyle {
+    return try FfiConverterTypeTypographyStyle.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTypographyStyle_lower(_ value: TypographyStyle) -> RustBuffer {
+    return FfiConverterTypeTypographyStyle.lower(value)
+}
+
+
+
+/**
+ * Vertical alignment options.
+ */
+
+public enum VerticalAlignment: Equatable, Hashable {
+    
+    /**
+     * Align to the top.
+     */
+    case top
+    /**
+     * Center vertically.
+     */
+    case center
+    /**
+     * Align to the bottom.
+     */
+    case bottom
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension VerticalAlignment: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVerticalAlignment: FfiConverterRustBuffer {
+    typealias SwiftType = VerticalAlignment
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VerticalAlignment {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .top
+        
+        case 2: return .center
+        
+        case 3: return .bottom
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: VerticalAlignment, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .top:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .center:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .bottom:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVerticalAlignment_lift(_ buf: RustBuffer) throws -> VerticalAlignment {
+    return try FfiConverterTypeVerticalAlignment.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVerticalAlignment_lower(_ value: VerticalAlignment) -> RustBuffer {
+    return FfiConverterTypeVerticalAlignment.lower(value)
 }
 
 
@@ -2942,6 +4984,56 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatAction: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatAction]
+
+    public static func write(_ value: [ChatAction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatAction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatAction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatAction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatAction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatMedia: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatMedia]
+
+    public static func write(_ value: [ChatMedia], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatMedia.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatMedia] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatMedia]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatMedia.read(from: &buf))
         }
         return seq
     }

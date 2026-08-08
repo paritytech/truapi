@@ -4,6 +4,7 @@ import type {
   LogLevel,
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
+  ProductExecutionKind,
   RequiredHostCallbacks,
   TrUApiProductProvider,
 } from "../index.js";
@@ -21,11 +22,15 @@ import { bytesToHex } from "@parity/truapi/scale";
 import { startRawSubscription } from "../generated/worker-callbacks.js";
 import { errorMessage } from "../error.js";
 
-export type WebWorkerHostConfig = Omit<ProductRuntimeConfig, "productId">;
+export type WebWorkerHostConfig = Omit<
+  ProductRuntimeConfig,
+  "productId" | "executionKind"
+>;
 
 export interface WorkerPairingHostRuntime {
   createProvider(product: {
     productId: string;
+    executionKind?: ProductExecutionKind;
   }): Promise<TrUApiProductProvider>;
   disconnectSession(): Promise<void>;
   cancelPairing(): void;

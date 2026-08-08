@@ -8,14 +8,15 @@
     "dev": "next dev",
     "start": "npx serve out",
     "prebuild": "node ./scripts/bundle-rxjs-dts.mjs",
-    "build": "next build",
+    "build": "next build && vite build --config vite.config.worker.ts",
     "prelint": "node ./scripts/bundle-rxjs-dts.mjs",
-    "lint": "eslint src test/generated/examples && tsc --noEmit && tsc -p tsconfig.examples.json",
+    "lint": "eslint src worker vite.config.worker.ts test/generated/examples && tsc --noEmit && tsc -p tsconfig.examples.json",
     "pretypecheck": "node ./scripts/bundle-rxjs-dts.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:examples": "tsc -p tsconfig.examples.json",
     "deploy:test": "yarn build && bulletin-deploy ./out truapi-playground.dot && rm out.car",
     "lint:fix": "next lint --fix",
+    "test:unit": "bun test tests/unit",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",
     "e2e:ui": "playwright test --ui"
@@ -42,7 +43,8 @@
     "eslint": "^9",
     "eslint-config-next": "^15.5.4",
     "jsqr": "^1.4.0",
-    "typescript": "^6.0"
+    "typescript": "^6.0",
+    "vite": "^8.0.16"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

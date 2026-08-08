@@ -24,12 +24,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+NIGHTLY_TOOLCHAIN="${TRUAPI_NIGHTLY_TOOLCHAIN:-nightly}"
+
 # Homebrew LLVM on DYLD_LIBRARY_PATH makes rustc and rustdoc load a mismatched
 # libLLVM, which dies with SIGSEGV in initialize_available_targets.
 unset DYLD_LIBRARY_PATH
 
-cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
-cargo +nightly rustdoc -p truapi-platform -- -Z unstable-options --output-format json
+cargo +"$NIGHTLY_TOOLCHAIN" rustdoc -p truapi -- -Z unstable-options --output-format json
+cargo +"$NIGHTLY_TOOLCHAIN" rustdoc -p truapi-platform -- -Z unstable-options --output-format json
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
   --output js/packages/truapi/src/generated \
@@ -43,7 +45,7 @@ cargo run -p truapi-codegen -- \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
 
-rustfmt +nightly --edition 2024 \
+rustfmt +"$NIGHTLY_TOOLCHAIN" --edition 2024 \
   rust/crates/truapi-server/src/generated/dispatcher.rs \
   rust/crates/truapi-server/src/generated/wire_table.rs \
   rust/crates/truapi-server/src/wasm/generated_bridge.rs

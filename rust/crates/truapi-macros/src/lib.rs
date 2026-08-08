@@ -25,12 +25,13 @@ use proc_macro2::Literal;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{
-    Attribute, Ident, ItemFn, LitInt, Token, TraitItemFn, Type, Visibility, braced,
+    Attribute, Ident, ItemFn, ItemTrait, LitInt, Token, TraitItemFn, Type, Visibility, braced,
     parse_macro_input,
 };
 
 #[derive(Default)]
 struct WireArgs {
+    host_initiated: bool,
     request_id: Option<u8>,
     response_id: Option<u8>,
     start_id: Option<u8>,
@@ -39,12 +40,54 @@ struct WireArgs {
     receive_id: Option<u8>,
 }
 
+struct ServiceArgs {
+    required_execution: Ident,
+}
+
+impl Parse for ServiceArgs {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let key: Ident = input.parse()?;
+        if key != "required_execution" {
+            return Err(syn::Error::new(key.span(), "expected `required_execution`"));
+        }
+        input.parse::<Token![=]>()?;
+        let required_execution = input.parse()?;
+        if !input.is_empty() {
+            return Err(input.error("unexpected service attribute arguments"));
+        }
+        Ok(Self { required_execution })
+    }
+}
+
+/// Declare connection-scoped middleware required by a TrUAPI service trait.
+///
+/// The metadata is preserved in rustdoc JSON for `truapi-codegen`.
+#[proc_macro_attribute]
+pub fn service(args: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as ServiceArgs);
+    let mut item = parse_macro_input!(item as ItemTrait);
+    let tag = format!("@service_required_execution={}", args.required_execution);
+    item.attrs.push(syn::parse_quote!(#[doc = #tag]));
+    quote!(#item).into()
+}
+
 impl Parse for WireArgs {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let mut args = WireArgs::default();
 
         while !input.is_empty() {
             let key: Ident = input.parse()?;
+            if key == "host_initiated" {
+                if args.host_initiated {
+                    return Err(syn::Error::new(key.span(), "duplicate `host_initiated`"));
+                }
+                args.host_initiated = true;
+                if input.is_empty() {
+                    break;
+                }
+                input.parse::<Token![,]>()?;
+                continue;
+            }
             input.parse::<Token![=]>()?;
             let lit: LitInt = input.parse()?;
             let value = lit.base10_parse().map_err(|err| {
@@ -134,7 +177,7 @@ pub fn wire(args: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 fn wire_tags(args: &WireArgs) -> Vec<String> {
-    [
+    let mut tags = [
         ("request_id", args.request_id),
         ("response_id", args.response_id),
         ("start_id", args.start_id),
@@ -144,7 +187,11 @@ fn wire_tags(args: &WireArgs) -> Vec<String> {
     ]
     .into_iter()
     .filter_map(|(name, value)| value.map(|id| format!("@wire_{name}={id}")))
-    .collect()
+    .collect::<Vec<_>>();
+    if args.host_initiated {
+        tags.push("@wire_host_initiated".to_string());
+    }
+    tags
 }
 
 /// One sequence of versioned envelope declarations passed to `versioned_type!`.

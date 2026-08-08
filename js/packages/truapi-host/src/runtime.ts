@@ -3,6 +3,7 @@ import { CoreStorageKey as GeneratedCoreStorageKey } from "./generated/host-call
 import type {
   CoreAdmin,
   CoreStorageKey,
+  ProductExecutionKind,
 } from "./generated/host-callbacks.js";
 
 // The typed capability interfaces below come straight from the
@@ -58,6 +59,8 @@ export type LogLevel = string;
 export interface ProductRuntimeConfig {
   /** Stable identifier used to scope product accounts, permissions, and storage. */
   productId: string;
+  /** Trusted executable kind selected by the host; defaults to `Spa`. */
+  executionKind?: ProductExecutionKind;
   /** Metadata describing the host application. */
   host: {
     /** Human-readable host name. */

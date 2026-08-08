@@ -1,10 +1,11 @@
 import { runExample, type LogEntry, type RunResult } from "./example-runner";
 import { getClientSync } from "@parity/truapi/sandbox";
 import type { MethodInfo, ServiceInfo } from "./services";
+import type { DiagnosisStatus } from "@/shared/diagnosis";
 
 export const DIAGNOSIS_ID = "__diagnosis__";
 
-export type TestStatus = "idle" | "running" | "pass" | "fail" | "skipped";
+export type TestStatus = DiagnosisStatus;
 
 export interface TestEntry {
   status: TestStatus;
@@ -20,7 +21,7 @@ const SSO_TIMEOUT_MS = 60_000;
 const LIVE_ALLOCATION_TIMEOUT_MS = 420_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
-const SKIPPED_SERVICES = new Set(["Chat", "Coin Payment", "Payment"]);
+const SKIPPED_SERVICES = new Set(["Coin Payment", "Payment"]);
 // Methods that trigger a host permission/signing prompt, so they need the
 // longer signing-class timeout to allow for the user to respond.
 const LONG_TIMEOUT_METHODS = new Set([
@@ -97,7 +98,7 @@ async function runOne({
     const client = getClientSync();
     if (!client) {
       throw new Error(
-        "App must be opened inside a TrUAPI host (iframe or webview).",
+        "SPA must be opened inside a TrUAPI host (iframe or webview).",
       );
     }
     run = await Promise.race([

@@ -151,6 +151,7 @@ mod tests {
                 },
             },
             wire: WireAttrs {
+                host_initiated: false,
                 request_id: Some(request_id),
                 response_id: None,
                 start_id: None,
@@ -172,6 +173,7 @@ mod tests {
                 args: vec![],
             }),
             wire: WireAttrs {
+                host_initiated: false,
                 request_id: None,
                 response_id: None,
                 start_id: Some(start_id),
