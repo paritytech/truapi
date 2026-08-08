@@ -64,6 +64,22 @@ pub enum RemotePermission {
     /// Submitting statements on behalf of the user via `remote_statement_store_submit`.
     #[display("submit statements")]
     StatementSubmit,
+    /// Outbound access to one method and path on one domain, carrying a
+    /// personhood proof the host attaches (RFC 0025).
+    ///
+    /// Appended last on purpose. This enum is SCALE-encoded into the persisted
+    /// permission key, so changing an existing variant would invalidate every
+    /// decision a user has already made.
+    #[display("{method} {domain}{path}")]
+    Credential {
+        /// Domain the grant covers. Covered requests must be `https`, since
+        /// the proof would otherwise travel in plaintext.
+        domain: String,
+        /// Exact path the grant covers. No wildcards.
+        path: String,
+        /// HTTP method the grant covers.
+        method: String,
+    },
 }
 
 /// remote-permission request (RFC 0002).
@@ -87,4 +103,69 @@ pub struct HostDevicePermissionResponse {
 pub struct RemotePermissionResponse {
     /// Whether the permission was granted.
     pub granted: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// RFC 0025 appends `Credential` rather than amending `Remote`, because
+    /// this enum is SCALE-encoded into the persisted permission key. Pin every
+    /// discriminant: a reorder silently invalidates decisions users already made.
+    #[test]
+    fn remote_permission_discriminants_are_pinned() {
+        assert_eq!(
+            RemotePermission::Remote { domains: vec![] }.encode()[0],
+            0,
+            "Remote must stay at index 0"
+        );
+        assert_eq!(RemotePermission::WebRtc.encode()[0], 1);
+        assert_eq!(RemotePermission::ChainSubmit.encode()[0], 2);
+        assert_eq!(RemotePermission::PreimageSubmit.encode()[0], 3);
+        assert_eq!(RemotePermission::StatementSubmit.encode()[0], 4);
+        assert_eq!(
+            RemotePermission::Credential {
+                domain: "onramp.example.com".into(),
+                path: "/session".into(),
+                method: "POST".into(),
+            }
+            .encode()[0],
+            5,
+            "Credential must be appended last"
+        );
+    }
+
+    /// A grant stored before RFC 0025, encoded by the previous definition, must
+    /// still decode to the same value. These bytes are literal on purpose: a
+    /// round trip through the current code would pass even if the shape moved.
+    #[test]
+    fn grant_stored_before_this_rfc_still_decodes() {
+        // Remote { domains: ["example.com"] }: variant 0, Vec len 1, str len 11.
+        let stored: Vec<u8> = [&[0u8, 0x04, 0x2c][..], b"example.com"].concat();
+
+        let decoded = RemotePermission::decode(&mut &stored[..]).expect("pre-RFC grant decodes");
+        assert_eq!(
+            decoded,
+            RemotePermission::Remote {
+                domains: vec!["example.com".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn credential_round_trips_and_displays() {
+        let original = RemotePermission::Credential {
+            domain: "onramp.example.com".into(),
+            path: "/meld/session".into(),
+            method: "POST".into(),
+        };
+        let decoded =
+            RemotePermission::decode(&mut &original.encode()[..]).expect("Credential decodes");
+        assert_eq!(decoded, original);
+        assert_eq!(
+            original.to_string(),
+            "POST onramp.example.com/meld/session",
+            "the prompt names the operation"
+        );
+    }
 }

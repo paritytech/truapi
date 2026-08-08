@@ -656,6 +656,17 @@ fn canonical_remote_request(request: &RemotePermissionRequest) -> RemotePermissi
             canonical.dedup();
             RemotePermission::Remote { domains: canonical }
         }
+        RemotePermission::Credential {
+            domain,
+            path,
+            method,
+        } => RemotePermission::Credential {
+            // Same reasoning as the domain set above: case must not produce a
+            // second key. `path` is case-sensitive and is keyed verbatim.
+            domain: domain.to_ascii_lowercase(),
+            path: path.clone(),
+            method: method.to_ascii_uppercase(),
+        },
         other => other.clone(),
     };
     RemotePermissionRequest { permission }
